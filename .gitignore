@@ -1,1 +1,14 @@
+## Python
+
+# Compiled Python Stuff
 __pycache__
+*.pyc
+
+# Setuptools distribution folder (created during build)
+/dist/
+
+# Python egg metadata, (created during build)
+/*.egg-info
+
+## Local VSCode project settings
+/.vscode/
