@@ -1,4 +1,10 @@
+import os
 from setuptools import setup
+
+def read(fname):
+      return open(os.path.join(os.path.dirname(__file__), fname)).read()
+
+requirements = read('requirements.txt').split()
 
 setup(name='bnlearn',
       version = '0.0.x',
@@ -6,6 +12,7 @@ setup(name='bnlearn',
       url='https://gitlab.lrz.de/heidekrueger/bnelearn',
       author='Stefan Heidekrüger',
       author_email='stefan.heidekrueger@tum.de',
-      license='proprietary',
+      license='proprietary, all rights reserved.',
       packages=['bnelearn'],
+      install_requires=requirements,
       zip_safe=False)

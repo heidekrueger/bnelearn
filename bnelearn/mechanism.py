@@ -16,7 +16,7 @@ class Mechanism(ABC):
 class FirstPriceSealedBidAuction(Mechanism):
 
     @staticmethod
-    def play(bids: np.array):
+    def run(bids: np.array):
         allocations = {}
         payments = {}
         
