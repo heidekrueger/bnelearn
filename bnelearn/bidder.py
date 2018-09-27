@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+import torch
+from torch.distributions import Distribution
 
 class Player(ABC):
     """
@@ -18,13 +20,17 @@ class Player(ABC):
     
 
 
-class Bidder(Player, ABC):
+class Bidder(Player):
+    """
+        A player in an auction game. Has a distribution over valuations/types that is common knowledge.
+    """
+    def __init__(self, value_distribution: Distribution, strategy):
+        self.value_distribution = value_distribution
+        self.strategy = strategy
 
-    @abstractmethod
-    def get_valuations(self):
-        pass
-    
-    @abstractmethod
-    def get_bids(self):
-        self
+        self.valuation = torch.zeros(1)
+
+    def draw_valuations_(self, batch_size):
+        self.valuations = self.value_distribution.sample_n(batch_size)
+        return self.valuation
 
