@@ -1,5 +1,9 @@
 from abc import ABC, abstractmethod
-import numpy as np
+import torch
+from typing import Tuple
+
+# Type declarations
+Outcome = Tuple[torch.Tensor, torch.Tensor]
 
 class Mechanism(ABC):
     """
@@ -9,25 +13,61 @@ class Mechanism(ABC):
     """
 
     @abstractmethod
-    def play(self, bids):
+    def run(self, bids):
         pass
 
 
 class FirstPriceSealedBidAuction(Mechanism):
 
-    @staticmethod
-    def run(bids: np.array):
-        allocations = {}
-        payments = {}
-        
-        
-        highest_bidders = bids[bids == bids.max()]
-        
+    def __init__(self, cuda: bool = True):
+        self.cuda = cuda and torch.cuda.is_available()
+        self.device = 'cuda' if self.cuda else 'cpu'
 
-        winner = np.random.choice(highest_bidders)
-        winning_bid = bids[winner]
+    # TODO: If multiple players submit the highest bid, the current implementation chooses the first rather than at random
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs a first (batch of a) First Price Sealed Bid Auction.
 
-        allocations.update({winner: 1})
-        payments.update({winner: winning_bid})
+        This function is meant for single-item auctions.
+        If a bid tensor for multiple items is submitted, each item is auctioned
+        independently of one another.
+        
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, m_items)
+        
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches)
+        """
+        assert bids.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
 
-        return(allocations, payments)
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # name dimensions for readibility
+        batch_dim, player_dim, item_dim = 0, 1, 2
+        batch_size, n_players, m_items = bids.shape
+
+        # allocate return variables
+        payments_per_item = torch.zeros(batch_size, n_players, m_items, device = self.device)
+        allocation = torch.zeros(batch_size, n_players, m_items, device = self.device)
+
+        highest_bids, winning_bidders = bids.max(dim = player_dim, keepdim=True) # shape of each: [batch_size, 1, m_item]
+
+        
+        # replaced by torch scatter operation, see below
+        # note: deleted code references bids.max with keepdim=False.
+        ##for batch in range(batch_size):
+        ##    for j in range(m_items):
+        ##        hb = highest_bidders[batch, j]
+        ##        payments_per_item[batch][ highest_bidders[batch, j] ][j] = highest_bids[batch, j]
+        ##        allocation[batch][ highest_bidders[batch, j] ][j] = 1
+        # The above is equivalent to:
+        payments_per_item.scatter_(player_dim, winning_bidders, highest_bids)
+        payments = payments_per_item.sum(item_dim)
+        allocation.scatter_(player_dim, winning_bidders, 1)
+
+        return (payments, allocation) # payments: batches x players, allocation: batch x players x items
