@@ -43,6 +43,7 @@ class FirstPriceSealedBidAuction(Mechanism):
             allocation: tensor of dimension (n_batches)
         """
         assert bids.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
