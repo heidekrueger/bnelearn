@@ -30,7 +30,13 @@ class Bidder(Player):
 
         self.valuation = torch.zeros(1)
 
+    """ Alternative Constructors"""
+    @classmethod
+    def uniform(cls, lower, upper, strategy):
+        dist = torch.distributions.uniform.Uniform(low = lower, high=upper)
+        return cls(dist, strategy)
+
+
     def draw_valuations_(self, batch_size):
         self.valuations = self.value_distribution.sample_n(batch_size)
         return self.valuation
-
