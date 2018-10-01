@@ -54,7 +54,7 @@ class FirstPriceSealedBidAuction(Mechanism):
 
         # allocate return variables
         payments_per_item = torch.zeros(batch_size, n_players, m_items, device = self.device)
-        allocation = torch.zeros(batch_size, n_players, m_items, device = self.device)
+        allocations = torch.zeros(batch_size, n_players, m_items, device = self.device)
 
         highest_bids, winning_bidders = bids.max(dim = player_dim, keepdim=True) # shape of each: [batch_size, 1, m_item]
 
@@ -69,6 +69,6 @@ class FirstPriceSealedBidAuction(Mechanism):
         # The above is equivalent to:
         payments_per_item.scatter_(player_dim, winning_bidders, highest_bids)
         payments = payments_per_item.sum(item_dim)
-        allocation.scatter_(player_dim, winning_bidders, 1)
+        allocations.scatter_(player_dim, winning_bidders, 1)
 
-        return (payments, allocation) # payments: batches x players, allocation: batch x players x items
+        return (allocations, payments) # payments: batches x players, allocation: batch x players x items

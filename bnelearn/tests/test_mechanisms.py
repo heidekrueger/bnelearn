@@ -1,30 +1,54 @@
 import warnings
 import pytest
 import torch
-import bnelearn.mechanism
+from bnelearn.mechanism import FirstPriceSealedBidAuction
 
+"""Setup shared objects"""
 
-def test_dummy():
-    assert 1==1 
+fpsb = FirstPriceSealedBidAuction(cuda=True)
+device = fpsb.device
+
+bids_unambiguous = torch.Tensor([
+    [[1,   2.1,    3],
+     [3.7, 2,    0],
+     [3.6, 1.99, 2.99]
+    ],
+    [[1.0, 1.0, 1.01],
+     [1.01, .99, 1.0],
+     [1.0, .99, 1.0]            
+    ]], device = device)
+
+bids_ambiguous = torch.Tensor([
+    [[1,   2,    3],
+     [3.7, 2,    0],
+     [3.6, 1.99, 2.99]
+    ],
+    [[1.0, 1.0, 1.0],
+     [1.0, 1.0, 1.0],
+     [1.0, 1.0, 1.0]            
+    ]], device = device)
+bids_cpu = bids_ambiguous.cpu()
+
+bids_illegal_negative =  torch.tensor([
+    [[1,   2,    3],
+     [3.7, 2,    0],
+     [3.6, 1.99, 2.99]
+    ],
+    [[1.0, 1.0, 1.0],
+     [1.0, 1.0, -1.0],
+     [1.0, 1.0, 1.0]
+    ]], device = device)
+
+bids_illegal_dimensions = torch.tensor([
+    [1, 2, 3]
+    ], device = device)
 
 def test_fpsb_cuda():
+    """FBSP should run on GPU if available on the system and desired."""
     
     if not torch.cuda.is_available():
         pytest.skip("This test needs CUDA, but it's not available.")
-    
-    from bnelearn.mechanism import FirstPriceSealedBidAuction
-
-    fpsb = FirstPriceSealedBidAuction(cuda=True)
-    
-    bids_cpu = torch.Tensor([
-        [[1,   2,    3],
-         [3.7, 2,    0],
-         [3.6, 1.99, 2.99]
-        ],
-        [[1.0, 1.0, 1.0],
-         [1.0, 1.0, 1.0],
-         [1.0, 1.0, 1.0]            
-        ]])
+        
     bids_gpu = bids_cpu.cuda()
 
     allocations, payments = fpsb.run(bids_cpu)
@@ -33,7 +57,35 @@ def test_fpsb_cuda():
     assert all(
         [tensor.device.type == 'cuda'
          for tensor in [allocations, allocations1, payments, payments1]
-        ]), "outputs should be on gpu!"
+        ]), "Outputs should be on gpu!"
 
-if __name__ == "__main__":
-    print('hello.')
+def test_fpsb_illegal_arguments():
+    """Illegal bid tensors should cause exceptions"""
+    with pytest.raises(AssertionError):
+        fpsb.run(bids_illegal_negative)
+    
+    with pytest.raises(AssertionError):
+        fpsb.run(bids_illegal_dimensions)
+
+
+def test_fpsb_correctness():
+    """FPSB should return correct allocations and payments."""
+    
+    allocations, payments = fpsb.run(bids_unambiguous)
+
+    assert torch.equal(allocations,torch.tensor([
+        [[0., 1., 1.],
+         [1., 0., 0.],
+         [0., 0., 0.]],
+        [[0., 1., 1.],
+         [1., 0., 0.],
+         [0., 0., 0.]]
+        ], device = allocations.device)
+    )
+    
+
+    assert torch.equal(payments, torch.tensor([
+        [5.1000, 3.7000, 0.0000],
+        [2.0100, 1.0100, 0.0000]],
+        device = payments.device)
+    )
