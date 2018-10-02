@@ -35,7 +35,7 @@ class FirstPriceSealedBidAuction(Mechanism):
         Parameters
         ----------
         bids: torch.Tensor
-            of bids with dimensions (batch_size, n_players, m_items)
+            of bids with dimensions (batch_size, n_players, n_items)
         
         Returns
         -------
@@ -50,19 +50,19 @@ class FirstPriceSealedBidAuction(Mechanism):
 
         # name dimensions for readibility
         batch_dim, player_dim, item_dim = 0, 1, 2
-        batch_size, n_players, m_items = bids.shape
+        batch_size, n_players, n_items = bids.shape
 
         # allocate return variables
-        payments_per_item = torch.zeros(batch_size, n_players, m_items, device = self.device)
-        allocations = torch.zeros(batch_size, n_players, m_items, device = self.device)
+        payments_per_item = torch.zeros(batch_size, n_players, n_items, device = self.device)
+        allocations = torch.zeros(batch_size, n_players, n_items, device = self.device)
 
-        highest_bids, winning_bidders = bids.max(dim = player_dim, keepdim=True) # shape of each: [batch_size, 1, m_item]
+        highest_bids, winning_bidders = bids.max(dim = player_dim, keepdim=True) # shape of each: [batch_size, 1, n_items]
 
         
         # replaced by torch scatter operation, see below
         # note: deleted code references bids.max with keepdim=False.
         ##for batch in range(batch_size):
-        ##    for j in range(m_items):
+        ##    for j in range(n_items):
         ##        hb = highest_bidders[batch, j]
         ##        payments_per_item[batch][ highest_bidders[batch, j] ][j] = highest_bids[batch, j]
         ##        allocation[batch][ highest_bidders[batch, j] ][j] = 1
