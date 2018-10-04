@@ -58,7 +58,6 @@ class FirstPriceSealedBidAuction(Mechanism):
 
         highest_bids, winning_bidders = bids.max(dim = player_dim, keepdim=True) # shape of each: [batch_size, 1, n_items]
 
-        
         # replaced by torch scatter operation, see below
         # note: deleted code references bids.max with keepdim=False.
         ##for batch in range(batch_size):

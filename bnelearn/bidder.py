@@ -20,11 +20,6 @@ class Player(ABC):
     
 
 
-class Strategy(ABC):
-    
-    @abstractmethod
-    def play(self):
-        pass
 
 class Bidder(Player):
     """
@@ -82,4 +77,4 @@ class Bidder(Player):
         return self.utility
     
     def get_action(self):
-        pass
+        return self.strategy.play()
