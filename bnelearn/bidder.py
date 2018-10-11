@@ -25,13 +25,14 @@ class Bidder(Player):
     """
         A player in an auction game. Has a distribution over valuations/types that is common knowledge.
     """
-    def __init__(self, value_distribution: Distribution, strategy, batch_size=1, n_items = 1, cuda=True):
+    def __init__(self, value_distribution: Distribution, strategy, batch_size=1, n_items = 1, cuda=True, n_players=2):
         self.cuda = cuda and torch.cuda.is_available()
         self.device = 'cuda' if self.cuda else 'cpu'
         self.value_distribution = value_distribution
         self.strategy = strategy
         self.batch_size = batch_size
         self.n_items = n_items
+        self.n_players = n_players
 
         self.valuations = torch.zeros(batch_size, n_items, device = self.device)
         
@@ -77,4 +78,7 @@ class Bidder(Player):
         return self.utility
     
     def get_action(self):
-        return self.strategy.play()
+        inputs = torch.cat(
+            (self.valuations,(torch.zeros_like(self.valuations)+self.n_players))
+            ).view(self.batch_size, -1)
+        return self.strategy.play(inputs)
