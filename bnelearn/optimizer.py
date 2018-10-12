@@ -1,3 +1,4 @@
+from collections import Iterable, deque
 import torch
 from torch.optim.optimizer import Optimizer, required
 from copy import deepcopy
@@ -6,21 +7,29 @@ class ES(Optimizer):
     r"""Implements Evolutionary Strategy as in `Salimans et al (2017) https://arxiv.org/pdf/1703.03864.pdf`
 
     Args:
-        model (nn.Module): The base Module that will be optimized.
+        model (nn.Module): The base model that will be optimized.
+            Initially needed as ipnut for knowing model architecture. After optim steps have been performed,
+            this will serve as the current 'state of the art' base model and will be consequently updated.
+        environment (iterable[nn.Module (or Bidder?)] or None): environment of strategies that permutations will be evaluated against in 
+            each optimization step.
+            If given, fixed env will be used in each step (e.g. for assymetric case), (with possible external updatex via `update_env`)
+            If none, will use a dynamic Deque of up to max_env_size most recent base models. (for symmetric case)
         params (iterable, optional): iterable of parameters to optimize or dicts defining parameter groups.
             If None, all params of `model` are updated.
             If given, should be a subset of `model.parameters()`. TODO: Not yet implemented!
         lr (float): learning rate for SGD-like update.
         sigma (float): the standard deviation of perturbation noise.
         n_perturbations (integer): number of perturbations created in each step
-        noise_size (long): length of the shared noise vector, 
+        # not used: noise_size (long): length of the shared noise vector, 
             default is 100000000 (~512mb at half precision or ~1gb at full precision)
-        noise_type (torch.dtype): precision of noise, default is torch.half (16bit)
+        # not used: noise_type (torch.dtype): precision of noise, default is torch.half (16bit),
+        max_env_size (int, optional): maximum number of simulated opponents in the environment if no 
+            fixed environment is specified. 
     """
 
-    def __init__(self, model: torch.nn.Module, params=None,
+    def __init__(self, model: torch.nn.Module, environment=None, params=None,
                  lr = required, sigma = required, n_perturbations=64,
-                 noise_size=100000000, noise_type = torch.half):
+                 noise_size=100000000, noise_type = torch.half, max_env_size=10):
         
         # validation checks
         if lr is not required and lr < 0.0:
@@ -34,6 +43,13 @@ class ES(Optimizer):
             params = model.parameters()
         else:
             raise NotImplementedError("Partial optimization of the network is not supported yet.")
+        if environment is not None:
+            assert isinstance(environment, Iterable), "specified environment should be either None or an iterator"
+            self.environment_type = 'fixed'
+        else:
+            # initialize environment with a copy of initial model
+            environment = deque(deepcopy(model), max_env_size)
+            self.environment_type = 'dynamic'
 
         # initialize super
         defaults = dict(lr=lr, sigma=sigma, n_perturbations=n_perturbations,
@@ -45,7 +61,8 @@ class ES(Optimizer):
         
         # additional members deliberately not handled by super
         self.model = model
-        self._initialize_noise()
+        # do not use shared noise for now
+        # self._initialize_noise()
 
     def step(self, closure = None):
         """Performs a single optimization step.
@@ -61,9 +78,8 @@ class ES(Optimizer):
         n_perturbations = self.defaults['n_perturbations']
 
         # 1. Create a population of perturbations of the original model
-        population = [deepcopy(self.model) for _ in range(n_perturbations)]
+        population = (self._perturb_model(model) for _ in range(n_perturbations))
 
-        
 
         print(base_params)
         print(population)
@@ -73,16 +89,34 @@ class ES(Optimizer):
         # 5. return the loss (how? why?)
         return None
 
-    def _initialize_noise():
-        device = next(self.model.parameters()).device
-        size = self.defaults['noise_size']
-        dtype = self.defaults['noise_type']
+    ## not using shared noise matrix for now
+    #def _initialize_noise(self):
+    #    device = next(self.model.parameters()).device
+    #    size = self.defaults['noise_size']
+    #    dtype = self.defaults['noise_type']
+    #    sigma = self.defaults['sigma']
+    #    return torch.zeros(size, dtype = dtype, device=device).normal_(mean=0.0, std=sigma)
+
+    #def _delete_noise(self):
+    #    del self.noise
+
+    def _perturb_model(self, model: torch.nn.Module):
         sigma = self.defaults['sigma']
-        return torch.zeros(size, dtype = dtype, device=device).normal_(mean=0.0, std=sigma)
+        noise = {}
+        perturbed = deepcopy(model)
 
-    def _delete_noise():
-        del self.noise
+        for name, param in perturbed.named_parameters():
+            weights = param.detach()
+            param_noise = torch.empty_like(weights).normal_(mean=0.0, std=sigma)
+            weights.add_(param_noise)
+            noise[name] = param_noise
 
+        return perturbed, noise
 
+    def update_env(self, new_env: Iterable, append=False):
+        if append:
+            self.environment.extend(new_env)
+        else: 
+            self.environment = deque(new_env)
 
 
