@@ -1,10 +1,15 @@
 from collections import Iterable, deque
-import torch
-from torch.optim.optimizer import Optimizer, required
 from copy import deepcopy
 
+import torch
+from torch.optim.optimizer import Optimizer, required
+from torch.nn.utils import parameters_to_vector, vector_to_parameters
+from bnelearn.environment import Environment
+
+dynamic = object()
+
 class ES(Optimizer):
-    r"""Implements Evolutionary Strategy as in `Salimans et al (2017) https://arxiv.org/pdf/1703.03864.pdf`
+    """Implements Evolutionary Strategy as in `Salimans et al (2017) https://arxiv.org/pdf/1703.03864.pdf`
 
     Args:
         model (nn.Module): The base model that will be optimized.
@@ -27,9 +32,9 @@ class ES(Optimizer):
             fixed environment is specified. 
     """
 
-    def __init__(self, model: torch.nn.Module, environment=None, params=None,
-                 lr = required, sigma = required, n_perturbations=64,
-                 noise_size=100000000, noise_type = torch.half, max_env_size=10):
+    def __init__(self, model: torch.nn.Module, environment: Environment or None, params=None,
+                 lr = required, sigma=required, n_perturbations=64,
+                 noise_size=100000000, noise_type=torch.half, max_env_size=10):
         
         # validation checks
         if lr is not required and lr < 0.0:
@@ -50,6 +55,7 @@ class ES(Optimizer):
             # initialize environment with a copy of initial model
             environment = deque(deepcopy(model), max_env_size)
             self.environment_type = 'dynamic'
+        self.environment = environment
 
         # initialize super
         defaults = dict(lr=lr, sigma=sigma, n_perturbations=n_perturbations,
@@ -74,12 +80,14 @@ class ES(Optimizer):
 
         base_params = self.param_groups[0]['params']
         lr = self.defaults['lr']
-        simga = self.defaults['sigma']
+        sigma = self.defaults['sigma']
         n_perturbations = self.defaults['n_perturbations']
 
-        # 1. Create a population of perturbations of the original model
-        population = (self._perturb_model(model) for _ in range(n_perturbations))
+        # init step-direction (i.e. zeros in parameter space)
+        direction = {}
 
+        # 1. Create a population of perturbations of the original model
+        population = (self._perturb_model(self.model) for _ in range(n_perturbations))
 
         print(base_params)
         print(population)
@@ -102,14 +110,12 @@ class ES(Optimizer):
 
     def _perturb_model(self, model: torch.nn.Module):
         sigma = self.defaults['sigma']
-        noise = {}
         perturbed = deepcopy(model)
 
-        for name, param in perturbed.named_parameters():
-            weights = param.detach()
-            param_noise = torch.empty_like(weights).normal_(mean=0.0, std=sigma)
-            weights.add_(param_noise)
-            noise[name] = param_noise
+        params_flat = parameters_to_vector(model.parameters())
+        noise = torch.zeros_like(params_flat).normal_(mean=0.0, std=sigma)
+        # copy perturbed params into copy
+        vector_to_parameters(params_flat + noise, perturbed.parameters())
 
         return perturbed, noise
 
@@ -118,5 +124,3 @@ class ES(Optimizer):
             self.environment.extend(new_env)
         else: 
             self.environment = deque(new_env)
-
-
