@@ -15,21 +15,28 @@ class Environment():
         In particular this means:
             - an iterable of sets of -i players that a strategy of a single player can be tested against
             - accept strategy as argument, then play batch_size rounds and return the reward
+        
+        Args:
+
+        ... (TODO: document)
+
+        strategy_to_bidder_closure: A closure (strategy, batch_size) -> Bidder to
+            transform strategies into a Bidder compatible with the environment
     """
 
     def __init__(self, mechanism: Mechanism, environment_agents: Iterable, max_env_size=None,
-                 batch_size=100, n_players=2):
+                 batch_size=100, n_players=2, strategy_to_bidder_closure=None):
         assert isinstance(environment_agents, Iterable), "iterable of environment_agents must be supplied"
 
         self.agents = deque(environment_agents, max_env_size)
-        self.env_size = len(self.agents)
         self.max_env_size = max_env_size
         self.batch_size = batch_size
         self.mechanism = mechanism
         self.n_players = n_players
+        self._strategy_to_bidder_closure = strategy_to_bidder_closure
 
 
-    def get_reward(self, agent: Bidder or Strategy):
+    def get_reward(self, agent: Bidder or Strategy, print_percentage=False):
         """Returns reward of a single player against the environment.
            Reward is calculated as average utility for each of the batch_size x env_size games
         """
@@ -42,6 +49,9 @@ class Environment():
         agent.draw_valuations_()
         agent_bid = agent.get_action()
 
+        if print_percentage:
+            print((agent_bid / agent.valuations).mean().item())
+
         utility: torch.Tensor = torch.tensor(0.0, device=agent.device)
 
         for opponent_bid in self._generate_opponent_bids():
@@ -52,7 +62,8 @@ class Environment():
             utility.add_(u)
         
         # average over all players in the environment
-        utility.div_(self.env_size)
+        utility.div_(self.size())
+        
         return utility
     
     def push_agent(self, agent: Bidder or Strategy):
@@ -67,6 +78,9 @@ class Environment():
 
     def _bidder_from_strategy(self, strategy: Strategy):
         """ Transform a strategy into a player that plays that strategy """
+        if self._strategy_to_bidder_closure:
+            return self._strategy_to_bidder_closure(strategy, self.batch_size) 
+        
         raise NotImplementedError()
 
     def _generate_opponent_bids(self):
@@ -74,4 +88,12 @@ class Environment():
         for opponent in self.agents:
             opponent.batch_size = self.batch_size
             opponent.draw_valuations_()
-            yield opponent.get_action()            
+            yield opponent.get_action()           
+
+    def size(self):
+        """Returns the number of agents/opponent setups in the environment.""" 
+        return len(self.agents)
+    
+    def is_empty(self):
+        """True if no agents in the environment"""
+        return len(self.agents) == 0

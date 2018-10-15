@@ -15,8 +15,8 @@ class ES(Optimizer):
         model (nn.Module): The base model that will be optimized.
             Initially needed as ipnut for knowing model architecture. After optim steps have been performed,
             this will serve as the current 'state of the art' base model and will be consequently updated.
-        environment (iterable[nn.Module (or Bidder?)] or None): environment of strategies that permutations will be evaluated against in 
-            each optimization step.
+        environment (iterable[nn.Module (or Bidder?)]): environment of strategies, number of players and 
+            a mechanism that permutations will be evaluated against in each optimization step.
             If given, fixed env will be used in each step (e.g. for assymetric case), (with possible external updatex via `update_env`)
             If none, will use a dynamic Deque of up to max_env_size most recent base models. (for symmetric case)
         params (iterable, optional): iterable of parameters to optimize or dicts defining parameter groups.
@@ -32,9 +32,9 @@ class ES(Optimizer):
             fixed environment is specified. 
     """
 
-    def __init__(self, model: torch.nn.Module, environment: Environment or None, params=None,
-                 lr = required, sigma=required, n_perturbations=64,
-                 noise_size=100000000, noise_type=torch.half, max_env_size=10):
+    def __init__(self, model: torch.nn.Module, environment: Environment, params=None,
+                 lr = required, sigma=required, n_perturbations=64, env_type=dynamic,
+                 noise_size=100000000, noise_type=torch.half):
         
         # validation checks
         if lr is not required and lr < 0.0:
@@ -43,30 +43,29 @@ class ES(Optimizer):
             raise ValueError("Invalid perturbation covariance: {}".format(sigma))
         if n_perturbations < 1:
             raise ValueError("Invalid number of perturbations: {}".format(n_perturbations))
+        assert isinstance(environment, Environment), "Invalid Environment"
 
         if not params:
             params = model.parameters()
         else:
-            raise NotImplementedError("Partial optimization of the network is not supported yet.")
-        if environment is not None:
-            assert isinstance(environment, Iterable), "specified environment should be either None or an iterator"
-            self.environment_type = 'fixed'
-        else:
-            # initialize environment with a copy of initial model
-            environment = deque(deepcopy(model), max_env_size)
-            self.environment_type = 'dynamic'
-        self.environment = environment
-
+            raise NotImplementedError("Partial optimization of the network is not supported yet.") 
+        
         # initialize super
         defaults = dict(lr=lr, sigma=sigma, n_perturbations=n_perturbations,
                         noise_size=noise_size, noise_type=noise_type)
 
         super(ES, self).__init__(params, defaults)
+
         if len(self.param_groups) > 1:
             raise NotImplementedError("Multiple Parameter groups found. ES only currently only supports a single group.")
-        
+
         # additional members deliberately not handled by super
         self.model = model
+        if environment.is_empty() and env_type == dynamic:
+            # for self play, add model into environemtn
+            environment.push_agent(deepcopy(model))
+        self.environment = environment
+        self.env_type = env_type
         # do not use shared noise for now
         # self._initialize_noise()
 
@@ -83,19 +82,41 @@ class ES(Optimizer):
         sigma = self.defaults['sigma']
         n_perturbations = self.defaults['n_perturbations']
 
-        # init step-direction (i.e. zeros in parameter space)
-        direction = {}
 
         # 1. Create a population of perturbations of the original model
         population = (self._perturb_model(self.model) for _ in range(n_perturbations))
-
-        print(base_params)
-        print(population)
         # 2. let each of these play against the environment and get their utils
+        # TODO: have each model play against the same instatiazation of the environment
+        #       instead of each having it's own batch of valuations.
+        # both of these as a row-matrix. i.e.
+        # rewards: n_perturbations x 1
+        # epsilons: n_perturbations x parameter_length
+        rewards, epsilons = (torch.cat(tensors).view(n_perturbations, -1)
+                             for tensors in zip(*(
+                                (self.environment.get_reward(model).view(1),
+                                 epsilon)
+                                for (model, epsilon) in population
+                                ))
+                            )
+
         # 3. calculate the gradient update
+        weighted_noise = (rewards * epsilons).sum(dim=0)        
+        new_base_params = \
+            parameters_to_vector(base_params) + \
+            lr / n_perturbations / sigma * weighted_noise
+
+
         # 4. apply the gradient update to the base model
-        # 5. return the loss (how? why?)
-        return None
+        vector_to_parameters(new_base_params, base_params)
+        vector_to_parameters(new_base_params, self.model.parameters())
+
+        # add new model to environment
+        if self.env_type is dynamic:
+            self.environment.push_agent(deepcopy(self.model))
+
+        utility = self.environment.get_reward(self.model, print_percentage=True)
+        # 5. return the loss
+        return -utility
 
     ## not using shared noise matrix for now
     #def _initialize_noise(self):
@@ -108,6 +129,7 @@ class ES(Optimizer):
     #def _delete_noise(self):
     #    del self.noise
 
+
     def _perturb_model(self, model: torch.nn.Module):
         sigma = self.defaults['sigma']
         perturbed = deepcopy(model)
@@ -119,8 +141,6 @@ class ES(Optimizer):
 
         return perturbed, noise
 
-    def update_env(self, new_env: Iterable, append=False):
-        if append:
-            self.environment.extend(new_env)
-        else: 
-            self.environment = deque(new_env)
+    def _update_env(self, new_env: Iterable):
+        for agent in new_env:
+            self.environment.push_agent(agent)
