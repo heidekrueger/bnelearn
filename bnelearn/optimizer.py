@@ -61,7 +61,7 @@ class ES(Optimizer):
 
         # additional members deliberately not handled by super
         self.model = model
-        if environment.is_empty() and env_type == dynamic:
+        if environment.is_empty() and env_type is dynamic:
             # for self play, add model into environemtn
             environment.push_agent(deepcopy(model))
         self.environment = environment
