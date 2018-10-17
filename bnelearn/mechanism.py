@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-import torch
 from typing import Tuple
+
+import torch
 
 # Type declarations
 Outcome = Tuple[torch.Tensor, torch.Tensor]
@@ -65,9 +66,11 @@ class FirstPriceSealedBidAuction(Mechanism):
         ##        hb = highest_bidders[batch, j]
         ##        payments_per_item[batch][ highest_bidders[batch, j] ][j] = highest_bids[batch, j]
         ##        allocation[batch][ highest_bidders[batch, j] ][j] = 1
-        # The above is equivalent to:
+        # The above can be written as the following one-liner:
         payments_per_item.scatter_(player_dim, winning_bidders, highest_bids)
         payments = payments_per_item.sum(item_dim)
         allocations.scatter_(player_dim, winning_bidders, 1)
+        # Don't allocate items that have a winnign bid of zero.
+        allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
         return (allocations, payments) # payments: batches x players, allocation: batch x players x items
