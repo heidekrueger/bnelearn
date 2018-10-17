@@ -25,4 +25,14 @@ class NeuralNetStrategy(Strategy, nn.Module):
     def play(self,x):
         return self.forward(x)
     
+class TruthfulStrategy(Strategy, nn.Module):
+    def __init__(self, input_length):
+        nn.Module.__init__(self)
+        self.register_parameter('dummy',nn.Parameter(torch.zeros(1, device='cuda')))
+
+    def forward(self, x):
+        # right now specific for input length 2
+        return x.matmul(torch.tensor([[1.0], [0.0]], device=x.device))
     
+    def play(self, x):
+        return self.forward(x)

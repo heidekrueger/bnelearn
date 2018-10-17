@@ -50,7 +50,7 @@ class Environment():
         agent_bid = agent.get_action()
 
         if print_percentage:
-            print((agent_bid / agent.valuations).mean().item())
+            print("bid percentage: {}".format((agent_bid / agent.valuations).mean().item()))
 
         utility: torch.Tensor = torch.tensor(0.0, device=agent.device)
 

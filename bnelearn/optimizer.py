@@ -100,7 +100,8 @@ class ES(Optimizer):
                             )
 
         # 3. calculate the gradient update
-        weighted_noise = (rewards * epsilons).sum(dim=0)        
+        weighted_noise = (rewards * epsilons).sum(dim=0)
+        #print(weighted_noise / n_perturbations / sigma)
         new_base_params = \
             parameters_to_vector(base_params) + \
             lr / n_perturbations / sigma * weighted_noise
@@ -114,7 +115,7 @@ class ES(Optimizer):
         if self.env_type is dynamic:
             self.environment.push_agent(deepcopy(self.model))
 
-        utility = self.environment.get_reward(self.model, print_percentage=True)
+        utility = self.environment.get_reward(self.model, print_percentage=False)
         # 5. return the loss
         return -utility
 
