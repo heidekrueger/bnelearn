@@ -7,7 +7,6 @@ from bnelearn.strategy import Strategy
 
 dynamic = object()
 
-
 class Environment():
     """
         An environment of agents to play against and evaluate strategies.
@@ -17,7 +16,6 @@ class Environment():
             - accept strategy as argument, then play batch_size rounds and return the reward
         
         Args:
-
         ... (TODO: document)
 
         strategy_to_bidder_closure: A closure (strategy, batch_size) -> Bidder to
@@ -36,7 +34,7 @@ class Environment():
         self._strategy_to_bidder_closure = strategy_to_bidder_closure
 
 
-    def get_reward(self, agent: Bidder or Strategy, print_percentage=False):
+    def get_reward(self, agent: Bidder or Strategy, draw_valuations=False):
         """Returns reward of a single player against the environment.
            Reward is calculated as average utility for each of the batch_size x env_size games
         """
@@ -49,10 +47,10 @@ class Environment():
         agent.draw_valuations_()
         agent_bid = agent.get_action()
 
-        if print_percentage:
-            print("bid percentage: {}".format((agent_bid / agent.valuations).mean().item()))
-
         utility: torch.Tensor = torch.tensor(0.0, device=agent.device)
+
+        if draw_valuations:
+            self._draw_valuations()
 
         for opponent_bid in self._generate_opponent_bids():
             allocation, payments = self.mechanism.run(
@@ -61,10 +59,18 @@ class Environment():
             u = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
             utility.add_(u)
         
-        # average over all players in the environment
+        # average over plays against all players in the environment
         utility.div_(self.size())
         
         return utility
+    
+    def _draw_valuations(self):
+        """
+            Draws new valuations for each opponent-agent in the environment
+        """
+        for opponent in self.agents:            
+            opponent.batch_size = self.batch_size
+            opponent.draw_valuations_()
     
     def push_agent(self, agent: Bidder or Strategy):
         """
@@ -86,9 +92,7 @@ class Environment():
     def _generate_opponent_bids(self):
         """ Generator function yielding batches of bids for each player in environment agents"""
         for opponent in self.agents:
-            opponent.batch_size = self.batch_size
-            opponent.draw_valuations_()
-            yield opponent.get_action()           
+            yield opponent.get_action()
 
     def size(self):
         """Returns the number of agents/opponent setups in the environment.""" 

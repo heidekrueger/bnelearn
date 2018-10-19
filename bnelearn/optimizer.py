@@ -82,15 +82,13 @@ class ES(Optimizer):
         sigma = self.defaults['sigma']
         n_perturbations = self.defaults['n_perturbations']
 
-
         # 1. Create a population of perturbations of the original model
         population = (self._perturb_model(self.model) for _ in range(n_perturbations))
         # 2. let each of these play against the environment and get their utils
-        # TODO: have each model play against the same instatiazation of the environment
-        #       instead of each having it's own batch of valuations.
         # both of these as a row-matrix. i.e.
         # rewards: n_perturbations x 1
         # epsilons: n_perturbations x parameter_length
+        self.environment._draw_valuations()
         rewards, epsilons = (torch.cat(tensors).view(n_perturbations, -1)
                              for tensors in zip(*(
                                 (self.environment.get_reward(model).view(1),
@@ -115,7 +113,7 @@ class ES(Optimizer):
         if self.env_type is dynamic:
             self.environment.push_agent(deepcopy(self.model))
 
-        utility = self.environment.get_reward(self.model, print_percentage=False)
+        utility = self.environment.get_reward(self.model)
         # 5. return the loss
         return -utility
 
