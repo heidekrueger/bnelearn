@@ -9,5 +9,13 @@ __pycache__
 # Python Testing Logs
 .pytest_cache
 
+# notebook checkpoints
+*-checkpoint.ipynb
+
 ## Local VSCode project settings
 /.vscode/
+
+
+#don't check in experiment results for now
+/runs
+/notebooks/runs

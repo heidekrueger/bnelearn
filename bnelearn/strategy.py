@@ -11,25 +11,45 @@ class Strategy(ABC):
     def play(self):
         pass
 
+# TODO (backing up first)
+#class NeuralNetStrategy(Strategy, nn.Module):
+    # abstract class for a Strategy that is also an nn module.
+    # useful for abstracting away shared initialization stuff
+
+#    def __init__(self):
+#        nn.Module.__init__(self)
+
+#    def _disable_gradients():
+
+
 class NeuralNetStrategy(Strategy, nn.Module):
-    def __init__(self, input_length, depth_hidden_layer = 10):
+    def __init__(self, input_length, size_hidden_layer = 10, requires_grad = True):
         nn.Module.__init__(self)
-        self.fc1 = nn.Linear(input_length, depth_hidden_layer)
-        self.fc2 = nn.Linear(depth_hidden_layer, depth_hidden_layer)
-        self.fc_out = nn.Linear(depth_hidden_layer, 1)
-        self.lrelu = nn.LeakyReLU(negative_slope=.1)
-        
+        self.fc1 = nn.Linear(input_length, size_hidden_layer)
+        #self.fc2 = nn.Linear(depth_hidden_layer, depth_hidden_layer)
+        self.fc_out = nn.Linear(size_hidden_layer, 1)
+        self.tanh = nn.Tanh()
+        #self.lrelu1 = nn.LeakyReLU(negative_slope=.1)
+        #self.lrelu2 = nn.LeakyReLU(negative_slope=.1)
+
+        # turn off gradients if not required (e.g. for ES-training)
+        if not requires_grad:
+            for param in self.parameters():
+                param.requires_grad = False
+
 
     def forward(self, x):
-        x = self.lrelu(self.fc1(x))
-        x = self.lrelu(self.fc2(x))
+        #x = self.lrelu1(self.fc1(x))
+        #x = self.lrelu2(self.fc2(x))
+        x = self.tanh(self.fc1(x))
         x = self.fc_out(x).relu()
 
         return x
     
     def play(self,x):
         return self.forward(x)
-    
+
+
 class TruthfulStrategy(Strategy, nn.Module):
     def __init__(self, input_length):
         nn.Module.__init__(self)
@@ -57,7 +77,5 @@ class RandomStrategy(Strategy, nn.Module):
         nn.Module.__init__(self)
         self.register_parameter('dummy', nn.Parameter(torch.zeros(1)))
     
-    def forward(self, x):
-        print(x.shape)
-
+    def forward(self, x):        
         return x

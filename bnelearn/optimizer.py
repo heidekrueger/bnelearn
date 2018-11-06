@@ -33,9 +33,9 @@ class ES(Optimizer):
     """
 
     def __init__(self, model: torch.nn.Module, environment: Environment, params=None,
-                 lr = required, sigma=required, n_perturbations=64, env_type=dynamic,
+                 lr=required, sigma=required, n_perturbations=64, env_type=dynamic,
                  noise_size=100000000, noise_type=torch.half):
-        
+
         # validation checks
         if lr is not required and lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
@@ -49,7 +49,7 @@ class ES(Optimizer):
             params = model.parameters()
         else:
             raise NotImplementedError("Partial optimization of the network is not supported yet.") 
-        
+
         # initialize super
         defaults = dict(lr=lr, sigma=sigma, n_perturbations=n_perturbations,
                         noise_size=noise_size, noise_type=noise_type)
@@ -57,7 +57,7 @@ class ES(Optimizer):
         super(ES, self).__init__(params, defaults)
 
         if len(self.param_groups) > 1:
-            raise NotImplementedError("Multiple Parameter groups found. ES only currently only supports a single group.")
+            raise NotImplementedError("Multiple Parameter groups found. Currently only supports a single group.")
 
         # additional members deliberately not handled by super
         self.model = model
@@ -69,13 +69,13 @@ class ES(Optimizer):
         # do not use shared noise for now
         # self._initialize_noise()
 
-    def step(self, closure = None):
+    def step(self, closure=None):
         """Performs a single optimization step.
 
         Arguments:
             closure (callable, optional): A closure that reevaluates the model 
             and returns the loss.
-        """        
+        """
 
         base_params = self.param_groups[0]['params']
         lr = self.defaults['lr']
@@ -88,7 +88,7 @@ class ES(Optimizer):
         # both of these as a row-matrix. i.e.
         # rewards: n_perturbations x 1
         # epsilons: n_perturbations x parameter_length
-        self.environment._draw_valuations()
+        self.environment.draw_valuations_()
         rewards, epsilons = (torch.cat(tensors).view(n_perturbations, -1)
                              for tensors in zip(*(
                                 (self.environment.get_reward(model).view(1),

@@ -50,7 +50,7 @@ class Environment():
         utility: torch.Tensor = torch.tensor(0.0, device=agent.device)
 
         if draw_valuations:
-            self._draw_valuations()
+            self.draw_valuations_()
 
         for opponent_bid in self._generate_opponent_bids():
             allocation, payments = self.mechanism.run(
@@ -64,7 +64,7 @@ class Environment():
         
         return utility
     
-    def _draw_valuations(self):
+    def draw_valuations_(self):
         """
             Draws new valuations for each opponent-agent in the environment
         """

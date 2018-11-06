@@ -78,11 +78,14 @@ class Bidder(Player):
         return self.utility
     
     def get_action(self):
-        inputs = torch.cat(
-                (
-                self.valuations,
-                (torch.zeros_like(self.valuations)+self.n_players)
-                ),
-                dim = 1
-            ).view(self.batch_size, -1)
+        ## with added n player argument
+        #inputs = torch.cat(
+        #        (
+        #        self.valuations,
+        #        (torch.zeros_like(self.valuations)+self.n_players)
+        #        ),
+        #        dim = 1
+        #    ).view(self.batch_size, -1)
+
+        inputs = self.valuations.view(self.batch_size, -1)
         return self.strategy.play(inputs)
