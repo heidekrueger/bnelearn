@@ -60,6 +60,7 @@ class Environment():
             allocation, payments = self.mechanism.run(
                 torch.cat((agent_bid, opponent_bid), 1).view(self.batch_size, self.n_players, 1)
             )
+            # average over batch against this opponent
             u = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
             utility.add_(u)
         

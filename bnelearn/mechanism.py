@@ -17,6 +17,44 @@ class Mechanism(ABC):
     def run(self, bids):
         pass
 
+class TwoByTwoBimatrixGame(Mechanism):
+    def __init__(self, outcomes: torch.Tensor, cuda: bool = True):
+        self.cuda = cuda and torch.cuda.is_available()
+        self.device = 'cuda' if self.cuda else 'cpu'
+
+        assert outcomes.shape == torch.Size([2,2,2])
+        self.outcomes = outcomes
+
+    def run(self, bids):
+        """bids are actually indices of actions"""
+
+        assert bids.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
+        assert bids.dtype == torch.int64, "actions must be integers!"
+
+        batch_dim, player_dim, item_dim = 0, 1, 2
+        batch_size, n_players, n_items = bids.shape
+
+        assert n_items == 1, "only single action per player in this setting"
+        assert n_players == 2, "only implemented for 2 players right now"
+
+        #move to gpu/cpu if needed
+        bids = bids.to(self.device)
+        bids = bids.view(batch_size, n_players)
+
+        allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
+        payments = torch.zeros(batch_size, n_players, device=self.device)
+
+        for batch in range(batch_size):
+            for player in range(n_players):
+                payments[batch, player] = -self.outcomes[bids[batch,0], bids[batch,1]][player]
+
+        return (allocations, payments)
+
+
+
+
+
+
 class VickreyAuction(Mechanism):
 
     def __init__(self, cuda: bool = True):

@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributions.categorical import Categorical
 
 ## false positive on torch.tensor()
 #pylint: disable=E1102
@@ -12,6 +13,40 @@ class Strategy(ABC):
     @abstractmethod
     def play(self):
         pass
+
+class MatrixGameStrategy(Strategy, nn.Module):
+    """ A dummy neural network that encodes and returns a mixed strategy"""
+    def __init__(self, n_actions):
+        nn.Module.__init__(self)
+        self.logits = nn.Linear(1, n_actions)
+
+        for param in self.parameters():
+            param.requires_grad = False
+        
+        # initialize distribution
+        self._update_distribution()
+
+    def _dummy_input(self):
+        return
+
+    def _update_distribution(self):
+        self.device = next(self.parameters()).device
+        probs = self.forward(torch.ones(1,  device=self.device))
+        self.distribution = Categorical(probs=probs)
+
+    def forward(self, x):
+        logits = self.logits(x)
+        probs = F.softmax(logits, 0)
+        return probs
+
+    def play(self, x=None):
+        if x is None:
+            x= torch.ones(1, 1, device=self.device)
+
+        self._update_distribution()
+        # is of shape batch size x 1
+        # TODO: this is slow AF. fix.
+        return self.distribution.sample(x.shape)
 
 # TODO (backing up first)
 #class NeuralNetStrategy(Strategy, nn.Module):
@@ -40,7 +75,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
             for param in self.parameters():
                 param.requires_grad = False
 
-
+        nn.Module.forward
     def forward(self, x):
         x = F.tanh(self.fc1(x))
         #x = F.tanh(self.fc2(x))
@@ -81,4 +116,4 @@ class RandomStrategy(Strategy, nn.Module):
         self.register_parameter('dummy', nn.Parameter(torch.zeros(1)))
     
     def forward(self, x):        
-        return x
+        raise NotImplementedError
