@@ -23,10 +23,11 @@ class Strategy(ABC):
 
 
 class NeuralNetStrategy(Strategy, nn.Module):
+    """ A strategy played by a neural network"""
     def __init__(self, input_length, size_hidden_layer = 10, requires_grad = True):
         nn.Module.__init__(self)
         self.fc1 = nn.Linear(input_length, size_hidden_layer)
-        self.fc2 = nn.Linear(size_hidden_layer, size_hidden_layer)
+        #self.fc2 = nn.Linear(size_hidden_layer, size_hidden_layer)
         self.fc_out = nn.Linear(size_hidden_layer, 1)
         #self.tanh = nn.Tanh()
         #self.lrelu1 = nn.LeakyReLU(negative_slope=.1)
@@ -40,7 +41,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
     def forward(self, x):
         x = F.tanh(self.fc1(x))
-        x = F.tanh(self.fc2(x))
+        #x = F.tanh(self.fc2(x))
         #x = self.tanh(self.fc1(x))
         x = self.fc_out(x).relu()
 
