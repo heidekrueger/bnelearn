@@ -3,7 +3,9 @@ from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-# import torch.nn.functional as F
+
+## false positive on torch.tensor()
+#pylint: disable=E1102
 
 class Strategy(ABC):
     

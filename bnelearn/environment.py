@@ -1,4 +1,8 @@
+##false positive on torch.tensor
+#pylint: disable=E1102 
+#pylint: disable=E0611
 from collections import Iterable, deque
+#pylint: enable=E0611
 import torch
 
 from bnelearn.bidder import Bidder

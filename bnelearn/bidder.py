@@ -17,7 +17,6 @@ class Player(ABC):
     def get_utility(self, outcome):
         """Calculates player's utility based on outcome of a game."""
         pass
-    
 
 
 
@@ -37,7 +36,7 @@ class Bidder(Player):
         self.valuations = torch.zeros(batch_size, n_items, device = self.device)
         
 
-    """ Alternative Constructors"""
+    ### Alternative Constructors #############
     @classmethod
     def uniform(cls, lower, upper, strategy, **kwargs):
         dist = torch.distributions.uniform.Uniform(low = lower, high=upper)
@@ -48,7 +47,7 @@ class Bidder(Player):
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
 
-    """Members"""
+    ### Members ####################
 
     def draw_valuations_(self):
         # If in place sampling is available for our distribution, use it!
@@ -66,10 +65,6 @@ class Bidder(Player):
         return self.valuations
 
     def get_utility(self, allocations, payments):
-        # tensorproduct : for each batch: rowsum over valuations elementwise times 1 if allocated - payments
-        # in alloc: batch x items, payments: batch x 1
-        # out: batch x 
-        # TODO implement this
 
         assert allocations.dim() == 2 # batch_size x items
         assert payments.dim() == 1 # batch_size

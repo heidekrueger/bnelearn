@@ -1,10 +1,12 @@
+## false positives for Iterable and Optimizer
+#pylint: disable=E0611
 from collections import Iterable, deque
-from copy import deepcopy
-
-import torch
 from torch.optim.optimizer import Optimizer, required
+#pylint: disable=E0611
+import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from bnelearn.environment import Environment
+from copy import deepcopy
 
 dynamic = object()
 
