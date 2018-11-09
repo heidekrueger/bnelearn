@@ -45,7 +45,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         x = F.tanh(self.fc1(x))
         #x = F.tanh(self.fc2(x))
         #x = self.tanh(self.fc1(x))
-        x = self.fc_out(x).relu()
+        x = self.fc_out(x)
 
         return x
     

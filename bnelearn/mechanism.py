@@ -25,8 +25,10 @@ class VickreyAuction(Mechanism):
     
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         assert bids.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
-        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+        #assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
+        #ensure nonnegative bids --> set negative to zero
+        bids.relu_()
         
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
@@ -81,7 +83,10 @@ class FirstPriceSealedBidAuction(Mechanism):
             allocation: tensor of dimension (n_batches)
         """
         assert bids.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
-        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+        #assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # set negative bids to 0
+        bids.relu_()
 
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
