@@ -23,7 +23,7 @@ class TwoByTwoBimatrixGame(Mechanism):
         self.device = 'cuda' if self.cuda else 'cpu'
 
         assert outcomes.shape == torch.Size([2,2,2])
-        self.outcomes = outcomes
+        self.outcomes = outcomes.float().to(self.device)
 
     def run(self, bids):
         """bids are actually indices of actions"""
@@ -42,15 +42,18 @@ class TwoByTwoBimatrixGame(Mechanism):
         bids = bids.view(batch_size, n_players)
 
         allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
-        payments = torch.zeros(batch_size, n_players, device=self.device)
+        
+        ## memory allocation and Loop replaced by vectorized version below:
+        #payments = torch.zeros(batch_size, n_players, device=self.device)
+        
+        #for batch in range(batch_size):
+        #    for player in range(n_players):
+        #        payments[batch, player] = -self.outcomes[bids[batch,0], bids[batch,1]][player]
 
-        for batch in range(batch_size):
-            for player in range(n_players):
-                payments[batch, player] = -self.outcomes[bids[batch,0], bids[batch,1]][player]
+        # payment to "game master" is the negative outcome
+        payments = - self.outcomes[bids[:,0], bids[:,1]].view(batch_size, n_players)
 
         return (allocations, payments)
-
-
 
 
 
