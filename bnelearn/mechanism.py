@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Tuple
 
+#pylint: disable=E1102
 import torch
 
 # Type declarations
@@ -18,12 +19,26 @@ class Mechanism(ABC):
         pass
 
 class TwoByTwoBimatrixGame(Mechanism):
-    def __init__(self, outcomes: torch.Tensor, cuda: bool = True):
+    def __init__(self, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
         self.cuda = cuda and torch.cuda.is_available()
         self.device = 'cuda' if self.cuda else 'cpu'
 
         assert outcomes.shape == torch.Size([2,2,2])
         self.outcomes = outcomes.float().to(self.device)
+
+        self.names = names
+
+    def get_player_name(self, player_id: int):
+        if self.names and "players" in self.names.keys():
+            return self.names["players"][player_id]
+        else:
+            return player_id
+    
+    def get_action_name(self, action_id: int):
+        if self.names and "actions" in self.names.keys():
+            return self.names["actions"][action_id]
+        else:
+            return action_id
 
     def run(self, bids):
         """bids are actually indices of actions"""
@@ -43,19 +58,50 @@ class TwoByTwoBimatrixGame(Mechanism):
 
         allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
         
-        ## memory allocation and Loop replaced by vectorized version below:
+        ## memory allocation and Loop replaced by equivalent vectorized version below:
+        ## (keep old code as comment for readibility)
         #payments = torch.zeros(batch_size, n_players, device=self.device)
-        
         #for batch in range(batch_size):
         #    for player in range(n_players):
         #        payments[batch, player] = -self.outcomes[bids[batch,0], bids[batch,1]][player]
 
         # payment to "game master" is the negative outcome
-        payments = - self.outcomes[bids[:,0], bids[:,1]].view(batch_size, n_players)
+        payments = -self.outcomes[bids[:,0], bids[:,1]].view(batch_size, n_players)
 
         return (allocations, payments)
 
+class PrisonersDilemma(TwoByTwoBimatrixGame):
+    def __init__(self, cuda: bool = True):
+        super().__init__(
+            outcomes = torch.tensor([[[-1, -1],[-3, 0]], [[ 0, -3],[-2,-2]]]),
+            cuda = cuda,
+            names = {
+                "player_names": ["RowPlayer", "ColPlayer"],
+                "action_names": ["Cooperate", "Defect"]
+            }
+        )
 
+class BattleOfTheSexes(TwoByTwoBimatrixGame):
+    def __init__(self, cuda: bool = True):
+        super().__init__(
+            outcomes=torch.tensor([[[3, 2],[0,0]], [[0,0],[2,3]]]),
+            cuda=cuda,
+            names = {
+                "player_names": ["Boy", "Girl"],
+                "action_names": ["Action", "Romance"]
+            }
+        )
+
+class MatchingPennies(TwoByTwoBimatrixGame):
+    def __init__(self, cuda: bool = True):
+        super().__init__(
+            outcomes=torch.tensor([[[1, -1],[-1, 1,]], [[-1, 1], [1, -1]]]),
+            cuda=cuda,
+            names = {
+                "player_names": ["Even", "Odd"],
+                "action_names": ["Heads", "Tails"]
+            }
+        )
 
 
 class VickreyAuction(Mechanism):
@@ -68,7 +114,6 @@ class VickreyAuction(Mechanism):
         assert bids.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
-        
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
 
