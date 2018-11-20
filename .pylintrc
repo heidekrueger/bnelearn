@@ -1,5 +1,7 @@
 [MASTER]
 
+disable=C0326,E1102
+
 # A comma-separated list of package or module names from where C extensions may
 # be loaded. Extensions are loading into the active Python interpreter and may
 # run arbitrary code
@@ -23,6 +25,7 @@ ignore-mixin-members=yes
 # Maximum number of characters on a single line.  Ideally, lines should be under 100 characters,
 # but we allow some leeway before calling it an error.
 max-line-length=120
+
 
 # Regexp for a line that is allowed to be longer than the limit.
 ignore-long-lines=^\s*(# )?<?https?://\S+>?$
