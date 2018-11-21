@@ -7,12 +7,23 @@ import torch
 # Type declarations
 Outcome = Tuple[torch.Tensor, torch.Tensor]
 
-class Mechanism(ABC):
+class Game(ABC):
+
+    @abstractmethod
+    def play(self, actions):
+        # get actions from players and define outcome
+        pass
+
+
+class Mechanism(Game):
     """
-    Abstract class.
+    Auction Mechanism - Interpreted as a Bayesian game.
     A Mechanism collects bids from all players, then allocates available
     items as well as payments for each of the players.
     """
+    def play(self, actions):
+        # TODO: ensure `actions` are valid bids
+        return self.run(bids=actions)
 
     @abstractmethod
     def run(self, bids):

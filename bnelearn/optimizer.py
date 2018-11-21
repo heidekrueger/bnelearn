@@ -35,8 +35,7 @@ class ES(Optimizer):
     """
 
     def __init__(self, model: torch.nn.Module, environment: Environment, params=None,
-                 lr=required, sigma=required, n_perturbations=64, env_type=dynamic,
-                 noise_size=100000000, noise_type=torch.half):
+                 lr=required, sigma=required, n_perturbations=64, env_type=dynamic):
 
         # validation checks
         if lr is not required and lr < 0.0:
@@ -53,8 +52,7 @@ class ES(Optimizer):
             raise NotImplementedError("Partial optimization of the network is not supported yet.") 
 
         # initialize super
-        defaults = dict(lr=lr, sigma=sigma, n_perturbations=n_perturbations,
-                        noise_size=noise_size, noise_type=noise_type)
+        defaults = dict(lr=lr, sigma=sigma, n_perturbations=n_perturbations)
 
         super(ES, self).__init__(params, defaults)
 

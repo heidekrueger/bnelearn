@@ -3,6 +3,10 @@
 #pylint: disable=E0611
 from collections import Iterable, deque
 #pylint: enable=E0611
+
+from abc import ABC, abstractmethod
+from typing import Callable
+
 import torch
 
 from bnelearn.bidder import Bidder
@@ -11,7 +15,49 @@ from bnelearn.strategy import Strategy
 
 dynamic = object()
 
-class Environment():
+
+class Environment(ABC):
+    def __init__(self,
+                 agents: Iterable,
+                 n_players=2,
+                 batch_size=1,
+                 strategy_to_player_closure: Callable or None=None,
+                 **kwargs
+                 ):
+        assert isinstance(agents, Iterable), "iterable of agents must be supplied"
+
+        self._strategy_to_player = strategy_to_player_closure
+        self.batch_size = batch_size
+        self.n_players = n_players
+
+        # transform agents into players, if specified as Strategies:
+        agents = [
+            self._strategy_to_player(agent, batch_size) if isinstance(agent, Strategy) else agent
+            for agent in agents
+        ]
+        self.agents = agents
+
+
+    @abstractmethod
+    def get_reward(self, **kwargs):
+        pass
+    
+    @abstractmethod
+    def generate_agent_actions(self, **kwargs):
+        pass
+
+    def size(self):
+        """Returns the number of agents/opponent setups in the environment.""" 
+        return len(self.agents)
+    
+    def is_empty(self):
+        """True if no agents in the environment"""
+        return len(self.agents) == 0
+
+
+
+
+class AuctionEnvironment(Environment):
     """
         An environment of agents to play against and evaluate strategies.
 
@@ -26,23 +72,23 @@ class Environment():
             transform strategies into a Bidder compatible with the environment
     """
 
-    def __init__(self, mechanism: Mechanism, environment_agents: Iterable, max_env_size=None,
-                 batch_size=100, n_players=2, strategy_to_bidder_closure=None):
-        assert isinstance(environment_agents, Iterable), "iterable of environment_agents must be supplied"
+    def __init__(self, mechanism: Mechanism, agents: Iterable, max_env_size=None,
+                 batch_size=100, n_players=2, strategy_to_bidder_closure: Callable=None):
 
-        self._strategy_to_bidder_closure = strategy_to_bidder_closure
+        super().__init__(
+            agents=agents,
+            n_players=n_players,
+            batch_size=batch_size,
+            strategy_to_player_closure=strategy_to_bidder_closure
+            )
         self.max_env_size = max_env_size
-        self.batch_size = batch_size
 
-        # ensure agents are Bidders (TODO: Players) rather than strategies
-        environment_agents = [
-            self._strategy_to_bidder_closure(agent, batch_size) if isinstance(agent, Strategy) else agent
-            for agent in environment_agents
-        ]
-
-        self.agents = deque(environment_agents, max_env_size)        
+        # turn agents into deque TODO: might want to change this.
+        self.agents = deque(self.agents, max_env_size)
         self.mechanism = mechanism
-        self.n_players = n_players
+
+        # define alias
+        self._strategy_to_bidder = self._strategy_to_player
 
 
     def get_reward(self, agent: Bidder or Strategy, draw_valuations=False):
@@ -72,7 +118,7 @@ class Environment():
             # average over batch against this opponent
             u = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
             utility.add_(u)
-        
+
         # average over plays against all players in the environment
         utility.div_(self.size())
 
@@ -99,8 +145,8 @@ class Environment():
 
     def _bidder_from_strategy(self, strategy: Strategy):
         """ Transform a strategy into a player that plays that strategy """
-        if self._strategy_to_bidder_closure:
-            return self._strategy_to_bidder_closure(strategy, self.batch_size) 
+        if self._strategy_to_bidder:
+            return self._strategy_to_bidder(strategy, self.batch_size) 
         
         raise NotImplementedError()
 
@@ -109,10 +155,3 @@ class Environment():
         for opponent in self.agents:
             yield opponent.get_action()
 
-    def size(self):
-        """Returns the number of agents/opponent setups in the environment.""" 
-        return len(self.agents)
-    
-    def is_empty(self):
-        """True if no agents in the environment"""
-        return len(self.agents) == 0
