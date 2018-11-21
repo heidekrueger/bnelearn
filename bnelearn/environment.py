@@ -30,12 +30,19 @@ class Environment():
                  batch_size=100, n_players=2, strategy_to_bidder_closure=None):
         assert isinstance(environment_agents, Iterable), "iterable of environment_agents must be supplied"
 
-        self.agents = deque(environment_agents, max_env_size)
+        self._strategy_to_bidder_closure = strategy_to_bidder_closure
         self.max_env_size = max_env_size
         self.batch_size = batch_size
+
+        # ensure agents are Bidders (TODO: Players) rather than strategies
+        environment_agents = [
+            self._strategy_to_bidder_closure(agent, batch_size) if isinstance(agent, Strategy) else agent
+            for agent in environment_agents
+        ]
+
+        self.agents = deque(environment_agents, max_env_size)        
         self.mechanism = mechanism
         self.n_players = n_players
-        self._strategy_to_bidder_closure = strategy_to_bidder_closure
 
 
     def get_reward(self, agent: Bidder or Strategy, draw_valuations=False):
@@ -53,10 +60,12 @@ class Environment():
 
         utility: torch.Tensor = torch.tensor(0.0, device=agent.device)
 
+        
         if draw_valuations:
             self.draw_valuations_()
 
         for opponent_bid in self._generate_opponent_bids():
+            
             allocation, payments = self.mechanism.run(
                 torch.cat((agent_bid, opponent_bid), 1).view(self.batch_size, self.n_players, 1)
             )
@@ -66,24 +75,25 @@ class Environment():
         
         # average over plays against all players in the environment
         utility.div_(self.size())
-        
+
         return utility
-    
+
     def draw_valuations_(self):
         """
             Draws new valuations for each opponent-agent in the environment
         """
         for opponent in self.agents:            
             opponent.batch_size = self.batch_size
-            opponent.draw_valuations_()
-    
+            if isinstance(opponent, Bidder):
+                opponent.draw_valuations_()
+
     def push_agent(self, agent: Bidder or Strategy):
         """
             Add an agent to the environment, possibly pushing out the oldest one)
         """
         if isinstance(agent, Strategy):
             agent: Bidder = self._bidder_from_strategy(agent)
-        
+
         self.agents.append(agent)
 
 
