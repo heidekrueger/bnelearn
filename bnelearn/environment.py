@@ -37,13 +37,18 @@ class Environment(ABC):
         ]
         self.agents = agents
 
-
     @abstractmethod
     def get_reward(self, **kwargs):
         pass
     
     @abstractmethod
-    def generate_agent_actions(self, **kwargs):
+    def _generate_agent_actions(self, **kwargs):
+        pass
+
+    def prepare_iteration(self):
+        """Prepares the interim-stage of a Bayesian game,
+            (e.g. in an Auction, draw bidders' valuations)
+        """
         pass
 
     def size(self):
@@ -124,6 +129,9 @@ class AuctionEnvironment(Environment):
 
         return utility
 
+    def prepare_iteration(self):
+        self.draw_valuations_()
+
     def draw_valuations_(self):
         """
             Draws new valuations for each opponent-agent in the environment
@@ -149,6 +157,9 @@ class AuctionEnvironment(Environment):
             return self._strategy_to_bidder(strategy, self.batch_size) 
         
         raise NotImplementedError()
+
+    def _generate_agent_actions(self, **kwargs):
+        return self._generate_agent_actions()
 
     def _generate_opponent_bids(self):
         """ Generator function yielding batches of bids for each player in environment agents"""

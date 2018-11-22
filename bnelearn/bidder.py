@@ -8,31 +8,38 @@ class Player(ABC):
         - strategy
         - utility function over outcomes
     """
-    @abstractmethod
+
+    def __init__(self, strategy, batch_size=1, n_players=2, cuda=True):
+        self.cuda = cuda and torch.cuda.is_available()
+        self.device = 'cuda' if self.cuda else 'cpu'
+        self.strategy = strategy
+        self.batch_size = batch_size
+        self.n_players = n_players
+    
     def get_action(self):
         """Chooses an action according to the player's strategy."""
-        pass
+        return self.strategy.play()
 
     @abstractmethod
     def get_utility(self, outcome):
         """Calculates player's utility based on outcome of a game."""
         pass
 
-
-
 class Bidder(Player):
     """
         A player in an auction game. Has a distribution over valuations/types that is common knowledge.
     """
-    def __init__(self, value_distribution: Distribution, strategy, batch_size=1, n_items = 1, cuda=True, n_players=2):
-        self.cuda = cuda and torch.cuda.is_available()
-        self.device = 'cuda' if self.cuda else 'cpu'
-        self.value_distribution = value_distribution
-        self.strategy = strategy
-        self.batch_size = batch_size
-        self.n_items = n_items
-        self.n_players = n_players
+    def __init__(self,
+                 value_distribution: Distribution,
+                 strategy,
+                 batch_size=1,
+                 n_items = 1, n_players=2,
+                 cuda=True
+                 ):
+        super().__init__(strategy, batch_size, n_players, cuda)
 
+        self.value_distribution = value_distribution
+        self.n_items = n_items
         self.valuations = torch.zeros(batch_size, n_items, device = self.device)
         
 
@@ -73,14 +80,5 @@ class Bidder(Player):
         return self.utility
     
     def get_action(self):
-        ## with added n player argument
-        #inputs = torch.cat(
-        #        (
-        #        self.valuations,
-        #        (torch.zeros_like(self.valuations)+self.n_players)
-        #        ),
-        #        dim = 1
-        #    ).view(self.batch_size, -1)
-
         inputs = self.valuations.view(self.batch_size, -1)
         return self.strategy.play(inputs)

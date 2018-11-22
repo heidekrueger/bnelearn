@@ -11,7 +11,7 @@ from torch.distributions.categorical import Categorical
 class Strategy(ABC):
     
     @abstractmethod
-    def play(self):
+    def play(self, inputs=None):
         pass
 
 class MatrixGameStrategy(Strategy, nn.Module):
@@ -39,14 +39,14 @@ class MatrixGameStrategy(Strategy, nn.Module):
         probs = F.softmax(logits, 0)
         return probs
 
-    def play(self, x=None):
-        if x is None:
-            x= torch.ones(1, 1, device=self.device)
+    def play(self, inputs=None):
+        if inputs is None:
+            inputs= torch.ones(1, 1, device=self.device)
 
         self._update_distribution()
         # is of shape batch size x 1
         # TODO: this is slow AF. fix.
-        return self.distribution.sample(x.shape)
+        return self.distribution.sample(inputs.shape)
 
 # TODO (backing up first)
 #class NeuralNetStrategy(Strategy, nn.Module):
@@ -84,8 +84,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         return x
     
-    def play(self,x):
-        return self.forward(x)
+    def play(self,inputs):
+        return self.forward(inputs)
 
 
 class TruthfulStrategy(Strategy, nn.Module):
@@ -98,8 +98,8 @@ class TruthfulStrategy(Strategy, nn.Module):
         # right now specific for input length 2!
         return x.matmul(torch.tensor([[1.0], [0.0]], device=x.device))
     
-    def play(self, x):
-        return self.forward(x)
+    def play(self, inputs):
+        return self.forward(inputs)
 
 class FpsbBneStrategy(Strategy, nn.Module):
     def __init__(self, input_length):
@@ -115,5 +115,5 @@ class RandomStrategy(Strategy, nn.Module):
         nn.Module.__init__(self)
         self.register_parameter('dummy', nn.Parameter(torch.zeros(1)))
     
-    def forward(self, x):        
+    def forward(self, x):
         raise NotImplementedError

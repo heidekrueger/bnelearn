@@ -29,7 +29,7 @@ class Mechanism(Game):
     def run(self, bids):
         pass
 
-class TwoByTwoBimatrixGame(Mechanism):
+class TwoByTwoBimatrixGame(Game):
     def __init__(self, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
         self.cuda = cuda and torch.cuda.is_available()
         self.device = 'cuda' if self.cuda else 'cpu'
@@ -51,21 +51,21 @@ class TwoByTwoBimatrixGame(Mechanism):
         else:
             return action_id
 
-    def run(self, bids):
+    def play(self, actions):
         """bids are actually indices of actions"""
 
-        assert bids.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
-        assert bids.dtype == torch.int64, "actions must be integers!"
+        assert actions.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
+        assert actions.dtype == torch.int64, "actions must be integers!"
 
         batch_dim, player_dim, item_dim = 0, 1, 2
-        batch_size, n_players, n_items = bids.shape
+        batch_size, n_players, n_items = actions.shape
 
         assert n_items == 1, "only single action per player in this setting"
         assert n_players == 2, "only implemented for 2 players right now"
 
         #move to gpu/cpu if needed
-        bids = bids.to(self.device)
-        bids = bids.view(batch_size, n_players)
+        actions = actions.to(self.device)
+        actions = actions.view(batch_size, n_players)
 
         allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
         
@@ -77,7 +77,7 @@ class TwoByTwoBimatrixGame(Mechanism):
         #        payments[batch, player] = -self.outcomes[bids[batch,0], bids[batch,1]][player]
 
         # payment to "game master" is the negative outcome
-        payments = -self.outcomes[bids[:,0], bids[:,1]].view(batch_size, n_players)
+        payments = -self.outcomes[actions[:,0], actions[:,1]].view(batch_size, n_players)
 
         return (allocations, payments)
 
