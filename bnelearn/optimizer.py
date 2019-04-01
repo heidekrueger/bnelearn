@@ -1,12 +1,13 @@
 ## false positives for Iterable and Optimizer
 #pylint: disable=E0611
 from collections import Iterable, deque
+
 from torch.optim.optimizer import Optimizer, required
 #pylint: disable=E0611
+from copy import deepcopy
 import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from bnelearn.environment import Environment
-from copy import deepcopy
 
 dynamic = object()
 
@@ -34,9 +35,10 @@ class ES(Optimizer):
             fixed environment is specified. 
     """
 
-    def __init__(self, model: torch.nn.Module, environment: Environment, params=None,
-                 lr=required, sigma=required, n_perturbations=64, env_type=dynamic,
-                 noise_size=100000000, noise_type=torch.half):
+    def __init__(self, model: torch.nn.Module, environment: Environment,
+                params=None,
+                lr=required, sigma=required, n_perturbations=64,
+                env_type=dynamic, player_position=None):
 
         # validation checks
         if lr is not required and lr < 0.0:
@@ -53,8 +55,7 @@ class ES(Optimizer):
             raise NotImplementedError("Partial optimization of the network is not supported yet.") 
 
         # initialize super
-        defaults = dict(lr=lr, sigma=sigma, n_perturbations=n_perturbations,
-                        noise_size=noise_size, noise_type=noise_type)
+        defaults = dict(lr=lr, sigma=sigma, n_perturbations=n_perturbations)
 
         super(ES, self).__init__(params, defaults)
 
@@ -63,6 +64,7 @@ class ES(Optimizer):
 
         # additional members deliberately not handled by super
         self.model = model
+        self.player_position = player_position
         if environment.is_empty() and env_type is dynamic:
             # for self play, add model into environemtn
             environment.push_agent(deepcopy(model))
@@ -90,16 +92,18 @@ class ES(Optimizer):
         # both of these as a row-matrix. i.e.
         # rewards: n_perturbations x 1
         # epsilons: n_perturbations x parameter_length
-        self.environment.draw_valuations_()
+        self.environment.prepare_iteration()
         rewards, epsilons = (torch.cat(tensors).view(n_perturbations, -1)
                              for tensors in zip(*(
-                                (self.environment.get_reward(model).view(1),
+                                (self.environment.get_reward(model, self.player_position).view(1),
                                  epsilon)
                                 for (model, epsilon) in population
                                 ))
                             )
 
         # 3. calculate the gradient update
+        ## TODO: fails if model not expl. on gpu because rewards is on cuda,
+        #        but eps is on cpu. why?
         weighted_noise = (rewards * epsilons).sum(dim=0)
         #print(weighted_noise / n_perturbations / sigma)
         new_base_params = \
@@ -115,7 +119,7 @@ class ES(Optimizer):
         if self.env_type is dynamic:
             self.environment.push_agent(deepcopy(self.model))
 
-        utility = self.environment.get_reward(self.model)
+        utility = self.environment.get_reward(self.model, self.player_position)
         # 5. return the loss
         return -utility
 

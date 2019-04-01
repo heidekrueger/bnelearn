@@ -7,26 +7,46 @@ import torch
 # Type declarations
 Outcome = Tuple[torch.Tensor, torch.Tensor]
 
-class Mechanism(ABC):
+class Game(ABC):
     """
-    Abstract class.
+    Base class for any kind of games
+    """
+
+    @abstractmethod
+    def play(self, actions):
+        # get actions from players and define outcome
+        pass
+
+
+class Mechanism(Game):
+    """
+    Auction Mechanism - Interpreted as a Bayesian game.
     A Mechanism collects bids from all players, then allocates available
     items as well as payments for each of the players.
     """
+    def play(self, actions):
+        # TODO: ensure `actions` are valid bids
+        return self.run(bids=actions)
 
     @abstractmethod
     def run(self, bids):
         pass
 
-class TwoByTwoBimatrixGame(Mechanism):
-    def __init__(self, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
+class MatrixGame(Game):
+    def __init__(self, n_players: int, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
         self.cuda = cuda and torch.cuda.is_available()
         self.device = 'cuda' if self.cuda else 'cpu'
+        self.n_players = n_players
 
-        assert outcomes.shape == torch.Size([2,2,2])
         self.outcomes = outcomes.float().to(self.device)
 
+        assert outcomes.shape == torch.Size([n_players, n_players, n_players]), 'invalid outcome matrix shape'
         self.names = names
+
+class TwoByTwoBimatrixGame(MatrixGame):
+    def __init__(self, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
+        assert outcomes.shape == torch.Size([2,2,2])
+        super().__init__(2, outcomes, cuda=cuda, names=names )
 
     def get_player_name(self, player_id: int):
         if self.names and "players" in self.names.keys():
@@ -40,21 +60,21 @@ class TwoByTwoBimatrixGame(Mechanism):
         else:
             return action_id
 
-    def run(self, bids):
+    def play(self, actions):
         """bids are actually indices of actions"""
 
-        assert bids.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
-        assert bids.dtype == torch.int64, "actions must be integers!"
+        assert actions.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
+        assert actions.dtype == torch.int64, "actions must be integers!"
 
         batch_dim, player_dim, item_dim = 0, 1, 2
-        batch_size, n_players, n_items = bids.shape
+        batch_size, n_players, n_items = actions.shape
 
         assert n_items == 1, "only single action per player in this setting"
         assert n_players == 2, "only implemented for 2 players right now"
 
         #move to gpu/cpu if needed
-        bids = bids.to(self.device)
-        bids = bids.view(batch_size, n_players)
+        actions = actions.to(self.device)
+        actions = actions.view(batch_size, n_players)
 
         allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
         
@@ -66,7 +86,7 @@ class TwoByTwoBimatrixGame(Mechanism):
         #        payments[batch, player] = -self.outcomes[bids[batch,0], bids[batch,1]][player]
 
         # payment to "game master" is the negative outcome
-        payments = -self.outcomes[bids[:,0], bids[:,1]].view(batch_size, n_players)
+        payments = -self.outcomes[actions[:,0], actions[:,1]].view(batch_size, n_players)
 
         return (allocations, payments)
 

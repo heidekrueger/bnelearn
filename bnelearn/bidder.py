@@ -8,31 +8,57 @@ class Player(ABC):
         - strategy
         - utility function over outcomes
     """
-    @abstractmethod
+
+    def __init__(self, strategy, batch_size=1, n_players=2, cuda=True):
+        self.cuda = cuda and torch.cuda.is_available()
+        self.device = 'cuda' if self.cuda else 'cpu'
+        self.strategy = strategy
+        self.batch_size = batch_size
+        self.n_players = n_players
+    
     def get_action(self):
         """Chooses an action according to the player's strategy."""
+        return self.strategy.play(batch_size=self.batch_size)
+
+    def prepare_iteration(self):
+        """ Prepares one iteration of environment-observation."""
         pass
 
     @abstractmethod
-    def get_utility(self, outcome):
+    def get_utility(self, **kwargs):
         """Calculates player's utility based on outcome of a game."""
         pass
 
+class MatrixGamePlayer(Player):
+    """ A player playing a matrix game"""
+    def __init__(self, strategy, player_position=None, batch_size=1, n_players=2, cuda=True):
+        super().__init__(strategy, batch_size=batch_size, n_players=n_players, cuda=cuda)
+
+        #self.game = game
+        self.player_position: int = player_position if player_position else 0
+
+    def get_utility(self, *outcome):
+        """ get player's utility for a batch of outcomes"""
+        # for now, outcome is (allocation, payment)
+        allocation, payments = outcome
+        return -payments
 
 
 class Bidder(Player):
     """
         A player in an auction game. Has a distribution over valuations/types that is common knowledge.
     """
-    def __init__(self, value_distribution: Distribution, strategy, batch_size=1, n_items = 1, cuda=True, n_players=2):
-        self.cuda = cuda and torch.cuda.is_available()
-        self.device = 'cuda' if self.cuda else 'cpu'
-        self.value_distribution = value_distribution
-        self.strategy = strategy
-        self.batch_size = batch_size
-        self.n_items = n_items
-        self.n_players = n_players
+    def __init__(self,
+                 value_distribution: Distribution,
+                 strategy,
+                 batch_size=1,
+                 n_items = 1, n_players=2,
+                 cuda=True
+                 ):
+        super().__init__(strategy, batch_size, n_players, cuda)
 
+        self.value_distribution = value_distribution
+        self.n_items = n_items
         self.valuations = torch.zeros(batch_size, n_items, device = self.device)
         
 
@@ -48,6 +74,8 @@ class Bidder(Player):
         return cls(dist, strategy, **kwargs)
 
     ### Members ####################
+    def prepare_iteration(self):
+        self.draw_valuations_()
 
     def draw_valuations_(self):
         # If in place sampling is available for our distribution, use it!
@@ -73,14 +101,5 @@ class Bidder(Player):
         return self.utility
     
     def get_action(self):
-        ## with added n player argument
-        #inputs = torch.cat(
-        #        (
-        #        self.valuations,
-        #        (torch.zeros_like(self.valuations)+self.n_players)
-        #        ),
-        #        dim = 1
-        #    ).view(self.batch_size, -1)
-
         inputs = self.valuations.view(self.batch_size, -1)
         return self.strategy.play(inputs)
