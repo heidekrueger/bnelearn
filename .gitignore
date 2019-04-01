@@ -16,6 +16,9 @@ __pycache__
 /.vscode/
 
 
+# tensorboard file
+/**/events.out.*
+
 #don't check in experiment results for now
 /runs
 /notebooks/runs

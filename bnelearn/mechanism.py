@@ -8,6 +8,9 @@ import torch
 Outcome = Tuple[torch.Tensor, torch.Tensor]
 
 class Game(ABC):
+    """
+    Base class for any kind of games
+    """
 
     @abstractmethod
     def play(self, actions):
@@ -29,15 +32,21 @@ class Mechanism(Game):
     def run(self, bids):
         pass
 
-class TwoByTwoBimatrixGame(Game):
-    def __init__(self, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
+class MatrixGame(Game):
+    def __init__(self, n_players: int, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
         self.cuda = cuda and torch.cuda.is_available()
         self.device = 'cuda' if self.cuda else 'cpu'
+        self.n_players = n_players
 
-        assert outcomes.shape == torch.Size([2,2,2])
         self.outcomes = outcomes.float().to(self.device)
 
+        assert outcomes.shape == torch.Size([n_players, n_players, n_players]), 'invalid outcome matrix shape'
         self.names = names
+
+class TwoByTwoBimatrixGame(MatrixGame):
+    def __init__(self, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
+        assert outcomes.shape == torch.Size([2,2,2])
+        super().__init__(2, outcomes, cuda=cuda, names=names )
 
     def get_player_name(self, player_id: int):
         if self.names and "players" in self.names.keys():

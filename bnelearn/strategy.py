@@ -39,9 +39,9 @@ class MatrixGameStrategy(Strategy, nn.Module):
         probs = F.softmax(logits, 0)
         return probs
 
-    def play(self, inputs=None):
+    def play(self, inputs=None, batch_size = 1):
         if inputs is None:
-            inputs= torch.ones(1, 1, device=self.device)
+            inputs= torch.ones(batch_size, 1, device=self.device)
 
         self._update_distribution()
         # is of shape batch size x 1

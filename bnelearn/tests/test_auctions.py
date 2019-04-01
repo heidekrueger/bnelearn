@@ -8,7 +8,7 @@ from bnelearn.mechanism import FirstPriceSealedBidAuction
 fpsb = FirstPriceSealedBidAuction(cuda=True)
 device = fpsb.device
 
-bids_unambiguous = torch.Tensor([
+bids_unambiguous = torch.tensor([
     [[1,   2.1,    3],
      [3.7, 2,    0],
      [3.6, 1.99, 2.99]
@@ -18,7 +18,7 @@ bids_unambiguous = torch.Tensor([
      [1.0, .99, 1.0]            
     ]], device = device)
 
-bids_ambiguous = torch.Tensor([
+bids_ambiguous = torch.tensor([
     [[1,   2,    3],
      [3.7, 2,    0],
      [3.6, 1.99, 2.99]
