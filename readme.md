@@ -42,7 +42,7 @@ Once conda is running, update to latest version
 #### Activate the environment
 Windows: `activate bnelearn`, Linux/OSX: `source activate bnelearn`
 
-#### Install bne-requirements from conda
+#### Install bnelearn-requirements from conda
 
 `conda install numpy matplotlib jupyter jupyterlab`
 
@@ -80,7 +80,7 @@ or, if your machine has a CUDA-compatible Nvidia GPU and you want GPU features (
 * Navigate to your local `bnelearn` folder (in the following: `.`)
 * Activate the `bnelearn` conda-env: `activate bnelearn`
 * Start a jupyter server using `jupyter lab`
-* A browser window with jupyter should open automatically. If it doesn't you can find it at `http://localhost:8888/lab`.
+* A browser window with jupyter should open automatically. If it doesn't you can find it at http://localhost:8888/lab.
 * In jupyter lab, browse to the notebooks directory and run any of the notebooks there.
 
 Results of notebook experiments are written to a subdirectory as specified in each notebook. To view the results
@@ -100,5 +100,8 @@ or monitor training process, start a tensorboard instance:
             *--- run2/
 ```
 
-    then start tensorboard using
-    `tensorboard --logdir fpsb`
+then start tensorboard using
+
+`tensorboard --logdir fpsb`
+
+The tensorboard server is then accessible at http://localhost:6006
