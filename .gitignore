@@ -14,7 +14,7 @@ __pycache__
 
 ## Local VSCode project settings
 /.vscode/
-
+"vscode - bnelearn.Ink"
 
 # tensorboard file
 /**/events.out.*
@@ -22,3 +22,4 @@ __pycache__
 #don't check in experiment results for now
 /runs
 /notebooks/runs
+
