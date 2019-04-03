@@ -61,7 +61,6 @@ class Bidder(Player):
         self.n_items = n_items
         self.valuations = torch.zeros(batch_size, n_items, device = self.device)
         
-
     ### Alternative Constructors #############
     @classmethod
     def uniform(cls, lower, upper, strategy, **kwargs):
@@ -81,14 +80,17 @@ class Bidder(Player):
         # If in place sampling is available for our distribution, use it!
         # This will save time for memory allocation and/or copying between devices
         # As sampling from general torch.distribution is only available on CPU.
+        # (might mean adding more boilerplate code here if specific distributions are desired
 
         # uniform
         if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
             self.valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
+        # gaussian
         elif isinstance(self.value_distribution, torch.distributions.normal.Normal):
             self.valuations.normal_(mean = self.value_distribution.loc, std = self.value_distribution.scale)
         # TODO: add additional internal in-place samplers
         else:
+            # slow! (sampling on cpu then copying to GPU)
             self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device)
         return self.valuations
 

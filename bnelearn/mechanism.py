@@ -76,6 +76,8 @@ class TwoByTwoBimatrixGame(MatrixGame):
         actions = actions.to(self.device)
         actions = actions.view(batch_size, n_players)
 
+        # allocation is a dummy and will always be 0 --> all utility is
+        # represented by negative payments
         allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
         
         ## memory allocation and Loop replaced by equivalent vectorized version below:
@@ -131,7 +133,30 @@ class VickreyAuction(Mechanism):
         self.device = 'cuda' if self.cuda else 'cpu'
     
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        assert bids.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
+        """
+        Runs a (batch of) Vickrey/Second Price Sealed Bid Auctions.
+
+        This function is meant for single-item auctions.
+        If a bid tensor for multiple items is submitted, each item is auctioned
+        independently of one another.
+        
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, n_items)
+        
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches x n_players x n_items),
+                        1 indicating item is allocated to corresponding player 
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (n_batches x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
         # move bids to gpu/cpu if necessary
@@ -153,7 +178,7 @@ class VickreyAuction(Mechanism):
         
         payments_per_item.scatter_(player_dim, winning_bidders, second_prices)
         payments = payments_per_item.sum(item_dim)
-        allocations.scatter_(player_dim, winning_bidders, 1)
+        allocations.scatter_(player_dim, winning_bidders, 1) 
         # Don't allocate items that have a winnign bid of zero.
         allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
@@ -170,7 +195,7 @@ class FirstPriceSealedBidAuction(Mechanism):
     # TODO: If multiple players submit the highest bid, the current implementation chooses the first rather than at random
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Runs a first (batch of a) First Price Sealed Bid Auction.
+        Runs a (batch of) First Price Sealed Bid Auction.
 
         This function is meant for single-item auctions.
         If a bid tensor for multiple items is submitted, each item is auctioned
@@ -184,9 +209,14 @@ class FirstPriceSealedBidAuction(Mechanism):
         Returns
         -------
         (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
-            allocation: tensor of dimension (n_batches)
+            allocation: tensor of dimension (n_batches x n_players x n_items),
+                        1 indicating item is allocated to corresponding player 
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (n_batches x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
         """
-        assert bids.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
         # move bids to gpu/cpu if necessary
@@ -202,8 +232,9 @@ class FirstPriceSealedBidAuction(Mechanism):
 
         highest_bids, winning_bidders = bids.max(dim = player_dim, keepdim=True) # shape of each: [batch_size, 1, n_items]
 
-        # replaced by torch scatter operation, see below
-        # note: deleted code references bids.max with keepdim=False.
+        # replaced by equivalent torch.scatter operation, see below,
+        # but keeping looped code for readability
+        # note: code in comment references bids.max with keepdim=False.
         ##for batch in range(batch_size):
         ##    for j in range(n_items):
         ##        hb = highest_bidders[batch, j]

@@ -88,6 +88,8 @@ class MatrixGameEnvironment(Environment):
 
             args:
                 exclude: A set of player positions to exclude.
+                         Used e.g. to generate action profile of all but currently
+                         learning player.
         """
         for agent in (a for a in self.agents if a.player_position not in exclude):
             yield (agent.player_position, agent.get_action())
@@ -175,7 +177,6 @@ class AuctionEnvironment(Environment):
         agent_bid = agent.get_action()
 
         utility: torch.Tensor = torch.tensor(0.0, device=agent.device)
-
         
         if draw_valuations:
             self.draw_valuations_()
@@ -201,7 +202,7 @@ class AuctionEnvironment(Environment):
         """
             Draws new valuations for each opponent-agent in the environment
         """
-        for opponent in self.agents:            
+        for opponent in self.agents:
             opponent.batch_size = self.batch_size
             if isinstance(opponent, Bidder):
                 opponent.draw_valuations_()

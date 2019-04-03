@@ -66,7 +66,7 @@ class ES(Optimizer):
         self.model = model
         self.player_position = player_position
         if environment.is_empty() and env_type is dynamic:
-            # for self play, add model into environemtn
+            # for self play, add initial model into environment
             environment.push_agent(deepcopy(model))
         self.environment = environment
         self.env_type = env_type
@@ -115,7 +115,7 @@ class ES(Optimizer):
         vector_to_parameters(new_base_params, base_params)
         vector_to_parameters(new_base_params, self.model.parameters())
 
-        # add new model to environment
+        # add new model to environment in dynamic environments
         if self.env_type is dynamic:
             self.environment.push_agent(deepcopy(self.model))
 
@@ -123,7 +123,8 @@ class ES(Optimizer):
         # 5. return the loss
         return -utility
 
-    ## not using shared noise matrix for now
+    ## not using shared noise matrix for now [used in OpenAI paper to efficiently
+    #  distribute workloads across many machines]
     #def _initialize_noise(self):
     #    device = next(self.model.parameters()).device
     #    size = self.defaults['noise_size']
@@ -134,8 +135,11 @@ class ES(Optimizer):
     #def _delete_noise(self):
     #    del self.noise
 
-
     def _perturb_model(self, model: torch.nn.Module):
+        """
+            Returns a randomly perturbed copy of a model [torch.nn.Module],
+            as well as the noise vector used to generate the perturbation.
+        """
         sigma = self.defaults['sigma']
         perturbed = deepcopy(model)
 
