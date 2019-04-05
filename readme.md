@@ -2,6 +2,24 @@
 
 This repository contains a framework for finding Bayes Nash Equilibria through learning with Neural Networks.
 
+# Current Status
+
+### What works
+
+* Running experiments for 2-player Matrix and Auction Games with either
+    * 'Static environments':
+    Players are named/numbered and fixed, each player has their own strategy model
+    that is updated in-place in each iteration
+    * 'Dynamic environments' for symmetric games:
+    Players share one common model, that gets updated in each iteration based on playing against previous and current model in the environment.
+    Updated model gets added into the environment, pushing out the oldest model currently in it.
+* n-player Matrix games should work but haven't been tested yet
+
+### What doesn't work yet
+* n-player symmetric auctions with 'dynamic environment' (code generating opponent bid profile is incomplete)
+
+
+
 # Installation
 
 The framework conceptually consists of the following
