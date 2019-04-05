@@ -36,7 +36,12 @@ Once conda is running, update to latest version
 
 ### Create a conda env for bnelearn
 
-#### Create a conda environment named `bnelearn`
+#### Create a conda environment named `bnelearn` (or name of your choice)
+
+This environment will contain all required dependencies to run the experiment code, i.e.
+numpy, matplotlib, jupyter, pytorch and tensorboardX.
+Start by creating the environment:
+
 `conda create -n bnelearn python=3.7`
 
 #### Activate the environment
@@ -48,7 +53,8 @@ Windows: `activate bnelearn`, Linux/OSX: `source activate bnelearn`
 
 #### Install pytorch
 
-`conda install pytorch torchvision cudatoolkit=10.0 -c pytorch` (Windows)
+Using conda from the pytorch-channel on Windows:
+`conda install pytorch torchvision cudatoolkit=10.0 -c pytorch`
 or equivalent command for your system (https://pytorch.org/get-started/locally/)
 
 #### Install tensorboardX
