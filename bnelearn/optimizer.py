@@ -161,7 +161,12 @@ class SimpleReinforce(Optimizer):
         (continuous action-space and deterministic-policy case) Policy Gradient Theorem.
         (Silver et al., 2014 http://proceedings.mlr.press/v32/silver14.html)
         
-        Currently, this suffers from the known stale-gradient problem in FPSB auctions and does not learn!
+        Currently, this suffers from the known stale-gradient problem in FPSB/vickrey auctions and does not learn!
+        (Silver et al, 2014 gives convergence guarantees, however the q(s,a)-function in FPSB/Vickrey
+         auctions (i.e. utility(bid, valuations of other players))
+         violates condition A1 in the proof (supplementary material) due to the discontinuity
+         of the allocation/payment/utility functions as b_max_-i.)
+        
         As such, this code should be considered experimental as it has not been verified to work.
 
         TODO: Test in other setting
