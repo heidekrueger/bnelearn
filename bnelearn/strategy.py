@@ -75,7 +75,6 @@ class NeuralNetStrategy(Strategy, nn.Module):
             for param in self.parameters():
                 param.requires_grad = False
 
-        nn.Module.forward
     def forward(self, x):
         x = F.tanh(self.fc1(x))
         #x = F.tanh(self.fc2(x))

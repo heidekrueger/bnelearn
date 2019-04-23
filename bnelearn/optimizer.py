@@ -8,6 +8,7 @@ from copy import deepcopy
 import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from bnelearn.environment import Environment
+from bnelearn.strategy import Strategy
 
 dynamic = object()
 
@@ -153,3 +154,130 @@ class ES(Optimizer):
     def _update_env(self, new_env: Iterable):
         for agent in new_env:
             self.environment.push_agent(agent)
+
+
+class SimpleReinforce(Optimizer):
+    r"""Implements simple version of REINFORCE-algorithm, i.e. SGD optimization with gradients acquired via the
+        (continuous action-space and deterministic-policy case) Policy Gradient Theorem.
+        (Silver et al., 2014 http://proceedings.mlr.press/v32/silver14.html)
+        
+        Currently, this suffers from the known stale-gradient problem in FPSB auctions and does not learn!
+        As such, this code should be considered experimental as it has not been verified to work.
+
+        TODO: Test in other setting
+        TODO: parallelize perturbations
+        TODO: possible sign-error in update step?
+
+
+    Example:
+        >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
+        >>> optimizer.zero_grad()
+        >>> loss_fn(model(input), target).backward()
+        >>> optimizer.step()
+ 
+    """
+
+    def __init__(self, model: torch.nn.Module, environment,
+                 params=None, lr=required, sigma=required, n_perturbations=64, 
+                 env_type=dynamic, player_position=None):
+        if lr is not required and lr < 0.0:
+            raise ValueError("Invalid learning rate: {}".format(lr))
+        if not params:
+            params = model.parameters()
+
+        defaults = dict(lr=lr, sigma=sigma, n_perturbations=n_perturbations)
+        super(SimpleReinforce, self).__init__(params, defaults)
+
+        # additional members deliberately not handled by super
+        self.model = model
+        self.player_position = player_position
+        if environment.is_empty() and env_type is dynamic:
+            # for self play, add initial model into environment
+            environment.push_agent(deepcopy(model))
+        self.environment = environment
+        self.env_type = env_type
+
+    def __setstate__(self, state):
+        super(SimpleReinforce, self).__setstate__(state)
+
+    def step(self, closure=None):
+        """Performs a single optimization step.
+
+        Arguments:
+            closure (callable, optional): A closure that reevaluates the model
+                and returns the loss.
+        """
+        loss = None
+        if closure is not None:
+            loss = closure()
+
+        base_model = self.model
+        device = next(base_model.parameters()).device
+        params = self.param_groups[0]['params']
+        lr = self.defaults['lr']
+        n_perturbations = self.defaults['n_perturbations']
+
+
+        population = (self._perturb_model(self.model) for _ in range(n_perturbations))
+
+        self.environment.prepare_iteration()
+        #reward = torch.zeros(1, device=device)
+        
+        dp = {}
+        for p in params:
+            dp[p] = torch.zeros_like(p.data)
+
+        for (model, epsilon) in population:
+            base_model.zero_grad()
+            
+            reward = self.environment.get_reward(model, self.player_position).view(1)
+            #print("reward: {}".format(reward))
+            # calculate grad
+            action = self.environment._bidder_from_strategy(model).get_action()
+            # perform gradient-on log action
+            (action[0]).backward()
+        
+            for p in params:
+                if p.grad is None:
+                    continue
+                dp[p].add_(p.grad.data * reward)
+
+        for p in params:
+            dp[p].div_(n_perturbations)
+            # TODO: possibly missing minus?
+            p.data.add_(self.param_groups[0]['lr'], dp[p])
+        
+         # add new model to environment in dynamic environments
+        if self.env_type is dynamic:
+            self.environment.push_agent(deepcopy(self.model))
+        
+        utility = self.environment.get_reward(self.model, self.player_position)
+
+        return -utility
+
+    class PerturbedActionModel(torch.nn.Module, Strategy):
+        """Represents a perturbed-action version of a Strategy, used
+           as a candidate in REINFORCE-policy gradient optimizer above
+        """
+        def __init__(self, model, epsilon):
+            torch.nn.Module.__init__(self)
+            self.epsilon = epsilon
+            self.base_model = model
+        
+        def forward(self, x):
+            x = self.base_model.forward(x)
+            x.add_(self.epsilon).relu_()
+            return x
+        
+        def play(self,inputs):
+            return self.forward(inputs)
+
+    def _perturb_model(self, model: torch.nn.Module) -> torch.nn.Module:
+
+        sigma = self.defaults['sigma']
+
+        epsilon = torch.zeros(1).to(next(self.model.parameters()).device).normal_(mean=0.0, std=sigma)
+        perturbed = self.PerturbedActionModel(model, epsilon)
+
+        return perturbed, epsilon
+
