@@ -40,8 +40,27 @@ class MatrixGame(Game):
 
         self.outcomes = outcomes.float().to(self.device)
 
+        # TODO: this should actually be [n_actions_p1, n_actions_p2, ..., n_actions_p_n, n_players]
+        # then play()-code can be moved here from 2x2 subclass!
         assert outcomes.shape == torch.Size([n_players, n_players, n_players]), 'invalid outcome matrix shape'
         self.names = names
+
+    def check_input_validity(self, action_profile):
+        """Assert validity of action profile
+        
+           An action profile should have shape of a mechanism (batch x players x items).
+           In a matrix game it should therefore be (batch x players x 1).
+           TODO: Each player's action should be a valid index for that player.
+        """
+
+        assert action_profile.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
+        assert action_profile.dtype == torch.int64, "actions must be integers!"
+        
+        batch_dim, player_dim, item_dim = 0, 1, 2
+        batch_size, n_players, n_items = action_profile.shape
+
+        assert n_items == 1, "only single action per player in matrix game setting"
+        assert n_players == self.n_players, "one action per player must be provided"
 
 class TwoByTwoBimatrixGame(MatrixGame):
     def __init__(self, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
@@ -63,14 +82,10 @@ class TwoByTwoBimatrixGame(MatrixGame):
     def play(self, actions):
         """bids are actually indices of actions"""
 
-        assert actions.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
-        assert actions.dtype == torch.int64, "actions must be integers!"
+        super().check_input_validity(actions)
 
         batch_dim, player_dim, item_dim = 0, 1, 2
         batch_size, n_players, n_items = actions.shape
-
-        assert n_items == 1, "only single action per player in this setting"
-        assert n_players == 2, "only implemented for 2 players right now"
 
         #move to gpu/cpu if needed
         actions = actions.to(self.device)
