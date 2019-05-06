@@ -76,7 +76,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
                 param.requires_grad = False
 
     def forward(self, x):
-        x = F.tanh(self.fc1(x))
+        x = torch.tanh(self.fc1(x))
         #x = F.tanh(self.fc2(x))
         #x = self.tanh(self.fc1(x))
         x = self.fc_out(x).relu()
