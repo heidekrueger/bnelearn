@@ -38,12 +38,14 @@ class ES(Optimizer):
 
     def __init__(self, model: torch.nn.Module, environment: Environment,
                 params=None,
-                lr=required, sigma=required, n_perturbations=64,
+                lr=required, momentum = 0, sigma=required, n_perturbations=64,
                 env_type=dynamic, player_position=None):
 
         # validation checks
         if lr is not required and lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
+        if momentum < 0.0:
+            raise ValueError("Inavalid momentum parameter: {}".format(lr))
         if sigma is not required and sigma <= 0.0:
             raise ValueError("Invalid perturbation covariance: {}".format(sigma))
         if n_perturbations < 1:
@@ -56,7 +58,7 @@ class ES(Optimizer):
             raise NotImplementedError("Partial optimization of the network is not supported yet.") 
 
         # initialize super
-        defaults = dict(lr=lr, sigma=sigma, n_perturbations=n_perturbations)
+        defaults = dict(lr=lr, momentum=momentum, sigma=sigma, n_perturbations=n_perturbations)
 
         super(ES, self).__init__(params, defaults)
 
@@ -84,6 +86,7 @@ class ES(Optimizer):
 
         base_params = self.param_groups[0]['params']
         lr = self.defaults['lr']
+        momentum = self.defaults['momentum']
         sigma = self.defaults['sigma']
         n_perturbations = self.defaults['n_perturbations']
 
@@ -107,10 +110,21 @@ class ES(Optimizer):
         #        but eps is on cpu. why?
         weighted_noise = (rewards * epsilons).sum(dim=0)
         #print(weighted_noise / n_perturbations / sigma)
-        new_base_params = \
-            parameters_to_vector(base_params) + \
-            lr / n_perturbations / sigma * weighted_noise
 
+        d_p = lr / n_perturbations / sigma * weighted_noise
+        
+        if momentum != 0:
+            param_state = self.state[base_params]
+            if 'momentum_buffer' not in param_state:
+                # first iteration: create momentum buffer
+                buf = param_state['momentum_buffer'] = torch.clone(d_p).detach()
+            else: 
+                buf = param_state['momentum_buffer']
+                buf.mul_(momentum).add_(d_p)
+            
+            d_p = buf
+        
+        new_base_params = parameters_to_vector(base_params).add_(d_p)
 
         # 4. apply the gradient update to the base model
         vector_to_parameters(new_base_params, base_params)
