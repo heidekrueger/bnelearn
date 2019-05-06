@@ -263,3 +263,28 @@ class FirstPriceSealedBidAuction(Mechanism):
         allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
         return (allocations, payments) # payments: batches x players, allocation: batch x players x items
+
+
+class StaticMechanism(Mechanism):
+    """ A static mechanism that can be used for testing purposes.
+        Items are allocated with probability bid/10, payments are always given
+        by b²/20, even when the item is not allocated.
+
+        The expected payoff from this mechanism is thus
+        b/10 * v - 0.05b²,
+        The optimal strategy fo an agent with quasilinear utility is given by bidding truthfully.
+    """
+    
+    def __init__(self, cuda: bool = True):
+        self.cuda = cuda and torch.cuda.is_available()
+        self.device = 'cuda' if self.cuda else 'cpu'
+        
+    def run(self, bids):
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+        bids = bids.to(self.device)        
+        
+        payments = torch.mul(bids,bids).mul_(0.05)
+        allocations = (bids >= torch.rand_like(bids).mul_(10)).float()
+        
+        return (allocations, payments)

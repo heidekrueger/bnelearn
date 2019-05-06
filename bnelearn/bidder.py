@@ -40,7 +40,7 @@ class MatrixGamePlayer(Player):
     def get_utility(self, *outcome):
         """ get player's utility for a batch of outcomes"""
         # for now, outcome is (allocation, payment)
-        allocation, payments = outcome
+        _, payments = outcome
         return -payments
 
 
