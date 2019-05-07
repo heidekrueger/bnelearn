@@ -1,10 +1,17 @@
+# -*- coding: utf-8 -*-
+"""Bidder module
+
+This module implements players / bidders / agents in games.
+
+"""
+
 from abc import ABC, abstractmethod
 import torch
 from torch.distributions import Distribution
 
 class Player(ABC):
     """
-        A player in a game, determined by her 
+        A player in a game, determined by her
         - strategy
         - utility function over outcomes
     """
@@ -15,19 +22,19 @@ class Player(ABC):
         self.strategy = strategy
         self.batch_size = batch_size
         self.n_players = n_players
-    
+
     def get_action(self):
         """Chooses an action according to the player's strategy."""
         return self.strategy.play(batch_size=self.batch_size)
 
     def prepare_iteration(self):
         """ Prepares one iteration of environment-observation."""
-        pass
+        pass #pylint: disable=unnecessary-pass
 
     @abstractmethod
     def get_utility(self, **kwargs):
         """Calculates player's utility based on outcome of a game."""
-        pass
+        pass #pylint: disable=unnecessary-pass
 
 class MatrixGamePlayer(Player):
     """ A player playing a matrix game"""
@@ -37,7 +44,7 @@ class MatrixGamePlayer(Player):
         #self.game = game
         self.player_position: int = player_position if player_position else 0
 
-    def get_utility(self, *outcome):
+    def get_utility(self, *outcome): #pylint: disable=arguments-differ
         """ get player's utility for a batch of outcomes"""
         # for now, outcome is (allocation, payment)
         _, payments = outcome
@@ -60,15 +67,17 @@ class Bidder(Player):
         self.value_distribution = value_distribution
         self.n_items = n_items
         self.valuations = torch.zeros(batch_size, n_items, device = self.device)
-        
+
     ### Alternative Constructors #############
     @classmethod
     def uniform(cls, lower, upper, strategy, **kwargs):
+        """Constructs a bidder with uniform valuation prior."""
         dist = torch.distributions.uniform.Uniform(low = lower, high=upper)
         return cls(dist, strategy, **kwargs)
-    
+
     @classmethod
     def normal(cls, mean, stddev, strategy, **kwargs):
+        """Constructs a bidder with Gaussian valuation prior."""
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
 
@@ -77,6 +86,7 @@ class Bidder(Player):
         self.draw_valuations_()
 
     def draw_valuations_(self):
+        """Sample a new batch of valuations from the Bidder's prior."""
         # If in place sampling is available for our distribution, use it!
         # This will save time for memory allocation and/or copying between devices
         # As sampling from general torch.distribution is only available on CPU.
@@ -94,14 +104,14 @@ class Bidder(Player):
             self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device)
         return self.valuations
 
-    def get_utility(self, allocations, payments):
+    def get_utility(self, allocations, payments): #pylint: disable=arguments-differ
 
         assert allocations.dim() == 2 # batch_size x items
         assert payments.dim() == 1 # batch_size
 
         self.utility = (self.valuations * allocations).sum(dim=1) - payments
         return self.utility
-    
+
     def get_action(self):
         inputs = self.valuations.view(self.batch_size, -1)
         return self.strategy.play(inputs)

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from abc import ABC, abstractmethod
 from typing import Tuple
 
@@ -32,7 +33,9 @@ class Mechanism(Game):
     def run(self, bids):
         pass
 
-class MatrixGame(Game):
+class MatrixGame(Game, ABC):
+    """A complete information Matrix game."""
+    # pylint: disable=abstract-method
     def __init__(self, n_players: int, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
         self.cuda = cuda and torch.cuda.is_available()
         self.device = 'cuda' if self.cuda else 'cpu'
@@ -47,7 +50,7 @@ class MatrixGame(Game):
 
     def check_input_validity(self, action_profile):
         """Assert validity of action profile
-        
+
            An action profile should have shape of a mechanism (batch x players x items).
            In a matrix game it should therefore be (batch x players x 1).
            TODO: Each player's action should be a valid index for that player.
@@ -55,7 +58,8 @@ class MatrixGame(Game):
 
         assert action_profile.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
         assert action_profile.dtype == torch.int64, "actions must be integers!"
-        
+
+        # pylint: disable=unused-variable
         batch_dim, player_dim, item_dim = 0, 1, 2
         batch_size, n_players, n_items = action_profile.shape
 
@@ -63,6 +67,7 @@ class MatrixGame(Game):
         assert n_players == self.n_players, "one action per player must be provided"
 
 class TwoByTwoBimatrixGame(MatrixGame):
+    """A Matrix game with two players and two actions each"""
     def __init__(self, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
         assert outcomes.shape == torch.Size([2,2,2])
         super().__init__(2, outcomes, cuda=cuda, names=names )
@@ -72,7 +77,7 @@ class TwoByTwoBimatrixGame(MatrixGame):
             return self.names["players"][player_id]
         else:
             return player_id
-    
+
     def get_action_name(self, action_id: int):
         if self.names and "actions" in self.names.keys():
             return self.names["actions"][action_id]
@@ -84,6 +89,7 @@ class TwoByTwoBimatrixGame(MatrixGame):
 
         super().check_input_validity(actions)
 
+        # pylint: disable=unused-variable
         batch_dim, player_dim, item_dim = 0, 1, 2
         batch_size, n_players, n_items = actions.shape
 
@@ -94,7 +100,7 @@ class TwoByTwoBimatrixGame(MatrixGame):
         # allocation is a dummy and will always be 0 --> all utility is
         # represented by negative payments
         allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
-        
+
         ## memory allocation and Loop replaced by equivalent vectorized version below:
         ## (keep old code as comment for readibility)
         #payments = torch.zeros(batch_size, n_players, device=self.device)
@@ -140,13 +146,12 @@ class MatchingPennies(TwoByTwoBimatrixGame):
             }
         )
 
-
 class VickreyAuction(Mechanism):
 
     def __init__(self, cuda: bool = True):
         self.cuda = cuda and torch.cuda.is_available()
         self.device = 'cuda' if self.cuda else 'cpu'
-    
+
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Runs a (batch of) Vickrey/Second Price Sealed Bid Auctions.
@@ -154,17 +159,17 @@ class VickreyAuction(Mechanism):
         This function is meant for single-item auctions.
         If a bid tensor for multiple items is submitted, each item is auctioned
         independently of one another.
-        
+
         Parameters
         ----------
         bids: torch.Tensor
             of bids with dimensions (batch_size, n_players, n_items)
-        
+
         Returns
         -------
         (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
             allocation: tensor of dimension (n_batches x n_players x n_items),
-                        1 indicating item is allocated to corresponding player 
+                        1 indicating item is allocated to corresponding player
                         in that batch, 0 otherwise
             payments:   tensor of dimension (n_batches x n_players)
                         Total payment from player to auctioneer for her
@@ -178,6 +183,7 @@ class VickreyAuction(Mechanism):
         bids = bids.to(self.device)
 
         # name dimensions for readibility
+        # pylint: disable=unused-variable
         batch_dim, player_dim, item_dim = 0, 1, 2
         batch_size, n_players, n_items = bids.shape
 
@@ -186,19 +192,19 @@ class VickreyAuction(Mechanism):
         allocations = torch.zeros(batch_size, n_players, n_items, device = self.device)
 
         highest_bids, winning_bidders = bids.max(dim = player_dim, keepdim=True) # shape of each: [batch_size, 1, n_items]
-        
+
         # getting the second prices --> price is the lowest of the two highest bids
         top2_bids, _ = bids.topk(2, dim = player_dim, sorted=False)
         second_prices, _ = top2_bids.min(player_dim, keepdim=True)
-        
+
         payments_per_item.scatter_(player_dim, winning_bidders, second_prices)
         payments = payments_per_item.sum(item_dim)
-        allocations.scatter_(player_dim, winning_bidders, 1) 
+        allocations.scatter_(player_dim, winning_bidders, 1)
         # Don't allocate items that have a winnign bid of zero.
         allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
         return (allocations, payments) # payments: batches x players, allocation: batch x players x items
-        
+
 
 
 class FirstPriceSealedBidAuction(Mechanism):
@@ -207,7 +213,7 @@ class FirstPriceSealedBidAuction(Mechanism):
         self.cuda = cuda and torch.cuda.is_available()
         self.device = 'cuda' if self.cuda else 'cpu'
 
-    # TODO: If multiple players submit the highest bid, the current implementation chooses the first rather than at random
+    # TODO: If multiple players submit the highest bid, the implementation chooses the first rather than at random
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Runs a (batch of) First Price Sealed Bid Auction.
@@ -215,17 +221,17 @@ class FirstPriceSealedBidAuction(Mechanism):
         This function is meant for single-item auctions.
         If a bid tensor for multiple items is submitted, each item is auctioned
         independently of one another.
-        
+
         Parameters
         ----------
         bids: torch.Tensor
             of bids with dimensions (batch_size, n_players, n_items)
-        
+
         Returns
         -------
         (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
             allocation: tensor of dimension (n_batches x n_players x n_items),
-                        1 indicating item is allocated to corresponding player 
+                        1 indicating item is allocated to corresponding player
                         in that batch, 0 otherwise
             payments:   tensor of dimension (n_batches x n_players)
                         Total payment from player to auctioneer for her
@@ -238,7 +244,7 @@ class FirstPriceSealedBidAuction(Mechanism):
         bids = bids.to(self.device)
 
         # name dimensions for readibility
-        batch_dim, player_dim, item_dim = 0, 1, 2
+        batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
         batch_size, n_players, n_items = bids.shape
 
         # allocate return variables
@@ -274,17 +280,17 @@ class StaticMechanism(Mechanism):
         b/10 * v - 0.05b²,
         The optimal strategy fo an agent with quasilinear utility is given by bidding truthfully.
     """
-    
+
     def __init__(self, cuda: bool = True):
         self.cuda = cuda and torch.cuda.is_available()
         self.device = 'cuda' if self.cuda else 'cpu'
-        
+
     def run(self, bids):
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
-        bids = bids.to(self.device)        
-        
+        bids = bids.to(self.device)
+
         payments = torch.mul(bids,bids).mul_(0.05)
         allocations = (bids >= torch.rand_like(bids).mul_(10)).float()
-        
+
         return (allocations, payments)

@@ -1,6 +1,8 @@
 [MASTER]
-
-disable=C0326,E1102
+# C0326: bad-whitespace around operators
+# E1102: not callable - gives false positives in torch package
+# C0103: invalid-name - ignored for now, too many false positives on names like p,v,b etc.
+disable=C0326,E1102,C0103
 
 # A comma-separated list of package or module names from where C extensions may
 # be loaded. Extensions are loading into the active Python interpreter and may

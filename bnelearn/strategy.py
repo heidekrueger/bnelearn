@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from abc import ABC, abstractmethod
 
 import torch
@@ -5,11 +6,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 
-## false positive on torch.tensor()
-#pylint: disable=E1102
+## E1102: false positive on torch.tensor()
+## false positive 'arguments-differ' warnings for forward() overrides
+#pylint: disable=E1102,arguments-differ
 
 class Strategy(ABC):
-    
+
     @abstractmethod
     def play(self, inputs=None):
         pass
@@ -22,7 +24,7 @@ class MatrixGameStrategy(Strategy, nn.Module):
 
         for param in self.parameters():
             param.requires_grad = False
-        
+
         # initialize distribution
         self._update_distribution()
 
@@ -45,18 +47,8 @@ class MatrixGameStrategy(Strategy, nn.Module):
 
         self._update_distribution()
         # is of shape batch size x 1
-        # TODO: this is slow AF. fix.
+        # TODO: this is slow AF. fix when needed.
         return self.distribution.sample(inputs.shape)
-
-# TODO (backing up first)
-#class NeuralNetStrategy(Strategy, nn.Module):
-    # abstract class for a Strategy that is also an nn module.
-    # useful for abstracting away shared initialization stuff
-
-#    def __init__(self):
-#        nn.Module.__init__(self)
-
-#    def _disable_gradients():
 
 
 class NeuralNetStrategy(Strategy, nn.Module):
@@ -82,7 +74,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         x = self.fc_out(x).relu()
 
         return x
-    
+
     def play(self,inputs):
         return self.forward(inputs)
 
@@ -94,25 +86,27 @@ class TruthfulStrategy(Strategy, nn.Module):
 
     def forward(self, x):
         # simply play first input
-        # right now specific for input length 2!
+        # TODO: right now specific for input length 2!
         return x.matmul(torch.tensor([[1.0], [0.0]], device=x.device))
-    
+
     def play(self, inputs):
         return self.forward(inputs)
 
+# TODO: missing implementation
 class FpsbBneStrategy(Strategy, nn.Module):
     def __init__(self, input_length):
         nn.Module.__init__(self)
         self.register_parameter('dummy', nn.Parameter(torch.zeros(1)))
-    
+
     def forward(self, x):
         # assumes valuation in first input, n_players in second
         raise NotImplementedError()
 
+# TODO: missing implementation
 class RandomStrategy(Strategy, nn.Module):
     def __init__(self, input_length, lo=0, hi=10):
         nn.Module.__init__(self)
         self.register_parameter('dummy', nn.Parameter(torch.zeros(1)))
-    
+
     def forward(self, x):
         raise NotImplementedError
