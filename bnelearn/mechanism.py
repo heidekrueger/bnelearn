@@ -288,9 +288,11 @@ class StaticMechanism(Mechanism):
     def run(self, bids):
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
+        batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
+
         bids = bids.to(self.device)
 
-        payments = torch.mul(bids,bids).mul_(0.05)
+        payments = torch.mul(bids,bids).mul_(0.05).sum(item_dim)
         allocations = (bids >= torch.rand_like(bids).mul_(10)).float()
 
         return (allocations, payments)

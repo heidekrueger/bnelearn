@@ -77,6 +77,11 @@ class ES(Optimizer):
         self.env_type = env_type
         # do not use shared noise for now
         # self._initialize_noise()
+    
+    def __setstate__(self, state):
+        super(ES, self).__setstate__(state)
+        for group in self.param_groups:
+            group.setdefault('momentum', 0)
 
     def step(self, closure=None):
         """Performs a single optimization step.
@@ -86,54 +91,58 @@ class ES(Optimizer):
             and returns the loss.
         """
 
-        base_params = self.param_groups[0]['params']
-        lr = self.defaults['lr']
-        momentum = self.defaults['momentum']
-        sigma = self.defaults['sigma']
-        n_perturbations = self.defaults['n_perturbations']
+        for group in self.param_groups:
+            base_params = group['params']
+            lr = group['lr']
+            momentum = group['momentum']
+            sigma = group['sigma']
+            n_perturbations = group['n_perturbations']
 
-        # 1. Create a population of perturbations of the original model
-        population = (self._perturb_model(self.model) for _ in range(n_perturbations))
-        # 2. let each of these play against the environment and get their utils
-        # both of these as a row-matrix. i.e.
-        # rewards: n_perturbations x 1
-        # epsilons: n_perturbations x parameter_length
-        self.environment.prepare_iteration()
-        rewards, epsilons = (
-            torch.cat(tensors).view(n_perturbations, -1)
-            for tensors in zip(*(
-                (
-                    self.environment.get_reward(model, self.player_position).view(1),
-                    epsilon
+            # 1. Create a population of perturbations of the original model
+            population = (self._perturb_model(self.model) for _ in range(n_perturbations))
+            # 2. let each of these play against the environment and get their utils
+            # both of these as a row-matrix. i.e.
+            # rewards: n_perturbations x 1
+            # epsilons: n_perturbations x parameter_length
+            self.environment.prepare_iteration()
+            rewards, epsilons = (
+                torch.cat(tensors).view(n_perturbations, -1)
+                for tensors in zip(*(
+                    (
+                        self.environment.get_reward(model, self.player_position).view(1),
+                        epsilon
+                    )
+                    for (model, epsilon) in population
+                    ))
                 )
-                for (model, epsilon) in population
-                ))
-            )
 
-        # 3. calculate the gradient update
-        ## TODO: fails if model not expl. on gpu because rewards is on cuda,
-        #        but eps is on cpu. why?
-        weighted_noise = (rewards * epsilons).sum(dim=0)
-        #print(weighted_noise / n_perturbations / sigma)
+            # 3. calculate the gradient update
+            ## TODO: fails if model not expl. on gpu because rewards is on cuda,
+            #        but eps is on cpu. why?
+            weighted_noise_vector = (rewards * epsilons).sum(dim=0)
+            # create a copy of the parameters to store the updates in
+            param_noise = deepcopy(base_params)
+            vector_to_parameters(weighted_noise_vector, param_noise)
 
-        d_p = lr / n_perturbations / sigma * weighted_noise
+            # 4. iterate through the model parameters and apply the updates
+            for p, p_noise in zip(group['params'], param_noise):
+                #d_p = lr / n_perturbations / sigma * weighted_noise
+                d_p = lr / n_perturbations / sigma * p_noise
 
-        if momentum != 0:
-            param_state = self.state[base_params]
-            if 'momentum_buffer' not in param_state:
-                # first iteration: create momentum buffer
-                buf = param_state['momentum_buffer'] = torch.clone(d_p).detach()
-            else:
-                buf = param_state['momentum_buffer']
-                buf.mul_(momentum).add_(d_p)
+                if momentum != 0:
+                    param_state = self.state[p]
+                    if 'momentum_buffer' not in param_state:
+                        # first iteration: create momentum buffer
+                        buf = param_state['momentum_buffer'] = torch.clone(d_p).detach()
+                    else:
+                        buf = param_state['momentum_buffer']
+                        buf.mul_(momentum).add_(d_p)
 
-            d_p = buf
+                    d_p = buf
 
-        new_base_params = parameters_to_vector(base_params).add_(d_p)
+                # apply the update
+                p.data.add_(d_p)
 
-        # 4. apply the gradient update to the base model
-        vector_to_parameters(new_base_params, base_params)
-        vector_to_parameters(new_base_params, self.model.parameters())
 
         # add new model to environment in dynamic environments
         if self.env_type is dynamic:

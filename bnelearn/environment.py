@@ -186,17 +186,25 @@ class AuctionEnvironment(Environment):
         if draw_valuations:
             self.draw_valuations_()
 
-        for opponent_bid in self._generate_opponent_bids():
-            # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
+        if len(self.agents)==0:
+            # no other agents in this environment. play only with own action
             allocation, payments = self.mechanism.play(
-                torch.cat((agent_bid, opponent_bid), 1).view(self.batch_size, self.n_players, 1)
+                agent_bid.view(self.batch_size, self.n_players, 1)
             )
-            # average over batch against this opponent
-            u = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
-            utility.add_(u)
+            utility = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
+        else:
+            # play against all agents in the environment, return average utility
+            for opponent_bid in self._generate_opponent_bids():
+                # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
+                allocation, payments = self.mechanism.play(
+                    torch.cat((agent_bid, opponent_bid), 1).view(self.batch_size, self.n_players, 1)
+                )
+                # average over batch against this opponent
+                u = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
+                utility.add_(u)
 
-        # average over plays against all players in the environment
-        utility.div_(self.size())
+                # average over plays against all players in the environment
+                utility.div_(self.size())
 
         return utility
 
