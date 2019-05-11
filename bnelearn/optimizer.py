@@ -14,7 +14,17 @@ from bnelearn.strategy import Strategy
 dynamic = object()
 
 class ES(Optimizer):
-    """Implements Evolutionary Strategy as in `Salimans et al (2017) https://arxiv.org/pdf/1703.03864.pdf`
+    """Implements Evolutionary Strategy similar to `Salimans et al (2017) https://arxiv.org/pdf/1703.03864.pdf`
+
+        Compared to SGD-like optimizers, ES essentially gradients with ES-pseudo-gradients.
+        This implementation extends Salimans et al by the following points:
+        - The candidate weights are (optinally) calculated using a baseline, i.e.
+          the weight is based on (reward - baseline) rather than just the reward.
+        - Optionally, not just vanilla SGD but momentum updates are enabled,
+          we use the following definition of momentum:
+          
+          delta = momentum * prev_delta + lr * pseudogradient
+
 
     Args:
         model (nn.Module): The base model that will be optimized.
@@ -29,8 +39,11 @@ class ES(Optimizer):
             If None, all params of `model` are updated.
             If given, should be a subset of `model.parameters()`. TODO: Not yet implemented!
         lr (float): learning rate for SGD-like update.
+        momentum (float): momentum parameter.
         sigma (float): the standard deviation of perturbation noise.
-        n_perturbations (integer): number of perturbations created in each step
+        n_perturbations (int): number of perturbations created in each step
+        baseline (bool or float): baseline reward used for weighting parameter noise.
+            Default (True) is current utility on current batch.
         # not used: noise_size (long): length of the shared noise vector,
             default is 100000000 (~512mb at half precision or ~1gb at full precision)
         # not used: noise_type (torch.dtype): precision of noise, default is torch.half (16bit),
@@ -41,6 +54,7 @@ class ES(Optimizer):
     def __init__(self, model: torch.nn.Module, environment: Environment,
                  params=None,
                  lr=required, momentum = 0, sigma=required, n_perturbations=64,
+                 baseline = True,
                  env_type=dynamic, player_position=None):
 
         # validation checks
@@ -52,6 +66,7 @@ class ES(Optimizer):
             raise ValueError("Invalid perturbation covariance: {}".format(sigma))
         if n_perturbations < 1:
             raise ValueError("Invalid number of perturbations: {}".format(n_perturbations))
+        assert isinstance(baseline, (bool, int, float)), "Invalid baseline parameter."
         assert isinstance(environment, Environment), "Invalid Environment"
 
         if not params:
@@ -60,7 +75,10 @@ class ES(Optimizer):
             raise NotImplementedError("Partial optimization of the network is not supported yet.")
 
         # initialize super
-        defaults = dict(lr=lr, momentum=momentum, sigma=sigma, n_perturbations=n_perturbations)
+        defaults = dict(
+            lr=lr, momentum=momentum, baseline=baseline,
+            sigma=sigma, n_perturbations=n_perturbations
+            )
 
         super(ES, self).__init__(params, defaults)
 
@@ -90,6 +108,7 @@ class ES(Optimizer):
             closure (callable, optional): A closure that reevaluates the model
             and returns the loss.
         """
+        # set baseline. current reward if True
 
         for group in self.param_groups:
             base_params = group['params']
@@ -97,6 +116,12 @@ class ES(Optimizer):
             momentum = group['momentum']
             sigma = group['sigma']
             n_perturbations = group['n_perturbations']
+            baseline = group['baseline']
+
+            if baseline is True: # run only for True, not for nonzero number
+                baseline = self.environment.get_reward(self.model, self.player_position).view(1)
+            else: # False, Int or Float
+                baseline = torch.tensor(float(baseline), device=base_params[0].device)
 
             # 1. Create a population of perturbations of the original model
             population = (self._perturb_model(self.model) for _ in range(n_perturbations))
@@ -119,7 +144,7 @@ class ES(Optimizer):
             # 3. calculate the gradient update
             ## TODO: fails if model not expl. on gpu because rewards is on cuda,
             #        but eps is on cpu. why?
-            weighted_noise_vector = (rewards * epsilons).sum(dim=0)
+            weighted_noise_vector = ((rewards -baseline) * epsilons).sum(dim=0)
             # create a copy of the parameters to store the updates in
             param_noise = deepcopy(base_params)
             vector_to_parameters(weighted_noise_vector, param_noise)

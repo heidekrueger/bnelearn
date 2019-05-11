@@ -100,7 +100,7 @@ class MatrixGameEnvironment(Environment):
             yield (agent.player_position, agent.get_action())
 
 
-    def get_reward(self, agent, player_position, **kwargs): #pylint: disable=arguments-differ
+    def get_reward(self, agent, player_position, **kwargs) -> torch.tensor: #pylint: disable=arguments-differ
         """
             What should be the dimension of reward?
         """
