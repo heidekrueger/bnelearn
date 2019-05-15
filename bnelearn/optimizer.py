@@ -147,6 +147,7 @@ class ES(Optimizer):
             #        but eps is on cpu. why?
             weighted_noise_vector = ((rewards -baseline) * epsilons).sum(dim=0)
             # create a copy of the parameters to store the updates in
+            # (we need the same structure as the group params for the loop below)
             param_noise = deepcopy(base_params)
             vector_to_parameters(weighted_noise_vector, param_noise)
 
