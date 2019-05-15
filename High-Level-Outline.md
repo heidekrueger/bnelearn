@@ -1,7 +1,10 @@
 # Classes
 
 ### Bidder / Player
-A player in a game. Holds some private information and a utility function. Has some strategy.
+A player in a game. Each player has
+* A strategy (see below)
+* A utility function on outcomes of games
+* Possibly some prior distribution over private information.
 
 ### Strategy
 A strategy mapping from (private) information to an action (or distribution over actions). Usually a neural network. We’ll call an instance of a strategy a model.
@@ -10,6 +13,10 @@ Implemented as a pytorch.module
 
 ### Mechanism / Game
 A game. For a given set of actions, defines an outcome.
+Currently, all games have outcomes implemented as follows in terms of market-mechanisms:
+* An allocation over items (per item per player)
+* A payment (per player)
+For matrix games, we'll just set allocations to 0 and let the payment be the negative payoff.
 
 ### Environment
 Class that manages the playing setup. It usually references and manages:
