@@ -132,7 +132,37 @@ class MatrixGameEnvironment(Environment):
 
         return utilities.mean()
 
-    
+    #TODO: Not finished yet. Temperature missing. TODO: Fix strat
+    def solve_with_smooth_ficticious_play(self, dev):
+        #$Currently only for 2 player
+        n = 100
+        index = torch.zeros(self.game.outcomes.shape[1], dtype = torch.float, device = dev)
+        index[0] = 0.6
+        index[1] = 0.4
+        actions = torch.zeros(self.game.outcomes.shape[0], n+1, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
+        values = torch.zeros(self.game.outcomes.shape[0], n+1, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
+        for i in range(1,n+1):
+            #column
+            values[1,i,:] = values[1,i-1,:] + torch.matmul(index,self.game.outcomes[:,:,1])
+            index = values[1,i,:].softmax(0)
+            actions[1,i,:] = index
+            #row
+            values[0,i,:] = values[0,i-1,:] + torch.matmul(self.game.outcomes[:,:,0],index)
+            index = values[0,i,:].softmax(0)
+            actions[0,i,:] = index
+        
+        actions[:,n-5:n,:]
+        strat = torch.zeros(self.game.outcomes.shape[0], self.game.outcomes.shape[1], dtype = torch.float)
+        strat[0,0] = float(actions[0].count(0))/len(actions[0])
+        strat[0,1] = float(actions[0].count(1))/len(actions[0])
+        strat[1,0] = float(actions[1].count(0))/len(actions[0])
+        strat[1,1] = float(actions[1].count(1))/len(actions[0])
+
+        game_value = (values[0,n,:] / n, values[1,n,:].max(dim = 0, keepdim=False)[0] / n)
+
+        return strat, game_value
+        
+
     def solve_with_ficticious_play(self, dev):
         #$Currently only for 2 player
         n = 10
@@ -145,20 +175,20 @@ class MatrixGameEnvironment(Environment):
             _ , index = values[1,i,:].max(dim = 0, keepdim=False)
             actions[1].append(index)
             #row
-            values[0,i,:] = values[0,i-1,:] + self.game.outcomes[:,index,0]
+            values[0,i,:] = values[0,i-1,:] + self.game.outcomes[:,index,0].softmax(0)
             _ , index = values[0,i,:].max(dim = 0, keepdim=False)
             actions[0].append(index)
-        
+         
         strat = torch.zeros(self.game.outcomes.shape[0], self.game.outcomes.shape[1], dtype = torch.float)
         strat[0,0] = float(actions[0].count(0))/len(actions[0])
         strat[0,1] = float(actions[0].count(1))/len(actions[0])
         strat[1,0] = float(actions[1].count(0))/len(actions[0])
         strat[1,1] = float(actions[1].count(1))/len(actions[0])
+ 
+        game_value = (values[0,n,:] / n, values[1,n,:].max(dim = 0, keepdim=False)[0] / n)
 
-        game_value = (values[0,n,:].max(dim = 0, keepdim=False)[0] / n, values[1,n,:].max(dim = 0, keepdim=False)[0] / n)
+        return strat, game_value        
 
-        return strat, game_value
-        
 class AuctionEnvironment(Environment):
     """
         An environment of agents to play against and evaluate strategies.
