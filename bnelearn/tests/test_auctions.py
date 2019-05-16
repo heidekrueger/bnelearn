@@ -44,7 +44,7 @@ bids_illegal_dimensions = torch.tensor([
     ], device = device)
 
 def test_fpsb_cuda():
-    """FBSP should run on GPU if available on the system and desired."""
+    """FPSB should run on GPU if available on the system and desired."""
     
     if not torch.cuda.is_available():
         pytest.skip("This test needs CUDA, but it's not available.")

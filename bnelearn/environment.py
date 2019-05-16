@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Callable
 
 import torch
+import random
 
 from bnelearn.bidder import Player, Bidder, MatrixGamePlayer
 from bnelearn.mechanism import Mechanism, MatrixGame
@@ -131,8 +132,33 @@ class MatrixGameEnvironment(Environment):
 
         return utilities.mean()
 
+    
+    def solve_with_ficticious_play(self, dev):
+        #$Currently only for 2 player
+        n = 10
+        index = random.randint(0,len(self.game.outcomes[0])-1)
+        actions = [[],[]]
+        values = torch.zeros(self.game.outcomes.shape[0], n+1, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
+        for i in range(1,n+1):
+            #column
+            values[1,i,:] = values[1,i-1,:] + self.game.outcomes[index,:,1]
+            _ , index = values[1,i,:].max(dim = 0, keepdim=False)
+            actions[1].append(index)
+            #row
+            values[0,i,:] = values[0,i-1,:] + self.game.outcomes[:,index,0]
+            _ , index = values[0,i,:].max(dim = 0, keepdim=False)
+            actions[0].append(index)
+        
+        strat = torch.zeros(self.game.outcomes.shape[0], self.game.outcomes.shape[1], dtype = torch.float)
+        strat[0,0] = float(actions[0].count(0))/len(actions[0])
+        strat[0,1] = float(actions[0].count(1))/len(actions[0])
+        strat[1,0] = float(actions[1].count(0))/len(actions[0])
+        strat[1,1] = float(actions[1].count(1))/len(actions[0])
 
+        game_value = (values[0,n,:].max(dim = 0, keepdim=False)[0] / n, values[1,n,:].max(dim = 0, keepdim=False)[0] / n)
 
+        return strat, game_value
+        
 class AuctionEnvironment(Environment):
     """
         An environment of agents to play against and evaluate strategies.
