@@ -132,50 +132,91 @@ class MatrixGameEnvironment(Environment):
 
         return utilities.mean()
 
-    #TODO: Not finished yet. Temperature missing. TODO: Fix strat
-    def solve_with_smooth_ficticious_play(self, dev):
-        #$Currently only for 2 player
-        n = 100
-        index = torch.zeros(self.game.outcomes.shape[1], dtype = torch.float, device = dev)
-        index[0] = 0.6
-        index[1] = 0.4
-        actions = torch.zeros(self.game.outcomes.shape[0], n+1, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
-        values = torch.zeros(self.game.outcomes.shape[0], n+1, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
-        for i in range(1,n+1):
-            #column
-            values[1,i,:] = values[1,i-1,:] + torch.matmul(index,self.game.outcomes[:,:,1])
-            index = values[1,i,:].softmax(0)
-            actions[1,i,:] = index
-            #row
-            values[0,i,:] = values[0,i-1,:] + torch.matmul(self.game.outcomes[:,:,0],index)
-            index = values[0,i,:].softmax(0)
-            actions[0,i,:] = index
+    def solve_with_smooth_ficticious_play(self, dev, initial_beliefs=None, 
+                                          w_b=1, n=10):
+        """
+        TODO: 
+        - Currently for only 2 player.
+       
+        Inspired by paper: Gerding et al. (2008)
         
-        actions[:,n-5:n,:]
-        strat = torch.zeros(self.game.outcomes.shape[0], self.game.outcomes.shape[1], dtype = torch.float)
-        strat[0,0] = float(actions[0].count(0))/len(actions[0])
-        strat[0,1] = float(actions[0].count(1))/len(actions[0])
-        strat[1,0] = float(actions[1].count(0))/len(actions[0])
-        strat[1,1] = float(actions[1].count(1))/len(actions[0])
+        1. Players have initial guesses about other players probabilities for certain actions
+        2. All players calculate their corresponding expected utility for taking an action given the guesses about the other players actions
+        3. Update own actions and beliefs about other players actions according to \sigma_i(b) in Gerding et al. (2008)
+        """
+        # Parameters
+        tau = torch.tensor(1.0)
+        w_b = w_b
+        n = n
+        index = torch.zeros(self.game.outcomes.shape[0],self.game.outcomes.shape[1], dtype = torch.float, device = dev)
+        # 1. assumptions of player i's actions
+        # Mixed NE for BattleOfTheSexes
+        # initial_beliefs = torch.tensor([[0.6, 0.4],[0.4, 0.6]], dtype = torch.float, device = dev)
+        if initial_beliefs == None:
+            initial_beliefs = torch.rand(self.game.outcomes.shape[0],self.game.outcomes.shape[1], dtype = torch.float, device = dev)
+        index = initial_beliefs
 
-        game_value = (values[0,n,:] / n, values[1,n,:].max(dim = 0, keepdim=False)[0] / n)
+        actions = torch.zeros(self.game.outcomes.shape[0], n, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
+        values = torch.zeros(self.game.outcomes.shape[0], n, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
+        for i in range(0,n):
+            # 2. column
+            if i == 0:
+                values[1,i,:] = torch.matmul(index[0],self.game.outcomes[:,:,1])
+            else:
+                values[1,i,:] = (torch.matmul(index[0],self.game.outcomes[:,:,1]))
+            # 2. row
+            if i == 0:
+                values[0,i,:] = torch.matmul(self.game.outcomes[:,:,0],index[1])
+            else:
+                values[0,i,:] = (torch.matmul(self.game.outcomes[:,:,0],index[1])) 
+            
+            # 3. update param
+            index[1] = (w_b * torch.exp((1/tau) * (values[1,:(i+1),:].sum(0) / (i+1)))) / (w_b * torch.exp((1/tau) * (values[1,:(i+1),:].sum(0) / (i+1)))).sum()
+            index[0] = (w_b * torch.exp((1/tau) * (values[0,:(i+1),:].sum(0) / (i+1)))) / (w_b * torch.exp((1/tau) * (values[0,:(i+1),:].sum(0) / (i+1)))).sum()
+            actions[1,i,:] = index[1]
+            actions[0,i,:] = index[0]
+            tau = 1/torch.log(torch.tensor(i+3.))
+        
+        strat = torch.zeros(self.game.outcomes.shape[0], self.game.outcomes.shape[1], dtype = torch.float)
+        strat[0] = index[0]
+        strat[1] = index[1]
+
+        game_value = (values[0,n-1,:].max(dim = 0, keepdim=False)[0], values[1,n-1,:].max(dim = 0, keepdim=False)[0])
 
         return strat, game_value
         
 
-    def solve_with_ficticious_play(self, dev):
-        #$Currently only for 2 player
-        n = 10
+    def solve_with_ficticious_play(self, dev, n=10):
+        """
+        TODO: 
+        - Currently for only 2 player.
+       
+        Based on description in: https://www.youtube.com/watch?v=WQ2DkirUZHI
+        
+        1. Player (e.g. column) assumes certain actions made by other players
+        2. Player (e.g. column) computes values for actions given the assumption about other players actions
+        3. Player (e.g. column) chooses action that is maximizing the value (including history)
+        """
+        n = n
+        # 1. initial assumption of row players action
         index = random.randint(0,len(self.game.outcomes[0])-1)
         actions = [[],[]]
-        values = torch.zeros(self.game.outcomes.shape[0], n+1, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
-        for i in range(1,n+1):
-            #column
-            values[1,i,:] = values[1,i-1,:] + self.game.outcomes[index,:,1]
+        values = torch.zeros(self.game.outcomes.shape[0], n, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
+        for i in range(1,n):
+            # 2. column: compute values
+            if i == 0:
+                values[1,i,:] = values[1,i,:] + self.game.outcomes[index,:,1]
+            else:
+                values[1,i,:] = values[1,i-1,:] + self.game.outcomes[index,:,1]
+            # 3. column: choose action
             _ , index = values[1,i,:].max(dim = 0, keepdim=False)
             actions[1].append(index)
-            #row
-            values[0,i,:] = values[0,i-1,:] + self.game.outcomes[:,index,0].softmax(0)
+            # 2. row: ...
+            if i == 0:
+                values[0,i,:] = values[0,i,:] + self.game.outcomes[:,index,0]
+            else:
+                values[0,i,:] = values[0,i-1,:] + self.game.outcomes[:,index,0]
+            # 3. row: ...
             _ , index = values[0,i,:].max(dim = 0, keepdim=False)
             actions[0].append(index)
          
@@ -185,7 +226,7 @@ class MatrixGameEnvironment(Environment):
         strat[1,0] = float(actions[1].count(0))/len(actions[0])
         strat[1,1] = float(actions[1].count(1))/len(actions[0])
  
-        game_value = (values[0,n,:] / n, values[1,n,:].max(dim = 0, keepdim=False)[0] / n)
+        game_value = (values[0,n-1,:].max(dim = 0, keepdim=False)[0] / n, values[1,n-1,:].max(dim = 0, keepdim=False)[0] / n)
 
         return strat, game_value        
 
