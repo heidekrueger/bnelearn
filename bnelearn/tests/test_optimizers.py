@@ -167,4 +167,4 @@ def test_ES_momentum():
 
     torch.cuda.empty_cache()
 
-    assert utility > 1.5, "optimizer did not learn the optimum"
+    assert utility > 1.5, "optimizer did not learn the optimum. Utility is {}".format(utility)

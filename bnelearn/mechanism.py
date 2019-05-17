@@ -18,7 +18,6 @@ class Game(ABC):
         # get actions from players and define outcome
         pass
 
-
 class Mechanism(Game):
     """
     Auction Mechanism - Interpreted as a Bayesian game.
@@ -33,7 +32,7 @@ class Mechanism(Game):
     def run(self, bids):
         pass
 
-class MatrixGame(Game, ABC):
+class MatrixGame(Game):
     """A complete information Matrix game."""
     # pylint: disable=abstract-method
     def __init__(self, n_players: int, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
@@ -41,11 +40,17 @@ class MatrixGame(Game, ABC):
         self.device = 'cuda' if self.cuda else 'cpu'
         self.n_players = n_players
 
-        self.outcomes = outcomes.float().to(self.device)
+        # validate and set outcomes
 
-        # TODO: this should actually be [n_actions_p1, n_actions_p2, ..., n_actions_p_n, n_players]
-        # then play()-code can be moved here from 2x2 subclass!
-        assert outcomes.shape == torch.Size([n_players, n_players, n_players]), 'invalid outcome matrix shape'
+        self.outcomes = outcomes.float().to(self.device)
+        # Outcome tensor should be [n_actions_p1, n_actions_p2, ..., n_actions_p_n, n_players]
+        # n_actions_p1 is implicitly defined by outcome tensor. Other dimensions should match
+        assert outcomes.dim() == n_players + 1
+        assert outcomes.shape[-1] == n_players
+
+        # TODO: validate names. i.e.
+        #   * if single list, check if all players have same number of actions
+        #   * otherwise, should provide list of lists (names for each player). validate that each list matches length
         self.names = names
 
     def check_input_validity(self, action_profile):
@@ -57,7 +62,9 @@ class MatrixGame(Game, ABC):
         """
 
         assert action_profile.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
-        assert action_profile.dtype == torch.int64, "actions must be integers!"
+        assert action_profile.dtype == torch.int64 and torch.all(action_profile >= 0), \
+            "Actions must be integer indeces!"
+
 
         # pylint: disable=unused-variable
         batch_dim, player_dim, item_dim = 0, 1, 2
@@ -66,11 +73,10 @@ class MatrixGame(Game, ABC):
         assert n_items == 1, "only single action per player in matrix game setting"
         assert n_players == self.n_players, "one action per player must be provided"
 
-class TwoByTwoBimatrixGame(MatrixGame):
-    """A Matrix game with two players and two actions each"""
-    def __init__(self, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
-        assert outcomes.shape == torch.Size([2,2,2])
-        super().__init__(2, outcomes, cuda=cuda, names=names )
+        for i in range(n_players):
+            assert torch.all(action_profile[:, i, :] < self.outcomes.shape[i]), \
+                "Invalid action given for player {}".format(i)
+
 
     def get_player_name(self, player_id: int):
         if self.names and "players" in self.names.keys():
@@ -79,23 +85,48 @@ class TwoByTwoBimatrixGame(MatrixGame):
             return player_id
 
     def get_action_name(self, action_id: int):
+        """Currently only works if all players have same action set!"""
         if self.names and "actions" in self.names.keys():
             return self.names["actions"][action_id]
         else:
             return action_id
 
-    def play(self, actions):
-        """bids are actually indices of actions"""
 
-        super().check_input_validity(actions)
+    def play(self, action_profile, validate=True):
+        """Plays the game for a given action_profile.
+
+        Parameters
+        ----------
+        action_profile: torch.Tensor
+            Shape: (batch_size, n_players, n_items)
+            n_items should be 1 for now. (This might change in the future to represent information sets!)
+            Actions should be integer indices. #TODO: Ipmlement that they can also be action names!
+
+            Mixed strategies are NOT allowed as input, sampling should happen in the player class.
+
+        validate: bool
+            Whether to validate inputs. Default is true.
+            (You might want to turn this off in settings with many many iterations)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches x n_players x n_items),
+                        In this setting, there's nothing to be allocated, so it will be all zeroes.
+            payments:   tensor of dimension (n_batches x n_players)
+                        Negative outcome/utility for each player.
+        """
+
+        if validate:
+            self.check_input_validity(action_profile)
 
         # pylint: disable=unused-variable
         batch_dim, player_dim, item_dim = 0, 1, 2
-        batch_size, n_players, n_items = actions.shape
+        batch_size, n_players, n_items = action_profile.shape
 
         #move to gpu/cpu if needed
-        actions = actions.to(self.device)
-        actions = actions.view(batch_size, n_players)
+        action_profile = action_profile.to(self.device)
+        action_profile = action_profile.view(batch_size, n_players)
 
         # allocation is a dummy and will always be 0 --> all utility is
         # represented by negative payments
@@ -106,16 +137,68 @@ class TwoByTwoBimatrixGame(MatrixGame):
         #payments = torch.zeros(batch_size, n_players, device=self.device)
         #for batch in range(batch_size):
         #    for player in range(n_players):
-        #        payments[batch, player] = -self.outcomes[bids[batch,0], bids[batch,1]][player]
+        #        payments[batch, player] = -self.outcomes[action[batch, player1], ... action[batch, player_n]][player]
 
         # payment to "game master" is the negative outcome
-        payments = -self.outcomes[actions[:,0], actions[:,1]].view(batch_size, n_players)
+        payments = -self.outcomes[
+            [
+                action_profile[:, i] for i in range(n_players)
+            ]].view(batch_size, n_players)
 
         return (allocations, payments)
 
-class PrisonersDilemma(TwoByTwoBimatrixGame):
+
+class RockPaperScissors(MatrixGame):
+    def __init__(self, cuda: bool = True):
+
+        device = 'cuda' if cuda and torch.cuda.is_available() else 'cpu'
+
+        outcomes = torch.tensor([
+        # pylint:disable=bad-continuation
+        #Col-p: Rock       Paper     Scissors     /  Row-p
+            [   [ 0., 0],  [-1, 1],  [ 1,-1]   ], #  Rock
+            [   [ 1.,-1],  [ 0, 0],  [-1, 1]   ], #  Paper
+            [   [-1., 1],  [ 1,-1],  [ 0, 0]   ] #  Scissors
+            ], device = device)
+
+        names = {
+            "player_names": ["RowPlayer", "ColPlayer"],
+            "action_names": ["Rock", "Paper", "Scissors"]
+            }
+
+        super().__init__(2, outcomes, cuda=cuda, names=names)
+
+class JordanGame(MatrixGame):
+    """Jordan Anticoordination game (1993), FP does not converge. 3P version of Shapley fashion game:
+        Player Actions: (Left, Right)
+        P1 wants to be different from P2
+        P2 wants to be different from P3
+        P3 wants to be different from P1
+    """
+    def __init__(self, cuda: bool = True):
+        device = 'cuda' if cuda and torch.cuda.is_available() else 'cpu'
+
+        outcomes = torch.tensor([
+            [   [   #LL
+                    [0.0,0,0], # LLL
+                    [0,1,1]    # LLR
+                ], [#LR
+                    [1,1,0],   # LRL
+                    [1,0,1]    # LRR
+            ]], [[  #RL
+                    [1,0,1],   # RLL
+                    [1,1,0]    # RLR
+                ], [#RR
+                    [0,1,1],   # RRL
+                    [0,0,0]    # RRR
+            ]]], device=device)
+
+        super().__init__(n_players=3, outcomes=outcomes, cuda=cuda)
+
+class PrisonersDilemma(MatrixGame):
     def __init__(self, cuda: bool = True):
         super().__init__(
+            n_players=2,
             outcomes = torch.tensor([[[-1, -1],[-3, 0]], [[ 0, -3],[-2,-2]]]),
             cuda = cuda,
             names = {
@@ -124,9 +207,10 @@ class PrisonersDilemma(TwoByTwoBimatrixGame):
             }
         )
 
-class BattleOfTheSexes(TwoByTwoBimatrixGame):
+class BattleOfTheSexes(MatrixGame):
     def __init__(self, cuda: bool = True):
         super().__init__(
+            n_players=2,
             outcomes=torch.tensor([[[3, 2],[0,0]], [[0,0],[2,3]]]),
             cuda=cuda,
             names = {
@@ -135,9 +219,10 @@ class BattleOfTheSexes(TwoByTwoBimatrixGame):
             }
         )
 
-class MatchingPennies(TwoByTwoBimatrixGame):
+class MatchingPennies(MatrixGame):
     def __init__(self, cuda: bool = True):
         super().__init__(
+            n_players=2,
             outcomes=torch.tensor([[[1, -1],[-1, 1,]], [[-1, 1], [1, -1]]]),
             cuda=cuda,
             names = {

@@ -22,7 +22,7 @@ class ES(Optimizer):
           the weight is based on (reward - baseline) rather than just the reward.
         - Optionally, not just vanilla SGD but momentum updates are enabled,
           we use the following definition of momentum:
-          
+
           delta = momentum * prev_delta + lr * pseudogradient
 
 
@@ -37,7 +37,7 @@ class ES(Optimizer):
             If none, will use a dynamic Deque of up to max_env_size most recent base models. (for symmetric case)
         params (iterable, optional): iterable of parameters to optimize or dicts defining parameter groups.
             If None, all params of `model` are updated.
-            If given, should be a subset of `model.parameters()`. TODO: Not yet implemented!
+            If given, should be a subset of `model.parameters()`. TODO: (implementation for subset not tested!)
         lr (float): learning rate for SGD-like update.
         momentum (float): momentum parameter.
         sigma (float): the standard deviation of perturbation noise.
@@ -49,13 +49,18 @@ class ES(Optimizer):
         # not used: noise_type (torch.dtype): precision of noise, default is torch.half (16bit),
         max_env_size (int, optional): maximum number of simulated opponents in the environment if no
             fixed environment is specified.
+
+        TODO: parallelize candidate creation and evaluation, given enough memory and compute,
+        this should scale linearly in the number of candidates.
+        Salimans et al also describe a method to efficiently scale this parallelization over machines, essentially using
+        shared sampled noise as a common pseudo-number-generator with minimal need for computation between the nodes.
+        (implementing this would likely be overkill and not useful in our case.)
     """
 
-    def __init__(self, model: torch.nn.Module, environment: Environment,
-                 params=None,
-                 lr=required, momentum = 0, sigma=required, n_perturbations=64,
-                 baseline = True,
-                 env_type=dynamic, player_position=None):
+    def __init__(self, model: torch.nn.Module, environment: Environment, params=None,
+                 lr=required, momentum=0, sigma=required, n_perturbations=64,
+                 baseline=True, env_type=dynamic, player_position=None
+                ):
 
         # validation checks
         if lr is not required and lr < 0.0:
@@ -82,9 +87,6 @@ class ES(Optimizer):
 
         super(ES, self).__init__(params, defaults)
 
-        if len(self.param_groups) > 1:
-            raise NotImplementedError("Multiple Parameter groups found. Currently only supports a single group.")
-
         # additional members deliberately not handled by super
         self.model = model
         self.player_position = player_position
@@ -93,9 +95,7 @@ class ES(Optimizer):
             environment.push_agent(deepcopy(model))
         self.environment = environment
         self.env_type = env_type
-        # do not use shared noise for now
-        # self._initialize_noise()
-    
+
     def __setstate__(self, state):
         super(ES, self).__setstate__(state)
         for group in self.param_groups:
@@ -108,7 +108,7 @@ class ES(Optimizer):
             closure (callable, optional): A closure that reevaluates the model
             and returns the loss.
         """
-        # set baseline. current reward if True
+
 
         for group in self.param_groups:
             base_params = group['params']
@@ -118,7 +118,8 @@ class ES(Optimizer):
             n_perturbations = group['n_perturbations']
             baseline = group['baseline']
 
-            if baseline is True: # run only for True, not for nonzero number
+            # set baseline. current reward if True
+            if baseline is True: # run only for True, not for nonzero number!
                 baseline = self.environment.get_reward(self.model, self.player_position).view(1)
             else: # False, Int or Float
                 baseline = torch.tensor(float(baseline), device=base_params[0].device)
@@ -146,6 +147,7 @@ class ES(Optimizer):
             #        but eps is on cpu. why?
             weighted_noise_vector = ((rewards -baseline) * epsilons).sum(dim=0)
             # create a copy of the parameters to store the updates in
+            # (we need the same structure as the group params for the loop below)
             param_noise = deepcopy(base_params)
             vector_to_parameters(weighted_noise_vector, param_noise)
 
@@ -176,18 +178,6 @@ class ES(Optimizer):
         utility = self.environment.get_reward(self.model, self.player_position)
         # 5. return the loss
         return -utility
-
-    ## not using shared noise matrix for now [used in OpenAI paper to efficiently
-    #  distribute workloads across many machines]
-    #def _initialize_noise(self):
-    #    device = next(self.model.parameters()).device
-    #    size = self.defaults['noise_size']
-    #    dtype = self.defaults['noise_type']
-    #    sigma = self.defaults['sigma']
-    #    return torch.zeros(size, dtype = dtype, device=device).normal_(mean=0.0, std=sigma)
-
-    #def _delete_noise(self):
-    #    del self.noise
 
     def _perturb_model(self, model: torch.nn.Module):
         """
@@ -225,7 +215,6 @@ class SimpleReinforce(Optimizer):
         TODO: Test in other setting
         TODO: parallelize perturbations
         TODO: possible sign-error in update step?
-
 
     Example:
         >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
@@ -334,7 +323,7 @@ class SimpleReinforce(Optimizer):
 
         sigma = self.defaults['sigma']
 
-        epsilon = torch.zeros(1).to(next(self.model.parameters()).device).normal_(mean=0.0, std=sigma)
+        epsilon = torch.zeros(1, device=next(self.model.parameters()).device).normal_(mean=0.0, std=sigma)
         perturbed = self.PerturbedActionModel(model, epsilon)
 
         return perturbed, epsilon

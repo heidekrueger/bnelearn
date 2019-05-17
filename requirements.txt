@@ -2,3 +2,5 @@ numpy
 jupyterlab
 pytorch
 tensorboardX
+matplotlib
+numpy
