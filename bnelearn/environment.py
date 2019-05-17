@@ -133,7 +133,7 @@ class MatrixGameEnvironment(Environment):
         return utilities.mean()
 
     def solve_with_smooth_ficticious_play(self, dev, initial_beliefs=None, 
-                                          w_b=1, n=10):
+                                          w_b=1, n=1000):
         """
         TODO: 
         - Currently for only 2 player.
@@ -143,6 +143,10 @@ class MatrixGameEnvironment(Environment):
         1. Players have initial guesses about other players probabilities for certain actions
         2. All players calculate their corresponding expected utility for taking an action given the guesses about the other players actions
         3. Update own actions and beliefs about other players actions according to \sigma_i(b) in Gerding et al. (2008)
+        
+        Mixed NE for BattleOfTheSexes:
+        initial_beliefs = torch.tensor([[0.6, 0.4],[0.4, 0.6]], dtype = torch.float, device = dev)
+        
         """
         # Parameters
         tau = torch.tensor(1.0)
@@ -150,25 +154,19 @@ class MatrixGameEnvironment(Environment):
         n = n
         index = torch.zeros(self.game.outcomes.shape[0],self.game.outcomes.shape[1], dtype = torch.float, device = dev)
         # 1. assumptions of player i's actions
-        # Mixed NE for BattleOfTheSexes
-        # initial_beliefs = torch.tensor([[0.6, 0.4],[0.4, 0.6]], dtype = torch.float, device = dev)
         if initial_beliefs == None:
             initial_beliefs = torch.rand(self.game.outcomes.shape[0],self.game.outcomes.shape[1], dtype = torch.float, device = dev)
+            for i in range(0,len(initial_beliefs)):
+                initial_beliefs[i] = initial_beliefs[i]/initial_beliefs[i].sum(0)
         index = initial_beliefs
 
         actions = torch.zeros(self.game.outcomes.shape[0], n, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
         values = torch.zeros(self.game.outcomes.shape[0], n, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
         for i in range(0,n):
             # 2. column
-            if i == 0:
-                values[1,i,:] = torch.matmul(index[0],self.game.outcomes[:,:,1])
-            else:
-                values[1,i,:] = (torch.matmul(index[0],self.game.outcomes[:,:,1]))
+            values[1,i,:] = torch.matmul(index[0],self.game.outcomes[:,:,1])
             # 2. row
-            if i == 0:
-                values[0,i,:] = torch.matmul(self.game.outcomes[:,:,0],index[1])
-            else:
-                values[0,i,:] = (torch.matmul(self.game.outcomes[:,:,0],index[1])) 
+            values[0,i,:] = torch.matmul(index[1],torch.t(self.game.outcomes[:,:,0]))
             
             # 3. update param
             index[1] = (w_b * torch.exp((1/tau) * (values[1,:(i+1),:].sum(0) / (i+1)))) / (w_b * torch.exp((1/tau) * (values[1,:(i+1),:].sum(0) / (i+1)))).sum()
