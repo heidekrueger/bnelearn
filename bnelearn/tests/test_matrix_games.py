@@ -3,7 +3,7 @@ import pytest
 import torch
 from bnelearn.mechanism import PrisonersDilemma
 
-"""Setup shared objects"""
+#Setup shared objects
 
 gpu_device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -63,6 +63,3 @@ def test_2_player_matrix_gpu():
     with pytest.raises(AssertionError):
         game.play(actions_invalid_shape)
         pytest.fail("Game class should validate input!")
-    
-
-
