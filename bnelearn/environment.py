@@ -132,11 +132,20 @@ class MatrixGameEnvironment(Environment):
 
         return utilities.mean()
 
+    def calc_probs(self, m, index, n_players, p, i):
+        i -= 1
+        if(i<=0):
+            return m
+        else:
+            tmp = torch.squeeze(index[(p+i)%n_players].matmul(self.calc_probs(m, index, n_players, p, i)))
+            return tmp
+
     def solve_with_smooth_ficticious_play(self, dev, initial_beliefs=None, 
-                                          w_b=1, n=1000):
+                                          w_b=1, iterations=1000):
         """
         TODO: 
-        - Currently for only 2 player.
+        - Fix order with n player. Currently starts with calculating for last (col player) and stores in that order.
+        - Fix initial_beliefs=None error
        
         Inspired by paper: Gerding et al. (2008)
         
@@ -147,42 +156,44 @@ class MatrixGameEnvironment(Environment):
         Mixed NE for BattleOfTheSexes:
         initial_beliefs = torch.tensor([[0.6, 0.4],[0.4, 0.6]], dtype = torch.float, device = dev)
         
+        For testing PaulTestGame
+        initial_beliefs = torch.tensor([[0.1,0.9],[0.2,0.8],[0.3,0.7]], dtype = torch.float, device = dev)
+        
         """
         # Parameters
         tau = torch.tensor(1.0)
-        w_b = w_b
-        n = n
-        index = torch.zeros(self.game.outcomes.shape[0],self.game.outcomes.shape[1], dtype = torch.float, device = dev)
+        n_players = self.game.outcomes.shape[len(self.game.outcomes.shape)-1]
+        n_actions = self.game.outcomes.shape[1]
+        probs = torch.zeros(n_players, n_actions, dtype = torch.float, device = dev)
+        
         # 1. assumptions of player i's actions
         if initial_beliefs == None:
-            initial_beliefs = torch.rand(self.game.outcomes.shape[0],self.game.outcomes.shape[1], dtype = torch.float, device = dev)
+            initial_beliefs = torch.rand(n_players, n_actions, dtype = torch.float, device = dev)
             for i in range(0,len(initial_beliefs)):
                 initial_beliefs[i] = initial_beliefs[i]/initial_beliefs[i].sum(0)
-        index = initial_beliefs
+        
+        probs = initial_beliefs.detach()
 
-        actions = torch.zeros(self.game.outcomes.shape[0], n, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
-        values = torch.zeros(self.game.outcomes.shape[0], n, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
-        for i in range(0,n):
-            # 2. column
-            values[1,i,:] = torch.matmul(index[0],self.game.outcomes[:,:,1])
-            # 2. row
-            values[0,i,:] = torch.matmul(index[1],torch.t(self.game.outcomes[:,:,0]))
-            
-            # 3. update param
-            index[1] = (w_b * torch.exp((1/tau) * (values[1,:(i+1),:].sum(0) / (i+1)))) / (w_b * torch.exp((1/tau) * (values[1,:(i+1),:].sum(0) / (i+1)))).sum()
-            index[0] = (w_b * torch.exp((1/tau) * (values[0,:(i+1),:].sum(0) / (i+1)))) / (w_b * torch.exp((1/tau) * (values[0,:(i+1),:].sum(0) / (i+1)))).sum()
-            actions[1,i,:] = index[1]
-            actions[0,i,:] = index[0]
+        actions = torch.zeros(n_players, iterations, n_actions, dtype = torch.float, device = dev)
+        values = torch.zeros(n_players, iterations, n_actions, dtype = torch.float, device = dev)
+        for i in range(iterations):
+            # Choose actions and compute values based on global probabilities
+            for p in range(n_players):
+                player_p_matrix = self.game.outcomes.select(n_players,n_players-1-p).permute(
+                            *[(n_players-p+j)%n_players for j in range(n_players)])
+                values[p,i,:] = self.calc_probs(player_p_matrix, probs, n_players, p, n_players)
+        
+            # Update global probabilities
+            for p in range(0,n_players):
+                probs[p] = (w_b * torch.exp((1/tau) * (values[p,:(i+1),:].sum(0) / (i+1)))) / (w_b * torch.exp((1/tau) * (values[p,:(i+1),:].sum(0) / (i+1)))).sum()
+                actions[p,i,:] = probs[p]
+
             tau = 1/torch.log(torch.tensor(i+3.))
-        
-        strat = torch.zeros(self.game.outcomes.shape[0], self.game.outcomes.shape[1], dtype = torch.float)
-        strat[0] = index[0]
-        strat[1] = index[1]
 
-        game_value = (values[0,n-1,:].max(dim = 0, keepdim=False)[0], values[1,n-1,:].max(dim = 0, keepdim=False)[0])
-
-        return strat, game_value
+        game_value = (values[0,iterations-1,:].max(dim = 0, keepdim=False)[0], values[1,iterations-1,:].max(dim = 0, keepdim=False)[0])
+        return probs, game_value
         
+    
 
     def solve_with_ficticious_play(self, dev, n=10):
         """
