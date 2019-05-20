@@ -111,8 +111,9 @@ def test_matrix_game_environment_training():
     # following game has NE at action profile (0,1)
     # i.e. rowPlayer: Top, colPlayer: Right,
     # resulting in outcome of (3,1)
-    game = TwoByTwoBimatrixGame(
+    game = MatrixGame(
         outcomes =torch.tensor([[[2, 0],[3, 1]], [[ 4, 0],[2,2]]]),
+        n_players = 2,
         cuda = cuda
     )
 
