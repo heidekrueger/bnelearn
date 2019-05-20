@@ -188,11 +188,11 @@ class MatrixGame(Game):
         assert len(strategy_profile) == self.n_players, \
             "Invalid number of players in strategy profile!"
 
-        for player, strategy in strategy_profile:
+        for player, strategy in enumerate(strategy_profile):
             assert strategy.shape == torch.Size([self.outcomes.shape[player]]), \
                 "Strategy contains invalid number of actions for player {}".format(player)
             # Check valid probabilities
-            assert torch.equal(strategy.sum(), 1.0), \
+            assert torch.equal(strategy.sum(), torch.tensor(1.0, device=self.device)), \
                 "Probabilities must sum to 1 for player {}".format(player)
             assert torch.all(strategy >= 0.0), \
                 "Probabilities must be positive for player {}".format(player)

@@ -3,7 +3,7 @@ import sys
 import torch
 from bnelearn.strategy import MatrixGameStrategy
 from bnelearn.bidder import Bidder, Player, MatrixGamePlayer
-from bnelearn.mechanism import PrisonersDilemma, BattleOfTheSexes, MatchingPennies, TwoByTwoBimatrixGame
+from bnelearn.mechanism import MatrixGame, PrisonersDilemma, BattleOfTheSexes, MatchingPennies
 from bnelearn.optimizer import ES
 from bnelearn.environment import Environment, AuctionEnvironment, MatrixGameEnvironment
 

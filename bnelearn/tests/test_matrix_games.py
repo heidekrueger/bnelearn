@@ -11,6 +11,7 @@ gpu_device = 'cuda' if torch.cuda.is_available() else 'cpu'
 pd = PrisonersDilemma(cuda = True)
 pd_cpu = PrisonersDilemma(cuda = False)
 
+jordan = JordanGame()
 
 # setup actions
 actions_pd_cpu = torch.tensor([
@@ -65,7 +66,6 @@ def test_output_correctness_2x2():
 
 def test_output_correctness_3x2():
     """3 player 2 action game: Jordan Anticoordination game."""
-    jordan = JordanGame()
 
     actions = torch.tensor(
         [   [[0], [0], [0]], # LLL
@@ -160,3 +160,63 @@ def test_invalid_actions_out_of_bounds():
         pd.play(actions)
         pytest.fail("Game should validate input: Action Index out of bounds!")
 
+
+def test_mixed_strategy_playing_2p():
+    """Test in Prisoner's Dilemma"""
+
+    # playing pure strategy expressed as mixed should give same results
+    mixed_sp = [torch.tensor([0., 1.]), torch.tensor([0.,1.])]
+    pure_payments = pd_payments[3]
+    _, mixed_payments = pd.play_mixed(mixed_sp)
+
+    assert pure_payments.shape == mixed_payments.shape
+    assert torch.allclose(pure_payments, mixed_payments), "Mixed results differ from pure implementation!"
+
+    # test purely mixed strategy
+    mixed_sp = [torch.tensor([0.67, 0.33]), torch.tensor([0.5,0.5])]
+    _, mixed_payments = pd.play_mixed(mixed_sp)
+    assert mixed_payments.shape == torch.Size([2])
+    assert torch.allclose(-mixed_payments, torch.tensor([-1.67, -1.16], device = pd.device))
+
+def test_mixed_strategy_playing_3p():
+
+    # playing pure strategy expressed as mixed should give same results
+    # set pure action profile batch x n_player x items (here: 1 x n_player x 1)
+    pure_sp = torch.tensor([0,1,1]).view(1, -1, 1)
+    mixed_sp = [torch.tensor([1., 0.]), torch.tensor([0.,1.]), torch.tensor([0.,1.])]
+    _, pure_payments  = jordan.play(pure_sp)
+    pure_payments.squeeze_()
+    _, mixed_payments = jordan.play_mixed(mixed_sp)
+    
+    assert mixed_payments.shape == pure_payments.shape, "Mixed strategy playing returned invalid shape!"
+    assert torch.allclose(pure_payments, mixed_payments), "Mixed results differ from pure implementation!"
+
+    # test purely mixed strategy
+    mixed_sp = [torch.tensor([0.5, 0.5]), torch.tensor([0.5,0.5]), torch.tensor([.33, .67])]
+    _, mixed_payments = jordan.play_mixed(mixed_sp)
+    assert mixed_payments.shape == torch.Size([3])
+    assert torch.allclose(-mixed_payments, torch.tensor([0.5, 0.5, 0.5], device = pd.device))
+
+def test_mixed_strategy_invalid_action_shape():
+    
+    # invalid number of players
+    with pytest.raises(AssertionError):
+        pd.play_mixed([torch.tensor([1., 0.]), torch.tensor([0.,1.]), torch.tensor([0.,1.])])
+        pytest.fail("Game should validate input: Invalid number of players!")
+    
+    #invalid number of actions
+    with pytest.raises(AssertionError):
+        pd.play_mixed([torch.tensor([1., 0., 0.]), torch.tensor([0.,1.])])
+        pytest.fail("Game should validate input: Invalid number of actions!")
+
+def test_mixed_strategy_invalid_action_probabilities():
+    # invalid probabilities
+    with pytest.raises(AssertionError):
+        pd.play_mixed([torch.tensor([0.5, 0.]), torch.tensor([1.3,1.])])
+        pytest.fail("Game should not allow probabilities that don't sum to one!")
+    with pytest.raises(AssertionError):
+        pd.play_mixed([torch.tensor([0., 0.]), torch.tensor([0.,1.])])
+        pytest.fail("Game should not allow probabilities that don't sum to one!")
+    with pytest.raises(AssertionError):
+        pd.play_mixed([torch.tensor([1.5, -0.5]), torch.tensor([0., 1.])])
+        pytest.fail("Game should not allow negative probabilities!")
