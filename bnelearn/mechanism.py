@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
+
+"""
+This module implements games such as matrix games and auctions.
+"""
+
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Tuple, List
 
 #pylint: disable=E1102
 import torch
@@ -14,9 +19,10 @@ class Game(ABC):
     """
 
     @abstractmethod
-    def play(self, actions):
+    def play(self, actions, **kwargs):
+        """Play the game!"""
         # get actions from players and define outcome
-        pass
+        raise NotImplementedError()
 
 class Mechanism(Game):
     """
@@ -24,7 +30,7 @@ class Mechanism(Game):
     A Mechanism collects bids from all players, then allocates available
     items as well as payments for each of the players.
     """
-    def play(self, actions):
+    def play(self, actions, **kwargs):
         # TODO: ensure `actions` are valid bids
         return self.run(bids=actions)
 
@@ -35,10 +41,12 @@ class Mechanism(Game):
 class MatrixGame(Game):
     """A complete information Matrix game."""
     # pylint: disable=abstract-method
-    def __init__(self, n_players: int, outcomes: torch.Tensor, cuda: bool = True, names: dict = None):
+    def __init__(self, n_players: int, outcomes: torch.Tensor,
+                 cuda: bool = True, names: dict = None, validate_inputs: bool = True):
         self.cuda = cuda and torch.cuda.is_available()
         self.device = 'cuda' if self.cuda else 'cpu'
         self.n_players = n_players
+        self.validate_inputs = validate_inputs
 
         # validate and set outcomes
 
@@ -53,12 +61,39 @@ class MatrixGame(Game):
         #   * otherwise, should provide list of lists (names for each player). validate that each list matches length
         self.names = names
 
-    def check_input_validity(self, action_profile):
-        """Assert validity of action profile
+    def get_player_name(self, player_id: int):
+        """Returns readable name of player if provided."""
+        if self.names and "players" in self.names.keys():
+            return self.names["players"][player_id]
+        else:
+            return player_id
 
-           An action profile should have shape of a mechanism (batch x players x items).
-           In a matrix game it should therefore be (batch x players x 1).
-           TODO: Each player's action should be a valid index for that player.
+    def get_action_name(self, action_id: int):
+        """Currently only works if all players have same action set!"""
+        if self.names and "actions" in self.names.keys():
+            return self.names["actions"][action_id]
+        else:
+            return action_id
+
+    def _validate_action_input(self, action_profile: torch.Tensor) -> None:
+        """Assert validity of a (pure) action profile
+
+        An action profile should have shape of a mechanism (batch x players x items).
+        In a matrix game it should therefore be (batch x players x 1).
+        TODO: Each player's action should be a valid index for that player.
+
+        Parameters
+        ----------
+        action_profile: torch.Tensor
+        An action profile tensor to be tested.
+
+        Returns
+        -------
+        (nothing)
+
+        Raises
+        ------
+        AssertionError on invalid input.
         """
 
         assert action_profile.dim() == 3, "Bid matrix must be 3d (batch x players x items)"
@@ -78,21 +113,7 @@ class MatrixGame(Game):
                 "Invalid action given for player {}".format(i)
 
 
-    def get_player_name(self, player_id: int):
-        if self.names and "players" in self.names.keys():
-            return self.names["players"][player_id]
-        else:
-            return player_id
-
-    def get_action_name(self, action_id: int):
-        """Currently only works if all players have same action set!"""
-        if self.names and "actions" in self.names.keys():
-            return self.names["actions"][action_id]
-        else:
-            return action_id
-
-
-    def play(self, action_profile, validate=True):
+    def play(self, action_profile, validate: bool = None):
         """Plays the game for a given action_profile.
 
         Parameters
@@ -104,8 +125,8 @@ class MatrixGame(Game):
 
             Mixed strategies are NOT allowed as input, sampling should happen in the player class.
 
-        validate: bool
-            Whether to validate inputs. Default is true.
+        validate: bool or None
+            Whether to validate inputs. Defaults to default setting of game class.
             (You might want to turn this off in settings with many many iterations)
 
         Returns
@@ -116,9 +137,10 @@ class MatrixGame(Game):
             payments:   tensor of dimension (n_batches x n_players)
                         Negative outcome/utility for each player.
         """
-
+        if validate is None:
+            validate = self.validate_inputs
         if validate:
-            self.check_input_validity(action_profile)
+            self._validate_action_input(action_profile)
 
         # pylint: disable=unused-variable
         batch_dim, player_dim, item_dim = 0, 1, 2
@@ -147,8 +169,110 @@ class MatrixGame(Game):
 
         return (allocations, payments)
 
+    def _validate_mixed_strategy_input(self, strategy_profile: List[torch.Tensor]) -> None:
+        """Assert validity of strategy profile
+
+            Parameters
+            ----------
+            action_profile: torch.Tensor
+            An action profile tensor to be tested.
+
+            Returns
+            -------
+            (nothing)
+
+            Raises
+            ------
+            AssertionError on invalid input.
+        """
+        assert len(strategy_profile) == self.n_players, \
+            "Invalid number of players in strategy profile!"
+
+        for player, strategy in enumerate(strategy_profile):
+            assert strategy.shape == torch.Size([self.outcomes.shape[player]]), \
+                "Strategy contains invalid number of actions for player {}".format(player)
+            # Check valid probabilities
+            assert torch.equal(strategy.sum(), torch.tensor(1.0, device=self.device)), \
+                "Probabilities must sum to 1 for player {}".format(player)
+            assert torch.all(strategy >= 0.0), \
+                "Probabilities must be positive for player {}".format(player)
+
+    def _tensorize_strategy_profile(self, strategy_profile_list = List[torch.Tensor]):
+        """Turns a list of strategies (1-d-tensors) into a n-player dimensional joint strategy profile tensor"""
+
+        # set einsum_string depending on number of players
+        einsum_strings = {
+            1: 'i->i',
+            2: 'i,j->ij',
+            3: 'i,j,k->ijk',
+            4: 'i,j,k,l->ijkl',
+            5: 'i,j,k,l,m->ijklm',
+            6: 'i,j,k,l,m,n->ijklmn'
+        }
+
+        try:
+            einsum_string = einsum_strings[self.n_players]
+        except KeyError:
+            raise NotImplementedError('Playing mixed strategies is only implemented for up to 6 players!')
+        
+        return torch.einsum(einsum_string, strategy_profile_list)
+
+
+    def play_mixed(self, strategy_profile: List[torch.Tensor], validate: bool = None):
+        """Plays the game with mixed strategies, returning expectation of outcomes.
+
+        This version does NOT support batches or multiple items, as (1) batches do not make
+        sense in this setting since we are already returning expectations.
+
+        Parameters
+        ----------
+        strategy_profile: List[torch.Tensor]
+            A list of strategies for each player. Each element i should be a 1-dimensional
+            torch tensor of length n_actions_pi with entries j = P(player i plays action j)
+
+        validate: bool
+            Whether to validate inputs. Defaults to setting in game class.
+            (You might want to turn this off in settings with many many iterations)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: empty tensor of dimension (0) --> not used in this game
+            payments:   tensor of dimension (n_players)
+                        Negative expected outcome/utility for each player.
+        """
+
+        # move inputs to device if necessary
+        for i, strat in enumerate(strategy_profile):
+            strategy_profile[i] = strat.to(self.device)
+
+        # validate inputs if desired
+        if validate is None:
+            validate = self.validate_inputs
+        if validate:
+            self._validate_mixed_strategy_input(strategy_profile)
+
+        # for each action profile, get probability-weighted vector of utilities that the players
+        # expect to get from this action profile under the mixed strategy profile
+        utils_per_action_profile = (
+            # get joint action profile distribution
+            # with dim=n_players and shape [n_actions_p1, ... n_actions_p_n])
+            # with joint_distribution[i, j, k, ... z] = P(a_i =i, a_j=j, ...z_z=z)
+            self._tensorize_strategy_profile(strategy_profile)
+            # add another dimension to the end of this tensor to make it same shape of outcome matrix
+            .unsqueeze(self.n_players)
+            # multiply with outcome for each action profile
+            * self.outcomes
+        )
+
+        # sum over all but last dimension to get expected payoff per player
+        payoffs_per_player = utils_per_action_profile.sum(list(range(self.n_players)))
+
+        return torch.tensor([], device=self.device), -payoffs_per_player
+
 
 class RockPaperScissors(MatrixGame):
+    """2 player, 3 action game rock paper scissors"""
     def __init__(self, cuda: bool = True):
 
         device = 'cuda' if cuda and torch.cuda.is_available() else 'cpu'
@@ -177,7 +301,7 @@ class JordanGame(MatrixGame):
     """
     def __init__(self, cuda: bool = True):
         device = 'cuda' if cuda and torch.cuda.is_available() else 'cpu'
-
+        #pylint:disable=bad-continuation
         outcomes = torch.tensor([
             [   [   #LL
                     [0.0,0,0], # LLL
@@ -200,7 +324,7 @@ class PaulTestGame(MatrixGame):
     """
     def __init__(self, cuda: bool = True):
         device = 'cuda' if cuda and torch.cuda.is_available() else 'cpu'
-
+        #pylint:disable=bad-continuation
         outcomes = torch.tensor([
             [   [   #LL
                     [2., 2, 2],  # LLL
@@ -219,6 +343,9 @@ class PaulTestGame(MatrixGame):
         super().__init__(n_players=3, outcomes=outcomes, cuda=cuda)
 
 class PrisonersDilemma(MatrixGame):
+    """Two player, two action Prisoner's Dilemma game.
+       Has a unique pure Nash equilibrium in ap [1,1]
+    """
     def __init__(self, cuda: bool = True):
         super().__init__(
             n_players=2,
@@ -231,6 +358,7 @@ class PrisonersDilemma(MatrixGame):
         )
 
 class BattleOfTheSexes(MatrixGame):
+    """Two player, two action Battle of the Sexes game"""
     def __init__(self, cuda: bool = True):
         super().__init__(
             n_players=2,
@@ -243,6 +371,7 @@ class BattleOfTheSexes(MatrixGame):
         )
 
 class MatchingPennies(MatrixGame):
+    """Two Player, two action Matching Pennies / anticoordination game"""
     def __init__(self, cuda: bool = True):
         super().__init__(
             n_players=2,
@@ -255,6 +384,7 @@ class MatchingPennies(MatrixGame):
         )
 
 class VickreyAuction(Mechanism):
+    "Vickrey / Second Price Sealed Bid Auctions"
 
     def __init__(self, cuda: bool = True):
         self.cuda = cuda and torch.cuda.is_available()
@@ -316,6 +446,7 @@ class VickreyAuction(Mechanism):
 
 
 class FirstPriceSealedBidAuction(Mechanism):
+    """First Price Sealed Bid auction"""
 
     def __init__(self, cuda: bool = True):
         self.cuda = cuda and torch.cuda.is_available()
