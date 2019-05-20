@@ -24,8 +24,6 @@ actions_pd_gpu = actions_pd_cpu.to(gpu_device)
 
 pd_allocation, pd_payments = pd.play(actions_pd_cpu)
 
-
-
 def test_output_on_gpu():
     """If the game has cuda=True, outputs should be on gpu regardless of input."""
     if gpu_device == 'cpu':
@@ -53,7 +51,7 @@ def test_output_on_cpu():
     assert allocation.device.type == 'cpu', "Result should be on CPU for gpu inputs!"
     assert payments.device.type == 'cpu', "Result should be on CPU for gpu inputs!"
 
-def test_output_shapes():    
+def test_output_shapes():
     assert pd_allocation.shape == torch.Size([4, 2, 1]), \
         "Invalid allocation shape! Should be batch x n_players x items"
     assert pd_payments.shape == torch.Size([4, 2]), \
@@ -74,7 +72,7 @@ def test_output_correctness_3x2():
             [[0], [1], [0]]  # LRL
         ],
         device = jordan.device)
-    
+
     allocation, payments = jordan.play(actions)
     assert torch.equal(allocation, torch.zeros(2, 3, 1, device=jordan.device)), \
         "Found invalid allocation."
@@ -88,7 +86,7 @@ def test_output_correctness_3x2():
 def test_output_correctness_2x3():
     """ 2 player 3 action game: Rock Paper Scissors"""
     rps = RockPaperScissors(cuda = True)
-    
+
     actions = torch.tensor(
         [
             [[0], [0]], # rock = rock
@@ -104,7 +102,7 @@ def test_output_correctness_2x3():
 
     assert torch.equal(allocation, torch.zeros(5, 2, 1, device=rps.device)), \
         "Found invalid allocation."
-    
+
     assert torch.equal(
         payments,
         -torch.tensor(
@@ -118,7 +116,7 @@ def test_output_correctness_2x3():
             device = rps.device
             )
         ), "Returned invalid payments!"
-    
+
 def test_invalid_actions_float():
     actions_float = torch.tensor([
         [[.5], [.5]],
@@ -132,7 +130,7 @@ def test_invalid_actions_float():
         pytest.fail("Game class should fail on invalid input: Float instead of Int")
 
 def test_invalid_actions_shape():
-    actions_invalid_shape = torch.tensor([[1], [5], [3]]) 
+    actions_invalid_shape = torch.tensor([[1], [5], [3]])
 
     with pytest.raises(AssertionError):
         pd.play(actions_invalid_shape)
