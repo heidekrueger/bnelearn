@@ -132,20 +132,18 @@ class MatrixGameEnvironment(Environment):
 
         return utilities.mean()
 
-    def calc_probs(self, m, index, n_players, p, i):
-        i -= 1
-        if(i<=0):
+    def calc_probs(self, m, probs, n_players, p, i):
+        i += 1
+        if(i >= n_players):
             return m
         else:
-            tmp = torch.squeeze(index[(p+i)%n_players].matmul(self.calc_probs(m, index, n_players, p, i)))
+            tmp = torch.squeeze(probs[(p+i)%n_players].matmul(self.calc_probs(m, probs, n_players, p, i)))
             return tmp
 
-    def solve_with_smooth_ficticious_play(self, dev, initial_beliefs=None, 
+    def solve_with_smooth_fictitious_play(self, dev, initial_beliefs=None, 
                                           w_b=1, iterations=1000):
         """
         TODO: 
-        - Fix order with n player. Currently starts with calculating for last (col player) and stores in that order.
-        - Fix initial_beliefs=None error
        
         Inspired by paper: Gerding et al. (2008)
         
@@ -158,7 +156,6 @@ class MatrixGameEnvironment(Environment):
         
         For testing PaulTestGame
         initial_beliefs = torch.tensor([[0.1,0.9],[0.2,0.8],[0.3,0.7]], dtype = torch.float, device = dev)
-        
         """
         # Parameters
         tau = torch.tensor(1.0)
@@ -167,11 +164,11 @@ class MatrixGameEnvironment(Environment):
         probs = torch.zeros(n_players, n_actions, dtype = torch.float, device = dev)
         
         # 1. assumptions of player i's actions
-        if initial_beliefs == None:
+        if initial_beliefs is None:
             initial_beliefs = torch.rand(n_players, n_actions, dtype = torch.float, device = dev)
             for i in range(0,len(initial_beliefs)):
                 initial_beliefs[i] = initial_beliefs[i]/initial_beliefs[i].sum(0)
-        
+                 
         probs = initial_beliefs.detach()
 
         actions = torch.zeros(n_players, iterations, n_actions, dtype = torch.float, device = dev)
@@ -179,9 +176,9 @@ class MatrixGameEnvironment(Environment):
         for i in range(iterations):
             # Choose actions and compute values based on global probabilities
             for p in range(n_players):
-                player_p_matrix = self.game.outcomes.select(n_players,n_players-1-p).permute(
-                            *[(n_players-p+j)%n_players for j in range(n_players)])
-                values[p,i,:] = self.calc_probs(player_p_matrix, probs, n_players, p, n_players)
+                player_p_matrix = self.game.outcomes.select(n_players,p).permute(
+                            *[(1+p+j)%n_players for j in range(n_players)])
+                values[p,i,:] = self.calc_probs(player_p_matrix, probs, n_players, p, 0)
         
             # Update global probabilities
             for p in range(0,n_players):
@@ -191,53 +188,66 @@ class MatrixGameEnvironment(Environment):
             tau = 1/torch.log(torch.tensor(i+3.))
 
         game_value = (values[0,iterations-1,:].max(dim = 0, keepdim=False)[0], values[1,iterations-1,:].max(dim = 0, keepdim=False)[0])
-        return probs, game_value
+        return actions, values, None  
         
     
 
-    def solve_with_ficticious_play(self, dev, n=10):
+    def solve_with_fictitious_play(self, dev, initial_beliefs=None, iterations=10):
         """
         TODO: 
-        - Currently for only 2 player.
+        - Testing
        
         Based on description in: https://www.youtube.com/watch?v=WQ2DkirUZHI
+        
+        Based on implementation of smooth fictitious play. However:
+            - Probabilities are integer
+            - Actions are updated such that one action is taken
+            - Updates are performed after each players move
+            - Values get added up
+            
         
         1. Player (e.g. column) assumes certain actions made by other players
         2. Player (e.g. column) computes values for actions given the assumption about other players actions
         3. Player (e.g. column) chooses action that is maximizing the value (including history)
         """
-        n = n
-        # 1. initial assumption of row players action
-        index = random.randint(0,len(self.game.outcomes[0])-1)
-        actions = [[],[]]
-        values = torch.zeros(self.game.outcomes.shape[0], n, self.game.outcomes.shape[1], dtype = torch.float, device = dev)
-        for i in range(1,n):
-            # 2. column: compute values
-            if i == 0:
-                values[1,i,:] = values[1,i,:] + self.game.outcomes[index,:,1]
-            else:
-                values[1,i,:] = values[1,i-1,:] + self.game.outcomes[index,:,1]
-            # 3. column: choose action
-            _ , index = values[1,i,:].max(dim = 0, keepdim=False)
-            actions[1].append(index)
-            # 2. row: ...
-            if i == 0:
-                values[0,i,:] = values[0,i,:] + self.game.outcomes[:,index,0]
-            else:
-                values[0,i,:] = values[0,i-1,:] + self.game.outcomes[:,index,0]
-            # 3. row: ...
-            _ , index = values[0,i,:].max(dim = 0, keepdim=False)
-            actions[0].append(index)
-         
-        strat = torch.zeros(self.game.outcomes.shape[0], self.game.outcomes.shape[1], dtype = torch.float)
-        strat[0,0] = float(actions[0].count(0))/len(actions[0])
-        strat[0,1] = float(actions[0].count(1))/len(actions[0])
-        strat[1,0] = float(actions[1].count(0))/len(actions[0])
-        strat[1,1] = float(actions[1].count(1))/len(actions[0])
- 
-        game_value = (values[0,n-1,:].max(dim = 0, keepdim=False)[0] / n, values[1,n-1,:].max(dim = 0, keepdim=False)[0] / n)
 
-        return strat, game_value        
+        # Parameters
+        n_players = self.game.outcomes.shape[len(self.game.outcomes.shape)-1]
+        n_actions = self.game.outcomes.shape[1]
+        probs = torch.zeros(n_players, n_actions, dtype = torch.float, device = dev)
+        
+        # 1. assumptions of player i's actions
+        if initial_beliefs is None:
+            initial_beliefs = torch.zeros(n_players, n_actions, dtype = torch.float, device = dev)
+            for i in range(n_players):
+                initial_beliefs[i,random.randint(0,n_actions-1)] = 1
+                 
+        probs = initial_beliefs.detach()
+
+        actions = torch.zeros(n_players, iterations, n_actions, dtype = torch.float, device = dev)
+        strat = torch.zeros(n_players, n_actions, dtype = torch.float, device = dev)
+        values = torch.zeros(n_players, iterations, n_actions, dtype = torch.float, device = dev)
+        for i in range(iterations):
+            # Choose actions and compute values based on global probabilities
+            for p in range(n_players):
+                player_p_matrix = self.game.outcomes.select(n_players,p).permute(
+                            *[(1+p+j)%n_players for j in range(n_players)])
+                if i == 0:
+                    values[p,i,:] = values[p,i,:] + self.calc_probs(player_p_matrix, probs, n_players, p, 0)
+                else:
+                    values[p,i,:] = values[p,i-1,:] + self.calc_probs(player_p_matrix, probs, n_players, p, 0)
+                
+                # Update global probabilities (perform best response!)   
+                probs[p,:] = 0
+                probs[p,values[p,i,:].max(dim = 0, keepdim=False)[1]] = 1
+                actions[p,i,:] = probs[p]
+        
+        for p in range(n_players):
+            for a in range(n_actions):
+                strat[p,a] = actions[p,:,a].sum()/actions[p,:,:].sum()
+        
+        game_value = (values[0,iterations-1,:].max(dim = 0, keepdim=False)[0], values[1,iterations-1,:].max(dim = 0, keepdim=False)[0])
+        return actions, values, strat       
 
 class AuctionEnvironment(Environment):
     """
