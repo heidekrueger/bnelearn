@@ -140,12 +140,73 @@ class MatrixGameEnvironment(Environment):
             tmp = torch.squeeze(probs[(p+i)%n_players].matmul(self.calc_probs(m, probs, n_players, p, i)))
             return tmp
 
+    def solve_with_k_smooth_fictitious_play(self, dev, initial_beliefs=None, 
+                                          w_b=1, iterations=10):
+        """
+        TODO/Problems:
+        1. Doesn't always converge with the P(a|v) update, considering number of players.
+        2. Doesn't always converge when sigma is only considering the expected util of current iteration. Needs to consider expected util from all past iterations. 
+         
+       
+        Based on paper: Gerding et al. (2008). However this is based on auctions)
+        
+        1. Players have initial guesses about other players probabilities for certain actions
+        2. All players calculate their corresponding expected utility for taking an action given the guesses about the other players actions
+        3. All players play k-exponential fictitious play response (\sigma_i(b) in Gerding et al. (2008))
+        4. Update beliefs about other players actions considering P(a|v) and \sigma(a|v)
+        
+        Mixed NE for BattleOfTheSexes:
+        initial_beliefs = torch.tensor([[0.6, 0.4],[0.4, 0.6]], dtype = torch.float, device = dev)
+        
+        For testing PaulTestGame
+        initial_beliefs = torch.tensor([[0.1,0.9],[0.2,0.8],[0.3,0.7]], dtype = torch.float, device = dev)
+        """
+        # Parameters
+        tau = torch.tensor(1.0)
+        n_players = self.game.outcomes.shape[len(self.game.outcomes.shape)-1]
+        n_actions = [self.game.outcomes.shape[i] for i in range(len(self.game.outcomes.shape)-1)]
+        probs = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+        
+        # 1. assumptions of player i's actions
+        if initial_beliefs is None:
+            initial_beliefs = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+            for i in range(n_players):
+                initial_beliefs[i] = torch.rand(n_actions[i], dtype = torch.float, device = dev)
+                initial_beliefs[i] = initial_beliefs[i]/initial_beliefs[i].sum(0)
+                 
+        probs = initial_beliefs.copy()
+
+        sigma = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]    # actions
+        strat = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+        values = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+        for n in range(iterations):
+            # Choose actions (k-exp response) and compute expected values based on global probabilities
+            for i in range(n_players):
+                player_p_matrix = self.game.outcomes.select(n_players,i).permute(
+                            *[(1+i+j)%n_players for j in range(n_players)])
+                values[i][n,:] = self.calc_probs(player_p_matrix, probs, n_players, i, 0)
+                sigma[i][n,:] = (w_b * torch.exp((1/tau) * (values[i][:(n+1),:].sum(0) / (n+1)))) / (w_b * torch.exp((1/tau) * (values[i][:(n+1),:].sum(0) / (n+1)))).sum()
+        
+            # Update global probabilities
+            for i in range(0,n_players):
+                probs[i] = 1/(n_players + 1) * (n_players * probs[i] + sigma[i][n,:])
+
+            tau = 1/torch.log(torch.tensor(n+3.))
+        
+        for i in range(n_players):
+            strat[i] = sigma[i][iterations-1,:]
+
+        return sigma, values, strat
+        
+    
+
+
     def solve_with_smooth_fictitious_play(self, dev, initial_beliefs=None, 
                                           w_b=1, iterations=1000):
         """
         TODO: 
        
-        Inspired by paper: Gerding et al. (2008)
+        Inspired by paper: Gerding et al. (2008) but deviating in P(a|v) update
         
         1. Players have initial guesses about other players probabilities for certain actions
         2. All players calculate their corresponding expected utility for taking an action given the guesses about the other players actions
