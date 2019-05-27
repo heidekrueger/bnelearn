@@ -5,8 +5,7 @@ test:
   stage: test
   script:
   # this assumes everything is already installed and we are able to load the correct conda env.
-  - which python
-  - whoami
-  - /opt/anaconda/anaconda3/bin/conda init
+  # when setting up the runner user for the first time, make sure it finds the global conda on the machine
+  #- /opt/anaconda/anaconda3/bin/conda init
   - conda activate bnelearn
   - pytest --pyargs bnelearn
