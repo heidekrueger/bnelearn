@@ -1,6 +1,5 @@
 # settings to control code coverage testing using pytest-cov
 [run]
-branch = True
 
 # do not test coverage in the following files
 omit = */tests/*
