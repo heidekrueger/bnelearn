@@ -175,7 +175,7 @@ class MatrixGameEnvironment(Environment):
         
         1. Players have initial guesses about other players probabilities for certain actions
         2. All players calculate their corresponding expected utility for taking an action given the guesses about the other players actions
-        3. All players play k-exponential fictitious play response (\sigma_i(b) in Gerding et al. (2008))
+        3. All players play k-exponential fictitious play response (\\sigma_i(b) in Gerding et al. (2008))
         4. Update beliefs about other players actions considering P(a|v) and \sigma(a|v)
         
         Mixed NE for BattleOfTheSexes:
@@ -243,7 +243,7 @@ class MatrixGameEnvironment(Environment):
         
         1. Players have initial guesses about other players probabilities for certain actions
         2. All players calculate their corresponding expected utility for taking an action given the guesses about the other players actions
-        3. Update own actions and beliefs about other players actions according to \sigma_i(b) in Gerding et al. (2008)
+        3. Update own actions and beliefs about other players actions according to \\sigma_i(b) in Gerding et al. (2008)
         
         Mixed NE for BattleOfTheSexes:
         initial_beliefs = torch.tensor([[0.6, 0.4],[0.4, 0.6]], dtype = torch.float, device = dev)
