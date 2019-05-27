@@ -12,7 +12,9 @@ test:
   - pwd
   - echo $0
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
-  #- conda init # did this already
+  - conda init --reverse # did this already
+  - conda init -v
   - which python
-  - conda activate bnelearn
-  - pytest --pyargs bnelearn
+  # make sure no failure
+  #- conda activate bnelearn
+  #- pytest --pyargs bnelearn
