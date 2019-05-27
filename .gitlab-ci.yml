@@ -1,0 +1,9 @@
+stages:
+  - test
+
+test:
+  stage: test
+  script:
+  # this assumes everything is already installed and we are able to load the correct conda env.
+  - conda activate bnelearn
+  - pytest --pyargs bnelearn
