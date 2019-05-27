@@ -5,5 +5,7 @@ test:
   stage: test
   script:
   # this assumes everything is already installed and we are able to load the correct conda env.
+  - which python
+  - whoami
   - conda activate bnelearn
   - pytest --pyargs bnelearn
