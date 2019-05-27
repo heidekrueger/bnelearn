@@ -1,5 +1,6 @@
 stages:
   - test
+  - lint
 
 test:
   stage: test
@@ -8,15 +9,31 @@ test:
   # this assumes everything is already installed and we are able to load the correct conda env.
   # when setting up the runner user for the first time, make sure it finds the global conda on the machine
   #- /opt/anaconda/anaconda3/bin/conda init
-  - whoami
-  - pwd
-  - echo $0
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
-  #- conda init --reverse # did this already
-  #- conda init -v
-  - which python
-  - which conda
-  # make sure no failure
   - source activate bnelearn
   - conda list pytorch
   - pytest --cov=bnelearn
+
+lint:
+  stage: lint
+  script:
+  - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
+  - source activate bnelearn
+  - pylint bnelearn/*.py | tee pylint.txt || pylint-exit $?
+  - score=$(sed -n 's/^Your code has been rated at \([-0-9.]*\)\/.*/\1/p' pylint.txt)
+  - echo "Pylint score was $score"# get the json with all badge urls via API and regex the id of the badge with 'blue.svg' in it
+  - json_badge_info=$(curl -H "PRIVATE-TOKEN:$API_TOKEN" -X GET https://gitlab.lrz.de/api/v4/projects/$CI_PROJECT_ID/badges)
+  - pylint_badge_id=$(expr match "$json_badge_info" '.*https[^"]*-blue\.svg\",\"id\":\([0-9]\+\),')
+  - echo $pylint_badge_id
+
+  - badge_url=https://img.shields.io/badge/lint%20score-$score-blue.svg
+  - >-
+        curl https://gitlab.lrz.de/api/v4/projects/$CI_PROJECT_ID/badges/$pylint_badge_id
+        -X PUT
+        -H "PRIVATE-TOKEN: $API_TOKEN"
+        -H "Content-Type: application/json"
+        -d '{"image_url": "'"$badge_url"'"}'
+
+  artifacts:
+    paths:
+      - pylint.txt
