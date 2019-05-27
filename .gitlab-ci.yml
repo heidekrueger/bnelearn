@@ -15,6 +15,7 @@ test:
   #- conda init --reverse # did this already
   #- conda init -v
   - which python
+  - which conda
   # make sure no failure
   #- conda activate bnelearn
   #- pytest --pyargs bnelearn
