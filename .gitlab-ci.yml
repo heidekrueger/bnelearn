@@ -11,7 +11,7 @@ test:
   - whoami
   - pwd
   - echo $0
-  #- export PATH="/opt/anaconda/anaconda3/bin:$PATH"
+  - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
   #- conda init --reverse # did this already
   #- conda init -v
   - which python
