@@ -11,9 +11,9 @@ test:
   - whoami
   - pwd
   - echo $0
-  - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
-  - conda init --reverse # did this already
-  - conda init -v
+  #- export PATH="/opt/anaconda/anaconda3/bin:$PATH"
+  #- conda init --reverse # did this already
+  #- conda init -v
   - which python
   # make sure no failure
   #- conda activate bnelearn
