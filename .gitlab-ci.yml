@@ -7,5 +7,6 @@ test:
   # this assumes everything is already installed and we are able to load the correct conda env.
   - which python
   - whoami
+  - /opt/anaconda/anaconda3/bin/conda init
   - conda activate bnelearn
   - pytest --pyargs bnelearn
