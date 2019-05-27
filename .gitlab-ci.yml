@@ -17,5 +17,5 @@ test:
   - which python
   - which conda
   # make sure no failure
-  - conda activate bnelearn
+  - source activate bnelearn
   #- pytest --pyargs bnelearn
