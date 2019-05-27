@@ -1,9 +1,10 @@
 numpy
 jupyterlab
 pytorch
-tensorboardX
+tensorboardX #pip
 matplotlib
 numpy
 pytest
 pytest-cov
 pylint
+pylint-exit #pip
