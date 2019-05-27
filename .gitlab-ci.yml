@@ -9,7 +9,7 @@ test:
   # when setting up the runner user for the first time, make sure it finds the global conda on the machine
   #- /opt/anaconda/anaconda3/bin/conda init
   - whoami
+  - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
   - which python
-  - which conda
   - conda activate bnelearn
   - pytest --pyargs bnelearn
