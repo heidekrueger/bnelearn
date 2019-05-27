@@ -8,6 +8,7 @@ __pycache__
 /*.egg-info
 # Python Testing Logs
 .pytest_cache
+.coverage
 
 # notebook checkpoints
 *-checkpoint.ipynb

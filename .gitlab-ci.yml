@@ -19,4 +19,4 @@ test:
   # make sure no failure
   - source activate bnelearn
   - conda list pytorch
-  - pytest --pyargs bnelearn
+  - pytest --cov=bnelearn

@@ -151,7 +151,7 @@ def test_smooth_fictitious_play_with_MatchingPennies_2x2():
         assert torch.allclose(
             strat,
             torch.tensor([0.5,0.5],device = device),
-            atol = 0.01
+            atol = 0.03
             ), "Invalid strategy for player {}, expected [.5,.5], got {}".format(i,strat)
 
 def test_smooth_fictitious_play_with_BattleOfTheSexes_2x2():

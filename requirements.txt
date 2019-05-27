@@ -5,3 +5,4 @@ tensorboardX
 matplotlib
 numpy
 pytest
+pytest-cov
