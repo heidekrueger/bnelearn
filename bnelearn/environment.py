@@ -141,7 +141,7 @@ class MatrixGameEnvironment(Environment):
             return tmp
 
     def solve_with_k_smooth_fictitious_play(self, dev, initial_beliefs=None, 
-                                          w_b=1, iterations=10):
+                                          w_b=1, iterations=100):
         """
         TODO/Problems:
         1. Doesn't always converge with the P(a|v) update, considering number of players.
@@ -185,11 +185,11 @@ class MatrixGameEnvironment(Environment):
                 player_p_matrix = self.game.outcomes.select(n_players,i).permute(
                             *[(1+i+j)%n_players for j in range(n_players)])
                 values[i][n,:] = self.calc_probs(player_p_matrix, probs, n_players, i, 0)
-                sigma[i][n,:] = (w_b * torch.exp((1/tau) * (values[i][:(n+1),:].sum(0) / (n+1)))) / (w_b * torch.exp((1/tau) * (values[i][:(n+1),:].sum(0) / (n+1)))).sum()
+                sigma[i][n,:] = (w_b * torch.exp((1/tau) * (values[i][n,:]))) / (w_b * torch.exp((1/tau) * (values[i][n,:]))).sum()
         
             # Update global probabilities
             for i in range(0,n_players):
-                probs[i] = 1/(n_players + 1) * (n_players * probs[i] + sigma[i][n,:])
+                probs[i] = 1/((n+1) + 1) * ((n+1) * probs[i] + sigma[i][n,:])
 
             tau = 1/torch.log(torch.tensor(n+3.))
         
@@ -202,11 +202,11 @@ class MatrixGameEnvironment(Environment):
 
 
     def solve_with_smooth_fictitious_play(self, dev, initial_beliefs=None, 
-                                          w_b=1, iterations=1000):
+                                          w_b=1, iterations=100):
         """
         TODO: 
        
-        Inspired by paper: Gerding et al. (2008) but deviating in P(a|v) update
+        Inspired by paper: Gerding et al. (2008) but with different updating procedure 
         
         1. Players have initial guesses about other players probabilities for certain actions
         2. All players calculate their corresponding expected utility for taking an action given the guesses about the other players actions
@@ -257,11 +257,10 @@ class MatrixGameEnvironment(Environment):
         
     
 
-    def solve_with_fictitious_play(self, dev, initial_beliefs=None, iterations=10):
+    def solve_with_fictitious_play(self, dev, initial_beliefs=None, iterations=100):
         """
         TODO: 
-        - Testing
-       
+        
         Based on description in: https://www.youtube.com/watch?v=WQ2DkirUZHI
         
         Based on implementation of smooth fictitious play. However:
