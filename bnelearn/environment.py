@@ -3,7 +3,7 @@ from collections.abc import Iterable
 from collections import deque
 
 from abc import ABC, abstractmethod
-from typing import Callable
+from typing import Callable, Tuple, List
 
 import torch
 import random
@@ -132,22 +132,45 @@ class MatrixGameEnvironment(Environment):
 
         return utilities.mean()
 
-    def calc_probs(self, m, probs, n_players, p, i):
-        i += 1
-        if(i >= n_players):
+    def _calc_exp_util(self, m, probs, n_players, i, iteration = 0):
+        """
+        Calculates the expected utility for a player (i)
+        
+        Args
+        ----------
+        m:  payoff matrix of player of interest (i)
+        probs: current beliefs
+        n_players: number of players
+        i: player of interest
+        iteration: must initialized with 0 and counts up to number of players
+        ----------
+        
+        Returns
+        ----------
+        exp_util: expected utility of player i (tensor of dimension (1 x n_actions[i])
+        ----------        
+        """
+        iteration += 1
+        if(iteration >= n_players):
             return m
         else:
-            tmp = torch.squeeze(probs[(p+i)%n_players].matmul(self.calc_probs(m, probs, n_players, p, i)))
-            return tmp
+            exp_util = torch.squeeze(probs[(i+iteration)%n_players].matmul(self._calc_exp_util(m, probs, n_players, i, iteration)))
+            return exp_util
 
-    def solve_with_k_smooth_fictitious_play(self, dev, initial_beliefs=None, 
-                                          w_b=1, iterations=100):
-        """
-        TODO/Problems:
-        1. Doesn't always converge with the P(a|v) update, considering number of players.
-        2. Doesn't always converge when sigma is only considering the expected util of current iteration. Needs to consider expected util from all past iterations. 
-         
-       
+    def solve_with_k_smooth_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None,  
+                                          w_b=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
+        """       
+        -------------
+        Args
+        w_b: bid specific weights. Currently just one. 
+        -------------
+        
+        Returns
+        -------------
+        sigma: history of probabilities of playing a certain action (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        values: history of expected valuations of playing a certain action (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        strat: latest probabilities of playing a certain action (list of length n_players [tensor of dimension (n_actions[current player])])
+        -------------
         Based on paper: Gerding et al. (2008). However this is based on auctions)
         
         1. Players have initial guesses about other players probabilities for certain actions
@@ -180,14 +203,14 @@ class MatrixGameEnvironment(Environment):
         strat = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
         values = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
         for n in range(iterations):
-            # Choose actions (k-exp response) and compute expected values based on global probabilities
             for i in range(n_players):
+                # 2. Compute expected values based on global probabilities
                 player_p_matrix = self.game.outcomes.select(n_players,i).permute(
                             *[(1+i+j)%n_players for j in range(n_players)])
-                values[i][n,:] = self.calc_probs(player_p_matrix, probs, n_players, i, 0)
+                values[i][n,:] = self._calc_exp_util(player_p_matrix, probs, n_players, i)
                 sigma[i][n,:] = (w_b * torch.exp((1/tau) * (values[i][n,:]))) / (w_b * torch.exp((1/tau) * (values[i][n,:]))).sum()
         
-            # Update global probabilities
+            # 4. Update global probabilities
             for i in range(0,n_players):
                 probs[i] = 1/((n+1) + 1) * ((n+1) * probs[i] + sigma[i][n,:])
 
@@ -201,11 +224,21 @@ class MatrixGameEnvironment(Environment):
     
 
 
-    def solve_with_smooth_fictitious_play(self, dev, initial_beliefs=None, 
-                                          w_b=1, iterations=100):
+    def solve_with_smooth_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None, 
+                                          w_b=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
         """
-        TODO: 
-       
+        -------------
+        Args
+        w_b: bid specific weights. Currently just one. 
+        -------------
+        
+        Returns
+        -------------
+        sigma: history of probabilities of playing a certain action (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        values: history of expected valuations of playing a certain action (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        strat: latest probabilities of playing a certain action (list of length n_players [tensor of dimension (n_actions[current player])])
+        -------------
+        
         Inspired by paper: Gerding et al. (2008) but with different updating procedure 
         
         1. Players have initial guesses about other players probabilities for certain actions
@@ -233,33 +266,38 @@ class MatrixGameEnvironment(Environment):
                  
         probs = initial_beliefs.copy()
 
-        actions = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+        sigma = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
         strat = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
         values = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
         for n in range(iterations):
-            # Choose actions and compute values based on global probabilities
+            # 2. Choose actions and compute values based on global probabilities
             for i in range(n_players):
                 player_p_matrix = self.game.outcomes.select(n_players,i).permute(
                             *[(1+i+j)%n_players for j in range(n_players)])
-                values[i][n,:] = self.calc_probs(player_p_matrix, probs, n_players, i, 0)
+                values[i][n,:] = self._calc_exp_util(player_p_matrix, probs, n_players, i)
         
-            # Update global probabilities
+            # 3. Update global probabilities
             for i in range(0,n_players):
                 probs[i] = (w_b * torch.exp((1/tau) * (values[i][:(n+1),:].sum(0) / (n+1)))) / (w_b * torch.exp((1/tau) * (values[i][:(n+1),:].sum(0) / (n+1)))).sum()
-                actions[i][n,:] = probs[i]
+                sigma[i][n,:] = probs[i]
 
             tau = 1/torch.log(torch.tensor(n+3.))
         
         for i in range(n_players):
-            strat[i] = actions[i][iterations-1,:]
+            strat[i] = sigma[i][iterations-1,:]
 
-        return actions, values, strat
+        return sigma, values, strat
         
     
 
-    def solve_with_fictitious_play(self, dev, initial_beliefs=None, iterations=100):
-        """
-        TODO: 
+    def solve_with_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
+        """        
+        Returns
+        -------------
+        sigma: history of probabilities (0 or 1) of playing a certain action (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        values: history of valuations of playing a certain action as best response (BR) (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        strat: probability of playing a certain action based on past experiences (list of length n_players [tensor of dimension (n_actions[current player])])
+        -------------
         
         Based on description in: https://www.youtube.com/watch?v=WQ2DkirUZHI
         
@@ -292,16 +330,16 @@ class MatrixGameEnvironment(Environment):
         strat = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
         values = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
         for n in range(iterations):
-            # Choose actions and compute values based on global probabilities
+            # 2. Choose actions and compute values based on global probabilities
             for i in range(n_players):
                 player_p_matrix = self.game.outcomes.select(n_players,i).permute(
                             *[(1+i+j)%n_players for j in range(n_players)])
                 if n == 0:
-                    values[i][n,:] = values[i][n,:] + self.calc_probs(player_p_matrix, probs, n_players, i, 0)
+                    values[i][n,:] = values[i][n,:] + self._calc_exp_util(player_p_matrix, probs, n_players, i)
                 else:
-                    values[i][n,:] = values[i][n-1,:] + self.calc_probs(player_p_matrix, probs, n_players, i, 0)
+                    values[i][n,:] = values[i][n-1,:] + self._calc_exp_util(player_p_matrix, probs, n_players, i)
                 
-                # Update global probabilities (perform best response!)   
+                # 3. Update global probabilities (perform best response!)   
                 probs[i][:] = 0
                 probs[i][values[i][n,:].max(dim = 0, keepdim=False)[1]] = 1
                 actions[i][n,:] = probs[i]
