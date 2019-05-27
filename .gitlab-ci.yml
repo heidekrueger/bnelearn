@@ -4,6 +4,7 @@ stages:
 test:
   stage: test
   script:
+  # uuund nochmal
   # this assumes everything is already installed and we are able to load the correct conda env.
   # when setting up the runner user for the first time, make sure it finds the global conda on the machine
   #- /opt/anaconda/anaconda3/bin/conda init
