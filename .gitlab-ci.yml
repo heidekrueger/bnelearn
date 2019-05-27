@@ -10,6 +10,7 @@ test:
   #- /opt/anaconda/anaconda3/bin/conda init
   - whoami
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
+  - conda init
   - which python
   - conda activate bnelearn
   - pytest --pyargs bnelearn
