@@ -370,6 +370,24 @@ class BattleOfTheSexes(MatrixGame):
             }
         )
 
+class BattleOfTheSexes_Mod(MatrixGame):
+    def __init__(self, cuda: bool = True):
+        super().__init__(
+            n_players=2,
+            outcomes=torch.tensor([
+                [# Him: Stadium
+                    [3,2],  # Her: Stadium
+                    [0,0]], # Her: Theater
+                [# Him: Theater
+                    [0,0],  # Her: Stadium
+                    [2,3]], # Her: Theater
+                [# Him: Stadium with friend
+                    [-1,1],  # Her: Stadium
+                    [4,0]], # Her: Theater
+                    ]),
+            cuda=cuda
+        )
+
 class MatchingPennies(MatrixGame):
     """Two Player, two action Matching Pennies / anticoordination game"""
     def __init__(self, cuda: bool = True):
