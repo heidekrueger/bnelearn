@@ -321,26 +321,28 @@ class JordanGame(MatrixGame):
 
 class PaulTestGame(MatrixGame):
     """A 3-p game without many symmetries used for testing n-player tensor implementations.
+    Payoff: [M,R,C]
     """
     def __init__(self, cuda: bool = True):
         device = 'cuda' if cuda and torch.cuda.is_available() else 'cpu'
-        #pylint:disable=bad-continuation
+
         outcomes = torch.tensor([
             [   [   #LL
                     [2., 2, 2],  # LLL
-                    [9,-1,-1]    # LLR
+                    [-1,1,9]    # LLR
                 ], [#LR
-                    [1, 9,-1],   # LRL
-                    [3, 3, 4]    # LRR
+                    [-1, 9,1],   # LRL
+                    [4, 3, 3]    # LRR
             ]], [[  #RL
-                    [2, 2, 1],   # RLL
-                    [7, 1,-2]    # RLR
+                    [1, 2, 2],   # RLL
+                    [-2, 1,7]    # RLR
                 ], [#RR
-                    [1, 7,-2],   # RRL
-                    [4, 4, 3]    # RRR
+                    [-2, 7,1],   # RRL
+                    [3, 4, 4]    # RRR
             ]]], device=device)
 
         super().__init__(n_players=3, outcomes=outcomes, cuda=cuda)
+
 
 class PrisonersDilemma(MatrixGame):
     """Two player, two action Prisoner's Dilemma game.
