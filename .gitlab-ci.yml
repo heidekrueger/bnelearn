@@ -4,8 +4,19 @@ stages:
 test:
   stage: test
   script:
+  # uuund nochmal
   # this assumes everything is already installed and we are able to load the correct conda env.
-  - which python
+  # when setting up the runner user for the first time, make sure it finds the global conda on the machine
+  #- /opt/anaconda/anaconda3/bin/conda init
   - whoami
-  - conda activate bnelearn
+  - pwd
+  - echo $0
+  - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
+  #- conda init --reverse # did this already
+  #- conda init -v
+  - which python
+  - which conda
+  # make sure no failure
+  - source activate bnelearn
+  - conda list pytorch
   - pytest --pyargs bnelearn
