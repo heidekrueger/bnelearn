@@ -1,5 +1,8 @@
 # Learning Equilibria in Bayesian Games
 
+
+[![pipeline status](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/pipeline.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master) | [![coverage report](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/coverage.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master)
+
 This repository contains a framework for finding Bayes Nash Equilibria through learning with Neural Networks.
 
 # Current Status
