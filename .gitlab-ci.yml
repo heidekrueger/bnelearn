@@ -21,18 +21,23 @@ lint:
   - source activate bnelearn
   - pylint bnelearn/*.py | tee pylint.txt || pylint-exit $?
   - score=$(sed -n 's/^Your code has been rated at \([-0-9.]*\)\/.*/\1/p' pylint.txt)
-  - echo "Pylint score was $score"# get the json with all badge urls via API and regex the id of the badge with 'blue.svg' in it
-  - json_badge_info=$(curl -X GET https://gitlab.lrz.de/api/v4/projects/$CI_PROJECT_ID/badges)
-  - pylint_badge_id=$(expr match "$json_badge_info" '.*https[^"]*-blue\.svg\",\"id\":\([0-9]\+\),')
-  - echo $pylint_badge_id
+  - echo "Pylint score was $score"
+  
+  # get the json with all badge urls via API and regex the id of the badge with 'blue.svg' in it
+  # this works with a personal access token but doesn't seem to work with deploy token / project token or
+  # deploy key. thus not doing this for now for security purposes.
+  #- json_badge_info=$(curl -H "PRIVATE-TOKEN:$API_TOKEN" -X GET https://gitlab.lrz.de/api/v4/projects/$CI_PROJECT_ID/badges)
+  #- pylint_badge_id=$(expr match "$json_badge_info" '.*https[^"]*-blue\.svg\",\"id\":\([0-9]\+\),')
+  #- echo $pylint_badge_id
 
-  - badge_url=https://img.shields.io/badge/lint%20score-$score-blue.svg
-  - >-
-        curl https://gitlab.lrz.de/api/v4/projects/$CI_PROJECT_ID/badges/$pylint_badge_id
-        -X PUT
-        -H "Content-Type: application/json"
-        -d '{"image_url": "'"$badge_url"'"}'
-
-  artifacts:
-    paths:
-      - pylint.txt
+  #- badge_url=https://img.shields.io/badge/lint%20score-$score-blue.svg
+  #- >-
+  #      curl https://gitlab.lrz.de/api/v4/projects/$CI_PROJECT_ID/badges/$pylint_badge_id
+  #      -X PUT
+  #      -H "PRIVATE-TOKEN: $API_TOKEN"
+  #      -H "Content-Type: application/json"
+  #      -d '{"image_url": "'"$badge_url"'"}'
+#
+  #artifacts:
+  #  paths:
+  #    - pylint.txt
