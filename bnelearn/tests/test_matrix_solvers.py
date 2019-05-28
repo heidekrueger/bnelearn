@@ -205,7 +205,7 @@ def test_smooth_fictitious_play_with_PaulTestGame_2x2x2():
 
    # Test k Smooth Fictitious Play
 
-def test_k_smooth_fictitious_play_with_PrisonersDilemmy_2x2():
+def test_k_smooth_fictitious_play_with_PrisonersDilemma_2x2():
     strategy = run_k_smooth_fictitious_play(
         2, PrisonersDilemma(cuda = cuda),
         iterations = 1000)[2][:]
@@ -215,7 +215,7 @@ def test_k_smooth_fictitious_play_with_PrisonersDilemmy_2x2():
             strat,
             torch.tensor([0.,1],device = device),
             atol = 0.001
-            ), "Invalid strategy for player {}".format(i)
+            ), "Invalid strategy for player {}, expected [0,1] found {}".format(i, strat)
 
 def test_k_smooth_fictitious_play_with_MatchingPennies_2x2():
     strategy = run_k_smooth_fictitious_play(
@@ -227,7 +227,7 @@ def test_k_smooth_fictitious_play_with_MatchingPennies_2x2():
         assert torch.allclose(
             strat,
             torch.tensor([0.5,0.5],device = device),
-            atol = 0.01
+            atol = 0.03
             ), "Invalid strategy for player {}".format(i)
 
 def test_k_smooth_fictitious_play_with_BattleOfTheSexes_2x2():
