@@ -288,6 +288,51 @@ class MatrixGameEnvironment(Environment):
 
         return sigma, values, strat
 
+    def solve_with_fudenberg_smooth_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None,
+                                          w_b=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
+        """
+        same as fudenberg fictitious play but with adding noise by adding softmax. 
+        Therefore, the Best Response becomes a smooth and contious probability function.
+        #Current assumption: As before, player i's believes about the other players strategy profiles is based on past observations
+        WIP...
+        """
+
+        # Parameters
+        n_players = self.game.outcomes.shape[len(self.game.outcomes.shape)-1]
+        n_actions = [self.game.outcomes.shape[i] for i in range(len(self.game.outcomes.shape)-1)]
+        weights = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+
+        # 0. Initialize weight function k(i)_0
+        if initial_beliefs is None:
+            initial_beliefs = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+            for i in range(n_players):
+                initial_beliefs[i] = 1
+                weights[i][0,:] = torch.ones(n_actions[i], dtype=torch.int32, device=dev)
+                #initial_beliefs[i][random.randint(0, n_weights[i]-1)] = 1
+
+        #weights = initial_beliefs.copy()
+
+        probs = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+        strat = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+        values = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+        for n in range(iterations-1):
+            # 1. Player (i) computes probability of opponents (-i) playing a strategy (s(-i)) at time (t)
+            for i in range(n_players):
+                for a in range(n_actions[i]):
+                    probs[i][a] = weights[i][n,a].sum()/weights[i][n,:].sum()
+            for i in range(n_players):
+                player_p_matrix = self.game.outcomes.select(n_players,i).permute(
+                            *[(1+i+j)%n_players for j in range(n_players)])
+
+                # 2. Player (i) plays a rule (p(i)_t(gamma(i)_t), i.e. action) as best response
+                action = self._calc_exp_util(player_p_matrix, probs, n_players, i).sum(dim = 0, keepdim=False)[1]
+                weights[i][n+1,:] = weights[i][n,:]
+                weights[i][n+1,action] = weights[i][n,action] + 1
+
+        for i in range(n_players):
+            strat[i] = probs[i]
+        return weights, values, strat
+
     def solve_with_fudenberg_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
         """
         Returns
