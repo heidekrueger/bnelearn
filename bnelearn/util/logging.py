@@ -6,12 +6,11 @@ import pathlib
 import socket
 import time
 
-# TODO: will be superceded by torch.utils.tensorboard with stable release of tensorflow 1.14
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 def get_experiment_writer(game: str, method: str, run_id: str or int = None, root_dir=None, **kwargs) -> SummaryWriter:
     """
-        Creates and returns a tensorboardX `SummaryWriter` to be used with a given experiment, performing
+        Creates and returns a torch.utils.tensorboard `SummaryWriter` to be used with a given experiment, performing
         validity checks to make sure logdir parameters are set as desired.
 
         IMPORTANT: you must close the writer when your experiment is done!
@@ -21,7 +20,6 @@ def get_experiment_writer(game: str, method: str, run_id: str or int = None, roo
 
         TODOs:
         --------
-        * TODO: Replace tensorboardX by torch.utils.tensorboard as soon as tensorflow 1.14 stable is released.
         * TODO: Implement automatic detection of namestrings of game objects (and possibly solution methods.)
         * TODO: Implement automatic capture of initial game/method hyperparams (if any)
 
@@ -41,7 +39,7 @@ def get_experiment_writer(game: str, method: str, run_id: str or int = None, roo
 
         Returns
         -------
-        writer: tensorboardX.summaryWriter
+        writer: torch.utils.tensorboard.SummaryWriter
             A summaryWriter object that can be used to log
                 - scalars
                 - histograms
@@ -53,7 +51,7 @@ def get_experiment_writer(game: str, method: str, run_id: str or int = None, roo
                 - NN graphs
                 - text
             either globally, or in each iteration.
-            See documentation here: https://tensorboardx.readthedocs.io/en/latest/tensorboard.html
+            See documentation here: https://pytorch.org/docs/stable/tensorboard.html
 
 
         Examples

@@ -10,6 +10,9 @@ __pycache__
 .pytest_cache
 .coverage
 
+# Pylint output
+pylint.txt
+
 # notebook checkpoints
 *-checkpoint.ipynb
 

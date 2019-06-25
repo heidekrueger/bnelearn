@@ -1,7 +1,8 @@
 numpy
+future #required for pytorch 1.1 tensorboard integration
 jupyterlab
 pytorch
-tensorboardX #pip
+tb-nightly #pip (replace by tensorboard from conda as soon as 1.15 available)
 matplotlib
 numpy
 pytest

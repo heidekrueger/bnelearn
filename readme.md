@@ -60,7 +60,7 @@ Once conda is running, update to latest version
 #### Create a conda environment named `bnelearn` (or name of your choice)
 
 This environment will contain all required dependencies to run the experiment code, i.e.
-numpy, matplotlib, jupyter, pytorch and tensorboardX.
+numpy, matplotlib, jupyter, pytorch and tensorboard.
 Start by creating the environment:
 
 `conda create -n bnelearn python=3.7`
@@ -78,29 +78,22 @@ Using conda from the pytorch-channel on Windows:
 `conda install pytorch torchvision cudatoolkit=10.0 -c pytorch`
 or equivalent command for your system (https://pytorch.org/get-started/locally/)
 
-#### Install tensorboardX
-tensorboardX is a wrapper package for pytorch, chainer and other frameworks to write output that can
-be vizualized using TF's tensorboard function. `tensorboardX`is not available in the conda channels, but can only be
-installed from source or using `pip`. The easiest way to install it is
+#### Install tensorboard
+Tensorboard is part of the `tensorflow` family and since TF 1.14 is available as a standalone app that's compatible with other DL frameworks - like pytorch.
+Currently (25.06.2019) tensorboard 1.14 contains a bug that prevents the dashboard from updating when using with pytorch.
+As a workaround, we'll temporarily install the tensorboard nightly build using `pip`. The easiest way to install it is
 
 * Install `pip` inside the bnelearn environment (with activated environment as above)
 `conda install pip`
 
-* Using the bnelearn-environment's pip, install tensorboardX
+* Using the bnelearn-environment's pip, install tensorboard
 
-`pip install tensorboardX`
+`pip install tb-nightly` (replace by `conda install tensorboard` once 1.15 is in the conda channels)
 
 ### Create another environment for tensorflow
 
 * If necessary, deactivate the bnelearn env above
-`deactivate` (on Linux/OSX: `source deactivate`)
-
-* Create a new conda environment `tf` with the latest stable tensorflow in the conda channels.
-
-To install CPU-only TF, use
-`conda create -n tf tensorflow`
-or, if your machine has a CUDA-compatible Nvidia GPU and you want GPU features (not used for bnelearn-vizualisation!)
-`conda create -n tf tensorflow-gpu`
+`deactivate` (on Linux/OSX: `source deactivate` and/or `conda deactivate`)
 
 # Running the software
 
@@ -113,7 +106,7 @@ or, if your machine has a CUDA-compatible Nvidia GPU and you want GPU features (
 Results of notebook experiments are written to a subdirectory as specified in each notebook. To view the results
 or monitor training process, start a tensorboard instance:
 * Navigate to the `./notebooks/` directory.
-* In another terminal window, activate the `tf` conda env: `activate tf`.
+* In another terminal window, activate the `bnelearn` conda env as well: `activate bnelearn`.
 * Start a tensorboard instance, pointing at the relevant subdirectory for your experiment (tensorboard can simultaneously display multiple runs of the same experiment.) I.e. if you're interested in fpsb experiments and your directory structure is
 
 ```
@@ -132,3 +125,7 @@ then start tensorboard using
 `tensorboard --logdir fpsb`
 
 The tensorboard server is then accessible at http://localhost:6006
+
+# Remote development on GPU-Server
+
+Since the June 2019 release, Visual Studio Code supports remote development via SSH which should be the most comfortable way to work with this package. Come and ask me (Stefan) how to set it up.
