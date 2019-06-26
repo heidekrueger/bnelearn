@@ -86,7 +86,10 @@ class Bidder(Player):
         self.draw_valuations_()
 
     def draw_valuations_(self):
-        """Sample a new batch of valuations from the Bidder's prior."""
+        """Sample a new batch of valuations from the Bidder's prior.
+           
+           Negative draws will be clipped at 0.0!
+        """
         # If in place sampling is available for our distribution, use it!
         # This will save time for memory allocation and/or copying between devices
         # As sampling from general torch.distribution is only available on CPU.
@@ -97,11 +100,12 @@ class Bidder(Player):
             self.valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
         # gaussian
         elif isinstance(self.value_distribution, torch.distributions.normal.Normal):
-            self.valuations.normal_(mean = self.value_distribution.loc, std = self.value_distribution.scale)
+            self.valuations.normal_(mean = self.value_distribution.loc, std = self.value_distribution.scale).relu_()
         # TODO: add additional internal in-place samplers
         else:
             # slow! (sampling on cpu then copying to GPU)
-            self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device)
+            self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device).relu()
+
         return self.valuations
 
     def get_utility(self, allocations, payments): #pylint: disable=arguments-differ
