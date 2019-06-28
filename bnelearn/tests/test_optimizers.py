@@ -1,10 +1,11 @@
+"""This module tests implemented optimizers in a 'static' environment."""
 import warnings
 import pytest
 import torch
 from bnelearn.strategy import NeuralNetStrategy
 from bnelearn.mechanism import StaticMechanism
 from bnelearn.bidder import Bidder
-from bnelearn.optimizer import ES, SimpleReinforce
+from bnelearn.optimizer import ES #, SimpleReinforce
 from bnelearn.environment import AuctionEnvironment
 
 
@@ -19,11 +20,11 @@ u_lo = 0
 u_hi = 10
 
 def strat_to_bidder(strategy, batch_size):
+    """creates a bidder from a strategy"""
     return Bidder.uniform(u_lo,u_hi, strategy, batch_size = batch_size, n_players=1)
 
 mechanism = StaticMechanism(cuda=cuda)
 
-# TODO: write tests
 def test_static_mechanism():
     """Test whether the mechanism for testing the optimizers returns expected results"""
     BATCH_SIZE = 2**18
@@ -32,11 +33,17 @@ def test_static_mechanism():
         warnings.warn("Test not run due to low batch size!")
         pytest.skip("Batch size too low to perform this test!")
 
-    model = NeuralNetStrategy(
-        input_length,
-        size_hidden_layer = SIZE_HIDDEN_LAYER,
-        requires_grad=False
-        ).to(device)
+    #init model but ensure positive outputs
+    output_is_positive = False
+    while not output_is_positive:
+        model = NeuralNetStrategy(
+            input_length,
+            size_hidden_layer = SIZE_HIDDEN_LAYER,
+            requires_grad=False
+            ).to(device)
+        if model(torch.tensor([float(u_hi)], device=device)) > 0:
+            output_is_positive = True
+
     bidder = strat_to_bidder(model, BATCH_SIZE)
 
     bidder.valuations.zero_().add_(10)
@@ -65,7 +72,7 @@ def test_ES_optimizer():
     """Tests ES optimizer in static environment.
        This does not test complete convergence but 'running in the right direction'.
     """
-    
+
     BATCH_SIZE = 2**18
     epoch = 200
     LEARNING_RATE = 1e-1
@@ -76,8 +83,17 @@ def test_ES_optimizer():
     sigma = .1 #ES noise parameter
     n_perturbations = 32
 
+    #init model but ensure positive outputs
+    output_is_positive = False
+    while not output_is_positive:
+        model = NeuralNetStrategy(
+            input_length,
+            size_hidden_layer = SIZE_HIDDEN_LAYER,
+            requires_grad=False
+            ).to(device)
+        if model(torch.tensor([float(u_hi)], device=device)) > 0:
+            output_is_positive = True
 
-    model = NeuralNetStrategy(input_length, size_hidden_layer = SIZE_HIDDEN_LAYER, requires_grad=False).to(device)
     #bidder = strat_to_bidder(model, BATCH_SIZE)
     env = AuctionEnvironment(
         mechanism,
@@ -112,7 +128,7 @@ def test_ES_optimizer():
 
     torch.cuda.empty_cache()
 
-    assert utility > 1.4, "optimizer did not learn the optimum"
+    assert utility > 1.4, "optimizer did not learn sufficiently (1.4), got {:.2f}".format(utility)
 
 def test_ES_momentum():
     """Tests ES optimizer in static environment.
@@ -121,7 +137,7 @@ def test_ES_momentum():
 
     # skip this test for now because it's stupid and takes too long :-P
     pytest.skip("skipping because too long...")
-    
+
     BATCH_SIZE = 2**18
     epoch = 200
     LEARNING_RATE = 1e-1
@@ -134,7 +150,17 @@ def test_ES_momentum():
     n_perturbations = 32
 
 
-    model = NeuralNetStrategy(input_length, size_hidden_layer = SIZE_HIDDEN_LAYER, requires_grad=False).to(device)
+    #init model but ensure positive outputs
+    output_is_positive = False
+    while not output_is_positive:
+        model = NeuralNetStrategy(
+            input_length,
+            size_hidden_layer = SIZE_HIDDEN_LAYER,
+            requires_grad=False
+            ).to(device)
+        if model(torch.tensor([float(u_hi)], device=device)) > 0:
+            output_is_positive = True
+
     #bidder = strat_to_bidder(model, BATCH_SIZE)
     env = AuctionEnvironment(
         mechanism,
@@ -170,4 +196,4 @@ def test_ES_momentum():
 
     torch.cuda.empty_cache()
 
-    assert utility > 1.4, "optimizer did not learn the optimum. Utility is {}".format(utility)
+    assert utility > 1.4, "optimizer did not learn the optimum. Utility is {:.2f}".format(utility)
