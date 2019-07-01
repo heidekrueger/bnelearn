@@ -127,12 +127,12 @@ def test_matrix_game_environment_training():
                  )
     
     optimizer1 = ES(
-        model=model1, environment = env,  env_type = 'fixed',
+        model=model1, environment = env,  env_type = 'static',
         lr = learning_rate,
         sigma=sigma, n_perturbations=n_perturbations, player_position=0
         )
     optimizer2 = ES(
-        model=model2, environment = env, env_type = 'fixed',
+        model=model2, environment = env, env_type = 'static',
         lr = learning_rate, 
         sigma=sigma, n_perturbations=n_perturbations, player_position=1
         )

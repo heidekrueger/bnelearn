@@ -136,9 +136,9 @@ def test_ES_momentum():
     """
 
     # skip this test for now because it's stupid and takes too long :-P
-    pytest.skip("skipping because too long...")
+    #pytest.skip("skipping because too long...")
 
-    BATCH_SIZE = 2**18
+    BATCH_SIZE = 2**12
     epoch = 200
     LEARNING_RATE = 1e-1
     MOMENTUM = 0.5

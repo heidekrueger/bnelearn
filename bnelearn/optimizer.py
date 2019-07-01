@@ -3,6 +3,7 @@ from collections.abc import Iterable
 #from collections import deque
 
 from copy import deepcopy
+import warnings
 
 import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
@@ -11,7 +12,6 @@ from torch.optim.optimizer import Optimizer, required #pylint: disable=no-name-i
 from bnelearn.environment import Environment
 from bnelearn.strategy import Strategy
 
-dynamic = object()
 
 class ES(Optimizer):
     """Implements Evolutionary Strategy similar to `Salimans et al (2017) https://arxiv.org/pdf/1703.03864.pdf`
@@ -59,7 +59,7 @@ class ES(Optimizer):
 
     def __init__(self, model: torch.nn.Module, environment: Environment, params=None,
                  lr=required, momentum=0, sigma=required, n_perturbations=64,
-                 baseline=True, env_type=dynamic, player_position=None
+                 baseline=True, env_type='dynamic', player_position=None
                 ):
 
         # validation checks
@@ -73,6 +73,19 @@ class ES(Optimizer):
             raise ValueError("Invalid number of perturbations: {}".format(n_perturbations))
         assert isinstance(baseline, (bool, int, float)), "Invalid baseline parameter."
         assert isinstance(environment, Environment), "Invalid Environment"
+
+        if env_type == 'fixed':
+            env_type = 'static' # treat these as aliases, 'static' being the canonical form
+        if env_type == 'dynamic' and player_position is not None:
+            warnings.warn(
+                'You have specified a player_position, but dynamic env_type!' +
+                ' This may lead to unexpected behavior! Did you mean to use a static environment?')
+        elif env_type == 'static' and player_position is None:
+            warnings.warn(
+                'You haven\'t specified a player_position in a static environment.' +
+                ' Defaulting to player_position=0')
+        elif env_type != 'static' and env_type != 'dynamic':
+            raise ValueError('Optimizer received invalid environment type!')
 
         if not params:
             params = model.parameters()
@@ -90,7 +103,7 @@ class ES(Optimizer):
         # additional members deliberately not handled by super
         self.model = model
         self.player_position = player_position
-        if environment.is_empty() and env_type is dynamic:
+        if environment.is_empty() and env_type == 'dynamic':
             # for self play, add initial model into environment
             environment.push_agent(deepcopy(model))
         self.environment = environment
@@ -172,7 +185,7 @@ class ES(Optimizer):
 
 
         # add new model to environment in dynamic environments
-        if self.env_type is dynamic:
+        if self.env_type == 'dynamic':
             self.environment.push_agent(deepcopy(self.model))
 
         utility = self.environment.get_reward(self.model, self.player_position)
@@ -226,7 +239,7 @@ class SimpleReinforce(Optimizer):
 
     def __init__(self, model: torch.nn.Module, environment,
                  params=None, lr=required, sigma=required, n_perturbations=64,
-                 env_type=dynamic, player_position=None):
+                 env_type='dynamic', player_position=None):
         if lr is not required and lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
         if not params:
@@ -238,7 +251,7 @@ class SimpleReinforce(Optimizer):
         # additional members deliberately not handled by super
         self.model = model
         self.player_position = player_position
-        if environment.is_empty() and env_type is dynamic:
+        if environment.is_empty() and env_type == 'dynamic':
             # for self play, add initial model into environment
             environment.push_agent(deepcopy(model))
         self.environment = environment
@@ -294,8 +307,8 @@ class SimpleReinforce(Optimizer):
             # TODO: possibly missing minus?
             p.data.add_(self.param_groups[0]['lr'], dp[p])
 
-         # add new model to environment in dynamic environments
-        if self.env_type is dynamic:
+         # add new model to environment in 'dynamic' environments
+        if self.env_type == 'dynamic':
             self.environment.push_agent(deepcopy(self.model))
 
         utility = self.environment.get_reward(self.model, self.player_position)
