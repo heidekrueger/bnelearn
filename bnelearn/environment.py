@@ -289,15 +289,18 @@ class MatrixGameEnvironment(Environment):
         return sigma, values, strat
 
     def solve_with_fudenberg_smooth_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None,
-                                          w_b=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
+                                          tau=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
         """
-        same as fudenberg fictitious play but with adding noise by adding softmax. 
+        Identical to "fudenberg fictitious play" but with adding noise by adding softmax, adding cooling factor.
+        Implementation of exponential smooth fictitious play (p. 153).
         Therefore, the Best Response becomes a smooth and contious probability function.
-        #Current assumption: As before, player i's believes about the other players strategy profiles is based on past observations
-        WIP...
+        Assumption: Player i's believes about the other players strategy profiles is based on past observations.
+
+        WIP...TODO: Doesn't converge yet!
         """
 
         # Parameters
+        random.seed = 1
         n_players = self.game.outcomes.shape[len(self.game.outcomes.shape)-1]
         n_actions = [self.game.outcomes.shape[i] for i in range(len(self.game.outcomes.shape)-1)]
         weights = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
@@ -306,11 +309,11 @@ class MatrixGameEnvironment(Environment):
         if initial_beliefs is None:
             initial_beliefs = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
             for i in range(n_players):
-                initial_beliefs[i] = 1
                 weights[i][0,:] = torch.ones(n_actions[i], dtype=torch.int32, device=dev)
                 #initial_beliefs[i][random.randint(0, n_weights[i]-1)] = 1
-
-        #weights = initial_beliefs.copy()
+        else: 
+            for i in range(n_players):
+                weights[i][0,:] = initial_beliefs[i]
 
         probs = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
         strat = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
@@ -324,10 +327,21 @@ class MatrixGameEnvironment(Environment):
                 player_p_matrix = self.game.outcomes.select(n_players,i).permute(
                             *[(1+i+j)%n_players for j in range(n_players)])
 
-                # 2. Player (i) plays a rule (p(i)_t(gamma(i)_t), i.e. action) as best response
-                action = self._calc_exp_util(player_p_matrix, probs, n_players, i).sum(dim = 0, keepdim=False)[1]
+                # 2. Player (i) computes expected utils according to beliefs. Then applies softmax (exponential smooth)
+                r = random.random()
+                probs_tmp = (1/tau * self._calc_exp_util(player_p_matrix, probs, n_players, i)).softmax(0)
+                p = 0
+                action = None
+                # Choose random action according to probabilities
+                for i2 in range(len(probs_tmp)):
+                    if (r >= p and r < p+probs_tmp[i2]):
+                        action = i2
+                        break
+                    p += probs_tmp[i2]
+
                 weights[i][n+1,:] = weights[i][n,:]
                 weights[i][n+1,action] = weights[i][n,action] + 1
+            tau = 1/torch.log(torch.tensor(n+3.))
 
         for i in range(n_players):
             strat[i] = probs[i]
