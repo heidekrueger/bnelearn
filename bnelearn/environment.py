@@ -3,10 +3,10 @@ from collections.abc import Iterable
 from collections import deque
 
 from abc import ABC, abstractmethod
-from typing import Callable, Tuple, List
+from typing import Callable, Tuple, List, Set
 
-import torch
 import random
+import torch
 
 from bnelearn.bidder import Player, Bidder, MatrixGamePlayer
 from bnelearn.mechanism import Mechanism, MatrixGame
@@ -45,7 +45,8 @@ class Environment(ABC):
 
     @abstractmethod
     def get_reward(self, agent: Player or Strategy, **kwargs):
-        pass
+        """Return reward for a player playing a certain strategy"""
+        pass #pylint: disable=unnecessary-pass
 
     def _generate_agent_actions(self, **kwargs): #pylint: disable=unused-argument
         for agent in self.agents:
@@ -56,6 +57,15 @@ class Environment(ABC):
             (e.g. in an Auction, draw bidders' valuations)
         """
         pass #pylint: disable=unnecessary-pass
+
+    def get_player_from_strategy(self, strategy: Strategy, **kwargs):
+        """ Transform a strategy into a player that plays that strategy """
+        if self._strategy_to_player:
+            player: Player = self._strategy_to_player(strategy, self.batch_size, **kwargs)
+            #bidder.player_position = player_position
+            return player
+
+        raise NotImplementedError("No strategy_to_player closure provided!")
 
     def size(self):
         """Returns the number of agents/opponent setups in the environment."""
@@ -101,7 +111,7 @@ class MatrixGameEnvironment(Environment):
             yield (agent.player_position, agent.get_action())
 
 
-    def get_reward(self, agent, player_position, **kwargs) -> torch.tensor: #pylint: disable=arguments-differ
+    def get_reward(self, agent, **kwargs) -> torch.tensor: #pylint: disable=arguments-differ
         """
             What should be the dimension of reward?
         """
@@ -111,8 +121,10 @@ class MatrixGameEnvironment(Environment):
             agent: MatrixGamePlayer = self._strategy_to_player(
                 agent,
                 batch_size=self.batch_size,
-                player_position=player_position
+                **kwargs
                 )
+
+        player_position = agent.player_position
 
         #redundant, since matrix game doesn't need any preparation
         agent.prepare_iteration()
@@ -396,6 +408,7 @@ class MatrixGameEnvironment(Environment):
 
         return weights, values, probs
 
+
 class AuctionEnvironment(Environment):
     """
         An environment of agents to play against and evaluate strategies.
@@ -412,7 +425,7 @@ class AuctionEnvironment(Environment):
     """
 
     def __init__(self, mechanism: Mechanism, agents: Iterable, max_env_size=None,
-                 batch_size=100, n_players=2, strategy_to_bidder_closure: Callable=None):
+                 batch_size=100, n_players=2, strategy_to_bidder_closure: Callable[[Strategy], Bidder]=None):
 
         super().__init__(
             agents=agents,
@@ -426,84 +439,119 @@ class AuctionEnvironment(Environment):
         self.agents = deque(self.agents, max_env_size)
         self.mechanism = mechanism
 
-        # define alias
-        self._strategy_to_bidder = self._strategy_to_player
 
 
-    def get_reward(self, agent: Bidder or Strategy, draw_valuations=False, **kwargs): #pylint: disable=arguments-differ
+
+    def get_reward(self, agent: Bidder, draw_valuations=False, **kwargs): #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment.
            Reward is calculated as average utility for each of the batch_size x env_size games
         """
 
-        if isinstance(agent, Strategy):
-            agent: Bidder = self._bidder_from_strategy(agent)
-
         # get a batch of bids for each player
         agent.batch_size = self.batch_size
+
+        #if player_position is None:
+        player_position = agent.player_position if agent.player_position else 0
+
         # draw valuations
         agent.prepare_iteration()
-        agent_bid = agent.get_action()
-
-        utility: torch.Tensor = torch.tensor(0.0, device=agent.device)
-
         if draw_valuations:
-            self.draw_valuations_()
+            self.draw_valuations_(exclude = set([player_position]))
 
-        if len(self.agents)==0:
-            # no other agents in this environment. play only with own action
+        # get agent_bid
+        agent_bid = agent.get_action()
+        n_items = agent_bid.shape[1]
+
+        if not self.agents:# Env is empty --> play only with own action against 'nature'
             allocation, payments = self.mechanism.play(
-                agent_bid.view(self.batch_size, self.n_players, 1)
+                agent_bid.view(self.batch_size, self.n_players, n_items)
             )
             utility = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
-        else:
-            # play against all agents in the environment, return average utility
-            for opponent_bid in self._generate_opponent_bids():
-                # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
-                allocation, payments = self.mechanism.play(
-                    torch.cat((agent_bid, opponent_bid), 1).view(self.batch_size, self.n_players, 1)
-                )
-                # average over batch against this opponent
-                u = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
-                utility.add_(u)
+        else: # at least 1 environment agent --> build bid_profile, then play
 
-                # average over plays against all players in the environment
-                utility.div_(self.size())
+            # get bid profile
+            # TODO: check where those params should be taken from ultimately... game? agent? self?
+            bid_profile = torch.zeros(self.batch_size, self.n_players, n_items,
+                                      dtype=agent_bid.dtype, device = self.mechanism.device)
+            bid_profile[:, player_position, :] = agent_bid
+
+            # ugly af hack: if environment is dynamic, all player positions will be
+            # none. simply start at 1 for the first opponent and count up
+            # TODO: clean this up 🤷 ¯\_(ツ)_/¯
+            counter = 1
+            for opponent_pos, opponent_bid in self._generate_agent_actions(exclude = set([player_position])):
+                # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
+                if opponent_pos is None:
+                    opponent_pos = counter
+                bid_profile[:, opponent_pos, :] = opponent_bid
+
+                counter = counter + 1
+
+            allocation, payments = self.mechanism.play(bid_profile)
+
+            # average over batch against this opponent
+            utility = agent.get_utility(
+                allocation[:,player_position,:],
+                payments[:,player_position]
+                ).mean()
 
         return utility
 
     def prepare_iteration(self):
         self.draw_valuations_()
 
-    def draw_valuations_(self):
+    def draw_valuations_(self, exclude: Set[int] or None = None):
         """
-            Draws new valuations for each opponent-agent in the environment
-        """
-        for opponent in self.agents:
-            opponent.batch_size = self.batch_size
-            if isinstance(opponent, Bidder):
-                opponent.draw_valuations_()
+            Draws new valuations for each agent in the environment except the
+            excluded set.
 
-    def push_agent(self, agent: Bidder or Strategy):
+            args:
+                exclude: A set of player positions to exclude.
+                    Used e.g. to generate action profile of all but currently
+                    learning player.
+
+            returns/yields:
+                nothing
+
+            side effects:
+                updates agent valuation states
+        """
+
+        if exclude is None:
+            exclude = set()
+
+        for agent in (a for a in self.agents if a.player_position not in exclude):
+            agent.batch_size = self.batch_size
+            if isinstance(agent, Bidder):
+                agent.draw_valuations_()
+
+
+
+    def _generate_agent_actions(self, exclude: Set[int] or None = None, **kwargs):
+        """
+        Generator function yielding batches of bids for each environment agent
+        that is not excluded.
+
+        args:
+            exclude:
+                A set of player positions to exclude.
+                Used e.g. to generate action profile of all but currently learning player.
+
+        yields:
+            tuple(player_position, action) for each relevant bidder
+        """
+
+        if exclude is None:
+            exclude = set()
+
+        for agent in (a for a in self.agents if a.player_position not in exclude):
+            yield(agent.player_position, agent.get_action())
+
+    def push_agent(self, agent: Bidder or Strategy, **kwargs):
         """
             Add an agent to the environment, possibly pushing out the oldest one)
         """
         if isinstance(agent, Strategy):
-            agent: Bidder = self._bidder_from_strategy(agent)
+            agent: Bidder = self.get_player_from_strategy(agent, **kwargs)
 
         self.agents.append(agent)
-
-
-    def _bidder_from_strategy(self, strategy: Strategy):
-        """ Transform a strategy into a player that plays that strategy """
-        if self._strategy_to_bidder:
-            return self._strategy_to_bidder(strategy, self.batch_size)
-
-        raise NotImplementedError()
-
-    def _generate_agent_actions(self, **kwargs):
-        return self._generate_agent_actions()
-
-    def _generate_opponent_bids(self):
-        """ Generator function yielding batches of bids for each player in environment agents"""
-        for opponent in self.agents:
-            yield opponent.get_action()

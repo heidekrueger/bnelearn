@@ -17,6 +17,7 @@ class Game(ABC):
     """
     Base class for any kind of games
     """
+    device: str
 
     @abstractmethod
     def play(self, actions, **kwargs):
@@ -36,6 +37,7 @@ class Mechanism(Game):
 
     @abstractmethod
     def run(self, bids):
+        """Alias for play for auction mechanisms"""
         pass
 
 class MatrixGame(Game):
@@ -214,7 +216,7 @@ class MatrixGame(Game):
             einsum_string = einsum_strings[self.n_players]
         except KeyError:
             raise NotImplementedError('Playing mixed strategies is only implemented for up to 6 players!')
-        
+
         return torch.einsum(einsum_string, strategy_profile_list)
 
 
@@ -326,6 +328,7 @@ class PaulTestGame(MatrixGame):
     def __init__(self, cuda: bool = True):
         device = 'cuda' if cuda and torch.cuda.is_available() else 'cpu'
 
+        # pylint: disable=bad-continuation
         outcomes = torch.tensor([
             [   [   #LL
                     [2., 2, 2],  # LLL
@@ -386,7 +389,7 @@ class BattleOfTheSexes_Mod(MatrixGame):
                 [# Him: Stadium with friend
                     [-1,1],  # Her: Stadium
                     [4,0]], # Her: Theater
-                    ]),
+                ]),
             cuda=cuda
         )
 
@@ -449,7 +452,7 @@ class VickreyAuction(Mechanism):
         payments_per_item = torch.zeros(batch_size, n_players, n_items, device = self.device)
         allocations = torch.zeros(batch_size, n_players, n_items, device = self.device)
 
-        highest_bids, winning_bidders = bids.max(dim = player_dim, keepdim=True) # shape of each: [batch_size, 1, n_items]
+        highest_bids, winning_bidders = bids.max(dim=player_dim, keepdim=True) # shape of each: [batch_size, 1, n_items]
 
         # getting the second prices --> price is the lowest of the two highest bids
         top2_bids, _ = bids.topk(2, dim = player_dim, sorted=False)
@@ -510,10 +513,10 @@ class FirstPriceSealedBidAuction(Mechanism):
         payments_per_item = torch.zeros(batch_size, n_players, n_items, device = self.device)
         allocations = torch.zeros(batch_size, n_players, n_items, device = self.device)
 
-        highest_bids, winning_bidders = bids.max(dim = player_dim, keepdim=True) # shape of each: [batch_size, 1, n_items]
+        highest_bids, winning_bidders = bids.max(dim = player_dim, keepdim=True) # both shapes: [batch_size, 1, n_items]
 
-        # replaced by equivalent torch.scatter operation, see below,
-        # but keeping looped code for readability
+        # replaced by equivalent, faster torch.scatter operation, see below,
+        # but keeping nested-loop code for readability
         # note: code in comment references bids.max with keepdim=False.
         ##for batch in range(batch_size):
         ##    for j in range(n_items):

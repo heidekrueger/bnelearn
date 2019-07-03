@@ -81,7 +81,7 @@ def test_train_prisoners_dilemma():
     
 def test_matrix_game_environment_training():
     """
-    Tests training in an assymetric Matrix Game using the MatrixGameEnvironment
+    Tests training in an asymetric Matrix Game using the MatrixGameEnvironment
     with unique players.
     """
 
@@ -127,14 +127,16 @@ def test_matrix_game_environment_training():
                  )
     
     optimizer1 = ES(
-        model=model1, environment = env,  env_type = 'fixed',
+        model=model1, environment = env,  env_type = 'static',
         lr = learning_rate,
-        sigma=sigma, n_perturbations=n_perturbations, player_position=0
+        sigma=sigma, n_perturbations=n_perturbations,
+        strat_to_bidder_kwargs= {'player_position': 0}
         )
     optimizer2 = ES(
-        model=model2, environment = env, env_type = 'fixed',
+        model=model2, environment = env, env_type = 'static',
         lr = learning_rate, 
-        sigma=sigma, n_perturbations=n_perturbations, player_position=1
+        sigma=sigma, n_perturbations=n_perturbations,
+        strat_to_bidder_kwargs= {'player_position': 0}
         )
     
     ## Training ---

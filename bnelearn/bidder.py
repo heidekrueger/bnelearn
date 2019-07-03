@@ -16,9 +16,10 @@ class Player(ABC):
         - utility function over outcomes
     """
 
-    def __init__(self, strategy, batch_size=1, n_players=2, cuda=True):
+    def __init__(self, strategy, player_position=None, batch_size=1, n_players=2, cuda=True):
         self.cuda = cuda and torch.cuda.is_available()
         self.device = 'cuda' if self.cuda else 'cpu'
+        self.player_position :int = player_position if player_position else 0
         self.strategy = strategy
         self.batch_size = batch_size
         self.n_players = n_players
@@ -39,10 +40,9 @@ class Player(ABC):
 class MatrixGamePlayer(Player):
     """ A player playing a matrix game"""
     def __init__(self, strategy, player_position=None, batch_size=1, n_players=2, cuda=True):
-        super().__init__(strategy, batch_size=batch_size, n_players=n_players, cuda=cuda)
+        super().__init__(strategy, player_position=player_position,
+                         batch_size=batch_size, n_players=n_players, cuda=cuda)
 
-        #self.game = game
-        self.player_position: int = player_position if player_position else 0
 
     def get_utility(self, *outcome): #pylint: disable=arguments-differ
         """ get player's utility for a batch of outcomes"""
@@ -58,15 +58,17 @@ class Bidder(Player):
     def __init__(self,
                  value_distribution: Distribution,
                  strategy,
+                 player_position=None,
                  batch_size=1,
                  n_items = 1, n_players=2,
                  cuda=True
                  ):
-        super().__init__(strategy, batch_size, n_players, cuda)
+        super().__init__(strategy, player_position, batch_size, n_players, cuda)
 
         self.value_distribution = value_distribution
         self.n_items = n_items
-        self.valuations = torch.zeros(batch_size, n_items, device = self.device)
+        self.valuations = torch.zeros(batch_size, n_items, device=self.device)
+        self.utility = torch.zeros(batch_size, device=self.device)
 
     ### Alternative Constructors #############
     @classmethod
@@ -86,7 +88,9 @@ class Bidder(Player):
         self.draw_valuations_()
 
     def draw_valuations_(self):
-        """Sample a new batch of valuations from the Bidder's prior."""
+        """Sample a new batch of valuations from the Bidder's prior.
+           Negative draws will be clipped at 0.0!
+        """
         # If in place sampling is available for our distribution, use it!
         # This will save time for memory allocation and/or copying between devices
         # As sampling from general torch.distribution is only available on CPU.
@@ -97,14 +101,18 @@ class Bidder(Player):
             self.valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
         # gaussian
         elif isinstance(self.value_distribution, torch.distributions.normal.Normal):
-            self.valuations.normal_(mean = self.value_distribution.loc, std = self.value_distribution.scale)
+            self.valuations.normal_(mean = self.value_distribution.loc, std = self.value_distribution.scale).relu_()
         # TODO: add additional internal in-place samplers
         else:
             # slow! (sampling on cpu then copying to GPU)
-            self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device)
+            self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device).relu()
+
         return self.valuations
 
     def get_utility(self, allocations, payments): #pylint: disable=arguments-differ
+        """
+        For a batch of allocations and payments return the player's utilities.
+        """
 
         assert allocations.dim() == 2 # batch_size x items
         assert payments.dim() == 1 # batch_size
