@@ -44,9 +44,9 @@ class Environment(ABC):
         self.agents: Iterable[Player] = agents
 
     @abstractmethod
-    def get_reward(self, agent: Player or Strategy, player_position, **kwargs):
+    def get_reward(self, agent: Player or Strategy, **kwargs):
         """Return reward for a player playing a certain strategy"""
-        pass
+        pass #pylint: disable=unnecessary-pass
 
     def _generate_agent_actions(self, **kwargs): #pylint: disable=unused-argument
         for agent in self.agents:
@@ -57,6 +57,15 @@ class Environment(ABC):
             (e.g. in an Auction, draw bidders' valuations)
         """
         pass #pylint: disable=unnecessary-pass
+
+    def get_player_from_strategy(self, strategy: Strategy, **kwargs):
+        """ Transform a strategy into a player that plays that strategy """
+        if self._strategy_to_player:
+            player: Player = self._strategy_to_player(strategy, self.batch_size, **kwargs)
+            #bidder.player_position = player_position
+            return player
+
+        raise NotImplementedError("No strategy_to_player closure provided!")
 
     def size(self):
         """Returns the number of agents/opponent setups in the environment."""
@@ -102,7 +111,7 @@ class MatrixGameEnvironment(Environment):
             yield (agent.player_position, agent.get_action())
 
 
-    def get_reward(self, agent, player_position, **kwargs) -> torch.tensor: #pylint: disable=arguments-differ
+    def get_reward(self, agent, **kwargs) -> torch.tensor: #pylint: disable=arguments-differ
         """
             What should be the dimension of reward?
         """
@@ -112,8 +121,10 @@ class MatrixGameEnvironment(Environment):
             agent: MatrixGamePlayer = self._strategy_to_player(
                 agent,
                 batch_size=self.batch_size,
-                player_position=player_position
+                **kwargs
                 )
+
+        player_position = agent.player_position
 
         #redundant, since matrix game doesn't need any preparation
         agent.prepare_iteration()
@@ -351,118 +362,6 @@ class MatrixGameEnvironment(Environment):
 
         return actions, values, strat
 
-class OldAuctionEnvironment(Environment):
-    """
-        An environment of agents to play against and evaluate strategies.
-
-        In particular this means:
-            - an iterable of sets of -i players that a strategy of a single player can be tested against
-            - accept strategy as argument, then play batch_size rounds and return the reward
-
-        Args:
-        ... (TODO: document)
-
-        strategy_to_bidder_closure: A closure (strategy, batch_size) -> Bidder to
-            transform strategies into a Bidder compatible with the environment
-    """
-
-    def __init__(self, mechanism: Mechanism, agents: Iterable, max_env_size=None,
-                 batch_size=100, n_players=2, strategy_to_bidder_closure: Callable=None):
-
-        super().__init__(
-            agents=agents,
-            n_players=n_players,
-            batch_size=batch_size,
-            strategy_to_player_closure=strategy_to_bidder_closure
-            )
-        self.max_env_size = max_env_size
-
-        # turn agents into deque TODO: might want to change this.
-        self.agents = deque(self.agents, max_env_size)
-        self.mechanism = mechanism
-
-        # define alias
-        self._strategy_to_bidder = self._strategy_to_player
-
-
-    def get_reward(self, agent: Bidder or Strategy, draw_valuations=False, **kwargs): #pylint: disable=arguments-differ
-        """Returns reward of a single player against the environment.
-           Reward is calculated as average utility for each of the batch_size x env_size games
-        """
-
-        if isinstance(agent, Strategy):
-            agent: Bidder = self._bidder_from_strategy(agent)
-
-        # get a batch of bids for each player
-        agent.batch_size = self.batch_size
-        # draw valuations TODO: check with draw_valuations below? redundant?
-        agent.prepare_iteration()
-        agent_bid = agent.get_action()
-
-        utility: torch.Tensor = torch.tensor(0.0, device=agent.device)
-
-        if draw_valuations:
-            self.draw_valuations_()
-
-        if not self.agents:
-            # no other agents in this environment. play only with own action
-            allocation, payments = self.mechanism.play(
-                agent_bid.view(self.batch_size, self.n_players, 1)
-            )
-            utility = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
-        else:
-            # play against all agents in the environment, return average utility
-            for opponent_bid in self._generate_opponent_bids():
-                # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
-                allocation, payments = self.mechanism.play(
-                    torch.cat((agent_bid, opponent_bid), 1).view(self.batch_size, self.n_players, 1)
-                )
-                # average over batch against this opponent
-                u = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
-                utility.add_(u)
-
-                # average over plays against all players in the environment
-                utility.div_(self.size())
-
-        return utility
-
-    def prepare_iteration(self):
-        self.draw_valuations_()
-
-    def draw_valuations_(self):
-        """
-            Draws new valuations for each opponent-agent in the environment
-        """
-        for opponent in self.agents:
-            opponent.batch_size = self.batch_size
-            if isinstance(opponent, Bidder):
-                opponent.draw_valuations_()
-
-    def push_agent(self, agent: Bidder or Strategy):
-        """
-            Add an agent to the environment, possibly pushing out the oldest one)
-        """
-        if isinstance(agent, Strategy):
-            agent: Bidder = self._bidder_from_strategy(agent)
-
-        self.agents.append(agent)
-
-
-    def _bidder_from_strategy(self, strategy: Strategy):
-        """ Transform a strategy into a player that plays that strategy """
-        if self._strategy_to_bidder:
-            return self._strategy_to_bidder(strategy, self.batch_size)
-
-        raise NotImplementedError()
-
-    def _generate_agent_actions(self, **kwargs):
-        return self._generate_agent_actions()
-
-    def _generate_opponent_bids(self):
-        """ Generator function yielding batches of bids for each player in environment agents"""
-        for opponent in self.agents:
-            yield opponent.get_action()
-
 
 class AuctionEnvironment(Environment):
     """
@@ -494,23 +393,19 @@ class AuctionEnvironment(Environment):
         self.agents = deque(self.agents, max_env_size)
         self.mechanism = mechanism
 
-        # define alias
-        self._strategy_to_bidder = self._strategy_to_player
 
 
-    def get_reward(self, agent: Bidder or Strategy, player_position=None, draw_valuations=False, **kwargs): #pylint: disable=arguments-differ
+
+    def get_reward(self, agent: Bidder, draw_valuations=False, **kwargs): #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment.
            Reward is calculated as average utility for each of the batch_size x env_size games
         """
 
-        if isinstance(agent, Strategy):
-            agent: Bidder = self._bidder_from_strategy(agent, player_position=None)
-
         # get a batch of bids for each player
         agent.batch_size = self.batch_size
 
-        if player_position is None:
-            player_position = agent.player_position if agent.player_position else 0
+        #if player_position is None:
+        player_position = agent.player_position if agent.player_position else 0
 
         # draw valuations
         agent.prepare_iteration()
@@ -584,14 +479,7 @@ class AuctionEnvironment(Environment):
             if isinstance(agent, Bidder):
                 agent.draw_valuations_()
 
-    def _bidder_from_strategy(self, strategy: Strategy, player_position: int=None):
-        """ Transform a strategy into a player that plays that strategy """
-        if self._strategy_to_bidder:
-            bidder: Bidder = self._strategy_to_bidder(strategy, self.batch_size)
-            bidder.player_position = player_position
-            return bidder
 
-        raise NotImplementedError()
 
     def _generate_agent_actions(self, exclude: Set[int] or None = None, **kwargs):
         """
@@ -613,11 +501,11 @@ class AuctionEnvironment(Environment):
         for agent in (a for a in self.agents if a.player_position not in exclude):
             yield(agent.player_position, agent.get_action())
 
-    def push_agent(self, agent: Bidder or Strategy):
+    def push_agent(self, agent: Bidder or Strategy, **kwargs):
         """
             Add an agent to the environment, possibly pushing out the oldest one)
         """
         if isinstance(agent, Strategy):
-            agent: Bidder = self._bidder_from_strategy(agent)
+            agent: Bidder = self.get_player_from_strategy(agent, **kwargs)
 
         self.agents.append(agent)

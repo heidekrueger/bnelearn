@@ -61,7 +61,7 @@ def test_nplayer_playing():
                 lr = learning_rate, momentum=momentum,
                 sigma=sigma, n_perturbations=n_perturbations,
                 baseline=baseline, env_type = 'static',
-                player_position=bidder1.player_position)
+                strat_to_bidder_kwargs={'player_position':bidder1.player_position})
 
     for e in range(epoch+1):
         utility = -optimizer.step()
@@ -71,4 +71,4 @@ def test_nplayer_playing():
 
     # passing for now means no error so far.
 
-    # TODO: make sure it's learning.
+    # TODO: make sure it's learning correctly, add more tests

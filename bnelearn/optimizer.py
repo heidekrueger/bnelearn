@@ -59,7 +59,8 @@ class ES(Optimizer):
 
     def __init__(self, model: torch.nn.Module, environment: Environment, params=None,
                  lr=required, momentum=0, sigma=required, n_perturbations=64,
-                 baseline=True, env_type='dynamic', player_position=None
+                 baseline=True, env_type='dynamic', #player_position=None,
+                 strat_to_bidder_kwargs: dict =None
                 ):
 
         # validation checks
@@ -76,16 +77,6 @@ class ES(Optimizer):
 
         if env_type == 'fixed':
             env_type = 'static' # treat these as aliases, 'static' being the canonical form
-        if env_type == 'dynamic' and player_position is not None:
-            warnings.warn(
-                'You have specified a player_position, but dynamic env_type!' +
-                ' This may lead to unexpected behavior! Did you mean to use a static environment?')
-        elif env_type == 'static' and player_position is None:
-            warnings.warn(
-                'You haven\'t specified a player_position in a static environment.' +
-                ' Defaulting to player_position=0')
-        elif env_type != 'static' and env_type != 'dynamic':
-            raise ValueError('Optimizer received invalid environment type!')
 
         if not params:
             params = model.parameters()
@@ -102,7 +93,23 @@ class ES(Optimizer):
 
         # additional members deliberately not handled by super
         self.model = model
-        self.player_position = player_position
+        #self.player_position = player_position
+        self.strat_to_bidder_kwargs = strat_to_bidder_kwargs if strat_to_bidder_kwargs else {}
+        
+        # warn if weird initialization
+        if env_type == 'dynamic' and \
+            'player_position' in self.strat_to_bidder_kwargs.keys() and \
+            strat_to_bidder_kwargs['player_position'] is not None:
+                warnings.warn(
+                    'You have specified a player_position, but dynamic env_type!' +
+                    ' This may lead to unexpected behavior! Did you mean to use a static environment?')
+        elif env_type == 'static' and 'player_position' not in self.strat_to_bidder_kwargs.keys():
+            warnings.warn(
+                'You haven\'t specified a player_position in a static environment.' +
+                ' Defaulting to player_position=0')
+        elif env_type != 'static' and env_type != 'dynamic':
+            raise ValueError('Optimizer received invalid environment type!')
+        
         if environment.is_empty() and env_type == 'dynamic':
             # for self play, add initial model into environment
             environment.push_agent(deepcopy(model))
@@ -122,7 +129,6 @@ class ES(Optimizer):
             and returns the loss.
         """
 
-
         for group in self.param_groups:
             base_params = group['params']
             lr = group['lr']
@@ -133,7 +139,12 @@ class ES(Optimizer):
 
             # set baseline. current reward if True
             if baseline is True: # run only for True, not for nonzero number!
-                baseline = self.environment.get_reward(self.model, self.player_position).view(1)
+                baseline = self.environment.get_reward(
+                    self.environment.get_player_from_strategy(
+                        self.model, 
+                        #self.player_position, 
+                        **self.strat_to_bidder_kwargs)
+                        ).view(1)
             else: # False, Int or Float
                 baseline = torch.tensor(float(baseline), device=base_params[0].device)
 
@@ -148,7 +159,12 @@ class ES(Optimizer):
                 torch.cat(tensors).view(n_perturbations, -1)
                 for tensors in zip(*(
                     (
-                        self.environment.get_reward(model, self.player_position).view(1),
+                        self.environment.get_reward(
+                            self.environment.get_player_from_strategy(
+                                model,
+                                #self.player_position,
+                                **self.strat_to_bidder_kwargs)
+                            ).view(1),
                         epsilon
                     )
                     for (model, epsilon) in population
@@ -188,7 +204,13 @@ class ES(Optimizer):
         if self.env_type == 'dynamic':
             self.environment.push_agent(deepcopy(self.model))
 
-        utility = self.environment.get_reward(self.model, self.player_position)
+        utility = self.environment.get_reward(
+            self.environment.get_player_from_strategy(
+                self.model, 
+                #self.player_position, 
+                **self.strat_to_bidder_kwargs
+                )
+            )
         # 5. return the loss
         return -utility
 
@@ -293,7 +315,7 @@ class SimpleReinforce(Optimizer):
             reward = self.environment.get_reward(model, self.player_position).view(1)
             #print("reward: {}".format(reward))
             # calculate grad
-            action = self.environment._bidder_from_strategy(model).get_action()
+            action = self.environment.get_player_from_strategy(model).get_action()
             # perform gradient-on log action
             (action[0]).backward()
 
