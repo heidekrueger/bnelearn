@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-from collections.abc import Iterable
-#from collections import deque
-
-from copy import deepcopy
 import warnings
+from collections.abc import Iterable
+from copy import deepcopy
 
 import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
-from torch.optim.optimizer import Optimizer, required #pylint: disable=no-name-in-module # false positive
+from torch.optim.optimizer import (  # pylint: disable=no-name-in-module # false positive
+    Optimizer, required)
 
 from bnelearn.environment import Environment
 from bnelearn.strategy import Strategy
@@ -24,7 +23,6 @@ class ES(Optimizer):
           we use the following definition of momentum:
 
           delta = momentum * prev_delta + lr * pseudogradient
-
 
     Args:
         model (nn.Module): The base model that will be optimized.
@@ -93,7 +91,6 @@ class ES(Optimizer):
 
         # additional members deliberately not handled by super
         self.model = model
-        #self.player_position = player_position
         self.strat_to_bidder_kwargs = strat_to_bidder_kwargs if strat_to_bidder_kwargs else {}
 
         # warn if weird initialization
@@ -142,7 +139,6 @@ class ES(Optimizer):
                 baseline = self.environment.get_reward(
                     self.environment.get_player_from_strategy(
                         self.model,
-                        #self.player_position,
                         **self.strat_to_bidder_kwargs)
                     ).view(1)
             else: # False, Int or Float
@@ -162,7 +158,6 @@ class ES(Optimizer):
                         self.environment.get_reward(
                             self.environment.get_player_from_strategy(
                                 model,
-                                #self.player_position,
                                 **self.strat_to_bidder_kwargs)
                             ).view(1),
                         epsilon
@@ -207,7 +202,6 @@ class ES(Optimizer):
         utility = self.environment.get_reward(
             self.environment.get_player_from_strategy(
                 self.model,
-                #self.player_position,
                 **self.strat_to_bidder_kwargs
                 )
             )
