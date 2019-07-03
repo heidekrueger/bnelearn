@@ -11,20 +11,6 @@ device = 'cuda' if cuda else 'cpu'
 batch_size = 64
 
 
-def run_fictitious_play(n_players, game, initial_beliefs=None, iterations=1000):
-    game = game
-    env = MatrixGameEnvironment(game,
-                                agents=[],
-                                max_env_size=1,
-                                n_players=n_players,
-                                batch_size=batch_size)
-
-    return env.solve_with_fictitious_play(
-        dev = device,
-        initial_beliefs=initial_beliefs,
-        iterations = iterations
-    )
-
 def run_fudenberg_fictitious_play(n_players, game, initial_beliefs=None, iterations=1000):
     game = game
     env = MatrixGameEnvironment(game,
@@ -321,10 +307,14 @@ def test_fudenberg_smooth_fictitious_play_with_BattleOfTheSexes_2x2():
         iterations = 3000
         )
 
-    assert torch.allclose(strategy[0], torch.tensor([1.,0], device = device),atol = 0.01), 
-    "Invalid strategy {} for player {}".format(strategy[0],0)
-    assert torch.allclose(strategy[1], torch.tensor([1.,0], device = device),atol = 0.01), 
-    "Invalid strategy {} for player {}".format(strategy[1],1)
+    assert torch.allclose(strategy[0], 
+                          torch.tensor([0,1.], device = device),
+                          atol = 0.01), \
+                          "Invalid strategy {} for player {}".format(strategy[0],0)
+    assert torch.allclose(strategy[1], 
+                          torch.tensor([0,1.], device = device),
+                          atol = 0.01), \
+                          "Invalid strategy {} for player {}".format(strategy[1],1)
 
 def test_fudenberg_smooth_fictitious_play_with_MatchingPennies_2x2():
     # Test starting with mixed Nash
@@ -373,7 +363,10 @@ def test_smooth_fictitious_play_known_fct_with_BattleOfTheSexes_2x2():
         iterations = 3000
         )
 
-    assert torch.allclose(strategy[0], torch.tensor([0.6,0.4], device = device),atol = 0.01), 
-    "Invalid strategy {} for player {}".format(strategy[0],0)
-    assert torch.allclose(strategy[1], torch.tensor([0.4,0.6], device = device),atol = 0.01), 
-    "Invalid strategy {} for player {}".format(strategy[1],1)
+    assert torch.allclose(strategy[0], 
+                          torch.tensor([0.6,0.4], device = device),
+                          atol = 0.01), \
+                          "Invalid strategy {} for player {}".format(strategy[0],0)
+    assert torch.allclose(strategy[1], 
+                          torch.tensor([0.4,0.6], device = device),
+                          atol = 0.01), "Invalid strategy {} for player {}".format(strategy[1],1)

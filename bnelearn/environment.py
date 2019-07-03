@@ -159,7 +159,7 @@ class MatrixGameEnvironment(Environment):
 
     def solve_with_gerding_k_smooth_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None,
                                           w_b=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
-        r"""
+        """
         -------------
         Args
         w_b: bid specific weights. Currently just one.
@@ -282,12 +282,11 @@ class MatrixGameEnvironment(Environment):
 
         for i in range(n_players):
             strat[i] = sigma[i][iterations-1,:]
-
         return sigma, values, strat
     
     def solve_with_smooth_fictitious_play_known_fct(self, dev, initial_beliefs: torch.Tensor=None,
                                             tau=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
-            """
+        """
         Returns
         -------------
         sigma: history of probabilities (0 or 1) of playing a certain action (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
@@ -303,7 +302,7 @@ class MatrixGameEnvironment(Environment):
         """
         # Parameters
         torch.manual_seed(0)
-        random.seed = 0
+        random.seed(a=0)
         n_players = self.game.outcomes.shape[len(self.game.outcomes.shape)-1]
         n_actions = [self.game.outcomes.shape[i] for i in range(len(self.game.outcomes.shape)-1)]
         weights = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
@@ -355,7 +354,7 @@ class MatrixGameEnvironment(Environment):
 
         # Parameters
         torch.manual_seed(0)
-        random.seed = 0
+        random.seed(a=0)
         n_players = self.game.outcomes.shape[len(self.game.outcomes.shape)-1]
         n_actions = [self.game.outcomes.shape[i] for i in range(len(self.game.outcomes.shape)-1)]
         weights = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
