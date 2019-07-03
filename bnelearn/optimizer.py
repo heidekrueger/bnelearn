@@ -95,7 +95,7 @@ class ES(Optimizer):
         self.model = model
         #self.player_position = player_position
         self.strat_to_bidder_kwargs = strat_to_bidder_kwargs if strat_to_bidder_kwargs else {}
-        
+
         # warn if weird initialization
         if env_type == 'dynamic' and \
             'player_position' in self.strat_to_bidder_kwargs.keys() and \
@@ -109,7 +109,7 @@ class ES(Optimizer):
                 ' Defaulting to player_position=0')
         elif env_type != 'static' and env_type != 'dynamic':
             raise ValueError('Optimizer received invalid environment type!')
-        
+
         if environment.is_empty() and env_type == 'dynamic':
             # for self play, add initial model into environment
             environment.push_agent(deepcopy(model))
@@ -141,10 +141,10 @@ class ES(Optimizer):
             if baseline is True: # run only for True, not for nonzero number!
                 baseline = self.environment.get_reward(
                     self.environment.get_player_from_strategy(
-                        self.model, 
-                        #self.player_position, 
+                        self.model,
+                        #self.player_position,
                         **self.strat_to_bidder_kwargs)
-                        ).view(1)
+                    ).view(1)
             else: # False, Int or Float
                 baseline = torch.tensor(float(baseline), device=base_params[0].device)
 
@@ -206,8 +206,8 @@ class ES(Optimizer):
 
         utility = self.environment.get_reward(
             self.environment.get_player_from_strategy(
-                self.model, 
-                #self.player_position, 
+                self.model,
+                #self.player_position,
                 **self.strat_to_bidder_kwargs
                 )
             )

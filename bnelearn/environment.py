@@ -1,18 +1,15 @@
 # -*- coding: utf-8 -*-
-from collections.abc import Iterable
-from collections import deque
-
-from abc import ABC, abstractmethod
-from typing import Callable, Tuple, List, Set
-
 import random
+from abc import ABC, abstractmethod
+from collections import deque
+from collections.abc import Iterable
+from typing import Callable, List, Set, Tuple
+
 import torch
 
-from bnelearn.bidder import Player, Bidder, MatrixGamePlayer
-from bnelearn.mechanism import Mechanism, MatrixGame
+from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
+from bnelearn.mechanism import MatrixGame, Mechanism
 from bnelearn.strategy import Strategy
-
-dynamic = object()
 
 
 class Environment(ABC):
@@ -48,9 +45,25 @@ class Environment(ABC):
         """Return reward for a player playing a certain strategy"""
         pass #pylint: disable=unnecessary-pass
 
-    def _generate_agent_actions(self, **kwargs): #pylint: disable=unused-argument
-        for agent in self.agents:
-            yield agent.get_action()
+    def _generate_agent_actions(self, exclude: Set[int] or None = None, **kwargs):
+        """
+        Generator function yielding batches of bids for each environment agent
+        that is not excluded.
+
+        args:
+            exclude:
+                A set of player positions to exclude.
+                Used e.g. to generate action profile of all but currently learning player.
+
+        yields:
+            tuple(player_position, action) for each relevant bidder
+        """
+
+        if exclude is None:
+            exclude = set()
+
+        for agent in (a for a in self.agents if a.player_position not in exclude):
+            yield(agent.player_position, agent.get_action())
 
     def prepare_iteration(self):
         """Prepares the interim-stage of a Bayesian game,
@@ -95,27 +108,12 @@ class MatrixGameEnvironment(Environment):
 
         super().__init__(agents, n_players=n_players, batch_size=batch_size,
                          strategy_to_player_closure=strategy_to_player_closure)
-
         self.game = game
-
-    def _generate_agent_actions(self, exclude=set(), **kwargs):#pylint: disable=arguments-differ
-        """
-            Method for generating actions of all players in the environment
-
-            args:
-                exclude: A set of player positions to exclude.
-                         Used e.g. to generate action profile of all but currently
-                         learning player.
-        """
-        for agent in (a for a in self.agents if a.player_position not in exclude):
-            yield (agent.player_position, agent.get_action())
-
 
     def get_reward(self, agent, **kwargs) -> torch.tensor: #pylint: disable=arguments-differ
         """
-            What should be the dimension of reward?
+            Simulates one batch of the environment and returns the average reward for `agent` as a scalar tensor.
         """
-
 
         if isinstance(agent, Strategy):
             agent: MatrixGamePlayer = self._strategy_to_player(
@@ -123,11 +121,7 @@ class MatrixGameEnvironment(Environment):
                 batch_size=self.batch_size,
                 **kwargs
                 )
-
         player_position = agent.player_position
-
-        #redundant, since matrix game doesn't need any preparation
-        agent.prepare_iteration()
 
         action_profile = torch.zeros(self.batch_size, self.game.n_players,
                                      dtype=torch.long, device=agent.device)
@@ -139,7 +133,6 @@ class MatrixGameEnvironment(Environment):
             action_profile[:, position] = action.view(self.batch_size)
 
         allocation, payments = self.game.play(action_profile.view(self.batch_size, self.n_players, -1))
-
         utilities =  agent.get_utility(allocation[:,player_position,:], payments[:,player_position])
 
         return utilities.mean()
@@ -163,15 +156,31 @@ class MatrixGameEnvironment(Environment):
         ----------
         """
         iteration += 1
-        if(iteration >= n_players):
+        if iteration >= n_players:
             return m
         else:
-            exp_util = torch.squeeze(probs[(i+iteration)%n_players].matmul(self._calc_exp_util(m, probs, n_players, i, iteration)))
+            exp_util = probs[(i+iteration)%n_players] \
+                       .matmul(self._calc_exp_util(m, probs, n_players, i, iteration)) \
+                       .squeeze()
             return exp_util
 
     def solve_with_gerding_k_smooth_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None,
-                                          w_b=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
+                                                    w_b=1, iterations=100
+                                                   ) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
         """
+        Based on paper: Gerding et al. (2008). However this is based on auctions)
+
+        1. Players have initial guesses about other players probabilities for certain actions
+        2. All players calculate their corresponding expected utility for taking an action
+            given the guesses about the other players actions
+        3. All players play k-exponential fictitious play response (\\sigma_i(b) in Gerding et al. (2008))
+        4. Update beliefs about other players actions considering P(a|v) and \\sigma(a|v)
+
+        Mixed NE for BattleOfTheSexes:
+        initial_beliefs = torch.tensor([[0.6, 0.4],[0.4, 0.6]], dtype = torch.float, device = dev)
+
+        For testing PaulTestGame
+        initial_beliefs = torch.tensor([[0.1,0.9],[0.2,0.8],[0.3,0.7]], dtype = torch.float, device = dev)
         -------------
         Args
         w_b: bid specific weights. Currently just one.
@@ -179,22 +188,16 @@ class MatrixGameEnvironment(Environment):
 
         Returns
         -------------
-        sigma: history of probabilities of playing a certain action (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
-        values: history of expected valuations of playing a certain action (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
-        strat: latest probabilities of playing a certain action (list of length n_players [tensor of dimension (n_actions[current player])])
+        sigma:
+            history of probabilities of playing a certain action
+            (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        values:
+            history of expected valuations of playing a certain action
+            (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        strat:
+            latest probabilities of playing a certain action
+            (list of length n_players [tensor of dimension (n_actions[current player])])
         -------------
-        Based on paper: Gerding et al. (2008). However this is based on auctions)
-
-        1. Players have initial guesses about other players probabilities for certain actions
-        2. All players calculate their corresponding expected utility for taking an action given the guesses about the other players actions
-        3. All players play k-exponential fictitious play response (\\sigma_i(b) in Gerding et al. (2008))
-        4. Update beliefs about other players actions considering P(a|v) and \sigma(a|v)
-
-        Mixed NE for BattleOfTheSexes:
-        initial_beliefs = torch.tensor([[0.6, 0.4],[0.4, 0.6]], dtype = torch.float, device = dev)
-
-        For testing PaulTestGame
-        initial_beliefs = torch.tensor([[0.1,0.9],[0.2,0.8],[0.3,0.7]], dtype = torch.float, device = dev)
         """
         # Parameters
         tau = torch.tensor(1.0)
@@ -211,16 +214,19 @@ class MatrixGameEnvironment(Environment):
 
         probs = initial_beliefs.copy()
 
-        sigma = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]    # actions
+        sigma =[    torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev)
+                    for i in range(n_players)
+               ] # actions
         strat = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
         values = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
         for n in range(iterations):
             for i in range(n_players):
                 # 2. Compute expected values based on global probabilities
-                player_p_matrix = self.game.outcomes.select(n_players,i).permute(
-                            *[(1+i+j)%n_players for j in range(n_players)])
+                player_p_matrix = self.game.outcomes.select(n_players,i) \
+                                  .permute(*[(1+i+j)%n_players for j in range(n_players)])
                 values[i][n,:] = self._calc_exp_util(player_p_matrix, probs, n_players, i)
-                sigma[i][n,:] = (w_b * torch.exp((1/tau) * (values[i][n,:]))) / (w_b * torch.exp((1/tau) * (values[i][n,:]))).sum()
+                sigma[i][n,:] = (w_b * torch.exp((1/tau) * (values[i][n,:]))) \
+                              / (w_b * torch.exp((1/tau) * (values[i][n,:]))).sum()
 
             # 4. Update global probabilities
             for i in range(0,n_players):
@@ -234,24 +240,14 @@ class MatrixGameEnvironment(Environment):
         return sigma, values, strat
 
     def solve_with_gerding_smooth_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None,
-                                          w_b=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
+                                                  w_b=1, iterations=100
+                                                 ) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
         """
-        -------------
-        Args
-        w_b: bid specific weights. Currently just one.
-        -------------
-
-        Returns
-        -------------
-        sigma: history of probabilities of playing a certain action (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
-        values: history of expected valuations of playing a certain action (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
-        strat: latest probabilities of playing a certain action (list of length n_players [tensor of dimension (n_actions[current player])])
-        -------------
-
         Inspired by paper: Gerding et al. (2008) but with different updating procedure
 
         1. Players have initial guesses about other players probabilities for certain actions
-        2. All players calculate their corresponding expected utility for taking an action given the guesses about the other players actions
+        2. All players calculate their corresponding expected utility for taking an action
+            given the guesses about the other players actions
         3. Update own actions and beliefs about other players actions according to \\sigma_i(b) in Gerding et al. (2008)
 
         Mixed NE for BattleOfTheSexes:
@@ -259,6 +255,24 @@ class MatrixGameEnvironment(Environment):
 
         For testing PaulTestGame
         initial_beliefs = torch.tensor([[0.1,0.9],[0.2,0.8],[0.3,0.7]], dtype = torch.float, device = dev)
+
+        -------------
+        Args
+        w_b: bid specific weights. Currently just one.
+        -------------
+
+        Returns
+        -------------
+        sigma:
+            history of probabilities of playing a certain action
+            (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        values:
+            history of expected valuations of playing a certain action
+            (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        strat:
+            latest probabilities of playing a certain action
+            (list of length n_players [tensor of dimension (n_actions[current player])])
+        -------------
         """
         # Parameters
         tau = torch.tensor(1.0)
@@ -281,13 +295,15 @@ class MatrixGameEnvironment(Environment):
         for n in range(iterations):
             # 2. Choose actions and compute values based on global probabilities
             for i in range(n_players):
-                player_p_matrix = self.game.outcomes.select(n_players,i).permute(
-                            *[(1+i+j)%n_players for j in range(n_players)])
+                player_p_matrix = self.game.outcomes \
+                                  .select(n_players,i) \
+                                  .permute(*[(1+i+j)%n_players for j in range(n_players)])
                 values[i][n,:] = self._calc_exp_util(player_p_matrix, probs, n_players, i)
 
             # 3. Update global probabilities
             for i in range(0,n_players):
-                probs[i] = (w_b * torch.exp((1/tau) * (values[i][:(n+1),:].sum(0) / (n+1)))) / (w_b * torch.exp((1/tau) * (values[i][:(n+1),:].sum(0) / (n+1)))).sum()
+                probs[i] = (w_b * torch.exp((1/tau) * (values[i][:(n+1),:].sum(0) / (n+1)))) \
+                         / (w_b * torch.exp((1/tau) * (values[i][:(n+1),:].sum(0) / (n+1)))).sum()
                 sigma[i][n,:] = probs[i]
 
             tau = 1/torch.log(torch.tensor(n+3.))
@@ -295,21 +311,29 @@ class MatrixGameEnvironment(Environment):
         for i in range(n_players):
             strat[i] = sigma[i][iterations-1,:]
         return sigma, values, strat
-    
+
     def solve_with_smooth_fictitious_play_known_fct(self, dev, initial_beliefs: torch.Tensor=None,
-                                            tau=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
+                                                    tau=1, iterations=100
+                                                   ) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
         """
         Returns
         -------------
-        sigma: history of probabilities (0 or 1) of playing a certain action (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
-        values: history of valuations of playing a certain action as best response (BR) (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
-        strat: probability of playing a certain action based on past experiences (list of length n_players [tensor of dimension (n_actions[current player])])
+        sigma:
+            history of probabilities (0 or 1) of playing a certain action
+            (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        values:
+            history of valuations of playing a certain action as best response (BR)
+            (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        strat:
+            probability of playing a certain action based on past experiences
+            (list of length n_players [tensor of dimension (n_actions[current player])])
         -------------
         Based on description in: Fudenberg, 1999 - The Theory of Learning, Chapter 2.2
         Players choose actions simultaneously
-        
+
         0. Initialize weight function k(i)_0 ##For now with only ones
-        1. Player (i) computes probability of opponents (-i) playing a strategy (s(-i)) at time (t) as: gamma(i)_t(s(-i)) = k(i)_t(s(-i))/(sum_(s(-i) in S(-i)) k(i)_t(s(-i))))
+        1. Player (i) computes probability of opponents (-i) playing a strategy (s(-i)) at time (t) as:
+            gamma(i)_t(s(-i)) = k(i)_t(s(-i))/(sum_(s(-i) in S(-i)) k(i)_t(s(-i))))
         2. Player (i) plays a rule (p(i)_t(gamma(i)_t), i.e. action) as best response
         """
         # Parameters
@@ -327,41 +351,51 @@ class MatrixGameEnvironment(Environment):
         for i in range(n_players):
             for a in range(n_actions[i]):
                 weights[i][0,a] = initial_beliefs[i][a]/initial_beliefs[i].sum()
-        
+
         for n in range(iterations-1):
             # 1. Player (i) computes probability of opponents (-i) playing a strategy (s(-i)) at time (t)
             for i in range(n_players):
                 probs[i][:] = weights[i][n,:]
             for i in range(n_players):
-                player_p_matrix = self.game.outcomes.select(n_players,i).permute(
-                            *[(1+i+j)%n_players for j in range(n_players)])
+                player_p_matrix = self.game.outcomes \
+                                  .select(n_players,i) \
+                                  .permute(*[(1+i+j)%n_players for j in range(n_players)])
                 # 2. Player (i) computes expected utils according to beliefs. Then applies softmax (exponential smooth)
                 probs_tmp = (1/tau * self._calc_exp_util(player_p_matrix, probs, n_players, i)).softmax(0)
                 weights[i][n+1,:] = 1/(n+1) * (n * weights[i][n,:] + probs_tmp)
             # updating tau -> 0 Todo: Review update fct. here...
             tau = 1/torch.log(torch.tensor(n+3.))
-            # Todo: Get payoff of realization
+            # TODO: Get payoff of realization
             for i in range(n_players):
                 values[i][n] = 0
         return weights, values, probs
 
     def solve_with_fudenberg_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None,
-                                          smooth = False, tau=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
+                                             smooth = False, tau=1, iterations=100
+                                            ) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
         """
-        Returns
-        -------------
-        sigma: history of probabilities (0 or 1) of playing a certain action (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
-        values: history of valuations of playing a certain action as best response (BR) (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
-        strat: probability of playing a certain action based on past experiences (list of length n_players [tensor of dimension (n_actions[current player])])
-        -------------
-
         Based on description in: Fudenberg, 1999 - The Theory of Learning, Chapter 2.2
 
         Players choose actions simultaneously
-        
+
         0. Initialize weight function k(i)_0 ##For now with only ones
-        1. Player (i) computes probability of opponents (-i) playing a strategy (s(-i)) at time (t) as: gamma(i)_t(s(-i)) = k(i)_t(s(-i))/(sum_(s(-i) in S(-i)) k(i)_t(s(-i))))
+        1. Player (i) computes probability of opponents (-i) playing a strategy (s(-i)) at time (t) as:
+            gamma(i)_t(s(-i)) = k(i)_t(s(-i))/(sum_(s(-i) in S(-i)) k(i)_t(s(-i))))
         2. Player (i) plays a rule (p(i)_t(gamma(i)_t), i.e. action) as best response
+
+
+        Returns
+        -------------
+        sigma:
+            history of probabilities (0 or 1) of playing a certain action
+            (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        values:
+            history of valuations of playing a certain action as best response (BR)
+            (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        strat:
+            probability of playing a certain action based on past experiences
+            (list of length n_players [tensor of dimension (n_actions[current player])])
+        -------------
         """
 
         # Parameters
@@ -387,11 +421,12 @@ class MatrixGameEnvironment(Environment):
                 for a in range(n_actions[i]):
                     probs[i][a] = weights[i][n,a].sum()/weights[i][n,:].sum()
             for i in range(n_players):
-                player_p_matrix = self.game.outcomes.select(n_players,i).permute(
-                            *[(1+i+j)%n_players for j in range(n_players)])
+                player_p_matrix = self.game.outcomes \
+                                  .select(n_players,i) \
+                                  .permute(*[(1+i+j)%n_players for j in range(n_players)])
 
                 if smooth:
-                    # 2. Player (i) computes expected utils according to beliefs. Then applies softmax (exponential smooth)
+                    # 2. Player (i) computes expected utils according to beliefs. Then applies softmax (expon. smooth)
                     probs_tmp = (1/tau * self._calc_exp_util(player_p_matrix, probs, n_players, i)).softmax(0)
                     action[i] = random.choices(population=[i for i in range(len(probs_tmp))], weights=probs_tmp, k=1)[0]
                 else:
@@ -404,7 +439,7 @@ class MatrixGameEnvironment(Environment):
                 tau = 1/torch.log(torch.tensor(n+3.))
             # Get payoff of realization
             for i in range(n_players):
-                values[i][n] = self.game.outcomes[tuple(action)][i]  
+                values[i][n] = self.game.outcomes[tuple(action)][i]
 
         return weights, values, probs
 
@@ -439,9 +474,6 @@ class AuctionEnvironment(Environment):
         self.agents = deque(self.agents, max_env_size)
         self.mechanism = mechanism
 
-
-
-
     def get_reward(self, agent: Bidder, draw_valuations=False, **kwargs): #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment.
            Reward is calculated as average utility for each of the batch_size x env_size games
@@ -450,7 +482,6 @@ class AuctionEnvironment(Environment):
         # get a batch of bids for each player
         agent.batch_size = self.batch_size
 
-        #if player_position is None:
         player_position = agent.player_position if agent.player_position else 0
 
         # draw valuations
@@ -468,7 +499,6 @@ class AuctionEnvironment(Environment):
             )
             utility = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
         else: # at least 1 environment agent --> build bid_profile, then play
-
             # get bid profile
             # TODO: check where those params should be taken from ultimately... game? agent? self?
             bid_profile = torch.zeros(self.batch_size, self.n_players, n_items,
@@ -484,7 +514,6 @@ class AuctionEnvironment(Environment):
                 if opponent_pos is None:
                     opponent_pos = counter
                 bid_profile[:, opponent_pos, :] = opponent_bid
-
                 counter = counter + 1
 
             allocation, payments = self.mechanism.play(bid_profile)
@@ -524,28 +553,6 @@ class AuctionEnvironment(Environment):
             agent.batch_size = self.batch_size
             if isinstance(agent, Bidder):
                 agent.draw_valuations_()
-
-
-
-    def _generate_agent_actions(self, exclude: Set[int] or None = None, **kwargs):
-        """
-        Generator function yielding batches of bids for each environment agent
-        that is not excluded.
-
-        args:
-            exclude:
-                A set of player positions to exclude.
-                Used e.g. to generate action profile of all but currently learning player.
-
-        yields:
-            tuple(player_position, action) for each relevant bidder
-        """
-
-        if exclude is None:
-            exclude = set()
-
-        for agent in (a for a in self.agents if a.player_position not in exclude):
-            yield(agent.player_position, agent.get_action())
 
     def push_agent(self, agent: Bidder or Strategy, **kwargs):
         """
