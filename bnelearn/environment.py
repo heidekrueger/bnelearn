@@ -157,9 +157,9 @@ class MatrixGameEnvironment(Environment):
             exp_util = torch.squeeze(probs[(i+iteration)%n_players].matmul(self._calc_exp_util(m, probs, n_players, i, iteration)))
             return exp_util
 
-    def solve_with_k_smooth_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None,
+    def solve_with_gerding_k_smooth_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None,
                                           w_b=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
-        r"""
+        """
         -------------
         Args
         w_b: bid specific weights. Currently just one.
@@ -221,10 +221,7 @@ class MatrixGameEnvironment(Environment):
 
         return sigma, values, strat
 
-
-
-
-    def solve_with_smooth_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None,
+    def solve_with_gerding_smooth_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None,
                                           w_b=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
         """
         -------------
@@ -285,12 +282,59 @@ class MatrixGameEnvironment(Environment):
 
         for i in range(n_players):
             strat[i] = sigma[i][iterations-1,:]
-
         return sigma, values, strat
+    
+    def solve_with_smooth_fictitious_play_known_fct(self, dev, initial_beliefs: torch.Tensor=None,
+                                            tau=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
+        """
+        Returns
+        -------------
+        sigma: history of probabilities (0 or 1) of playing a certain action (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        values: history of valuations of playing a certain action as best response (BR) (list of length n_players [tensor of dimension (n_iterations, n_actions[current player])])
+        strat: probability of playing a certain action based on past experiences (list of length n_players [tensor of dimension (n_actions[current player])])
+        -------------
+        Based on description in: Fudenberg, 1999 - The Theory of Learning, Chapter 2.2
+        Players choose actions simultaneously
+        
+        0. Initialize weight function k(i)_0 ##For now with only ones
+        1. Player (i) computes probability of opponents (-i) playing a strategy (s(-i)) at time (t) as: gamma(i)_t(s(-i)) = k(i)_t(s(-i))/(sum_(s(-i) in S(-i)) k(i)_t(s(-i))))
+        2. Player (i) plays a rule (p(i)_t(gamma(i)_t), i.e. action) as best response
+        """
+        # Parameters
+        torch.manual_seed(0)
+        random.seed(a=0)
+        n_players = self.game.outcomes.shape[len(self.game.outcomes.shape)-1]
+        n_actions = [self.game.outcomes.shape[i] for i in range(len(self.game.outcomes.shape)-1)]
+        weights = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+        probs = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+        values = [torch.zeros(iterations, dtype = torch.float, device = dev) for i in range(n_players)]
+        # 0. Initialize weight function k(i)_0
+        if initial_beliefs is None:
+            initial_beliefs = [torch.rand(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+        # normalize
+        for i in range(n_players):
+            for a in range(n_actions[i]):
+                weights[i][0,a] = initial_beliefs[i][a]/initial_beliefs[i].sum()
+        
+        for n in range(iterations-1):
+            # 1. Player (i) computes probability of opponents (-i) playing a strategy (s(-i)) at time (t)
+            for i in range(n_players):
+                probs[i][:] = weights[i][n,:]
+            for i in range(n_players):
+                player_p_matrix = self.game.outcomes.select(n_players,i).permute(
+                            *[(1+i+j)%n_players for j in range(n_players)])
+                # 2. Player (i) computes expected utils according to beliefs. Then applies softmax (exponential smooth)
+                probs_tmp = (1/tau * self._calc_exp_util(player_p_matrix, probs, n_players, i)).softmax(0)
+                weights[i][n+1,:] = 1/(n+1) * (n * weights[i][n,:] + probs_tmp)
+            # updating tau -> 0 Todo: Review update fct. here...
+            tau = 1/torch.log(torch.tensor(n+3.))
+            # Todo: Get payoff of realization
+            for i in range(n_players):
+                values[i][n] = 0
+        return weights, values, probs
 
-
-
-    def solve_with_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
+    def solve_with_fudenberg_fictitious_play(self, dev, initial_beliefs: torch.Tensor=None,
+                                          smooth = False, tau=1, iterations=100) -> Tuple[List[torch.Tensor],List[torch.Tensor],List[torch.Tensor]]:
         """
         Returns
         -------------
@@ -299,56 +343,58 @@ class MatrixGameEnvironment(Environment):
         strat: probability of playing a certain action based on past experiences (list of length n_players [tensor of dimension (n_actions[current player])])
         -------------
 
-        Based on description in: https://www.youtube.com/watch?v=WQ2DkirUZHI
+        Based on description in: Fudenberg, 1999 - The Theory of Learning, Chapter 2.2
 
-        Based on implementation of smooth fictitious play. However:
-            - Probabilities are integer
-            - Actions are updated such that one action is taken
-            - Updates are performed after each players move
-            - Values get added up
-
-
-        1. Player (e.g. column) assumes certain actions made by other players
-        2. Player (e.g. column) computes values for actions given the assumption about other players actions
-        3. Player (e.g. column) chooses action that is maximizing the value (including history)
+        Players choose actions simultaneously
+        
+        0. Initialize weight function k(i)_0 ##For now with only ones
+        1. Player (i) computes probability of opponents (-i) playing a strategy (s(-i)) at time (t) as: gamma(i)_t(s(-i)) = k(i)_t(s(-i))/(sum_(s(-i) in S(-i)) k(i)_t(s(-i))))
+        2. Player (i) plays a rule (p(i)_t(gamma(i)_t), i.e. action) as best response
         """
 
         # Parameters
+        torch.manual_seed(0)
+        random.seed(a=0)
         n_players = self.game.outcomes.shape[len(self.game.outcomes.shape)-1]
         n_actions = [self.game.outcomes.shape[i] for i in range(len(self.game.outcomes.shape)-1)]
+        weights = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+
         probs = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+        values = [torch.zeros(iterations, dtype = torch.float, device = dev) for i in range(n_players)]
 
-        # 1. assumptions of player i's actions
+        # 0. Initialize weight function k(i)_0
         if initial_beliefs is None:
-            initial_beliefs = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+            initial_beliefs = [torch.rand(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
+        for i in range(n_players):
+            weights[i][0,:] = initial_beliefs[i].clone()
+
+        for n in range(iterations-1):
+            action = [None for i in range(n_players)]
+            # 1. Player (i) computes probability of opponents (-i) playing a strategy (s(-i)) at time (t)
             for i in range(n_players):
-                initial_beliefs[i][random.randint(0, n_actions[i]-1)] = 1
-
-        probs = initial_beliefs.copy()
-
-        actions = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
-        strat = [torch.zeros(n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
-        values = [torch.zeros(iterations, n_actions[i], dtype = torch.float, device = dev) for i in range(n_players)]
-        for n in range(iterations):
-            # 2. Choose actions and compute values based on global probabilities
+                for a in range(n_actions[i]):
+                    probs[i][a] = weights[i][n,a].sum()/weights[i][n,:].sum()
             for i in range(n_players):
                 player_p_matrix = self.game.outcomes.select(n_players,i).permute(
                             *[(1+i+j)%n_players for j in range(n_players)])
-                if n == 0:
-                    values[i][n,:] = values[i][n,:] + self._calc_exp_util(player_p_matrix, probs, n_players, i)
+
+                if smooth:
+                    # 2. Player (i) computes expected utils according to beliefs. Then applies softmax (exponential smooth)
+                    probs_tmp = (1/tau * self._calc_exp_util(player_p_matrix, probs, n_players, i)).softmax(0)
+                    action[i] = random.choices(population=[i for i in range(len(probs_tmp))], weights=probs_tmp, k=1)[0]
                 else:
-                    values[i][n,:] = values[i][n-1,:] + self._calc_exp_util(player_p_matrix, probs, n_players, i)
+                    # 2. Player (i) plays a rule (p(i)_t(gamma(i)_t), i.e. action) as best response
+                    action[i] = self._calc_exp_util(player_p_matrix, probs, n_players, i).max(dim = 0, keepdim=False)[1]
+                weights[i][n+1,:] = weights[i][n,:]
+                weights[i][n+1,action[i]] = weights[i][n,action[i]] + 1
+            if smooth:
+                # updating tau -> 0 Todo: Review update fct. here...
+                tau = 1/torch.log(torch.tensor(n+3.))
+            # Get payoff of realization
+            for i in range(n_players):
+                values[i][n] = self.game.outcomes[tuple(action)][i]  
 
-                # 3. Update global probabilities (perform best response!)
-                probs[i][:] = 0
-                probs[i][values[i][n,:].max(dim = 0, keepdim=False)[1]] = 1
-                actions[i][n,:] = probs[i]
-
-        for i in range(n_players):
-            for a in range(n_actions[i]):
-                strat[i][a] = actions[i][:,a].sum()/actions[i][:,:].sum()
-
-        return actions, values, strat
+        return weights, values, probs
 
 class AuctionEnvironment(Environment):
     """
