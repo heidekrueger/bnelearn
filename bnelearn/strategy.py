@@ -1,20 +1,23 @@
 # -*- coding: utf-8 -*-
+"""
+Implementations of strategies for playing in Auctions and Matrix Games.
+"""
 from abc import ABC, abstractmethod
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 
 ## E1102: false positive on torch.tensor()
 ## false positive 'arguments-differ' warnings for forward() overrides
-#pylint: disable=E1102,arguments-differ
+# pylint: disable=arguments-differ
 
 class Strategy(ABC):
 
     @abstractmethod
-    def play(self, inputs=None):
-        pass
+    def play(self, inputs):
+        """Takes (private) information as input and decides on the actions an agent should play."""
+        raise NotImplementedError()
 
 class MatrixGameStrategy(Strategy, nn.Module):
     """ A dummy neural network that encodes and returns a mixed strategy"""
@@ -28,9 +31,6 @@ class MatrixGameStrategy(Strategy, nn.Module):
         # initialize distribution
         self._update_distribution()
 
-    def _dummy_input(self):
-        return
-
     def _update_distribution(self):
         self.device = next(self.parameters()).device
         probs = self.forward(torch.ones(1,  device=self.device))
@@ -38,7 +38,7 @@ class MatrixGameStrategy(Strategy, nn.Module):
 
     def forward(self, x):
         logits = self.logits(x)
-        probs = F.softmax(logits, 0)
+        probs = torch.softmax(logits, 0)
         return probs
 
     def play(self, inputs=None, batch_size = 1):
@@ -47,9 +47,8 @@ class MatrixGameStrategy(Strategy, nn.Module):
 
         self._update_distribution()
         # is of shape batch size x 1
-        # TODO: this is slow AF. fix when needed.
+        # TODO: this is probably slow AF. fix when needed.
         return self.distribution.sample(inputs.shape)
-
 
 class NeuralNetStrategy(Strategy, nn.Module):
     """ A strategy played by a neural network"""
@@ -78,7 +77,6 @@ class NeuralNetStrategy(Strategy, nn.Module):
     def play(self,inputs):
         return self.forward(inputs)
 
-
 class TruthfulStrategy(Strategy, nn.Module):
     def __init__(self, input_length):
         nn.Module.__init__(self)
@@ -91,22 +89,3 @@ class TruthfulStrategy(Strategy, nn.Module):
 
     def play(self, inputs):
         return self.forward(inputs)
-
-# TODO: missing implementation
-class FpsbBneStrategy(Strategy, nn.Module):
-    def __init__(self, input_length):
-        nn.Module.__init__(self)
-        self.register_parameter('dummy', nn.Parameter(torch.zeros(1)))
-
-    def forward(self, x):
-        # assumes valuation in first input, n_players in second
-        raise NotImplementedError()
-
-# TODO: missing implementation
-class RandomStrategy(Strategy, nn.Module):
-    def __init__(self, input_length, lo=0, hi=10):
-        nn.Module.__init__(self)
-        self.register_parameter('dummy', nn.Parameter(torch.zeros(1)))
-
-    def forward(self, x):
-        raise NotImplementedError

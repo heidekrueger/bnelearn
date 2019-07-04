@@ -21,7 +21,7 @@ u_hi = 10
 
 def strat_to_bidder(strategy, batch_size):
     """creates a bidder from a strategy"""
-    return Bidder.uniform(u_lo,u_hi, strategy, batch_size = batch_size, n_players=1)
+    return Bidder.uniform(u_lo,u_hi, strategy, batch_size = batch_size)
 
 mechanism = StaticMechanism(cuda=cuda)
 

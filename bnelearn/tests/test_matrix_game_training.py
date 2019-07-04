@@ -1,16 +1,14 @@
-import os
-import sys
+"""Test whether agent training in simple matrix games works."""
+
 import torch
-from bnelearn.strategy import MatrixGameStrategy
-from bnelearn.bidder import Bidder, Player, MatrixGamePlayer
-from bnelearn.mechanism import MatrixGame, PrisonersDilemma, BattleOfTheSexes, MatchingPennies
+
+from bnelearn.bidder import MatrixGamePlayer
+from bnelearn.environment import AuctionEnvironment, MatrixGameEnvironment
+from bnelearn.mechanism import MatrixGame, PrisonersDilemma
 from bnelearn.optimizer import ES
-from bnelearn.environment import Environment, AuctionEnvironment, MatrixGameEnvironment
+from bnelearn.strategy import MatrixGameStrategy
 
-import numpy as np
-
-
-"""Shared objects between tests"""
+#Shared objects between tests ##################
 cuda = torch.cuda.is_available()
 device = 'cuda' if cuda else 'cpu'
 
@@ -22,7 +20,6 @@ def test_train_prisoners_dilemma():
 
     n_players = 2
     batch_size = 64
-    input_length = 1
 
     epoch = 25
     learning_rate =1
@@ -37,36 +34,35 @@ def test_train_prisoners_dilemma():
         return MatrixGamePlayer(
             strategy,
             batch_size = batch_size,
-            n_players=n_players,
             player_position=player_position
             )
 
     model = MatrixGameStrategy(n_actions = 2).to(device)
     game = PrisonersDilemma()
-    env = AuctionEnvironment(game, 
-                    agents=[],
-                    max_env_size =1,
-                    n_players=n_players,
-                    batch_size=batch_size,
-                    strategy_to_bidder_closure=strat_to_player)
-    
+    env = AuctionEnvironment(game,
+                             agents=[],
+                             max_env_size =1,
+                             n_players=n_players,
+                             batch_size=batch_size,
+                             strategy_to_bidder_closure=strat_to_player)
+
     optimizer = ES(
-        model=model, 
-        environment = env, 
-        lr = learning_rate, 
-        sigma=sigma, 
+        model=model,
+        environment = env,
+        lr = learning_rate,
+        sigma=sigma,
         n_perturbations=n_perturbations
         )
 
     torch.cuda.empty_cache()
-    for e in range(epoch+1):    
-        
+    for e in range(epoch+1):
+
         # lr decay?
         if lr_decay and e % lr_decay_every == 0 and e > 0:
             learning_rate = learning_rate * lr_decay_factor
             for param_group in optimizer.param_groups:
                 param_group['lr'] = learning_rate
-            
+
         # always: do optimizer step
         utility = -optimizer.step()
         #print(list(model.named_parameters()))
@@ -78,10 +74,10 @@ def test_train_prisoners_dilemma():
 
     assert player.get_action().float().mean().item() > .99, \
                 "Player should have learnt to play action 1 ('defect')"
-    
+
 def test_matrix_game_environment_training():
     """
-    Tests training in an asymetric Matrix Game using the MatrixGameEnvironment
+    Tests training in an asymmetric Matrix Game using the MatrixGameEnvironment
     with unique players.
     """
 
@@ -89,9 +85,7 @@ def test_matrix_game_environment_training():
     n_players = 2
 
     ## Environment settings
-    #training batch size
     batch_size = 5
-    input_length = 1
 
     # optimization params
     epoch = 25
@@ -106,7 +100,7 @@ def test_matrix_game_environment_training():
     # Wrapper transforming a strategy to bidder, used by the optimizer
     # this is a dummy, valuation doesn't matter
     def strat_to_player(strategy, batch_size, player_position=None):
-        return MatrixGamePlayer(strategy, batch_size = batch_size, n_players=2, player_position=player_position)
+        return MatrixGamePlayer(strategy, batch_size = batch_size, player_position=player_position)
 
     # following game has NE at action profile (0,1)
     # i.e. rowPlayer: Top, colPlayer: Right,
@@ -121,38 +115,33 @@ def test_matrix_game_environment_training():
     model2 = MatrixGameStrategy(n_actions=2).to(device)
 
     env = MatrixGameEnvironment(game, agents=[model1, model2],
-                 n_players=n_players,
-                 batch_size=batch_size,
-                 strategy_to_player_closure=strat_to_player
-                 )
-    
+                                n_players=n_players,
+                                batch_size=batch_size,
+                                strategy_to_player_closure=strat_to_player
+                                )
+
     optimizer1 = ES(
-        model=model1, environment = env,  env_type = 'static',
-        lr = learning_rate,
-        sigma=sigma, n_perturbations=n_perturbations,
+        model=model1, environment = env, env_type = 'static',
+        lr = learning_rate, sigma=sigma, n_perturbations=n_perturbations,
         strat_to_bidder_kwargs= {'player_position': 0}
         )
     optimizer2 = ES(
         model=model2, environment = env, env_type = 'static',
-        lr = learning_rate, 
-        sigma=sigma, n_perturbations=n_perturbations,
+        lr = learning_rate, sigma=sigma, n_perturbations=n_perturbations,
         strat_to_bidder_kwargs= {'player_position': 0}
         )
-    
+
     ## Training ---
     torch.cuda.empty_cache()
 
-    for e in range(epoch+1):        
-        # lr decay?
+    for e in range(epoch+1):
         if lr_decay and e % lr_decay_every == 0 and e > 0:
             for optimizer in [optimizer1, optimizer2]:
                 for param_group in optimizer.param_groups:
-                    param_group['lr'] = learning_rate
+                    param_group['lr'] = learning_rate * lr_decay_factor
 
         # always: do optimizer step
-        utility1 = -optimizer1.step()        
+        utility1 = -optimizer1.step()
         utility2 = -optimizer2.step()
         print((e, utility1, utility2))
-            
-    torch.cuda.empty_cache()
-
+        # this only tested whether the loop runs without runtime errors!

@@ -1,5 +1,17 @@
-""" Test learning in assymetric bidder implementation of auctions"""
+""" Test auction learning in symmetric and asymmetric implementations,
+    using a 2p-FPSB setup.
 
+    This script tests
+    - whether the loop runs without runtime exceptions for a small number of iterations
+    - whether the model learnt the appropriate bid for the top-range of valuations
+      (this value is expected to be learned _very_ fast as it's most significant
+       and as such should always be found (up to a certain range) even in a short amount of time
+      )
+    - Further, the script tests whether the utility after 200 iterations is in the expected range,
+       if it isn't it won't fail but issue a warning (because this might just be due to
+        stochasticity as it would take a significantly longer test time / more iterations to make sure.)
+"""
+import warnings
 import torch
 
 from bnelearn.bidder import Bidder
@@ -14,61 +26,115 @@ specific_gpu = None
 if cuda and specific_gpu:
     torch.cuda.set_device(specific_gpu)
 
-def test_nplayer_playing():
-    #pylint: disable=too-many-locals
-    n_players = 3
-    # valuation distribution
-    u_lo =0
-    u_hi =10
+n_players = 2
+n_items = 1
+u_lo = 0
+u_hi = 10
 
-    def strat_to_bidder(strategy, batch_size, player_position=None):
-        return Bidder.uniform(u_lo, u_hi, strategy,
-                              player_position = player_position,
-                              batch_size = batch_size, n_players=n_players,)
+batch_size = 2**14
+input_length = 1
+size_hidden_layer = 10
+epoch = 200
+learning_rate = 1e-1
+lr_decay = False
+baseline = True
+momentum = .7
+sigma = .02
+n_perturbations = 64
 
-    # settings
-    batch_size = 2**5
-    input_length = 1
-    
-    size_hidden_layer = 10
+mechanism = FirstPriceSealedBidAuction(cuda = True)
 
-    epoch = 100
-    learning_rate = 1e-1
-    baseline = True
-    momentum = 0.5
+def strat_to_bidder(strategy, batch_size, player_position=None): #pylint: disable=redefined-outer-name,missing-docstring
+    return Bidder.uniform(
+        u_lo, u_hi, strategy,
+        batch_size = batch_size,
+        player_position=player_position
+        )
 
-    sigma = .02 #ES noise parameter
-    n_perturbations = 32
 
-    model = NeuralNetStrategy(input_length,
-                          size_hidden_layer = size_hidden_layer,
-                          requires_grad=False
-                         ).to(device)
+def test_learning_in_dynamic_environment():
+    """set up 1 model and play in dynamic environment"""
+    # init model
+    output_is_positive = False
+    while not output_is_positive:
+        model = NeuralNetStrategy(input_length,
+                                  size_hidden_layer = size_hidden_layer,
+                                  requires_grad=False
+                                 ).to(device)
+        if model(torch.tensor([float(u_hi)], device=device)) > 0:
+            output_is_positive = True
+
+    env = AuctionEnvironment(mechanism,
+                             agents = [], #dynamically built
+                             max_env_size = n_players - 1,
+                             batch_size = batch_size,
+                             n_players =n_players,
+                             strategy_to_bidder_closure = strat_to_bidder
+                             )
+
+    optimizer = ES(model=model, environment = env,
+                   lr = learning_rate, momentum=momentum,
+                   sigma=sigma, n_perturbations=n_perturbations,
+                   baseline=baseline)
+
+    for _ in range(epoch+1):
+        utility = -optimizer.step()
+
+    ## no fail until here means the loop ran properly (i.e. no runtime errors)
+
+    ## for upper bound of valuation range, value should be close to optimal.
+    bid_at_10 = model(torch.tensor([10.], dtype=torch.float, device = device))
+    assert 4 < bid_at_10 < 6, \
+        "Model failed to learn optimal bid at upper bound. Found {}, expected range [4,6]".format(bid_at_10)
+
+    # after 200 iterations, utility should be reliably above 0.5
+    ## warn if not
+    if not 1 < utility < 3:
+        warnings.warn('Utility {:.2f} is not in expected range [1,3]!'.format(utility))
+
+
+def test_learning_in_static_environment():
+    """Tests the same setting as above (2p FPSB symmetric uniform), but with a
+       fixed-environment implementation. (2 named agents with a shared model.)
+    """
+
+    output_is_positive = False
+    while not output_is_positive:
+        model = NeuralNetStrategy(input_length,
+                                  size_hidden_layer = size_hidden_layer,
+                                  requires_grad=False
+                                 ).to(device)
+        if model(torch.tensor([float(u_hi)], device=device)) > 0:
+            output_is_positive = True
 
     bidder1 = strat_to_bidder(model, batch_size,0)
     bidder2 = strat_to_bidder(model, batch_size,1)
-    bidder3 = strat_to_bidder(model, batch_size,2)
 
-    mechanism = FirstPriceSealedBidAuction(cuda = True)
     env = AuctionEnvironment(mechanism,
-                agents = [bidder1, bidder2, bidder3], #dynamically built
-                max_env_size = 3, #
-                batch_size = batch_size,
-                n_players =n_players,
-                strategy_to_bidder_closure = strat_to_bidder
-                )
-    optimizer = ES(model=model, environment = env,
-                lr = learning_rate, momentum=momentum,
-                sigma=sigma, n_perturbations=n_perturbations,
-                baseline=baseline, env_type = 'static',
-                strat_to_bidder_kwargs={'player_position':bidder1.player_position})
+                             agents = [bidder1, bidder2], #static
+                             batch_size = batch_size,
+                             n_players =n_players,
+                             strategy_to_bidder_closure = strat_to_bidder
+                             )
 
-    for e in range(epoch+1):
+    # we'll simply bidder1's model, as it's shard between players.
+    optimizer = ES(model=model, environment = env,
+                   lr = learning_rate, momentum=momentum,
+                   sigma=sigma, n_perturbations=n_perturbations,
+                   baseline=baseline, env_type = 'static',
+                   strat_to_bidder_kwargs={'player_position':bidder1.player_position})
+
+    for _ in range(epoch+1):
         utility = -optimizer.step()
 
-        if e % 100 == 0:
-            print(utility)
+    ## no fail until here means the loop ran properly (i.e. no runtime errors)
 
-    # passing for now means no error so far.
+    ## for upper bound of valuation range, value should be close to optimal.
+    bid_at_10 = model(torch.tensor([10.], dtype=torch.float, device = device))
+    assert 4 < bid_at_10 < 6, \
+        "Model failed to learn optimal bid at upper bound. Found {}, expected range [4,6]".format(bid_at_10)
 
-    # TODO: make sure it's learning correctly, add more tests
+    # after 200 iterations, utility should be reliably above 0.5
+    ## warn if not
+    if not 1 < utility < 3:
+        warnings.warn('Utility {:.2f} is not in expected range [1,3]!'.format(utility))

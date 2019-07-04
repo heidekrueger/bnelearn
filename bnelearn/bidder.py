@@ -16,13 +16,12 @@ class Player(ABC):
         - utility function over outcomes
     """
 
-    def __init__(self, strategy, player_position=None, batch_size=1, n_players=2, cuda=True):
+    def __init__(self, strategy, player_position=None, batch_size=1, cuda=True):
         self.cuda = cuda and torch.cuda.is_available()
         self.device = 'cuda' if self.cuda else 'cpu'
-        self.player_position :int = player_position if player_position else 0
+        self.player_position :int = player_position # None in dynamic environments!
         self.strategy = strategy
         self.batch_size = batch_size
-        self.n_players = n_players
 
     def get_action(self):
         """Chooses an action according to the player's strategy."""
@@ -39,9 +38,9 @@ class Player(ABC):
 
 class MatrixGamePlayer(Player):
     """ A player playing a matrix game"""
-    def __init__(self, strategy, player_position=None, batch_size=1, n_players=2, cuda=True):
+    def __init__(self, strategy, player_position=None, batch_size=1, cuda=True):
         super().__init__(strategy, player_position=player_position,
-                         batch_size=batch_size, n_players=n_players, cuda=cuda)
+                         batch_size=batch_size, cuda=cuda)
 
 
     def get_utility(self, *outcome): #pylint: disable=arguments-differ
@@ -60,10 +59,10 @@ class Bidder(Player):
                  strategy,
                  player_position=None,
                  batch_size=1,
-                 n_items = 1, n_players=2,
+                 n_items = 1,
                  cuda=True
                  ):
-        super().__init__(strategy, player_position, batch_size, n_players, cuda)
+        super().__init__(strategy, player_position, batch_size, cuda)
 
         self.value_distribution = value_distribution
         self.n_items = n_items
@@ -102,7 +101,7 @@ class Bidder(Player):
         # gaussian
         elif isinstance(self.value_distribution, torch.distributions.normal.Normal):
             self.valuations.normal_(mean = self.value_distribution.loc, std = self.value_distribution.scale).relu_()
-        # TODO: add additional internal in-place samplers
+        # add additional internal in-place samplers as needed!
         else:
             # slow! (sampling on cpu then copying to GPU)
             self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device).relu()

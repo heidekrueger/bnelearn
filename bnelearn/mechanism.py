@@ -20,7 +20,7 @@ class Game(ABC):
     device: str
 
     @abstractmethod
-    def play(self, actions, **kwargs):
+    def play(self, action_profile):
         """Play the game!"""
         # get actions from players and define outcome
         raise NotImplementedError()
@@ -31,17 +31,20 @@ class Mechanism(Game):
     A Mechanism collects bids from all players, then allocates available
     items as well as payments for each of the players.
     """
-    def play(self, actions, **kwargs):
-        # TODO: ensure `actions` are valid bids
-        return self.run(bids=actions)
+    def play(self, action_profile):
+        return self.run(bids=action_profile)
 
     @abstractmethod
     def run(self, bids):
         """Alias for play for auction mechanisms"""
-        pass
+        raise NotImplementedError()
 
 class MatrixGame(Game):
-    """A complete information Matrix game."""
+    """
+    A complete information Matrix game.
+
+    TODO: missing documentation
+    """
     # pylint: disable=abstract-method
     def __init__(self, n_players: int, outcomes: torch.Tensor,
                  cuda: bool = True, names: dict = None, validate_inputs: bool = True):
@@ -67,15 +70,15 @@ class MatrixGame(Game):
         """Returns readable name of player if provided."""
         if self.names and "players" in self.names.keys():
             return self.names["players"][player_id]
-        else:
-            return player_id
+
+        return player_id
 
     def get_action_name(self, action_id: int):
         """Currently only works if all players have same action set!"""
         if self.names and "actions" in self.names.keys():
             return self.names["actions"][action_id]
-        else:
-            return action_id
+
+        return action_id
 
     def _validate_action_input(self, action_profile: torch.Tensor) -> None:
         """Assert validity of a (pure) action profile
@@ -115,7 +118,7 @@ class MatrixGame(Game):
                 "Invalid action given for player {}".format(i)
 
 
-    def play(self, action_profile, validate: bool = None):
+    def play(self, action_profile):
         """Plays the game for a given action_profile.
 
         Parameters
@@ -127,10 +130,6 @@ class MatrixGame(Game):
 
             Mixed strategies are NOT allowed as input, sampling should happen in the player class.
 
-        validate: bool or None
-            Whether to validate inputs. Defaults to default setting of game class.
-            (You might want to turn this off in settings with many many iterations)
-
         Returns
         -------
         (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
@@ -139,9 +138,7 @@ class MatrixGame(Game):
             payments:   tensor of dimension (n_batches x n_players)
                         Negative outcome/utility for each player.
         """
-        if validate is None:
-            validate = self.validate_inputs
-        if validate:
+        if self.validate_inputs:
             self._validate_action_input(action_profile)
 
         # pylint: disable=unused-variable
@@ -272,6 +269,9 @@ class MatrixGame(Game):
 
         return torch.tensor([], device=self.device), -payoffs_per_player
 
+###############################################################################
+# Implementations of specific games ###########################################
+##############################################################################
 
 class RockPaperScissors(MatrixGame):
     """2 player, 3 action game rock paper scissors"""
@@ -346,7 +346,6 @@ class PaulTestGame(MatrixGame):
 
         super().__init__(n_players=3, outcomes=outcomes, cuda=cuda)
 
-
 class PrisonersDilemma(MatrixGame):
     """Two player, two action Prisoner's Dilemma game.
        Has a unique pure Nash equilibrium in ap [1,1]
@@ -376,6 +375,7 @@ class BattleOfTheSexes(MatrixGame):
         )
 
 class BattleOfTheSexes_Mod(MatrixGame):
+    """Modified Battle of the Sexes game"""
     def __init__(self, cuda: bool = True):
         super().__init__(
             n_players=2,
@@ -466,8 +466,6 @@ class VickreyAuction(Mechanism):
 
         return (allocations, payments) # payments: batches x players, allocation: batch x players x items
 
-
-
 class FirstPriceSealedBidAuction(Mechanism):
     """First Price Sealed Bid auction"""
 
@@ -531,7 +529,6 @@ class FirstPriceSealedBidAuction(Mechanism):
         allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
         return (allocations, payments) # payments: batches x players, allocation: batch x players x items
-
 
 class StaticMechanism(Mechanism):
     """ A static mechanism that can be used for testing purposes.
