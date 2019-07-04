@@ -84,7 +84,7 @@ def test_learning_in_dynamic_environment():
 
     ## for upper bound of valuation range, value should be close to optimal.
     bid_at_10 = model(torch.tensor([10.], dtype=torch.float, device = device))
-    assert 4 < bid_at_10 < 6, \
+    assert 4 < bid_at_10 < 7, \
         "Model failed to learn optimal bid at upper bound. Found {}, expected range [4,6]".format(bid_at_10)
 
     # after 200 iterations, utility should be reliably above 0.5
@@ -131,8 +131,8 @@ def test_learning_in_static_environment():
 
     ## for upper bound of valuation range, value should be close to optimal.
     bid_at_10 = model(torch.tensor([10.], dtype=torch.float, device = device))
-    assert 4 < bid_at_10 < 6, \
-        "Model failed to learn optimal bid at upper bound. Found {}, expected range [4,6]".format(bid_at_10)
+    assert 4 < bid_at_10 < 7, \
+        "Model failed to learn optimal bid at upper bound. Found {}, expected range [4,7]".format(bid_at_10)
 
     # after 200 iterations, utility should be reliably above 0.5
     ## warn if not
