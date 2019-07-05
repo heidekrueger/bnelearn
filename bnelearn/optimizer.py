@@ -201,7 +201,8 @@ class ES(Optimizer):
             self.environment.get_player_from_strategy(
                 self.model,
                 **self.strat_to_bidder_kwargs
-                )
+                ),
+            draw_valuations = True, #otherwise, in dynamic env, recently pushed agent will have same valuations as current model (??)
             )
         # 5. return the loss
         return -utility

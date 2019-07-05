@@ -3,6 +3,7 @@
 Implementations of strategies for playing in Auctions and Matrix Games.
 """
 from abc import ABC, abstractmethod
+from typing import Callable
 
 import torch
 import torch.nn as nn
@@ -18,6 +19,16 @@ class Strategy(ABC):
     def play(self, inputs):
         """Takes (private) information as input and decides on the actions an agent should play."""
         raise NotImplementedError()
+
+class ClosureStragegy(Strategy):
+    """A strategy specified by a closure"""
+
+    def __init__(self, closure: Callable):
+        self.closure = closure
+
+    def play(self, inputs):
+        return self.closure(inputs)
+
 
 class MatrixGameStrategy(Strategy, nn.Module):
     """ A dummy neural network that encodes and returns a mixed strategy"""

@@ -479,6 +479,8 @@ class AuctionEnvironment(Environment):
            Reward is calculated as average utility for each of the batch_size x env_size games
         """
 
+        if not isinstance(agent, Player):
+            raise ValueError()
         # get a batch of bids for each player
         agent.batch_size = self.batch_size
 
