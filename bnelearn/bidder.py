@@ -60,14 +60,20 @@ class Bidder(Player):
                  player_position=None,
                  batch_size=1,
                  n_items = 1,
-                 cuda=True
+                 cuda=True,
+                 cache_actions:bool = False
                  ):
         super().__init__(strategy, player_position, batch_size, cuda)
 
         self.value_distribution = value_distribution
         self.n_items = n_items
+        self._cache_actions = cache_actions
+        self._valuations_changed = False # true if new valuation drawn since actions calculated
         self.valuations = torch.zeros(batch_size, n_items, device=self.device)
-        self.utility = torch.zeros(batch_size, device=self.device)
+        if self._cache_actions:
+            self.actions = torch.zeros(batch_size, n_items, device=self.device)
+        self.draw_valuations_()
+        #self.utility = torch.zeros(batch_size, device=self.device)
 
     ### Alternative Constructors #############
     @classmethod
@@ -106,6 +112,7 @@ class Bidder(Player):
             # slow! (sampling on cpu then copying to GPU)
             self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device).relu()
 
+        self._valuations_changed = True
         return self.valuations
 
     def get_utility(self, allocations, payments): #pylint: disable=arguments-differ
@@ -116,9 +123,19 @@ class Bidder(Player):
         assert allocations.dim() == 2 # batch_size x items
         assert payments.dim() == 1 # batch_size
 
-        self.utility = (self.valuations * allocations).sum(dim=1) - payments
-        return self.utility
+        #self.utility = (self.valuations * allocations).sum(dim=1) - payments
+        return (self.valuations * allocations).sum(dim=1) - payments
 
     def get_action(self):
+        """Calculate action from current valuations, or retrieve from cache"""
+        if self._cache_actions and not self._valuations_changed:
+            return self.actions
+
         inputs = self.valuations.view(self.batch_size, -1)
-        return self.strategy.play(inputs)
+        actions = self.strategy.play(inputs)
+        self._valuations_changed = False
+
+        if self._cache_actions:
+            self.actions = actions
+
+        return actions

@@ -5,9 +5,12 @@ Implementations of strategies for playing in Auctions and Matrix Games.
 from abc import ABC, abstractmethod
 from typing import Callable
 
+import math
+
 import torch
 import torch.nn as nn
 from torch.distributions.categorical import Categorical
+from torch.multiprocessing import Pool, set_sharing_strategy
 
 ## E1102: false positive on torch.tensor()
 ## false positive 'arguments-differ' warnings for forward() overrides
@@ -23,10 +26,33 @@ class Strategy(ABC):
 class ClosureStragegy(Strategy):
     """A strategy specified by a closure"""
 
-    def __init__(self, closure: Callable):
+    def __init__(self, closure: Callable, parallel: int = 0):
         self.closure = closure
+        self.parallel = parallel
 
     def play(self, inputs):
+        pool_size = 1
+
+        if self.parallel:
+            pool_size = min(self.parallel, max(1, math.ceil(inputs.shape[0]/2**10)))
+
+        if pool_size > 1:
+            in_device = inputs.device
+
+            # calculate necessary shape by calling closure for a single input
+            _, *other_dims = self.closure(inputs[:1]).shape
+            out_shape = torch.Size([inputs.shape[0], *other_dims])
+
+            torch.multiprocessing.set_sharing_strategy('file_system')
+            
+            with Pool(pool_size) as p:
+                print('Calculating strategy for batch of size {} with a pool size of {}.'.format(inputs.shape[0], pool_size))
+                result = p.map(self.closure, inputs.cpu())
+                # TODO: only implemented for 1-dimensional bids -- otherwise shape might be incorrect.
+                result = torch.tensor(result, device = in_device).view(out_shape)
+            
+            return result
+
         return self.closure(inputs)
 
 

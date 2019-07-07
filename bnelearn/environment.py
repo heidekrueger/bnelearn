@@ -487,8 +487,8 @@ class AuctionEnvironment(Environment):
         player_position = agent.player_position if agent.player_position else 0
 
         # draw valuations
-        agent.prepare_iteration()
         if draw_valuations:
+            agent.prepare_iteration()
             self.draw_valuations_(exclude = set([player_position]))
 
         # get agent_bid
