@@ -19,9 +19,14 @@ lint:
   script:
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
   - source activate bnelearn
+  - pip install pylint2codeclimate
   - pylint bnelearn/*.py | tee pylint.txt || pylint-exit $?
-  - score=$(sed -n 's/^Your code has been rated at \([-0-9.]*\)\/.*/\1/p' pylint.txt)
-  - echo "Pylint score was $score"
+#  - score=$(sed -n 's/^Your code has been rated at \([-0-9.]*\)\/.*/\1/p' pylint.txt)
+#  - echo "Pylint score was $score"
+  - pylint -f pylint2codeclimate.CodeClimateReporter bnelearn/*.py > pylint_report.json
+  artifacts:
+    when: always
+    paths: [pylint_report.json]
   
   # get the json with all badge urls via API and regex the id of the badge with 'blue.svg' in it
   # this works with a personal access token but doesn't seem to work with deploy token / project token or
