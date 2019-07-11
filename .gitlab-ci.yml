@@ -19,8 +19,7 @@ lint:
   script:
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
   - source activate bnelearn
-  - pip install pylint2codeclimate
-  - pylint bnelearn/*.py | tee pylint.txt || pylint-exit $?
+#  - pylint bnelearn/*.py | tee pylint.txt || pylint-exit $?
 #  - score=$(sed -n 's/^Your code has been rated at \([-0-9.]*\)\/.*/\1/p' pylint.txt)
 #  - echo "Pylint score was $score"
   - pylint -f pylint2codeclimate.CodeClimateReporter bnelearn/*.py > pylint_report.json
