@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
+"""This module implements pytorch optimizers for optimizing Neural Networks in the setting of self-play"""
+
 import warnings
-from collections.abc import Iterable
 from copy import deepcopy
 
 from typing import Tuple
@@ -59,9 +60,7 @@ class ES(Optimizer):
 
     def __init__(self, model: torch.nn.Module, environment: Environment, params=None,
                  lr=required, momentum=0, sigma=required, n_perturbations=64,
-                 baseline=True, env_type='dynamic',
-                 strat_to_bidder_kwargs: dict =None
-                ):
+                 baseline=True, strat_to_bidder_kwargs: dict =None):
 
         # validation checks
         if lr is not required and lr < 0.0:
@@ -74,9 +73,6 @@ class ES(Optimizer):
             raise ValueError("Invalid number of perturbations: {}".format(n_perturbations))
         assert isinstance(baseline, (bool, int, float)), "Invalid baseline parameter."
         assert isinstance(environment, Environment), "Invalid Environment"
-
-        if env_type == 'fixed':
-            env_type = 'static' # treat these as aliases, 'static' being the canonical form
 
         if not params:
             params = model.parameters()
@@ -96,25 +92,13 @@ class ES(Optimizer):
         self.strat_to_bidder_kwargs = strat_to_bidder_kwargs if strat_to_bidder_kwargs else {}
 
         # warn if weird initialization
-        if env_type == 'dynamic' and \
-                'player_position' in self.strat_to_bidder_kwargs.keys() and \
-                strat_to_bidder_kwargs['player_position'] is not None:
+        if 'player_position' not in self.strat_to_bidder_kwargs.keys():
             warnings.warn(
-                'You have specified a player_position, but dynamic env_type!' +
-                ' This may lead to unexpected behavior! Did you mean to use a static environment?')
-        elif env_type == 'static' and 'player_position' not in self.strat_to_bidder_kwargs.keys():
-            warnings.warn(
-                'You haven\'t specified a player_position in a static environment.' +
+                'You haven\'t specified a player_position to evaluate the model.' +
                 ' Defaulting to player_position=0')
             self.strat_to_bidder_kwargs['player_position'] = 0
-        elif env_type not in ('static', 'dynamic'):
-            raise ValueError('Optimizer received invalid environment type!')
 
-        if environment.is_empty() and env_type == 'dynamic':
-            # for self play in dynamic env, add initial model into environment
-            environment.push_agent(deepcopy(model), **self.strat_to_bidder_kwargs)
         self.environment = environment
-        self.env_type = env_type
 
     def __setstate__(self, state):
         super(ES, self).__setstate__(state)
@@ -204,16 +188,12 @@ class ES(Optimizer):
                 # apply the update
                 p.data.add_(d_p)
 
-        # add new model to environment in dynamic environments
-        if self.env_type == 'dynamic':
-            self.environment.push_agent(deepcopy(self.model), **self.strat_to_bidder_kwargs)
-
         utility = self.environment.get_reward(
             self.environment.get_player_from_strategy(
                 self.model,
                 **self.strat_to_bidder_kwargs
                 ),
-            draw_valuations = True, #otherwise, in dynamic env, recently pushed agent will have same valuations as current model (??)
+            draw_valuations = False
             )
         # 5. return the loss
         return -utility
@@ -233,10 +213,6 @@ class ES(Optimizer):
 
         return perturbed, noise
 
-    def _update_env(self, new_env: Iterable):
-        for agent in new_env:
-            self.environment.push_agent(agent)
-
 
 #class SimpleReinforce(Optimizer):
 #    r"""Implements simple version of REINFORCE-algorithm, i.e. SGD optimization with gradients acquired via the
@@ -251,7 +227,7 @@ class ES(Optimizer):
 #
 #        As such, this code should be considered experimental as it has not been verified to work.
 #
-#        TODO: Test in other setting
+#        to do: Test in other setting
 #           -: parallelize perturbations
 #           -: possible sign-error in update step?
 #
@@ -327,7 +303,7 @@ class ES(Optimizer):
 #
 #        for p in params:
 #            dp[p].div_(n_perturbations)
-#            # TODO: possibly missing minus?
+#            # to do: possibly missing minus?
 #            p.data.add_(self.param_groups[0]['lr'], dp[p])
 #
 #         # add new model to environment in 'dynamic' environments

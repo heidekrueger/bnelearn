@@ -51,7 +51,6 @@ def strat_to_bidder(strategy, batch_size, player_position=None): #pylint: disabl
         player_position=player_position
         )
 
-
 def test_learning_in_static_environment():
     """Tests the same setting as above (2p FPSB symmetric uniform), but with a
        fixed-environment implementation. (2 named agents with a shared model.)
@@ -75,8 +74,7 @@ def test_learning_in_static_environment():
     # we'll simply bidder1's model, as it's shard between players.
     optimizer = ES(model=model, environment = env,
                    lr = learning_rate, momentum=momentum,
-                   sigma=sigma, n_perturbations=n_perturbations,
-                   baseline=baseline, env_type = 'static',
+                   sigma=sigma, n_perturbations=n_perturbations, baseline=baseline,
                    strat_to_bidder_kwargs={'player_position':bidder1.player_position})
 
     for _ in range(epoch+1):

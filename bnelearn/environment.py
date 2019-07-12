@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import random
 from abc import ABC, abstractmethod
-from collections import deque
 from collections.abc import Iterable
 from typing import Callable, List, Set, Tuple
 
@@ -459,8 +458,11 @@ class AuctionEnvironment(Environment):
             transform strategies into a Bidder compatible with the environment
     """
 
-    def __init__(self, mechanism: Mechanism, agents: Iterable, max_env_size=None,
-                 batch_size=100, n_players=2, strategy_to_bidder_closure: Callable[[Strategy], Bidder]=None):
+    def __init__(self, mechanism: Mechanism, agents: Iterable,
+                 batch_size=100, n_players=None, strategy_to_bidder_closure: Callable[[Strategy], Bidder]=None):
+
+        if not n_players:
+            n_players = len(agents)
 
         super().__init__(
             agents=agents,
@@ -468,10 +470,7 @@ class AuctionEnvironment(Environment):
             batch_size=batch_size,
             strategy_to_player_closure=strategy_to_bidder_closure
             )
-        self.max_env_size = max_env_size
 
-        # turn agents into deque TODO: might want to change this.
-        self.agents = deque(self.agents, max_env_size)
         self.mechanism = mechanism
 
     def get_reward(self, agent: Bidder, draw_valuations=False, **kwargs): #pylint: disable=arguments-differ
@@ -481,8 +480,11 @@ class AuctionEnvironment(Environment):
 
         if not isinstance(agent, Player):
             raise ValueError()
-        # get a batch of bids for each player
-        agent.batch_size = self.batch_size
+
+        # make sure that agent batch matches the environment
+        if self.agents:
+            assert agent.batch_size == self.batch_size, \
+                "Agent batch_size does not match the environment!"
 
         player_position = agent.player_position if agent.player_position else 0
 
@@ -493,17 +495,17 @@ class AuctionEnvironment(Environment):
 
         # get agent_bid
         agent_bid = agent.get_action()
-        n_items = agent_bid.shape[1]
+        action_length = agent_bid.shape[1]
 
         if not self.agents:# Env is empty --> play only with own action against 'nature'
             allocation, payments = self.mechanism.play(
-                agent_bid.view(self.batch_size, self.n_players, n_items)
+                agent_bid.view(agent.batch_size, 1, action_length)
             )
             utility = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
         else: # at least 1 environment agent --> build bid_profile, then play
             # get bid profile
             # TODO: check where those params should be taken from ultimately... game? agent? self?
-            bid_profile = torch.zeros(self.batch_size, self.n_players, n_items,
+            bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
                                       dtype=agent_bid.dtype, device = self.mechanism.device)
             bid_profile[:, player_position, :] = agent_bid
 
@@ -555,12 +557,3 @@ class AuctionEnvironment(Environment):
             agent.batch_size = self.batch_size
             if isinstance(agent, Bidder):
                 agent.draw_valuations_()
-
-    def push_agent(self, agent: Bidder or Strategy, **kwargs):
-        """
-            Add an agent to the environment, possibly pushing out the oldest one)
-        """
-        if isinstance(agent, Strategy):
-            agent: Bidder = self.get_player_from_strategy(agent, **kwargs)
-
-        self.agents.append(agent)
