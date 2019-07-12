@@ -106,6 +106,7 @@ class ES(Optimizer):
             warnings.warn(
                 'You haven\'t specified a player_position in a static environment.' +
                 ' Defaulting to player_position=0')
+            self.strat_to_bidder_kwargs['player_position'] = 0
         elif env_type not in ('static', 'dynamic'):
             raise ValueError('Optimizer received invalid environment type!')
 

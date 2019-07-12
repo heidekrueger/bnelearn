@@ -50,7 +50,6 @@ class ClosureStragegy(Strategy):
                 print('Calculating strategy for batch of size {} with a pool size of {}.'.format(inputs.shape[0],
                                                                                                  pool_size))
                 result = p.map(self.closure, inputs.cpu())
-                # TODO: only implemented for 1-dimensional bids -- otherwise shape might be incorrect.
                 result = torch.tensor(result, device = in_device).view(out_shape)
 
             return result

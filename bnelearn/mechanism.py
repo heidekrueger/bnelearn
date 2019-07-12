@@ -196,7 +196,7 @@ class MatrixGame(Game):
             assert torch.all(strategy >= 0.0), \
                 "Probabilities must be positive for player {}".format(player)
 
-    def _tensorize_strategy_profile(self, strategy_profile_list = List[torch.Tensor]):
+    def _tensorize_strategy_profile(self, strategy_profile_list = List[torch.Tensor]) -> torch.Tensor:
         """Turns a list of strategies (1-d-tensors) into a n-player dimensional joint strategy profile tensor"""
 
         # set einsum_string depending on number of players
@@ -215,7 +215,6 @@ class MatrixGame(Game):
             raise NotImplementedError('Playing mixed strategies is only implemented for up to 6 players!')
 
         return torch.einsum(einsum_string, strategy_profile_list)
-
 
     def play_mixed(self, strategy_profile: List[torch.Tensor], validate: bool = None):
         """Plays the game with mixed strategies, returning expectation of outcomes.

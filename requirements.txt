@@ -9,4 +9,5 @@ pytest
 pytest-cov
 pylint
 pylint-exit #pip
+pylint2codeclimate #pip
 scipy # for numeric integration

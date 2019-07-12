@@ -19,9 +19,9 @@ input_length = 1
 u_lo = 0
 u_hi = 10
 
-def strat_to_bidder(strategy, batch_size):
+def strat_to_bidder(strategy, batch_size, player_position=0):
     """creates a bidder from a strategy"""
-    return Bidder.uniform(u_lo,u_hi, strategy, batch_size = batch_size)
+    return Bidder.uniform(u_lo,u_hi, strategy, batch_size = batch_size, player_position=player_position)
 
 mechanism = StaticMechanism(cuda=cuda)
 
@@ -33,16 +33,13 @@ def test_static_mechanism():
         warnings.warn("Test not run due to low batch size!")
         pytest.skip("Batch size too low to perform this test!")
 
-    #init model but ensure positive outputs
-    output_is_positive = False
-    while not output_is_positive:
-        model = NeuralNetStrategy(
-            input_length,
-            size_hidden_layer = SIZE_HIDDEN_LAYER,
-            requires_grad=False
-            ).to(device)
-        if model(torch.tensor([float(u_hi)], device=device)) > 0:
-            output_is_positive = True
+    model = NeuralNetStrategy(
+        input_length,
+        size_hidden_layer = SIZE_HIDDEN_LAYER,
+        requires_grad=False,
+        ensure_positive_output=torch.tensor([float(u_hi)])
+        ).to(device)
+
 
     bidder = strat_to_bidder(model, BATCH_SIZE)
 
@@ -83,23 +80,20 @@ def test_ES_optimizer():
     sigma = .1 #ES noise parameter
     n_perturbations = 32
 
-    #init model but ensure positive outputs
-    output_is_positive = False
-    while not output_is_positive:
-        model = NeuralNetStrategy(
-            input_length,
-            size_hidden_layer = SIZE_HIDDEN_LAYER,
-            requires_grad=False
-            ).to(device)
-        if model(torch.tensor([float(u_hi)], device=device)) > 0:
-            output_is_positive = True
+    model = NeuralNetStrategy(
+        input_length,
+        size_hidden_layer = SIZE_HIDDEN_LAYER,
+        requires_grad=False,
+        ensure_positive_output=torch.tensor([float(u_hi)])
+        ).to(device)
+    
+    bidder = strat_to_bidder(model, BATCH_SIZE, 0)
 
     #bidder = strat_to_bidder(model, BATCH_SIZE)
     env = AuctionEnvironment(
         mechanism,
-        agents = [],
+        agents = [bidder],
         strategy_to_bidder_closure=strat_to_bidder,
-        max_env_size=1,
         batch_size = BATCH_SIZE,
         n_players=1
         )
@@ -125,7 +119,6 @@ def test_ES_optimizer():
 
         # always: do optimizer step
         utility = -optimizer.step()
-
     torch.cuda.empty_cache()
 
     assert utility > 1.4, "optimizer did not learn sufficiently (1.4), got {:.2f}".format(utility)
@@ -150,23 +143,20 @@ def test_ES_momentum():
     n_perturbations = 32
 
 
-    #init model but ensure positive outputs
-    output_is_positive = False
-    while not output_is_positive:
-        model = NeuralNetStrategy(
-            input_length,
-            size_hidden_layer = SIZE_HIDDEN_LAYER,
-            requires_grad=False
-            ).to(device)
-        if model(torch.tensor([float(u_hi)], device=device)) > 0:
-            output_is_positive = True
+    model = NeuralNetStrategy(
+        input_length,
+        size_hidden_layer = SIZE_HIDDEN_LAYER,
+        requires_grad=False,
+        ensure_positive_output=torch.tensor([float(u_hi)])
+        ).to(device)
+    
+    bidder = strat_to_bidder(model, BATCH_SIZE, 0)
 
     #bidder = strat_to_bidder(model, BATCH_SIZE)
     env = AuctionEnvironment(
         mechanism,
-        agents = [],
+        agents = [bidder],
         strategy_to_bidder_closure=strat_to_bidder,
-        max_env_size=1,
         batch_size = BATCH_SIZE,
         n_players=1
         )
