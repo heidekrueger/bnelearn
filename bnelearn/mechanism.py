@@ -531,10 +531,12 @@ class FirstPriceSealedBidAuction(Mechanism):
         return (allocations, payments) # payments: batches x players, allocation: batch x players x items
 
 class StaticMechanism(Mechanism):
-    """ A static mechanism that can be used for testing purposes.
-        Items are allocated with probability bid/10, payments are always given
-        by b²/20, even when the item is not allocated.
+    """ A static mechanism that can be used for testing purposes,
+        in order to test functionality/efficiency of optimizers without introducing
+        additional stochasticity from multi-player learning dynamics.
 
+        In this 'single-player single-item' setting, items are allocated with probability bid/10,
+        payments are always given by b²/20, even when the item is not allocated.
         The expected payoff from this mechanism is thus
         b/10 * v - 0.05b²,
         The optimal strategy fo an agent with quasilinear utility is given by bidding truthfully.

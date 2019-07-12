@@ -3,6 +3,8 @@ import warnings
 from collections.abc import Iterable
 from copy import deepcopy
 
+from typing import Tuple
+
 import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from torch.optim.optimizer import (  # pylint: disable=no-name-in-module # false positive
@@ -12,16 +14,17 @@ from bnelearn.environment import Environment
 
 
 class ES(Optimizer):
-    """Implements Evolutionary Strategy similar to `Salimans et al (2017) https://arxiv.org/pdf/1703.03864.pdf`
+    """
+    Implements Evolutionary Strategy similar to `Salimans et al (2017) https://arxiv.org/pdf/1703.03864.pdf`
 
-        Compared to SGD-like optimizers, ES essentially gradients with ES-pseudo-gradients.
-        This implementation extends Salimans et al by the following points:
-        - The candidate weights are (optinally) calculated using a baseline, i.e.
-          the weight is based on (reward - baseline) rather than just the reward.
-        - Optionally, not just vanilla SGD but momentum updates are enabled,
-          we use the following definition of momentum:
+    Compared to SGD-like optimizers, ES essentially gradients with ES-pseudo-gradients.
+    This implementation extends Salimans et al by the following points:
+    - The candidate weights are (optinally) calculated using a baseline, i.e.
+      the weight is based on (reward - baseline) rather than just the reward.
+    - Optionally, not just vanilla SGD but momentum updates are enabled,
+      we use the following definition of momentum:
 
-          delta = momentum * prev_delta + lr * pseudogradient
+      delta = momentum * prev_delta + lr * pseudogradient
 
     Args:
         model (nn.Module): The base model that will be optimized.
@@ -56,7 +59,7 @@ class ES(Optimizer):
 
     def __init__(self, model: torch.nn.Module, environment: Environment, params=None,
                  lr=required, momentum=0, sigma=required, n_perturbations=64,
-                 baseline=True, env_type='dynamic', #player_position=None,
+                 baseline=True, env_type='dynamic',
                  strat_to_bidder_kwargs: dict =None
                 ):
 
@@ -117,12 +120,19 @@ class ES(Optimizer):
         for group in self.param_groups:
             group.setdefault('momentum', 0)
 
-    def step(self, closure=None):
+    def step(self, closure=None) -> torch.Tensor:
         """Performs a single optimization step.
 
         Arguments:
             closure (callable, optional): A closure that reevaluates the model
             and returns the loss.
+
+        Side Effects:
+            updates parameters in self.model via ES-pseudogradient step
+            redraws valuations in the self.environment
+
+        Returns:
+            loss: torch.Tensor (scalar) calculated as negative utili
         """
 
         for group in self.param_groups:
@@ -207,7 +217,7 @@ class ES(Optimizer):
         # 5. return the loss
         return -utility
 
-    def _perturb_model(self, model: torch.nn.Module):
+    def _perturb_model(self, model: torch.nn.Module) -> Tuple[torch.nn.Module, torch.Tensor]:
         """
             Returns a randomly perturbed copy of a model [torch.nn.Module],
             as well as the noise vector used to generate the perturbation.
