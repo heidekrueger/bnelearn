@@ -60,7 +60,7 @@ class ES(Optimizer):
 
     def __init__(self, model: torch.nn.Module, environment: Environment, params=None,
                  lr=required, momentum=0, sigma=required, n_perturbations=64,
-                 baseline=True, strat_to_bidder_kwargs: dict =None):
+                 baseline=True, strat_to_player_kwargs: dict =None):
 
         # validation checks
         if lr is not required and lr < 0.0:
@@ -87,16 +87,16 @@ class ES(Optimizer):
 
         super(ES, self).__init__(params, defaults)
 
-        # additional members deliberately not handled by super
+        # ----- additional members deliberately not handled by super -----------
+        # we need a reference to the model itself rather than just the model.parameters()
+        # in order to create corresponding bidders from it
         self.model = model
-        self.strat_to_bidder_kwargs = strat_to_bidder_kwargs if strat_to_bidder_kwargs else {}
+        self.strat_to_player_kwargs = strat_to_player_kwargs if strat_to_player_kwargs else {}
 
         # warn if weird initialization
-        if 'player_position' not in self.strat_to_bidder_kwargs.keys():
-            warnings.warn(
-                'You haven\'t specified a player_position to evaluate the model.' +
-                ' Defaulting to player_position=0')
-            self.strat_to_bidder_kwargs['player_position'] = 0
+        if 'player_position' not in self.strat_to_player_kwargs.keys():
+            warnings.warn('You haven\'t specified a player_position to evaluate the model. Defaulting to position 0.')
+            self.strat_to_player_kwargs['player_position'] = 0
 
         self.environment = environment
 
@@ -130,11 +130,8 @@ class ES(Optimizer):
 
             # set baseline. current reward if True
             if baseline is True: # run only for True, not for nonzero number!
-                baseline = self.environment.get_reward(
-                    self.environment.get_player_from_strategy(
-                        self.model,
-                        **self.strat_to_bidder_kwargs)
-                    ).view(1)
+                baseline = self.environment.get_strategy_reward(
+                    self.model, **self.strat_to_player_kwargs).view(1)
             else: # False, Int or Float
                 baseline = torch.tensor(float(baseline), device=base_params[0].device)
 
@@ -148,12 +145,7 @@ class ES(Optimizer):
             rewards, epsilons = (
                 torch.cat(tensors).view(n_perturbations, -1)
                 for tensors in zip(*(
-                    (
-                        self.environment.get_reward(
-                            self.environment.get_player_from_strategy(
-                                model,
-                                **self.strat_to_bidder_kwargs)
-                            ).view(1),
+                    (   self.environment.get_strategy_reward(model, **self.strat_to_player_kwargs).view(1),
                         epsilon
                     )
                     for (model, epsilon) in population
@@ -163,7 +155,7 @@ class ES(Optimizer):
             # 3. calculate the gradient update
             ## TODO: fails if model not expl. on gpu because rewards is on cuda,
             #        but eps is on cpu. why?
-            weighted_noise_vector = ((rewards -baseline) * epsilons).sum(dim=0)
+            weighted_noise_vector = ((rewards - baseline) * epsilons).sum(dim=0)
             # create a copy of the parameters to store the updates in
             # (we need the same structure as the group params for the loop below)
             param_noise = deepcopy(base_params)
@@ -184,18 +176,12 @@ class ES(Optimizer):
                         buf.mul_(momentum).add_(d_p)
 
                     d_p = buf
-
                 # apply the update
                 p.data.add_(d_p)
 
-        utility = self.environment.get_reward(
-            self.environment.get_player_from_strategy(
-                self.model,
-                **self.strat_to_bidder_kwargs
-                ),
-            draw_valuations = False
-            )
-        # 5. return the loss
+        utility = self.environment.get_strategy_reward(
+            self.model, draw_valuations= False, **self.strat_to_player_kwargs)
+        # Loss is negative utility
         return -utility
 
     def _perturb_model(self, model: torch.nn.Module) -> Tuple[torch.nn.Module, torch.Tensor]:

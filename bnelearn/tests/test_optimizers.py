@@ -87,7 +87,7 @@ def test_ES_optimizer():
     bidder = strat_to_bidder(model, BATCH_SIZE, 0)
     env = AuctionEnvironment(
         mechanism, agents = [bidder],
-        strategy_to_bidder_closure=strat_to_bidder,
+        strategy_to_player_closure=strat_to_bidder,
         batch_size = BATCH_SIZE, n_players=1)
 
     optimizer = ES(model=model, environment = env,
@@ -132,7 +132,7 @@ def test_ES_momentum():
 
     env = AuctionEnvironment(
         mechanism,
-        agents = [bidder], strategy_to_bidder_closure=strat_to_bidder,
+        agents = [bidder], strategy_to_player_closure=strat_to_bidder,
         batch_size = BATCH_SIZE, n_players=1)
 
     optimizer = ES(

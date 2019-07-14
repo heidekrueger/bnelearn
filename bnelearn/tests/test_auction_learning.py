@@ -68,14 +68,14 @@ def test_learning_in_static_environment():
                              agents = [bidder1, bidder2], #static
                              batch_size = batch_size,
                              n_players =n_players,
-                             strategy_to_bidder_closure = strat_to_bidder
+                             strategy_to_player_closure = strat_to_bidder
                              )
 
     # we'll simply bidder1's model, as it's shard between players.
     optimizer = ES(model=model, environment = env,
                    lr = learning_rate, momentum=momentum,
                    sigma=sigma, n_perturbations=n_perturbations, baseline=baseline,
-                   strat_to_bidder_kwargs={'player_position':bidder1.player_position})
+                   strat_to_player_kwargs={'player_position':bidder1.player_position})
 
     for _ in range(epoch+1):
         utility = -optimizer.step()

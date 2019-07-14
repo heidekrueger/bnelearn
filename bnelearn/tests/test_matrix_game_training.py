@@ -54,7 +54,7 @@ def test_prisoners_dilemma_training_shared_model():
     optimizer = ES(
         model=model, environment = env,
         lr = learning_rate, sigma=sigma, n_perturbations=n_perturbations,
-        strat_to_bidder_kwargs= {'player_position': 0}
+        strat_to_player_kwargs= {'player_position': 0}
         )
 
     ## Training ---
@@ -118,12 +118,12 @@ def test_prisoners_dilemma_training_separate_models():
     optimizer1 = ES(
         model=model1, environment = env,
         lr = learning_rate, sigma=sigma, n_perturbations=n_perturbations,
-        strat_to_bidder_kwargs= {'player_position': 0}
+        strat_to_player_kwargs= {'player_position': 0}
         )
     optimizer2 = ES(
         model=model2, environment = env,
         lr = learning_rate, sigma=sigma, n_perturbations=n_perturbations,
-        strat_to_bidder_kwargs= {'player_position': 1}
+        strat_to_player_kwargs= {'player_position': 1}
         )
 
     ## Training ---

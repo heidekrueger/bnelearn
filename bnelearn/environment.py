@@ -38,13 +38,30 @@ class Environment(ABC):
             for player_position, agent in enumerate(agents)
         ]
         self.agents: Iterable[Player] = agents
+        # test whether all provided agents implement correct batch_size
+        for i, agent in enumerate(self.agents):
+            if agent.batch_size != self.batch_size:
+                raise ValueError("Agent {}'s bid size does not match that of the environment!".format(i))
 
     @abstractmethod
-    def get_reward(self, agent: Player or Strategy, **kwargs):
+    def get_reward(self, agent: Player, **kwargs) -> torch.Tensor:
         """Return reward for a player playing a certain strategy"""
         pass #pylint: disable=unnecessary-pass
 
-    def _generate_agent_actions(self, exclude: Set[int] or None = None, **kwargs):
+    def get_strategy_reward(self, strategy: Strategy, player_position: int,
+                            draw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
+        """
+        Returns reward of a given strategy in given environment agent position.
+        """
+        if not self._strategy_to_player:
+            raise NotImplementedError('This environment has no strategy_to_player closure!')
+        agent = self._strategy_to_player(strategy,
+                                         batch_size=self.batch_size,
+                                         player_position=player_position, **strat_to_player_kwargs)
+        return self.get_reward(agent, draw_valuations = draw_valuations)
+
+
+    def _generate_agent_actions(self, exclude: Set[int] or None = None):
         """
         Generator function yielding batches of bids for each environment agent
         that is not excluded.
@@ -69,15 +86,6 @@ class Environment(ABC):
             (e.g. in an Auction, draw bidders' valuations)
         """
         pass #pylint: disable=unnecessary-pass
-
-    def get_player_from_strategy(self, strategy: Strategy, **kwargs):
-        """ Transform a strategy into a player that plays that strategy """
-        if self._strategy_to_player:
-            player: Player = self._strategy_to_player(strategy, self.batch_size, **kwargs)
-            #bidder.player_position = player_position
-            return player
-
-        raise NotImplementedError("No strategy_to_player closure provided!")
 
     def size(self):
         """Returns the number of agents/opponent setups in the environment."""
@@ -459,7 +467,7 @@ class AuctionEnvironment(Environment):
     """
 
     def __init__(self, mechanism: Mechanism, agents: Iterable,
-                 batch_size=100, n_players=None, strategy_to_bidder_closure: Callable[[Strategy], Bidder]=None):
+                 batch_size=100, n_players=None, strategy_to_player_closure: Callable[[Strategy], Bidder]=None):
 
         if not n_players:
             n_players = len(agents)
@@ -468,23 +476,21 @@ class AuctionEnvironment(Environment):
             agents=agents,
             n_players=n_players,
             batch_size=batch_size,
-            strategy_to_player_closure=strategy_to_bidder_closure
+            strategy_to_player_closure=strategy_to_player_closure
             )
 
         self.mechanism = mechanism
 
-    def get_reward(self, agent: Bidder, draw_valuations=False, **kwargs): #pylint: disable=arguments-differ
+    def get_reward(self, agent: Bidder, draw_valuations=False) -> torch.Tensor: #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment.
            Reward is calculated as average utility for each of the batch_size x env_size games
         """
 
-        if not isinstance(agent, Player):
+        if not isinstance(agent, Bidder):
             raise ValueError()
 
-        # make sure that agent batch matches the environment
-        if self.agents:
-            assert agent.batch_size == self.batch_size, \
-                "Agent batch_size does not match the environment!"
+        assert agent.batch_size == self.batch_size, \
+            "Agent batch_size does not match the environment!"
 
         player_position = agent.player_position if agent.player_position else 0
 
@@ -497,12 +503,12 @@ class AuctionEnvironment(Environment):
         agent_bid = agent.get_action()
         action_length = agent_bid.shape[1]
 
-        if not self.agents:# Env is empty --> play only with own action against 'nature'
+        if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
             allocation, payments = self.mechanism.play(
                 agent_bid.view(agent.batch_size, 1, action_length)
             )
             utility = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
-        else: # at least 1 environment agent --> build bid_profile, then play
+        else: # at least 2 environment agent --> build bid_profile, then play
             # get bid profile
             # TODO: check where those params should be taken from ultimately... game? agent? self?
             bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
