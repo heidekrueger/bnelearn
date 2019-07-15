@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
+"""This module implements pytorch optimizers for optimizing Neural Networks in the setting of self-play"""
+
 import warnings
-from collections.abc import Iterable
 from copy import deepcopy
+
+from typing import Tuple
 
 import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
@@ -12,16 +15,17 @@ from bnelearn.environment import Environment
 
 
 class ES(Optimizer):
-    """Implements Evolutionary Strategy similar to `Salimans et al (2017) https://arxiv.org/pdf/1703.03864.pdf`
+    """
+    Implements Evolutionary Strategy similar to `Salimans et al (2017) https://arxiv.org/pdf/1703.03864.pdf`
 
-        Compared to SGD-like optimizers, ES essentially gradients with ES-pseudo-gradients.
-        This implementation extends Salimans et al by the following points:
-        - The candidate weights are (optinally) calculated using a baseline, i.e.
-          the weight is based on (reward - baseline) rather than just the reward.
-        - Optionally, not just vanilla SGD but momentum updates are enabled,
-          we use the following definition of momentum:
+    Compared to SGD-like optimizers, ES essentially gradients with ES-pseudo-gradients.
+    This implementation extends Salimans et al by the following points:
+    - The candidate weights are (optinally) calculated using a baseline, i.e.
+      the weight is based on (reward - baseline) rather than just the reward.
+    - Optionally, not just vanilla SGD but momentum updates are enabled,
+      we use the following definition of momentum:
 
-          delta = momentum * prev_delta + lr * pseudogradient
+      delta = momentum * prev_delta + lr * pseudogradient
 
     Args:
         model (nn.Module): The base model that will be optimized.
@@ -56,9 +60,7 @@ class ES(Optimizer):
 
     def __init__(self, model: torch.nn.Module, environment: Environment, params=None,
                  lr=required, momentum=0, sigma=required, n_perturbations=64,
-                 baseline=True, env_type='dynamic', #player_position=None,
-                 strat_to_bidder_kwargs: dict =None
-                ):
+                 baseline=True, strat_to_player_kwargs: dict =None):
 
         # validation checks
         if lr is not required and lr < 0.0:
@@ -71,9 +73,6 @@ class ES(Optimizer):
             raise ValueError("Invalid number of perturbations: {}".format(n_perturbations))
         assert isinstance(baseline, (bool, int, float)), "Invalid baseline parameter."
         assert isinstance(environment, Environment), "Invalid Environment"
-
-        if env_type == 'fixed':
-            env_type = 'static' # treat these as aliases, 'static' being the canonical form
 
         if not params:
             params = model.parameters()
@@ -88,41 +87,37 @@ class ES(Optimizer):
 
         super(ES, self).__init__(params, defaults)
 
-        # additional members deliberately not handled by super
+        # ----- additional members deliberately not handled by super -----------
+        # we need a reference to the model itself rather than just the model.parameters()
+        # in order to create corresponding bidders from it
         self.model = model
-        self.strat_to_bidder_kwargs = strat_to_bidder_kwargs if strat_to_bidder_kwargs else {}
+        self.strat_to_player_kwargs = strat_to_player_kwargs if strat_to_player_kwargs else {}
 
         # warn if weird initialization
-        if env_type == 'dynamic' and \
-                'player_position' in self.strat_to_bidder_kwargs.keys() and \
-                strat_to_bidder_kwargs['player_position'] is not None:
-            warnings.warn(
-                'You have specified a player_position, but dynamic env_type!' +
-                ' This may lead to unexpected behavior! Did you mean to use a static environment?')
-        elif env_type == 'static' and 'player_position' not in self.strat_to_bidder_kwargs.keys():
-            warnings.warn(
-                'You haven\'t specified a player_position in a static environment.' +
-                ' Defaulting to player_position=0')
-        elif env_type not in ('static', 'dynamic'):
-            raise ValueError('Optimizer received invalid environment type!')
+        if 'player_position' not in self.strat_to_player_kwargs.keys():
+            warnings.warn('You haven\'t specified a player_position to evaluate the model. Defaulting to position 0.')
+            self.strat_to_player_kwargs['player_position'] = 0
 
-        if environment.is_empty() and env_type == 'dynamic':
-            # for self play in dynamic env, add initial model into environment
-            environment.push_agent(deepcopy(model), **self.strat_to_bidder_kwargs)
         self.environment = environment
-        self.env_type = env_type
 
     def __setstate__(self, state):
         super(ES, self).__setstate__(state)
         for group in self.param_groups:
             group.setdefault('momentum', 0)
 
-    def step(self, closure=None):
+    def step(self, closure=None) -> torch.Tensor:
         """Performs a single optimization step.
 
         Arguments:
             closure (callable, optional): A closure that reevaluates the model
             and returns the loss.
+
+        Side Effects:
+            updates parameters in self.model via ES-pseudogradient step
+            redraws valuations in the self.environment
+
+        Returns:
+            loss: torch.Tensor (scalar) calculated as negative utili
         """
 
         for group in self.param_groups:
@@ -135,11 +130,8 @@ class ES(Optimizer):
 
             # set baseline. current reward if True
             if baseline is True: # run only for True, not for nonzero number!
-                baseline = self.environment.get_reward(
-                    self.environment.get_player_from_strategy(
-                        self.model,
-                        **self.strat_to_bidder_kwargs)
-                    ).view(1)
+                baseline = self.environment.get_strategy_reward(
+                    self.model, **self.strat_to_player_kwargs).view(1)
             else: # False, Int or Float
                 baseline = torch.tensor(float(baseline), device=base_params[0].device)
 
@@ -153,12 +145,7 @@ class ES(Optimizer):
             rewards, epsilons = (
                 torch.cat(tensors).view(n_perturbations, -1)
                 for tensors in zip(*(
-                    (
-                        self.environment.get_reward(
-                            self.environment.get_player_from_strategy(
-                                model,
-                                **self.strat_to_bidder_kwargs)
-                            ).view(1),
+                    (   self.environment.get_strategy_reward(model, **self.strat_to_player_kwargs).view(1),
                         epsilon
                     )
                     for (model, epsilon) in population
@@ -168,7 +155,7 @@ class ES(Optimizer):
             # 3. calculate the gradient update
             ## TODO: fails if model not expl. on gpu because rewards is on cuda,
             #        but eps is on cpu. why?
-            weighted_noise_vector = ((rewards -baseline) * epsilons).sum(dim=0)
+            weighted_noise_vector = ((rewards - baseline) * epsilons).sum(dim=0)
             # create a copy of the parameters to store the updates in
             # (we need the same structure as the group params for the loop below)
             param_noise = deepcopy(base_params)
@@ -189,25 +176,15 @@ class ES(Optimizer):
                         buf.mul_(momentum).add_(d_p)
 
                     d_p = buf
-
                 # apply the update
                 p.data.add_(d_p)
 
-        # add new model to environment in dynamic environments
-        if self.env_type == 'dynamic':
-            self.environment.push_agent(deepcopy(self.model), **self.strat_to_bidder_kwargs)
-
-        utility = self.environment.get_reward(
-            self.environment.get_player_from_strategy(
-                self.model,
-                **self.strat_to_bidder_kwargs
-                ),
-            draw_valuations = True, #otherwise, in dynamic env, recently pushed agent will have same valuations as current model (??)
-            )
-        # 5. return the loss
+        utility = self.environment.get_strategy_reward(
+            self.model, draw_valuations= False, **self.strat_to_player_kwargs)
+        # Loss is negative utility
         return -utility
 
-    def _perturb_model(self, model: torch.nn.Module):
+    def _perturb_model(self, model: torch.nn.Module) -> Tuple[torch.nn.Module, torch.Tensor]:
         """
             Returns a randomly perturbed copy of a model [torch.nn.Module],
             as well as the noise vector used to generate the perturbation.
@@ -221,10 +198,6 @@ class ES(Optimizer):
         vector_to_parameters(params_flat + noise, perturbed.parameters())
 
         return perturbed, noise
-
-    def _update_env(self, new_env: Iterable):
-        for agent in new_env:
-            self.environment.push_agent(agent)
 
 
 #class SimpleReinforce(Optimizer):
@@ -240,7 +213,7 @@ class ES(Optimizer):
 #
 #        As such, this code should be considered experimental as it has not been verified to work.
 #
-#        TODO: Test in other setting
+#        to do: Test in other setting
 #           -: parallelize perturbations
 #           -: possible sign-error in update step?
 #
@@ -316,7 +289,7 @@ class ES(Optimizer):
 #
 #        for p in params:
 #            dp[p].div_(n_perturbations)
-#            # TODO: possibly missing minus?
+#            # to do: possibly missing minus?
 #            p.data.add_(self.param_groups[0]['lr'], dp[p])
 #
 #         # add new model to environment in 'dynamic' environments

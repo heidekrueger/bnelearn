@@ -51,61 +51,15 @@ def strat_to_bidder(strategy, batch_size, player_position=None): #pylint: disabl
         player_position=player_position
         )
 
-
-def test_learning_in_dynamic_environment():
-    """set up 1 model and play in dynamic environment"""
-    # init model
-    output_is_positive = False
-    while not output_is_positive:
-        model = NeuralNetStrategy(input_length,
-                                  size_hidden_layer = size_hidden_layer,
-                                  requires_grad=False
-                                 ).to(device)
-        if model(torch.tensor([float(u_hi)], device=device)) > 0:
-            output_is_positive = True
-
-    env = AuctionEnvironment(mechanism,
-                             agents = [], #dynamically built
-                             max_env_size = n_players - 1,
-                             batch_size = batch_size,
-                             n_players =n_players,
-                             strategy_to_bidder_closure = strat_to_bidder
-                             )
-
-    optimizer = ES(model=model, environment = env,
-                   lr = learning_rate, momentum=momentum,
-                   sigma=sigma, n_perturbations=n_perturbations,
-                   baseline=baseline)
-
-    for _ in range(epoch+1):
-        utility = -optimizer.step()
-
-    ## no fail until here means the loop ran properly (i.e. no runtime errors)
-
-    ## for upper bound of valuation range, value should be close to optimal.
-    bid_at_10 = model(torch.tensor([10.], dtype=torch.float, device = device))
-    assert 4 < bid_at_10 < 7, \
-        "Model failed to learn optimal bid at upper bound. Found {}, expected range [4,6]".format(bid_at_10)
-
-    # after 200 iterations, utility should be reliably above 0.5
-    ## warn if not
-    if not 1 < utility < 3:
-        warnings.warn('Utility {:.2f} is not in expected range [1,3]!'.format(utility))
-
-
 def test_learning_in_static_environment():
     """Tests the same setting as above (2p FPSB symmetric uniform), but with a
        fixed-environment implementation. (2 named agents with a shared model.)
     """
-
-    output_is_positive = False
-    while not output_is_positive:
-        model = NeuralNetStrategy(input_length,
-                                  size_hidden_layer = size_hidden_layer,
-                                  requires_grad=False
-                                 ).to(device)
-        if model(torch.tensor([float(u_hi)], device=device)) > 0:
-            output_is_positive = True
+    model = NeuralNetStrategy(input_length,
+                              size_hidden_layer = size_hidden_layer,
+                              requires_grad=False,
+                              ensure_positive_output=torch.tensor([float(u_hi)])
+                             ).to(device)
 
     bidder1 = strat_to_bidder(model, batch_size,0)
     bidder2 = strat_to_bidder(model, batch_size,1)
@@ -114,15 +68,14 @@ def test_learning_in_static_environment():
                              agents = [bidder1, bidder2], #static
                              batch_size = batch_size,
                              n_players =n_players,
-                             strategy_to_bidder_closure = strat_to_bidder
+                             strategy_to_player_closure = strat_to_bidder
                              )
 
     # we'll simply bidder1's model, as it's shard between players.
     optimizer = ES(model=model, environment = env,
                    lr = learning_rate, momentum=momentum,
-                   sigma=sigma, n_perturbations=n_perturbations,
-                   baseline=baseline, env_type = 'static',
-                   strat_to_bidder_kwargs={'player_position':bidder1.player_position})
+                   sigma=sigma, n_perturbations=n_perturbations, baseline=baseline,
+                   strat_to_player_kwargs={'player_position':bidder1.player_position})
 
     for _ in range(epoch+1):
         utility = -optimizer.step()

@@ -5,7 +5,6 @@ stages:
 test:
   stage: test
   script:
-  # uuund nochmal
   # this assumes everything is already installed and we are able to load the correct conda env.
   # when setting up the runner user for the first time, make sure it finds the global conda on the machine
   #- /opt/anaconda/anaconda3/bin/conda init
@@ -17,16 +16,18 @@ test:
 lint:
   stage: lint
   script:
-    # requires that pylint , pylint-exit and ptlint2codeclimate are installed.
+    # requires that pylint , pylint-exit and pylint2codeclimate are installed.
     # pylint-exit used as below modifies pylint exit code to prevent false-positive pupeline fails.
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
   - source activate bnelearn
   - pylint bnelearn/*.py | tee pylint.txt || pylint-exit $?
   - score=$(sed -n 's/^Your code has been rated at \([-0-9.]*\)\/.*/\1/p' pylint.txt)
   - pylint -f pylint2codeclimate.CodeClimateReporter bnelearn/*.py > pylint_report.json || pylint-exit $?
+  - echo 'pylint_score $score' > metrics.txt
   - echo "Pylint score was $score"
   artifacts:
     reports:
+      metrics: metrics.txt
       codequality: pylint_report.json
   
   # get the json with all badge urls via API and regex the id of the badge with 'blue.svg' in it

@@ -196,7 +196,7 @@ class MatrixGame(Game):
             assert torch.all(strategy >= 0.0), \
                 "Probabilities must be positive for player {}".format(player)
 
-    def _tensorize_strategy_profile(self, strategy_profile_list = List[torch.Tensor]):
+    def _tensorize_strategy_profile(self, strategy_profile_list = List[torch.Tensor]) -> torch.Tensor:
         """Turns a list of strategies (1-d-tensors) into a n-player dimensional joint strategy profile tensor"""
 
         # set einsum_string depending on number of players
@@ -215,7 +215,6 @@ class MatrixGame(Game):
             raise NotImplementedError('Playing mixed strategies is only implemented for up to 6 players!')
 
         return torch.einsum(einsum_string, strategy_profile_list)
-
 
     def play_mixed(self, strategy_profile: List[torch.Tensor], validate: bool = None):
         """Plays the game with mixed strategies, returning expectation of outcomes.
@@ -531,10 +530,12 @@ class FirstPriceSealedBidAuction(Mechanism):
         return (allocations, payments) # payments: batches x players, allocation: batch x players x items
 
 class StaticMechanism(Mechanism):
-    """ A static mechanism that can be used for testing purposes.
-        Items are allocated with probability bid/10, payments are always given
-        by b²/20, even when the item is not allocated.
+    """ A static mechanism that can be used for testing purposes,
+        in order to test functionality/efficiency of optimizers without introducing
+        additional stochasticity from multi-player learning dynamics.
 
+        In this 'single-player single-item' setting, items are allocated with probability bid/10,
+        payments are always given by b²/20, even when the item is not allocated.
         The expected payoff from this mechanism is thus
         b/10 * v - 0.05b²,
         The optimal strategy fo an agent with quasilinear utility is given by bidding truthfully.
