@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Callable, Iterable
 
 import math
+from copy import copy
 
 import torch
 import torch.nn as nn
@@ -120,8 +121,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         self.requires_grad = requires_grad
         self.input_length = input_length
-        self.hidden_nodes = hidden_nodes
-        self.activations = hidden_activations
+        self.hidden_nodes = copy(hidden_nodes)
+        self.activations = copy(hidden_activations) # do not write to list outside!
 
         self.layers = nn.ModuleDict()
 
