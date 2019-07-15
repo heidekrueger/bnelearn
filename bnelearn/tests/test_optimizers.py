@@ -2,6 +2,7 @@
 import warnings
 import pytest
 import torch
+import torch.nn as nn
 from bnelearn.strategy import NeuralNetStrategy
 from bnelearn.mechanism import StaticMechanism
 from bnelearn.bidder import Bidder
@@ -12,7 +13,8 @@ from bnelearn.environment import AuctionEnvironment
 cuda = torch.cuda.is_available()
 device = 'cuda' if cuda else 'cpu'
 
-SIZE_HIDDEN_LAYER = 20
+hidden_nodes = [5,5]
+hidden_activations = [nn.SELU(), nn.SELU()]
 input_length = 1
 u_lo = 0
 u_hi = 10
@@ -33,11 +35,11 @@ def test_static_mechanism():
 
     model = NeuralNetStrategy(
         input_length,
-        size_hidden_layer = SIZE_HIDDEN_LAYER,
+        hidden_nodes =hidden_nodes,
+        hidden_activations=hidden_activations,
         requires_grad=False,
         ensure_positive_output=torch.tensor([float(u_hi)])
         ).to(device)
-
 
     bidder = strat_to_bidder(model, BATCH_SIZE)
 
@@ -79,11 +81,12 @@ def test_ES_optimizer():
 
     model = NeuralNetStrategy(
         input_length,
-        size_hidden_layer = SIZE_HIDDEN_LAYER,
+        hidden_nodes =hidden_nodes,
+        hidden_activations=hidden_activations,
         requires_grad=False,
         ensure_positive_output=torch.tensor([float(u_hi)])
         ).to(device)
-    
+
     bidder = strat_to_bidder(model, BATCH_SIZE, 0)
     env = AuctionEnvironment(
         mechanism, agents = [bidder],
@@ -123,11 +126,12 @@ def test_ES_momentum():
 
     model = NeuralNetStrategy(
         input_length,
-        size_hidden_layer = SIZE_HIDDEN_LAYER,
+        hidden_nodes =hidden_nodes,
+        hidden_activations=hidden_activations,
         requires_grad=False,
         ensure_positive_output=torch.tensor([float(u_hi)])
         ).to(device)
-    
+
     bidder = strat_to_bidder(model, BATCH_SIZE, 0)
 
     env = AuctionEnvironment(

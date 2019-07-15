@@ -13,6 +13,7 @@
 """
 import warnings
 import torch
+import torch.nn as nn
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
@@ -33,8 +34,9 @@ u_hi = 10
 
 batch_size = 2**14
 input_length = 1
-size_hidden_layer = 10
-epoch = 200
+hidden_nodes = [5,5]
+hidden_activations = [nn.SELU(), nn.SELU()]
+epoch = 100
 learning_rate = 1e-1
 lr_decay = False
 baseline = True
@@ -51,12 +53,13 @@ def strat_to_bidder(strategy, batch_size, player_position=None): #pylint: disabl
         player_position=player_position
         )
 
-def test_learning_in_static_environment():
+def test_learning_in_fpsb_environment():
     """Tests the same setting as above (2p FPSB symmetric uniform), but with a
        fixed-environment implementation. (2 named agents with a shared model.)
     """
     model = NeuralNetStrategy(input_length,
-                              size_hidden_layer = size_hidden_layer,
+                              hidden_nodes= hidden_nodes,
+                              hidden_activations= hidden_activations,
                               requires_grad=False,
                               ensure_positive_output=torch.tensor([float(u_hi)])
                              ).to(device)

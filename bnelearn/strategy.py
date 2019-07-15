@@ -3,14 +3,13 @@
 Implementations of strategies for playing in Auctions and Matrix Games.
 """
 from abc import ABC, abstractmethod
-from typing import Callable
+from typing import Callable, Iterable
 
 import math
 
 import torch
 import torch.nn as nn
 from torch.distributions.categorical import Categorical
-from torch.multiprocessing import Pool, set_sharing_strategy
 
 ## E1102: false positive on torch.tensor()
 ## false positive 'arguments-differ' warnings for forward() overrides
@@ -46,7 +45,7 @@ class ClosureStragegy(Strategy):
 
             torch.multiprocessing.set_sharing_strategy('file_system')
 
-            with Pool(pool_size) as p:
+            with torch.multiprocessing.Pool(pool_size) as p:
                 print('Calculating strategy for batch of size {} with a pool size of {}.'.format(inputs.shape[0],
                                                                                                  pool_size))
                 result = p.map(self.closure, inputs.cpu())
@@ -90,12 +89,16 @@ class MatrixGameStrategy(Strategy, nn.Module):
 
 class NeuralNetStrategy(Strategy, nn.Module):
     """
-    A strategy played by a neural network
-
+    A strategy played by a fully connected neural network
 
     Args:
-        input_length: dimension of the input layer
-        size_hidden_layer: number of nodes in (currently single) hidden layer
+        input_length:
+            dimension of the input layer
+        hidden_nodes:
+            Iterable of number of nodes in hidden layers
+        hidden_activations:
+            Iterable of activation functions to be used in the hidden layers.
+            Should be instances of classes defined in `torch.nn.modules.activation`
         requires_grad:
             whether pytorch should build the whole DAG.
             Since ES is gradient-free, we can save some cycles and memory here.
@@ -104,19 +107,35 @@ class NeuralNetStrategy(Strategy, nn.Module):
             positive bid anywhere at the given input tensor. Otherwise,
             the weights will be reinitialized.
     """
-    def __init__(self, input_length, size_hidden_layer = 10, requires_grad = True,
+    def __init__(self, input_length: int,
+                 hidden_nodes: Iterable[int],
+                 hidden_activations: Iterable[nn.Module],
+                 requires_grad = True,
                  ensure_positive_output: torch.Tensor or None = None):
+
+        assert len(hidden_nodes) == len(hidden_activations), \
+            "Provided nodes and activations do not match!"
+
         nn.Module.__init__(self)
 
         self.requires_grad = requires_grad
         self.input_length = input_length
-        self.size_hidden_layer = size_hidden_layer
-        self.fc1 = nn.Linear(input_length, size_hidden_layer)
-        #self.fc2 = nn.Linear(size_hidden_layer, size_hidden_layer)
-        self.fc_out = nn.Linear(size_hidden_layer, 1)
-        #self.tanh = nn.Tanh()
-        #self.lrelu1 = nn.LeakyReLU(negative_slope=.1)
-        #self.lrelu2 = nn.LeakyReLU(negative_slope=.1)
+        self.hidden_nodes = hidden_nodes
+        self.activations = hidden_activations
+
+        self.layers = nn.ModuleDict()
+
+        # first layer
+        self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
+        self.layers['activation_0'] = hidden_activations[0]
+
+        for i in range (1, len(hidden_nodes)):
+            self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
+            self.layers['activation_' + str(i)] = hidden_activations[i]
+
+        self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], 1)
+        self.layers['activation_out'] = nn.ReLU()
+        self.activations.append(nn.ReLU())
 
         # turn off gradients if not required (e.g. for ES-training)
         if not requires_grad:
@@ -131,28 +150,25 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
-        self.__init__(self.input_length, self.size_hidden_layer, self.requires_grad, ensure_positive_output)
+        self.__init__(self.input_length, self.hidden_nodes, self.activations[:-1],
+                      self.requires_grad, ensure_positive_output)
 
     def forward(self, x):
-        x = torch.tanh(self.fc1(x))
-        #x = F.tanh(self.fc2(x))
-        #x = self.tanh(self.fc1(x))
-        x = self.fc_out(x).relu()
-
+        for layer in self.layers.values():
+            x = layer(x)
         return x
 
     def play(self,inputs):
         return self.forward(inputs)
 
 class TruthfulStrategy(Strategy, nn.Module):
-    def __init__(self, input_length):
+    """A strategy that plays truthful valuations."""
+    def __init__(self):
         nn.Module.__init__(self)
         self.register_parameter('dummy',nn.Parameter(torch.zeros(1)))
 
     def forward(self, x):
-        # simply play first input
-        # TODO: right now specific for input length 2!
-        return x.matmul(torch.tensor([[1.0], [0.0]], device=x.device))
+        return x
 
     def play(self, inputs):
         return self.forward(inputs)
