@@ -4,8 +4,9 @@
 This module implements games such as matrix games and auctions.
 """
 
+import warnings
 from abc import ABC, abstractmethod
-from typing import Tuple, List
+from typing import List, Tuple
 
 #pylint: disable=E1102
 import torch
@@ -117,7 +118,6 @@ class MatrixGame(Game):
             assert torch.all(action_profile[:, i, :] < self.outcomes.shape[i]), \
                 "Invalid action given for player {}".format(i)
 
-
     def play(self, action_profile):
         """Plays the game for a given action_profile.
 
@@ -196,8 +196,12 @@ class MatrixGame(Game):
             assert torch.all(strategy >= 0.0), \
                 "Probabilities must be positive for player {}".format(player)
 
-    def _tensorize_strategy_profile(self, strategy_profile_list = List[torch.Tensor]) -> torch.Tensor:
-        """Turns a list of strategies (1-d-tensors) into a n-player dimensional joint strategy profile tensor"""
+    def _tensorize_strategy_profile(self, strategy_profile_list: List[torch.Tensor]) -> torch.Tensor:
+        """Deprecated (no longer needed due to new implementation of play_mixed)
+
+        Turns a list of strategies (1-d-tensors) into a n-player dimensional joint strategy profile tensor"""
+
+        warnings.warn('_tensorize_strategy_profile is deprecated, you should no longer use this method.')
 
         # set einsum_string depending on number of players
         einsum_strings = {
@@ -216,6 +220,86 @@ class MatrixGame(Game):
 
         return torch.einsum(einsum_string, strategy_profile_list)
 
+    def _calculate_utilities_mixed(self, strategy_profile: List[torch.Tensor], player_position=None,
+                                   validate: bool = None) -> torch.Tensor:
+        """
+            Internal function that is wrapped by both play_mixed and calculate_action_values.
+
+            For a given strategy-profile and player_position, calculates that player's expected utility for
+            each of their moves. (Only opponent's strategies are considered, player_i's strategy is ignored).
+            If no player_position is specified, instead returns the expected utilities for all players in the complete
+            strategy profile.
+
+            # TODO: improve this documentation to make this clearer
+            --------
+            Args:
+                strategy_profile: List of mixed strategies (i.e. probability vectors) for all players
+                player_position: (optional) int
+                    Position of the player of interest, or none if interested in all players
+
+            Returns:
+                if player_position (i) is given:
+                    torch.Tensor of dimension n_actions_player_i of expected utilities against opponent strategy_profile
+                if no player is specified:
+                    torch.Tensor of dimension n_players of expected utilities in the complete strategy profile
+        """
+
+        # validate inputs if desired
+        if validate is None:
+            validate = self.validate_inputs
+        if validate:
+            self._validate_mixed_strategy_input(strategy_profile)
+
+        # Note on implementation:
+        # This is implemented via a series of tensor-vector products.
+        # self.outcomes is of dim (n_a_p1, ... n_a_pn, n_players)
+        # for specific player, we select that player's outcomes in the last dimension,
+        #   then perform n-1 tensor-vector-products for each opponent strategy
+        # for all player's, we keep the last dimension but perform n tensor-vector products
+        #
+        # This is implemented as follows:
+        #  1  start with outcome matrix
+        #  2  define (reverse) order of operations as [i, 1,2,i-1,i+1,...n]
+        #  3  permute outcome matrix according to that order, as matrix-vector-matmuls always operate on last dimension
+        #  4  perform the operations, starting with the last player
+        #
+        # For utility of all players, the procedure is the same, except that all player's utilities are kept in the
+        # 1st dimension, i.e. the order is [n+1, 1, 2, ... n]
+
+        if player_position is None:
+            result = self.outcomes
+            ignore_dim = self.n_players
+            order = list(range(self.n_players + 1))
+        else:
+            result = self.outcomes.select(self.n_players, player_position)
+            ignore_dim = player_position
+            order = list(range(self.n_players))
+
+        # put ignored dimension in the beginning, rest lexicographical
+        order = order.pop(ignore_dim), *order
+        result = result.permute(order)
+
+        # repeatedly mutliply from the last dimension to the first
+        for j in reversed(order):
+            if j != ignore_dim:
+                result = result.matmul(strategy_profile[j])
+
+        return result
+
+    def calculate_expected_action_payoffs(self, strategy_profile, player_position):
+        """
+        Calculates the expected utility for a player under a mixed opponent strategy
+        ----------
+        Args:
+            strategy_profile: List of action-probability-vectors for each player. player i's strategy must be supplied
+                          but is ignored.
+            player_position: player of interest
+
+        Returns:
+            expected payoff per action of player i (tensor of dimension (1 x n_actions[i])
+        """
+        return self._calculate_utilities_mixed(strategy_profile, player_position, validate = False)
+
     def play_mixed(self, strategy_profile: List[torch.Tensor], validate: bool = None):
         """Plays the game with mixed strategies, returning expectation of outcomes.
 
@@ -230,7 +314,7 @@ class MatrixGame(Game):
 
         validate: bool
             Whether to validate inputs. Defaults to setting in game class.
-            (You might want to turn this off in settings with many many iterations)
+            (Validation overhead is ~100%, so you might want to turn this off in settings with many many iterations)
 
         Returns
         -------
@@ -239,7 +323,6 @@ class MatrixGame(Game):
             payments:   tensor of dimension (n_players)
                         Negative expected outcome/utility for each player.
         """
-
         # move inputs to device if necessary
         for i, strat in enumerate(strategy_profile):
             strategy_profile[i] = strat.to(self.device)
@@ -247,24 +330,8 @@ class MatrixGame(Game):
         # validate inputs if desired
         if validate is None:
             validate = self.validate_inputs
-        if validate:
-            self._validate_mixed_strategy_input(strategy_profile)
 
-        # for each action profile, get probability-weighted vector of utilities that the players
-        # expect to get from this action profile under the mixed strategy profile
-        utils_per_action_profile = (
-            # get joint action profile distribution
-            # with dim=n_players and shape [n_actions_p1, ... n_actions_p_n])
-            # with joint_distribution[i, j, k, ... z] = P(a_i =i, a_j=j, ...z_z=z)
-            self._tensorize_strategy_profile(strategy_profile)
-            # add another dimension to the end of this tensor to make it same shape of outcome matrix
-            .unsqueeze(self.n_players)
-            # multiply with outcome for each action profile
-            * self.outcomes
-        )
-
-        # sum over all but last dimension to get expected payoff per player
-        payoffs_per_player = utils_per_action_profile.sum(list(range(self.n_players)))
+        payoffs_per_player = self._calculate_utilities_mixed(strategy_profile, validate=validate)
 
         return torch.tensor([], device=self.device), -payoffs_per_player
 
@@ -274,7 +341,7 @@ class MatrixGame(Game):
 
 class RockPaperScissors(MatrixGame):
     """2 player, 3 action game rock paper scissors"""
-    def __init__(self, cuda: bool = True):
+    def __init__(self, cuda: bool = True, **kwargs):
 
         device = 'cuda' if cuda and torch.cuda.is_available() else 'cpu'
 
@@ -291,7 +358,7 @@ class RockPaperScissors(MatrixGame):
             "action_names": ["Rock", "Paper", "Scissors"]
             }
 
-        super().__init__(2, outcomes, cuda=cuda, names=names)
+        super().__init__(2, outcomes, cuda=cuda, names=names, **kwargs)
 
 class JordanGame(MatrixGame):
     """Jordan Anticoordination game (1993), FP does not converge. 3P version of Shapley fashion game:
@@ -300,8 +367,7 @@ class JordanGame(MatrixGame):
         P2 wants to be different from P3
         P3 wants to be different from P1
     """
-    def __init__(self, cuda: bool = True):
-        device = 'cuda' if cuda and torch.cuda.is_available() else 'cpu'
+    def __init__(self, **kwargs):
         #pylint:disable=bad-continuation
         outcomes = torch.tensor([
             [   [   #LL
@@ -316,17 +382,15 @@ class JordanGame(MatrixGame):
                 ], [#RR
                     [0,1,1],   # RRL
                     [0,0,0]    # RRR
-            ]]], device=device)
+            ]]])
 
-        super().__init__(n_players=3, outcomes=outcomes, cuda=cuda)
+        super().__init__(n_players=3, outcomes=outcomes, **kwargs)
 
 class PaulTestGame(MatrixGame):
     """A 3-p game without many symmetries used for testing n-player tensor implementations.
     Payoff: [M,R,C]
     """
-    def __init__(self, cuda: bool = True):
-        device = 'cuda' if cuda and torch.cuda.is_available() else 'cpu'
-
+    def __init__(self, **kwargs):
         # pylint: disable=bad-continuation
         outcomes = torch.tensor([
             [   [   #LL
@@ -341,41 +405,41 @@ class PaulTestGame(MatrixGame):
                 ], [#RR
                     [-2, 7,1],   # RRL
                     [3, 4, 4]    # RRR
-            ]]], device=device)
+            ]]])
 
-        super().__init__(n_players=3, outcomes=outcomes, cuda=cuda)
+        super().__init__(n_players=3, outcomes=outcomes, **kwargs)
 
 class PrisonersDilemma(MatrixGame):
     """Two player, two action Prisoner's Dilemma game.
        Has a unique pure Nash equilibrium in ap [1,1]
     """
-    def __init__(self, cuda: bool = True):
+    def __init__(self, **kwargs):
         super().__init__(
             n_players=2,
             outcomes = torch.tensor([[[-1, -1],[-3, 0]], [[ 0, -3],[-2,-2]]]),
-            cuda = cuda,
             names = {
                 "player_names": ["RowPlayer", "ColPlayer"],
                 "action_names": ["Cooperate", "Defect"]
-            }
+            },
+            **kwargs
         )
 
 class BattleOfTheSexes(MatrixGame):
     """Two player, two action Battle of the Sexes game"""
-    def __init__(self, cuda: bool = True):
+    def __init__(self, **kwargs):
         super().__init__(
             n_players=2,
             outcomes=torch.tensor([[[3, 2],[0,0]], [[0,0],[2,3]]]),
-            cuda=cuda,
             names = {
                 "player_names": ["Boy", "Girl"],
                 "action_names": ["Action", "Romance"]
-            }
+            },
+            **kwargs
         )
 
 class BattleOfTheSexes_Mod(MatrixGame):
     """Modified Battle of the Sexes game"""
-    def __init__(self, cuda: bool = True):
+    def __init__(self, **kwargs):
         super().__init__(
             n_players=2,
             outcomes=torch.tensor([
@@ -389,20 +453,20 @@ class BattleOfTheSexes_Mod(MatrixGame):
                     [-1,1],  # Her: Stadium
                     [4,0]], # Her: Theater
                 ]),
-            cuda=cuda
+            **kwargs
         )
 
 class MatchingPennies(MatrixGame):
     """Two Player, two action Matching Pennies / anticoordination game"""
-    def __init__(self, cuda: bool = True):
+    def __init__(self, **kwargs):
         super().__init__(
             n_players=2,
             outcomes=torch.tensor([[[1, -1],[-1, 1,]], [[-1, 1], [1, -1]]]),
-            cuda=cuda,
             names = {
                 "player_names": ["Even", "Odd"],
                 "action_names": ["Heads", "Tails"]
-            }
+            },
+            **kwargs
         )
 
 class VickreyAuction(Mechanism):

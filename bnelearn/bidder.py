@@ -8,6 +8,7 @@ This module implements players / bidders / agents in games.
 from abc import ABC, abstractmethod
 import torch
 from torch.distributions import Distribution
+from bnelearn.strategy import MatrixGameStrategy, FictitiousPlayStrategy
 
 class Player(ABC):
     """
@@ -49,6 +50,13 @@ class MatrixGamePlayer(Player):
         _, payments = outcome
         return -payments
 
+    def get_action(self):
+        if isinstance(self.strategy, MatrixGameStrategy):
+            return self.strategy.play(batch_size=self.batch_size)
+        if isinstance(self.strategy, FictitiousPlayStrategy):
+            return self.strategy.play(self.player_position)
+
+        raise ValueError("Wrong strategy assigned to bidder?")
 
 class Bidder(Player):
     """

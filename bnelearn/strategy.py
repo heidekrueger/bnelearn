@@ -2,15 +2,17 @@
 """
 Implementations of strategies for playing in Auctions and Matrix Games.
 """
-from abc import ABC, abstractmethod
-from typing import Callable, Iterable
-
 import math
+from abc import ABC, abstractmethod
 from copy import copy
+from typing import Callable, Iterable
 
 import torch
 import torch.nn as nn
 from torch.distributions.categorical import Categorical
+from tqdm import tqdm
+
+from bnelearn.mechanism import Game, MatrixGame
 
 ## E1102: false positive on torch.tensor()
 ## false positive 'arguments-differ' warnings for forward() overrides
@@ -24,8 +26,14 @@ class Strategy(ABC):
         """Takes (private) information as input and decides on the actions an agent should play."""
         raise NotImplementedError()
 
-class ClosureStragegy(Strategy):
-    """A strategy specified by a closure"""
+class ClosureStrategy(Strategy):
+    """A strategy specified by a closure
+
+        Args:
+            closure: Callable a function or lambda that defines the strategy
+            parallel: int (optional) maximum number of processes for parallel execution of closure. Default is
+                      0/1 (i.e. no parallelism)
+    """
 
     def __init__(self, closure: Callable, parallel: int = 0):
         self.closure = closure
@@ -35,27 +43,151 @@ class ClosureStragegy(Strategy):
         pool_size = 1
 
         if self.parallel:
+            # detect appropriate pool size
             pool_size = min(self.parallel, max(1, math.ceil(inputs.shape[0]/2**10)))
 
+        # parallel version
         if pool_size > 1:
             in_device = inputs.device
 
-            # calculate necessary shape by calling closure for a single input
+            # calculate necessary shape by calling closure once for a single input
             _, *other_dims = self.closure(inputs[:1]).shape
             out_shape = torch.Size([inputs.shape[0], *other_dims])
 
-            torch.multiprocessing.set_sharing_strategy('file_system')
+            # determine chunk-size -----
+            # if providing the tensor by itself, pool.map will iterate over individual elements
+            # and just communicate multiple of those elements to a worker at once.
+            # so instead, we'll split the tensor into a list of tensors ourselves and provide that
+            # as the iterator.
+            # we'll use the same chunk-size heuristic as in python.multiprocessing
+            # see https://stackoverflow.com/questions/53751050
+            chunksize, extra = divmod(inputs.shape[0], pool_size*4)
+            if extra:
+                chunksize += 1
+
+            # move input to cpu and split into chunks
+            split_tensor = inputs.cpu().split(chunksize)
+            n_chunks = len(split_tensor)
+
+            #torch.multiprocessing.set_sharing_strategy('file_system') # needed for very large number of chunks
 
             with torch.multiprocessing.Pool(pool_size) as p:
-                print('Calculating strategy for batch of size {} with a pool size of {}.'.format(inputs.shape[0],
-                                                                                                 pool_size))
-                result = p.map(self.closure, inputs.cpu())
-                result = torch.tensor(result, device = in_device).view(out_shape)
+                # as we handled chunks ourselves, each element of our list should be an individual chunk,
+                # so the pool.map will get argument chunksize=1
+                # The following code is wrapped to produce progess bar, without it simplifies to:
+                # result = p.map(self.closure, split_tensor, chunksize=1)
+                result = list(tqdm(
+                    p.imap(self.closure, split_tensor, chunksize=1),
+                    total = n_chunks, unit='chunks',
+                    desc = 'Calculating strategy for batch_size {} with {} processes, chunk size of {}'.format(
+                        inputs.shape[0], pool_size, chunksize)
+                    ))
 
+            # finally stitch the tensor back together
+            result = torch.cat(result).view(out_shape).to(in_device)
             return result
 
+        # serial version on single processor
         return self.closure(inputs)
 
+class FictitiousPlayStrategy(Strategy):
+    """
+    Based on description in: Fudenberg, 1999 - The Theory of Learning, Chapter 2.2
+    Always play best response (that maximizes utility based on current beliefs).
+
+    """
+    def __init__(self, game: MatrixGame, initial_beliefs: Iterable[torch.Tensor]=None):
+        self.game = game
+
+        self.n_actions: Iterable[int] = game.outcomes.shape[:-1]
+        self.n_players: int = game.n_players
+
+        self.historical_actions = [torch.zeros(self.n_actions[i], dtype = torch.float, device = game.device)
+                                   for i in range(self.n_players)
+                                  ]
+        self.probs = [torch.zeros(self.n_actions[i], dtype = torch.float, device = game.device)
+                      for i in range(self.n_players)
+                     ]
+
+        # for tracking
+        self.probs_self = None
+        self.exp_util = None
+
+        if initial_beliefs is None:
+            initial_beliefs = [torch.rand(self.n_actions[i], dtype = torch.float, device = game.device)
+                               for i in range(self.n_players)
+                              ]
+        else:
+            assert initial_beliefs.dtype == torch.float, "Wrong data type for initial_beliefs tensor"
+            #TODO: Check this?: assert initial_beliefs.device == game.device, "Wrong device for initial_beliefs tensor"
+        for i in range(self.n_players):
+            self.historical_actions[i][:] = initial_beliefs[i].clone()
+
+        #Update beliefs about play
+        for i in range(self.n_players):
+            for a in range(self.n_actions[i]):
+                self.probs[i][a] = self.historical_actions[i][a].sum()/self.historical_actions[i][:].sum()
+
+    def play(self, player_position: int):
+        self.exp_util = self.game.calculate_expected_action_payoffs(self.probs, player_position)
+        # Softmax with very small tau only for plotting of decision
+        self.probs_self = (100000.0 * self.exp_util).softmax(0)
+        action = self.exp_util.max(dim = 0, keepdim=False)[1]
+        return action
+
+    def update_observations(self, actions: Iterable[torch.Tensor]):
+        #Ensure correct length of actions
+        assert len(actions) == self.n_players
+        #Update observed actions
+        for player,action in enumerate(actions):
+            if action is not None:
+                self.historical_actions[player][action] += 1
+
+    def update_beliefs(self):
+        """Update beliefs about play"""
+        for i in range(self.n_players):
+            self.probs[i] = self.historical_actions[i]/self.historical_actions[i].sum()
+
+class FictitiousPlaySmoothStrategy(FictitiousPlayStrategy):
+    """
+    Implementation based on Fudenberg (1999) but extended by smooth fictitious play.
+    Randomize action by taking the softmax over the expected utilities for each action and sample.
+    Also, add a temperature (tau) that ensures convergence by becoming smaller.
+    """
+    def __init__(self, game: Game, initial_beliefs: Iterable[torch.Tensor]=None):
+        super().__init__(game = game, initial_beliefs = initial_beliefs)
+        self.tau = 1.0
+
+    def play(self, player_position) -> torch.Tensor:
+        self.exp_util = self.game.calculate_expected_action_payoffs(self.probs, player_position)
+        self.probs_self = (1/self.tau * self.exp_util).softmax(0)
+        action = torch.distributions.Categorical(self.probs_self).sample()
+        return action
+
+    def update_tau(self, param = 0.9):
+        """Updates temperature parameter"""
+        self.tau = param*self.tau
+
+class FictitiousPlayMixedStrategy(FictitiousPlaySmoothStrategy):
+    """
+    Play (communicate) probabilities for play (same as in smooth FP) instead of one action.
+    One strategy should be shared among all players such that they share the same beliefs.
+    This is purely fictitious since it does not simulate actions.
+    """
+    def __init__(self, game: Game, initial_beliefs: Iterable[torch.Tensor]=None):
+        super().__init__(game = game, initial_beliefs = initial_beliefs)
+        for player in range(self.n_players):
+            self.historical_actions[player] = self.probs[player].clone()
+
+    def play(self, player_position) -> torch.Tensor:
+        self.exp_util = self.game.calculate_expected_action_payoffs(self.probs, player_position)
+        self.probs_self = (1/self.tau * self.exp_util).softmax(0)
+        self.historical_actions[player_position][:] += self.probs_self
+        return self.probs_self
+
+    def update_observations(self, actions: None):
+        #Observations are always directly updated due to sharing the same memory or beliefs
+        pass
 
 class MatrixGameStrategy(Strategy, nn.Module):
     """ A dummy neural network that encodes and returns a mixed strategy"""
@@ -87,6 +219,12 @@ class MatrixGameStrategy(Strategy, nn.Module):
         # is of shape batch size x 1
         # TODO: this is probably slow AF. fix when needed.
         return self.distribution.sample(inputs.shape)
+
+    def to(self, device):
+        # when moving the net to a different device (nn.Module.to), also update the distribution.
+        result = super().to(device)
+        result._update_distribution() #pylint: disable=protected-access
+        return result
 
 class NeuralNetStrategy(Strategy, nn.Module):
     """
