@@ -6,7 +6,6 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from bnelearn.bidder import MatrixGamePlayer
-from bnelearn.environment import MatrixGameEnvironment
 from bnelearn.mechanism import (BattleOfTheSexes, JordanGame, MatchingPennies,
                                 PrisonersDilemma, RockPaperScissors)
 from bnelearn.strategy import (FictitiousPlayMixedStrategy,
@@ -17,13 +16,12 @@ root_path = os.path.abspath(os.path.join('..'))
 if root_path not in sys.path:
     sys.path.append(root_path)
 
-
-
-torch.cuda.is_available()
-
-setting = ["FPS","PD"]
-param_tau = [0.0001,10,0.9] #[0.,10,0.9]
-initial_beliefs = None #torch.Tensor([[600,400],[400,600]]).to(device))
+cuda = torch.cuda.is_available()
+device = 'cuda' if cuda else 'cpu'
+####################################Setup#######################################################
+setting = ["FPM","RPS"]
+param_tau = [0.00001,10,0.99] #[0.,10,0.9]
+initial_beliefs = None# torch.Tensor([[500,500],[500,500]]).to(device) #initial_beliefs = torch.Tensor([[59.5,40.5],[40.5,59.5]]).to(device)
 
 options = {"FP": FictitiousPlayStrategy,
            "FPS": FictitiousPlaySmoothStrategy,
@@ -31,7 +29,8 @@ options = {"FP": FictitiousPlayStrategy,
            "PD": PrisonersDilemma,
            "MP": MatchingPennies,
            "BoS": BattleOfTheSexes,
-           "JG": JordanGame}
+           "JG": JordanGame,
+          "RPS": RockPaperScissors}
 
 run_name = time.strftime('{}_%Y-%m-%d %a %H:%M:%S'.format(setting[0]))
 game_name = setting[1]
@@ -39,8 +38,7 @@ logdir = os.path.join(root_path, 'notebooks', 'matrix', game_name, run_name)
 logdir
 
 ## Experiment setup
-n_players = 2
-epoch = 10000
+epoch = 500000
 
 ## Environment settings
 #Dummies here
@@ -77,18 +75,14 @@ FPS [0, 10, 0.9] - Cycles with:
 FPS [0.5,10,0.99] - Converges to [0.5,0.5,0.5]
 FPM - Converges at [0.5,0.5,0.5] TODO: Is this equilibrium for all?
 '''
+# FP Parameters
 tau_minimum = param_tau[0]
 tau_update_interval =  param_tau[1]
 tau_update =  param_tau[2]
 
+
 param = "tau_minimum: {} \ntau_update_interval: {} \ntau_update: {}".format(tau_minimum,tau_update_interval,tau_update)
 
-cuda = torch.cuda.is_available()
-device = 'cuda' if cuda else 'cpu'
-
-specific_gpu = 5
-if cuda and specific_gpu:
-    torch.cuda.set_device(specific_gpu)
 
 # Wrapper transforming a strategy to bidder, used by the optimizer
 # this is a dummy, valuation doesn't matter
@@ -97,56 +91,81 @@ def strat_to_player(strategy, batch_size, player_position=None):
 
 
 game = options[setting[1]]()
-if options[setting[0]] is FictitiousPlayStrategy or options[setting[0]] is FictitiousPlaySmoothStrategy:
-    strat1 = options[setting[0]](game = game, initial_beliefs = initial_beliefs)
-    strat2 = options[setting[0]](game = game, initial_beliefs = initial_beliefs)
-    #strat3 = FictitiousPlayStrategy(game = game, initial_beliefs = initial_beliefs)
-    strat = [strat1,strat2]
+# init strategies
+strats = [None] * game.n_players
+players = [None] * game.n_players
+if setting[0] == "FP" or setting[0] == "FPS":
+    for i in range(game.n_players):
+        strats[i] = options[setting[0]](game = game, initial_beliefs = initial_beliefs)
 else:
     strat0 = options[setting[0]](game = game, initial_beliefs = initial_beliefs)
-    strat = [strat0,strat0]
+    for i in range(game.n_players):
+        strats[i] = strat0   
 
-player1 = strat_to_player(strat[0], batch_size = batch_size, player_position = 0)
-player2 = strat_to_player(strat[1], batch_size = batch_size, player_position = 1)
-#player3 = strat_to_player(strat[2], batch_size = batch_size, player_position = 2)
-player = [player1,player2]
-
-env = MatrixGameEnvironment(game = game,
-                            agents = [player1,player2],
-                            n_players = 2,
-                            batch_size = batch_size,
-                            strategy_to_player_closure = strat_to_player)
-
-                           # Parallel updating
+# init players
+for i in range(game.n_players):
+    players[i] = strat_to_player(strats[i], batch_size = batch_size, player_position = i)
+########################################Training################################################
+# Parallel updating
 print(param)
 with SummaryWriter(log_dir=logdir, flush_secs=30) as writer:
     writer.add_text('hyperparams/hyperparameter', param, 0)
+    # Log init_beliefs for replicability
+    for i,strat in enumerate(strats):
+        writer.add_text('strategy {}/init_beliefs'.format(i), str(strat.historical_actions), 0)
     torch.cuda.empty_cache()
     for e in range(epoch):
-        actions = [None,None]#,None]
-        for i,playr in enumerate(player):
+        actions = [None] * len(players)
+        for i,playr in enumerate(players):
             actions[i] = playr.get_action()
 
         if e%1000 == 0:
             print(actions)
 
-        for _,strategy in enumerate(strat):
+        for _,strategy in enumerate(strats):
             strategy.update_observations(actions)
             strategy.update_beliefs()
-            if (type(strategy) is FictitiousPlaySmoothStrategy or type(strategy) is FictitiousPlayMixedStrategy) and e > 0 and e%tau_update_interval == 0 and strategy.tau >= tau_minimum:
+            if ((setting[0] == "FPS" or setting[0] == "FPM") and
+                e > 0 and e%tau_update_interval == 0 and strategy.tau >= tau_minimum):
                 strategy.update_tau(tau_update)
 
         # Logging
-        for i,playr in enumerate(player):
+        for i,playr in enumerate(players):
+            # Historical probability for actions
             writer.add_histogram('eval/p{}_action_distribution'.format(i), actions[i].view(-1).cpu().numpy(), e)
-            # Careful: With FPM this always shows only probs_self of player 1. TODO: Change when implementing a logger
-            writer.add_scalar('eval_player_{}/prob_action_0'.format(i), playr.strategy.probs_self[0], e)
-            writer.add_scalar('eval_player_{}/hist_prob_action_0'.format(i), playr.strategy.probs[i][0], e)
-            if type(strategy) is FictitiousPlayMixedStrategy:
-                # Careful: This is currently not working. It takes the exp. util of the correct player but the probs_self is always of the last player TODO: Fix!
-                writer.add_scalar('eval_player_{}/utility'.format(i), (playr.strategy.exp_util * playr.strategy.probs_self[0]).sum(), e)
+            for a in range(len(playr.strategy.probs[i])-1):
+                # Historical probability for actions
+                writer.add_scalar('eval_player_{}/hist_prob_action_{}'.format(i,a), playr.strategy.probs[i][a], e)
+                # Current period actions 
+                if setting[0] == "FPM":
+                    writer.add_scalar('eval_player_{}/prob_action_{}'.format(i,a), actions[i][a], e)
+                else:
+                    writer.add_scalar('eval_player_{}/prob_action_{}'.format(i,a), playr.strategy.probs_self[a], e)
+            
+            # Expected Utility
+            if setting[0] == "FPM":
+                writer.add_scalar('eval_player_{}/exp_utility'.format(i), (playr.strategy.exp_util[i] * actions[i]).sum(), e)
             else:
-                writer.add_scalar('eval_player_{}/utility'.format(i), playr.strategy.exp_util[actions[i]], e)
+                writer.add_scalar('eval_player_{}/exp_utility'.format(i), playr.strategy.exp_util[actions[i]], e)
+
+        # Actual Utility
+        _actions = [torch.zeros(strats[0].n_actions[i], dtype = torch.float, device = game.device)
+                      for i in range(strats[0].n_players)
+                     ]
+        for player,action in enumerate(actions):
+            if setting[0] == "FPM":
+                _actions[player] = action
+            else:
+                _actions[player][action] = 1
+        for i in range(len(players)):
+            if setting[0] == "FPM":
+                writer.add_scalar('eval_player_{}/utility'.format(i), (game.calculate_expected_action_payoffs(_actions, i) * actions[i]).sum(), e)
+            else:
+                writer.add_scalar('eval_player_{}/utility'.format(i), (game.calculate_expected_action_payoffs(_actions, i)[actions[i]]), e)
+
+
+            
+            
 
 '''
 # Sequential updating

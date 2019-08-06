@@ -2,7 +2,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Callable, Set
-
 import torch
 
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player

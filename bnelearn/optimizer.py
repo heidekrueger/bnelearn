@@ -60,7 +60,7 @@ class ES(Optimizer):
 
     def __init__(self, model: torch.nn.Module, environment: Environment, params=None,
                  lr=required, momentum=0, sigma=required, n_perturbations=64,
-                 baseline=True, strat_to_player_kwargs: dict =None):
+                 baseline=True, gradient_normalization=False, strat_to_player_kwargs: dict =None):
 
         # validation checks
         if lr is not required and lr < 0.0:
@@ -82,7 +82,8 @@ class ES(Optimizer):
         # initialize super
         defaults = dict(
             lr=lr, momentum=momentum, baseline=baseline,
-            sigma=sigma, n_perturbations=n_perturbations
+            sigma=sigma, n_perturbations=n_perturbations,
+            gradient_normalization=gradient_normalization
             )
 
         super(ES, self).__init__(params, defaults)
@@ -127,6 +128,7 @@ class ES(Optimizer):
             sigma = group['sigma']
             n_perturbations = group['n_perturbations']
             baseline = group['baseline']
+            gradient_normalization = group['gradient_normalization']
 
             # set baseline. current reward if True
             if baseline is True: # run only for True, not for nonzero number!
@@ -156,6 +158,8 @@ class ES(Optimizer):
             ## TODO: fails if model not expl. on gpu because rewards is on cuda,
             #        but eps is on cpu. why?
             weighted_noise_vector = ((rewards - baseline) * epsilons).sum(dim=0)
+            if gradient_normalization:
+                weighted_noise_vector = weighted_noise_vector/torch.norm(weighted_noise_vector)
             # create a copy of the parameters to store the updates in
             # (we need the same structure as the group params for the loop below)
             param_noise = deepcopy(base_params)
