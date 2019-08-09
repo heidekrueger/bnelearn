@@ -27,3 +27,4 @@ pylint.txt
 /runs
 /notebooks/runs
 
+.Rproj.user
