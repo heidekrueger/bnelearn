@@ -158,7 +158,7 @@ class ES(Optimizer):
             ## TODO: fails if model not expl. on gpu because rewards is on cuda,
             #        but eps is on cpu. why?
             weighted_noise_vector = ((rewards - baseline) * epsilons).sum(dim=0)
-            if gradient_normalization:
+            if gradient_normalization and not torch.all(weighted_noise_vector.eq(0)):
                 weighted_noise_vector = weighted_noise_vector/torch.norm(weighted_noise_vector)
             # create a copy of the parameters to store the updates in
             # (we need the same structure as the group params for the loop below)
