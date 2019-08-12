@@ -9,17 +9,11 @@ This repository contains a framework for finding Bayes Nash Equilibria through l
 
 ### What works
 
-* Running experiments for 2-player Matrix and Auction Games with either
-    * 'Static environments':
-    Players are named/numbered and fixed, each player has their own strategy model
-    that is updated in-place in each iteration
-    * 'Dynamic environments' for symmetric games:
-    Players share one common model, that gets updated in each iteration based on playing against previous and current model in the environment.
-    Updated model gets added into the environment, pushing out the oldest model currently in it.
-* n-player Matrix games should work but haven't been tested yet
-
-### What doesn't work yet
-* n-player symmetric auctions with 'dynamic environment' (code generating opponent bid profile is incomplete)
+Running experiments for n-player Matrix and single-item one-shot auction Games with either
+* "Neural Self Play" using ES strategy learning.:
+  * Players are kept track of in an 'environment', each player's strategy is updated using an 'optimizer'.
+  * Players can have distinct strategy models (that are updated with distinct optimizers) or share a strategy model in symmetric settings.
+* Fictitious Play, Stochastic Fictitious Play, Mixed Fictitious Play
 
 
 
@@ -28,7 +22,8 @@ This repository contains a framework for finding Bayes Nash Equilibria through l
 The framework conceptually consists of the following
 * A python package `bnelearn` in the `./bnelearn` subdirectory.
 * Jupyter notebooks in the `./notebooks` directory that trigger experiments and
-  log results to subdirectories in tensorboard format.
+  log results to subdirectories (or other places) in tensorboard format.
+* The `R` subdirectory contains scripts for parsing tensorboard logs into R dataframes, in order to create pretty figures.
 
 To use the software, the following is required:
 * A local copy of the software (via `git clone`)
@@ -36,12 +31,18 @@ To use the software, the following is required:
     * Tested with python 3.7, pytorch 1.0.1, CUDA 10, cuDNN 7.1
 * A running installation of jupyter with access to a Python-kernel of the above environment.
 * A running installation of tensorboard.
-    * Tested with python 3.6, tensorflow-gpu 1.13.1, CUDA 10, cuDNN 7.3.1
+    * Tested with python 3.6, tensorflow-gpu 1.14, CUDA 10, cuDNN 7.3.1
     * No gpu required here, so cpu tensorflow is absolutely sufficient.
 
 The easies way to achieve the above is to create _two_ separate python environments, one for running the bnelearn code and jupyter, and another one for running tensorboard.
 Separating the bnelearn/pytorch and tensorboard/tensorflow environments is desirable, because different release schedules
 of pytorch and TensorFlow regularly lead to incompatible dependencies of the latest versions of both frameworks.
+_Update 12.08.2019: Starting in TF 1.14, there's a standalone Tensorboard installation that can just be installed in the bnelearn pytorch env. However, a full-blown tensorflow installation is
+required for the R parsing to work. Improve documentation on this._
+Right now, the following two conda envs are installed for all users:
+* `bnelearn` for everyrthing required to run the experiments. (especially pytorch+tensorboard, see requirements.txt)
+ `/opt/anaconda/anaconda3/envs/bnelearn/bin/python`
+* `r-tensorflow` with full tensorflow, for R-interoperability.  `/opt/anaconda/anaconda3/envs/r-tensorflow/bin/python`
 
 ## Creating the environments using conda
 
@@ -95,6 +96,7 @@ As a workaround, we'll temporarily install the tensorboard nightly build using `
 * If necessary, deactivate the bnelearn env above
 `deactivate` (on Linux/OSX: `source deactivate` and/or `conda deactivate`)
 
+
 # Running the software
 
 * Navigate to your local `bnelearn` folder (in the following: `.`)
@@ -103,6 +105,9 @@ As a workaround, we'll temporarily install the tensorboard nightly build using `
 * A browser window with jupyter should open automatically. If it doesn't you can find it at http://localhost:8888/lab.
 * In jupyter lab, browse to the notebooks directory and run any of the notebooks there.
 
+
+# Experiment logging 
+## On the fly logging
 Results of notebook experiments are written to a subdirectory as specified in each notebook. To view the results
 or monitor training process, start a tensorboard instance:
 * Navigate to the `./notebooks/` directory.
@@ -119,12 +124,19 @@ or monitor training process, start a tensorboard instance:
             *--- run1/
             *--- run2/
 ```
+This folder structure should be used for work in progress. 
 
 then start tensorboard using
 
 `tensorboard --logdir fpsb`
 
 The tensorboard server is then accessible at http://localhost:6006
+
+## Persistent Experiments
+Persistent Experiments (for papers etc) should be logged (or copied) to a subdirectory
+of
+`/srv/bnelearn/`, which has been made globally read-writable.
+When creating subdirectories, please set their permissions to 777.
 
 # Remote development on GPU-Server
 
