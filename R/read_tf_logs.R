@@ -73,12 +73,17 @@ experiment_dir_to_df <- function(path){
   filepaths = paste0(path,files)
   map2_dfr(filepaths, run_names, file_to_df)
 }
+games = c('RPS','JG')#c('PD','MP','BoS','RPS','JG')
 
-path = 'notebooks/fpsb/symmetric/uniform/10p/'
-
-{
-  library(tictoc)
-  tic()
-  experiment_dir_to_df(path)
-  toc()
+for (g in games){
+  path = paste('bnelearn/experiments/notebooks/matrix/',g,'/',sep="") #test/CopyOfFP_2019-08-08 Thu 14:38:51/'
+  
+  {
+    library(tictoc)
+    tic()
+    write_csv(experiment_dir_to_df(path),paste('bnelearn/experiments/data/',g,'.csv',sep=""))
+    toc()
+  }
+  
 }
+

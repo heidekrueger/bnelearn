@@ -131,7 +131,7 @@ class FictitiousPlayStrategy(Strategy):
     def play(self, player_position: int):
         self.exp_util = self.game.calculate_expected_action_payoffs(self.probs, player_position)
         # Softmax with very small tau only for plotting of decision
-        self.probs_self = (100000.0 * self.exp_util).softmax(0)
+        self.probs_self = (10**12 * self.exp_util).softmax(0)
         action = self.exp_util.max(dim = 0, keepdim=False)[1]
         return action
 
@@ -176,19 +176,21 @@ class FictitiousPlayMixedStrategy(FictitiousPlaySmoothStrategy):
     """
     def __init__(self, game: Game, initial_beliefs: Iterable[torch.Tensor]=None):
         super().__init__(game = game, initial_beliefs = initial_beliefs)
-        self.exp_util = [None] * game.n_players
         for player in range(self.n_players):
             self.historical_actions[player] = self.probs[player].clone()
 
     def play(self, player_position) -> torch.Tensor:
-        self.exp_util[player_position] = self.game.calculate_expected_action_payoffs(self.probs, player_position)
-        self.probs_self = (1/self.tau * self.exp_util[player_position]).softmax(0)
-        self.historical_actions[player_position][:] += self.probs_self
+        self.exp_util = self.game.calculate_expected_action_payoffs(self.probs, player_position)
+        self.probs_self = (1/self.tau * self.exp_util).softmax(0)
         return self.probs_self
 
     def update_observations(self, actions: None):
-        #Observations are always directly updated due to sharing the same memory or beliefs
-        pass
+        #Ensure correct length of actions
+        assert len(actions) == self.n_players
+        #Update observed actions
+        for player,action in enumerate(actions):
+            if action is not None:
+                self.historical_actions[player] += action
 
 class MatrixGameStrategy(Strategy, nn.Module):
     """ A dummy neural network that encodes and returns a mixed strategy"""

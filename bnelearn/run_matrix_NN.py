@@ -38,7 +38,7 @@ def main(args):
 
     run_name = time.strftime('NSP_%Y-%m-%d %a %H:%M:%S')
     game_name = setting[1]
-    logdir = os.path.join(args[5], 'test_experiments/notebooks', 'matrix', game_name, run_name)
+    logdir = os.path.join(args[5], 'experiments/notebooks', 'matrix', game_name, run_name)
     logdir
 
     ## Experiment setup
@@ -74,7 +74,7 @@ def main(args):
     strats_copies = [None] * game.n_players
     players = [None] * game.n_players
     hist_utility = [0] * game.n_players
-    hist_probs = [0] * game.n_players
+    hist_probs = [torch.Tensor([0] * game.outcomes.shape[i]).to(device) for i in range(game.n_players)]
     for i in range(game.n_players):
         strats[i] = MatrixGameStrategy(n_actions=game.outcomes.shape[i],
                                        init_weights = initial_beliefs[i],
@@ -87,8 +87,8 @@ def main(args):
                      )
 
     for i in range(game.n_players):
-        players[i] = ES(model=strats[i], environment = env, lr = learning_rate, sigma=sigma, 
-                        n_perturbations=n_perturbations, gradient_normalization=weight_normalization, 
+        players[i] = ES(model=strats[i], environment = env, lr = learning_rate, sigma=sigma,
+                        n_perturbations=n_perturbations, gradient_normalization=weight_normalization,
                         strat_to_player_kwargs={'player_position':i})
         print(strats[i].distribution.probs)
 
@@ -96,14 +96,13 @@ def main(args):
         writer.add_scalar('hyperparams/batch_size', batch_size)
         writer.add_scalar('hyperparams/learning_rate', learning_rate)
         writer.add_scalar('hyperparams/sigma', sigma)
-        writer.add_scalar('hyperparams/n_perturbations', n_perturbations) 
+        writer.add_scalar('hyperparams/n_perturbations', n_perturbations)
     ############################Training#################################
     with SummaryWriter(log_dir=logdir) as writer:
         torch.cuda.empty_cache()
         log_hyperparams(writer)
 
-        for e in range(epoch+1):    
-
+        for e in range(epoch+1):
             # lr decay?
             if lr_decay and e % lr_decay_every == 0 and e > 0:
                 learning_rate = learning_rate * lr_decay_factor
@@ -126,18 +125,21 @@ def main(args):
                 vector_to_parameters(params, env.agents[i].strategy.parameters())
 
             for i in range(game.n_players):
-                hist_utility[i] = (e * hist_utility[i] + utility[i])/ (e+1) 
+                hist_utility[i] = (e * hist_utility[i] + utility[i])/ (e+1)
                 hist_probs[i] = (e * hist_probs[i] + strats[i].distribution.probs)/ (e+1)
 
             # Logging
             for i,strat in enumerate(strats):
-                # Historical probability for actions
-                writer.add_histogram('eval/p{}_action_distribution'.format(i), env.agents[i].get_action().view(-1).cpu().numpy(), e)
+                hist_probs[i] = (e * hist_probs[i] + strat.distribution.probs)/(e+1)
+
                 for a in range(len(strat.distribution.probs)-1):
                     # Historical probability for actions
                     writer.add_scalar('eval_player_{}/hist_prob_action_{}'.format(i,a), hist_probs[i][a], e)
-                    # Current period actions 
+                    # Current period actions
                     writer.add_scalar('eval_player_{}/prob_action_{}'.format(i,a), strat.distribution.probs[a], e)
+
+
+
                     # Expected Utility
                     writer.add_scalar('eval_player_{}/utility'.format(i), utility[i], e)
                     # Expected Historical Utility

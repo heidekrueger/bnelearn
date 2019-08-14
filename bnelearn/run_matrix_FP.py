@@ -12,8 +12,6 @@ from bnelearn.strategy import (FictitiousPlayMixedStrategy,
                                FictitiousPlaySmoothStrategy,
                                FictitiousPlayStrategy, MatrixGameStrategy)
 
-global root_path                            
-
 cuda = torch.cuda.is_available()
 device = 'cuda' if cuda else 'cpu'
 
@@ -41,7 +39,7 @@ def main(args):
 
     run_name = time.strftime('{}_%Y-%m-%d %a %H:%M:%S'.format(setting[0]))
     game_name = setting[1]
-    logdir = os.path.join(args[5], 'test_experiments/notebooks', 'matrix', game_name, run_name)
+    logdir = os.path.join(args[5], 'experiments/notebooks', 'matrix', game_name, run_name)
     logdir
 
     ## Experiment setup
@@ -50,38 +48,7 @@ def main(args):
     ## Environment settings
     #Dummies here
     batch_size = 1
-    input_length = 1
 
-    # optimization params
-    '''
-    All with 10000 epoch
-    PD:
-    FP [] - Converges to 0 quickly
-    FPS [0.5, 10, 0.99]: - Converges to [0.12,0.88]
-    FPS [0.0 ,10, 0.90] - Converges to 0 quickly
-    FPM [0.5, 10, 0.99] - Converges to [0.27,0.73]
-    FPM [0.0, 10, 0.90] - Converges to [0.27,0.73]
-
-    MP:
-    FP [] -
-    FPS [0.5, 10, 0.99] - Converges to
-    FPS [0.0 ,10, 0.90] - Converges to
-    FPM [0.5, 10, 0.99] - Converges to
-    FPM [0.0, 10, 0.90] - Converges to
-
-    BoS:
-    FP -
-    FPS - When tau_minimum too small (<0.5) and updates too extreme (<0.9) and too often (<10), FPS escapes MNE and runs to PNE
-    FPS [0.5,10,0.99] - Sometimes find MNE with initial_beliefs = torch.Tensor([[600,400],[400,600]]).to(device))
-    FPM - Find MNE with FPM: parameters: 0., 10, 0.9 and initial_beliefs = torch.Tensor([[6,4],[4,6]]).to(device))
-    FPM - TODO: Check why Equilibrium is [0.55,0.45] here.
-
-    Jordan Game:
-    FP - Cycles but historical distribution nicely converges
-    FPS [0, 10, 0.9] - Cycles with:
-    FPS [0.5,10,0.99] - Converges to [0.5,0.5,0.5]
-    FPM - Converges at [0.5,0.5,0.5] TODO: Is this equilibrium for all?
-    '''
     # FP Parameters
     tau_minimum = param_tau[0]
     tau_update_interval =  param_tau[1]
@@ -90,7 +57,6 @@ def main(args):
 
     param = "tau_minimum: {} \ntau_update_interval: {} \ntau_update: {}".format(tau_minimum,tau_update_interval,tau_update)
 
-    
     game = options[setting[1]]()
 
     initial_beliefs = None
@@ -100,18 +66,16 @@ def main(args):
     # init strategies
     strats = [None] * game.n_players
     players = [None] * game.n_players
-    if setting[0] == "FP" or setting[0] == "FPS":
-        for i in range(game.n_players):
-            strats[i] = options[setting[0]](game = game, initial_beliefs = initial_beliefs)
-    else:
-        strat0 = options[setting[0]](game = game, initial_beliefs = initial_beliefs)
-        for i in range(game.n_players):
-            strats[i] = strat0   
+    for i in range(game.n_players):
+        strats[i] = options[setting[0]](game = game, initial_beliefs = initial_beliefs)
 
     # init players
     for i in range(game.n_players):
         players[i] = strat_to_player(strats[i], batch_size = batch_size, player_position = i)
     ########################################Training################################################
+    # Tracking
+    hist_probs = [torch.Tensor([0] * game.outcomes.shape[i]).to(device) for i in range(game.n_players)]
+
     # Parallel updating
     print(param)
     with SummaryWriter(log_dir=logdir, flush_secs=30) as writer:
@@ -137,20 +101,16 @@ def main(args):
 
             # Logging
             for i,playr in enumerate(players):
-                # Historical probability for actions
-                writer.add_histogram('eval/p{}_action_distribution'.format(i), actions[i].view(-1).cpu().numpy(), e)
+                hist_probs[i] = (e * hist_probs[i] + playr.strategy.probs_self)/(e+1)
                 for a in range(len(playr.strategy.probs[i])-1):
+                    # Current period actions
+                    writer.add_scalar('eval_player_{}/prob_action_{}'.format(i,a), playr.strategy.probs_self[a], e)
                     # Historical probability for actions
-                    writer.add_scalar('eval_player_{}/hist_prob_action_{}'.format(i,a), playr.strategy.probs[i][a], e)
-                    # Current period actions 
-                    if setting[0] == "FPM":
-                        writer.add_scalar('eval_player_{}/prob_action_{}'.format(i,a), actions[i][a], e)
-                    else:
-                        writer.add_scalar('eval_player_{}/prob_action_{}'.format(i,a), playr.strategy.probs_self[a], e)
+                    writer.add_scalar('eval_player_{}/hist_prob_action_{}'.format(i,a), hist_probs[i][a], e)
 
                 # Expected Utility
                 if setting[0] == "FPM":
-                    writer.add_scalar('eval_player_{}/exp_utility'.format(i), (playr.strategy.exp_util[i] * actions[i]).sum(), e)
+                    writer.add_scalar('eval_player_{}/exp_utility'.format(i), (playr.strategy.exp_util * actions[i]).sum(), e)
                 else:
                     writer.add_scalar('eval_player_{}/exp_utility'.format(i), playr.strategy.exp_util[actions[i]], e)
 
@@ -168,18 +128,3 @@ def main(args):
                     writer.add_scalar('eval_player_{}/utility'.format(i), (game.calculate_expected_action_payoffs(_actions, i) * actions[i]).sum(), e)
                 else:
                     writer.add_scalar('eval_player_{}/utility'.format(i), (game.calculate_expected_action_payoffs(_actions, i)[actions[i]]), e)
-
-
-
-
-
-    '''
-    # Sequential updating
-    for e in range(epoch):
-        for i,playr in enumerate(player):
-            actions = [None,None]
-            actions[i] = playr.get_action()
-            print(actions)
-            for _,strategy in enumerate(strat):
-                strategy.update(actions)
-    '''

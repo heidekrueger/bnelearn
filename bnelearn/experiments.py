@@ -1,5 +1,4 @@
 import os, sys, time
-global root_path
 root_path = '/home/sutterer/bnelearn/'
 if root_path not in sys.path:
     sys.path.append(root_path)
@@ -7,9 +6,8 @@ if root_path not in sys.path:
 import bnelearn.run_matrix_NN as NN
 import bnelearn.run_matrix_FP as FP
 import random
-import torch
 
-games = ['PD', 'MP', 'BoS']
+games = ['RPS','JG']#['PD', 'MP', 'BoS', 'RPS','JG']#['PD', 'MP', 'BoS']
 learners = [ 'FP', 'FPS', 'FPM', 'NSP']
 
 # smallest tau, update interval, tau (update size)
@@ -20,11 +18,18 @@ params_nsp = [[2**10, 1, False, 100, 0.8, 5, 10]]
 
 
 equilibria = {'PD': [[[0,1],[1,0]]],
-                'MP': [[[0.5,0.5],[0.5,0.5]]],
-                'BoS':[
+              'MP': [[[0.5,0.5],[0.5,0.5]]],
+              'BoS': [
                         [[0.6,0.4],[0.4,0.6]],
                         [[1,0],[1,0]],
-                        [[0,1],[0,1]]]}
+                        [[0,1],[0,1]]],
+              'RPS': [
+                        [[1/3,1/3,1/3],
+                        [1/3,1/3,1/3]]],
+              'JG': [[
+                        [0.5,0.5],
+                        [0.5,0.5],
+                        [0.5,0.5]]]}
 
 beliefs_tracking = [None] * len(games)
 iterationen = 10
@@ -40,8 +45,9 @@ for g,game in enumerate(games):
             actions = len(equilibria[game][0][player])
             belief[player] = [None] * actions
             for action in range(actions):
-                belief[player][action] = random.random()*100
+                belief[player][action] = random.random()
         random_beliefs[i] = belief
+
 
     beliefs_tracking[g] = random_beliefs
     for learner in learners:
@@ -55,4 +61,3 @@ for g,game in enumerate(games):
             for belief in random_beliefs:
                 # game, learner, param, belief, epoch
                 model.main([game, learner, param, belief, epochs, root_path])
-                   
