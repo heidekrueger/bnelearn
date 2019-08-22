@@ -27,4 +27,6 @@ pylint.txt
 /runs
 /notebooks/runs
 
+# R and Rstudio project files
 .Rproj.user
+.Rhistory
