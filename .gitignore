@@ -27,6 +27,9 @@ pylint.txt
 /runs
 /notebooks/runs
 
+# dont check in figures created from R -- only keep the source code
+/R/figures/*.eps
+
 # R and Rstudio project files
 .Rproj.user
 .Rhistory
