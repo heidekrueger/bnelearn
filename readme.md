@@ -1,7 +1,16 @@
+
+
+```diff
+- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+```
 # WITS 2019
+**_This is a snapshot of this project as it was used for the WITS 2019 submission. Please see `conda-env-export.yaml` for full list of dependencies including package versions. (created using `conda env export`)_**
 
-<span style="color:red">This is a snapshot of this project as it was used for the WITS 2019 submission. Please see `conda-env-export.yaml` for full list of dependencies including package versions. (created using `conda env export`)</span>
-
+```diff
+- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+```
 
 # Learning Equilibria in Bayesian Games
 
