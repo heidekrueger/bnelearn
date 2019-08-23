@@ -20,8 +20,9 @@ pylint.txt
 /.vscode/
 "vscode - bnelearn.Ink"
 
-# tensorboard file
+# experiment logs, tensorboard files, figures, model checkpoints
 /**/events.out.*
+/**/*.npz
 
 #don't check in experiment results for now
 /runs
