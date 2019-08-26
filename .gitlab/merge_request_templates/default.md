@@ -1,6 +1,7 @@
-# Merge request template
+# What does this Merge request do?
 
 Describe in one or two sentences what your merge request does.
+Tag any relevant gitlab issues.
 
 ## Checklist
 
@@ -14,6 +15,7 @@ Check all that apply. If your merge request does not comply with any of the poin
     * [ ] I have written unit tests for any new or changed functionality in `bnelearn` package.
         * [ ] My tests will always pass if the implementation is working correctly.
         * [ ] My tests are written to test the functionality in the least reasonable amount of time.
+        * [ ] Only descriptive `print()` statements in tests. (I.e. stuff that's useful if the test fails.)
     * [ ] I have used descriptive variable names everywhere.
     * [ ] I have used `pytorch` vectorization instead of python loops wherever reasonably possible or otherwise opened an issue in gitlab and added a `#TODO` to the source code referencing the issue number.
     * [ ] I have added documentation to any new or changed non-trivial function or class. (At least docstring describing inputs, behaviour, outputs with type hints).
