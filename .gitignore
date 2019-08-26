@@ -34,3 +34,6 @@ pylint.txt
 # R and Rstudio project files
 .Rproj.user
 .Rhistory
+
+# ignore experiments subdirectory used for logging
+/experiments/*

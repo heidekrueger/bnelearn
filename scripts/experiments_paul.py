@@ -1,10 +1,10 @@
 import os, sys, time
-root_path = '/home/sutterer/bnelearn/'
+root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
 if root_path not in sys.path:
     sys.path.append(root_path)
 
-import bnelearn.run_matrix_NN as NN
-import bnelearn.run_matrix_FP as FP
+import scripts.run_matrix_NN as NN
+import scripts.run_matrix_FP as FP
 import random
 
 games = ['RPS','JG']#['PD', 'MP', 'BoS', 'RPS','JG']#['PD', 'MP', 'BoS']

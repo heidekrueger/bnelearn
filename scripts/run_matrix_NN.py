@@ -38,7 +38,7 @@ def main(args):
 
     run_name = time.strftime('NSP_%Y-%m-%d %a %H:%M:%S')
     game_name = setting[1]
-    logdir = os.path.join(args[5], 'experiments/notebooks', 'matrix', game_name, run_name)
+    logdir = os.path.join(args[5], 'experiments', 'matrix', game_name, run_name)
     logdir
 
     ## Experiment setup
