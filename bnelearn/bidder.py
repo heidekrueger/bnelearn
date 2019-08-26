@@ -56,7 +56,7 @@ class MatrixGamePlayer(Player):
         if isinstance(self.strategy, FictitiousPlayStrategy):
             return self.strategy.play(self.player_position)
 
-        raise ValueError("Wrong strategy assigned to bidder?")
+        raise ValueError("Invalid Strategy Type for Matrix game: {}".format(type(self.strategy)))
 
 class Bidder(Player):
     """

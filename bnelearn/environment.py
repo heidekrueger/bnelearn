@@ -179,7 +179,7 @@ class AuctionEnvironment(Environment):
         """
 
         if not isinstance(agent, Bidder):
-            raise ValueError()
+            raise ValueError("Agent must be of type Bidder")
 
         assert agent.batch_size == self.batch_size, \
             "Agent batch_size does not match the environment!"
