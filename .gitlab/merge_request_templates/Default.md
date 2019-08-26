@@ -7,18 +7,17 @@ Tag any relevant gitlab issues.
 
 Check all that apply. If your merge request does not comply with any of the points in the checklist, explain here.
 
-- [ ] All gitlab issues closed or touched by this merge request have been mentioned in the request or the respective commits.
-- [ ] I have added/changed behaviour in the `bnelearn` module. (That's everything in the `bnelearn/` subdirectory.)
-    * [ ] No experiment scripts, nothing that would not be part of software that a user might want to install.
-    * [ ] No absolute paths in the package, no setting of specific hardware (CPU, GPU, specific GPU)
-         (Except in unit tests.)
+- [ ] All gitlab issues closed or touched by this merge request have been mentioned in the request or the respective commits. I made sure only the correct ones are being closed by it.
+- [ ] I have added/changed behaviour in the `bnelearn` module. I have read and applied the [Contribution Guidelines](/contributing.md))
+    * [ ] I have added **no** user code in the module.
+    * [ ] No absolute paths in the package, no setting of specific hardware (CPU, GPU, specific GPU) (Except in unit tests.)
     * [ ] I have written unit tests for any new or changed functionality in `bnelearn` package.
         * [ ] My tests will always pass if the implementation is working correctly.
         * [ ] My tests are written to test the functionality in the least reasonable amount of time.
         * [ ] Only descriptive `print()` statements in tests. (I.e. stuff that's useful if the test fails.)
     * [ ] I have used descriptive variable names everywhere.
     * [ ] I have used `pytorch` vectorization instead of python loops wherever reasonably possible or otherwise opened an issue in gitlab and added a `#TODO` to the source code referencing the issue number.
-    * [ ] I have added documentation to any new or changed non-trivial function or class. (At least docstring describing inputs, behaviour, outputs with type hints).
+    * [ ] I have added documentation to any new or changed non-trivial function or class. (Minimum: docstring, inputs, outputs, type-hints)
     * [ ] I've run `pylint` on any changed files in the `bnelearn` package and cleaned up the warnings.
     * [ ] All tests pass locally.
 - [ ] I have added/changed behaviour of experiment or analysis scripts or notebooks.
