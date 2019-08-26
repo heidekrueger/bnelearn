@@ -21,7 +21,7 @@ All contributions of source code should fit the following pattern.
         * Use native `pytorch` operations over loops whenever possible. If you need a quick working copy, add an `Optimization` issue and TODO as decribed below.
     * well documented.  At a minimum, this means function signatures with type hints.
     * covered by **Unit Tests** in `bnelearn/tests`.
-    * Adhere to PEP-8 python style guide (lint using `pylint`). Some exceptions are outlined in `.pylintrc`. If you deliberately make the choice to violate pep8, add a `#pylint: disable=rule-that-you-broke` to the relevant codeblock to suppress linter warnings.
+    * Adhere to PEP-8 python style guide (lint using `pylint`). This also applies to the tests! Some exceptions are outlined in `.pylintrc`. If you deliberately make the choice to violate pep8, add a `#pylint: disable=rule-that-you-broke` to the relevant codeblock to suppress linter warnings.
     * If you know that some code should be changed in the future, make a gitlab issue (add low-priority tag if appropriate) and add a `#TODO:` comment in the source with a one-line description and reference to the gitlab issue.
 * User code goes in `scripts` for python scripts, `notebooks` for jupyter notebooks and  `R` for R scripts and Rmarkdown files (for analysis, generating figures, etc).
     * User code does not have to adhere to the standards above. 
