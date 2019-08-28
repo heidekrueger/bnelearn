@@ -167,8 +167,8 @@ class ES(Optimizer):
 
             # 4. iterate through the model parameters and apply the updates
             for p, p_noise in zip(group['params'], param_noise):
-                #d_p = lr / n_perturbations / sigma * weighted_noise
-                d_p = lr / n_perturbations / sigma * p_noise
+                #d_p = lr / n_perturbations / sigma**2 * weighted_noise
+                d_p = lr / n_perturbations / sigma**2 * p_noise
 
                 if momentum != 0:
                     param_state = self.state[p]
