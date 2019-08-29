@@ -37,11 +37,11 @@ input_length = 1
 hidden_nodes = [5,5]
 hidden_activations = [nn.SELU(), nn.SELU()]
 epoch = 100
-learning_rate = 1e-1
+learning_rate = 1e-2
 lr_decay = False
 baseline = True
 momentum = .7
-sigma = .02
+sigma = 0.1
 n_perturbations = 64
 
 mechanism = FirstPriceSealedBidAuction(cuda = True)

@@ -25,12 +25,12 @@ def test_prisoners_dilemma_training_shared_model():
 
     # optimization params
     epoch = 25
-    learning_rate = 1
+    learning_rate = 1.
     lr_decay = False
     lr_decay_every = 1000
     lr_decay_factor = 0.8
 
-    sigma = 5 #ES noise parameter
+    sigma = 1. #ES noise parameter
     n_perturbations = 8
 
     # Wrapper transforming a strategy to bidder, used by the optimizer
@@ -67,13 +67,13 @@ def test_prisoners_dilemma_training_shared_model():
 
         # always: do optimizer step
         utility = -optimizer.step()
-        print((e, utility))
+        #print((e, utility))
         # this only tested whether the loop runs without runtime errors!
 
-    assert player1.get_action().float().mean().item() > .99, \
+    assert player1.get_action().float().mean().item() > .95, \
             "Player1 should have learnt to play action 1 ('defect')"
 
-    assert player2.get_action().float().mean().item() > .99, \
+    assert player2.get_action().float().mean().item() > .95, \
             "Player2 should have learnt to play action 1 ('defect')"
 
 
@@ -87,12 +87,12 @@ def test_prisoners_dilemma_training_separate_models():
     batch_size = 100
     # optimization params
     epoch = 25
-    learning_rate = 1
+    learning_rate = 1.
     lr_decay = False
     lr_decay_every = 1000
     lr_decay_factor = 0.8
 
-    sigma = 5 #ES noise parameter
+    sigma = 1. #ES noise parameter
     n_perturbations = 8
 
     # Wrapper transforming a strategy to bidder, used by the optimizer
@@ -138,11 +138,12 @@ def test_prisoners_dilemma_training_separate_models():
         # always: do optimizer step
         utility1 = -optimizer1.step()
         utility2 = -optimizer2.step()
-        print((e, utility1, utility2))
+        #print((e, utility1, utility2))
         # this only tested whether the loop runs without runtime errors!
+    prob_defect_p1 = player1.get_action().float().mean().item()
+    prob_defect_p2 = player2.get_action().float().mean().item()
+    assert  prob_defect_p1 > .95, \
+            "Player1 should play 'defect' with high prob (>95%). Got {}".format(prob_defect_p1)
 
-    assert player1.get_action().float().mean().item() > .99, \
-            "Player1 should have learnt to play action 1 ('defect')"
-
-    assert player2.get_action().float().mean().item() > .99, \
-            "Player2 should have learnt to play action 1 ('defect')"
+    assert  prob_defect_p2 > .95, \
+            "Player2 should play 'defect' with high prob (>95%). Got {}".format(prob_defect_p2)
