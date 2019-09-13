@@ -72,7 +72,7 @@ class GradientBasedLearner(Learner):
         return self.environment.get_strategy_reward(
             self.model,
             **self.strat_to_player_kwargs
-            ).detach().view(1)
+            ).detach()
 
 class ESPGLearner(GradientBasedLearner):
     """ Neural Self-Play with Evolutionary Strategy Pseudo-PG
