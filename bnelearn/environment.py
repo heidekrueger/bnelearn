@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+"""
+This module contains environments - a collection of players and
+possibly state histories that is used to control game playing and
+implements reward allocation to agents.
+"""
+
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Callable, Set

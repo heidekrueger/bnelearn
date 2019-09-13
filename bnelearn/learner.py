@@ -1,14 +1,13 @@
+"""Implements multi-agent learning rules"""
+
 import warnings
 from copy import deepcopy
 
 from abc import ABC, abstractmethod
-from typing import Tuple, Type
+from typing import Tuple, Type, Callable
 
 import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
-from torch.optim.optimizer import (  # pylint: disable=no-name-in-module # false positive
-    Optimizer, required)
-
 from bnelearn.environment import Environment
 
 
@@ -21,14 +20,24 @@ class Learner(ABC):
         raise NotImplementedError()
 
 class GradientBasedLearner(Learner):
+    """A learning rule that is based on computing some version of (pseudo-)
+       gradient, then applying an SGD-like update via a `torch.optim.Optimizer`
+    """
     def __init__(self,
                  model: torch.nn.Module, environment: Environment,
-                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict):
+                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
+                 strat_to_player_kwargs: dict = None):
         self.model = model
         self.params = model.parameters
         self.n_parameters = sum([p.numel() for p in self.params()])
 
         self.environment = environment
+
+        self.strat_to_player_kwargs = strat_to_player_kwargs if strat_to_player_kwargs else {}
+            # warn if weird initialization
+        if 'player_position' not in self.strat_to_player_kwargs.keys():
+            warnings.warn('You haven\'t specified a player_position to evaluate the model. Defaulting to position 0.')
+            self.strat_to_player_kwargs['player_position'] = 0
 
         if not isinstance(optimizer_hyperparams, dict):
             raise ValueError('Optimizer hyperparams must be a dict (even if empty).')
@@ -39,11 +48,31 @@ class GradientBasedLearner(Learner):
     def _set_gradients(self):
         """Calculate current (pseudo)gradient for all params."""
 
-    def update_strategy(self):
-        # clear gradient info in parameters
+    def update_strategy(self, closure: Callable=None) -> None or torch.Tensor: # pylint: disable=arguments-differ
+        """Performs one model-update to the player's strategy.
+
+        Params:
+            closure: (optional) Callable that recomputes model loss.
+                Required by some optimizers such as LBFGS. When given,
+                optimizer.step() (and thus this function) return the last
+                evaluated loss. (Usually evaluated BEFORE the model update).
+                For correct usage see:
+                https://pytorch.org/docs/stable/optim.html#optimizer-step-closure
+
+        Returns: None or loss evaluated by closure. (See above.)
+        """
+
         self.optimizer.zero_grad()
         self._set_gradients()
-        return self.optimizer.step()
+        return self.optimizer.step(closure=closure)
+
+    def update_strategy_and_evaluate_utility(self, closure=None):
+        """updates model and returns utility after the update."""
+        self.update_strategy(closure)
+        return self.environment.get_strategy_reward(
+            self.model,
+            **self.strat_to_player_kwargs
+            ).detach().view(1)
 
 class ESPGLearner(GradientBasedLearner):
     """ Neural Self-Play with Evolutionary Strategy Pseudo-PG
@@ -95,18 +124,14 @@ class ESPGLearner(GradientBasedLearner):
                  optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
                  strat_to_player_kwargs: dict = None):
         # Create and validate optimizer
-        super().__init__(model, environment, optimizer_type, optimizer_hyperparams)
-
-        self.strat_to_player_kwargs = strat_to_player_kwargs if strat_to_player_kwargs else {}
-            # warn if weird initialization
-        if 'player_position' not in self.strat_to_player_kwargs.keys():
-            warnings.warn('You haven\'t specified a player_position to evaluate the model. Defaulting to position 0.')
-            self.strat_to_player_kwargs['player_position'] = 0
+        super().__init__(model, environment,
+                         optimizer_type, optimizer_hyperparams,
+                         strat_to_player_kwargs)
 
         # Validate ES hyperparams
         if not set(['population_size', 'sigma', 'scale_sigma_by_model_size']) <= set(hyperparams):
-            raise ValueError('Insufficient hyperparams for ES. Provide at least, population size, ' \
-                             +'sigma and scale_sigma_by_model_size!')
+            raise ValueError(
+                'Missing hyperparams for ES. Provide at least, population size, sigma and scale_sigma_by_model_size.')
         if not isinstance(hyperparams['population_size'], int) or hyperparams['population_size'] < 2:
             # one is invalid because there will be zero variance, leading to div by 0 errors
             raise ValueError('Please provide a valid `population_size` parameter >=2')
@@ -153,7 +178,6 @@ class ESPGLearner(GradientBasedLearner):
 
         # 1. if required redraw valuations / perform random moves (determined by env)
         self.environment.prepare_iteration()
-
         # 2. Create a population of perturbations of the original model
         population = (self._perturb_model(self.model) for _ in range(self.population_size))
         # 3. let each candidate against the environment and get their utils
@@ -164,7 +188,8 @@ class ESPGLearner(GradientBasedLearner):
         rewards, epsilons = (
             torch.cat(tensors).view(self.population_size, -1)
             for tensors in zip(*(
-                (   self.environment.get_strategy_reward(
+                (
+                    self.environment.get_strategy_reward(
                         model, **self.strat_to_player_kwargs).detach().view(1),
                     epsilon
                 )
@@ -177,8 +202,6 @@ class ESPGLearner(GradientBasedLearner):
                 if self.baseline == 'current_reward' \
             else rewards.mean(dim=0) if self.baseline == 'mean_reward' \
             else self.baseline # a float
-
-        
 
         denominator = self.sigma * rewards.std() if self.normalize_gradients else self.sigma**2
 
@@ -196,7 +219,7 @@ class ESPGLearner(GradientBasedLearner):
         # We assume the gradients have been flushed, before calling _set_gradients
         # thus we actually _add_  to existing gradient (as common in pytorch.)
 
-        # note that torch otpimizers minimize but we used maximization formulation in the 
+        # note that torch otpimizers minimize but we used maximization formulation in the
         # rewards, thus we need to use the negative gradient here.
 
         for p, d_p in zip(self.params(), gradient_params):
@@ -221,8 +244,11 @@ class ESPGLearner(GradientBasedLearner):
         return perturbed, noise
 
 
-
 class DPGLearner(GradientBasedLearner):
     """Neural Self-Play with Deterministic Policy Gradients."""
     def __init__(self):
+        super().__init__()
+        raise NotImplementedError()
+
+    def _set_gradients(self):
         raise NotImplementedError()
