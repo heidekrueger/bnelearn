@@ -36,6 +36,8 @@ class ClosureStrategy(Strategy):
     """
 
     def __init__(self, closure: Callable, parallel: int = 0):
+        if not isinstance(closure, Callable):
+            raise ValueError("Provided closure must be Callable!")
         self.closure = closure
         self.parallel = parallel
 
