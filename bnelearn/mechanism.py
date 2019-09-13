@@ -4,7 +4,6 @@
 This module implements games such as matrix games and auctions.
 """
 
-import warnings
 from abc import ABC, abstractmethod
 from typing import List, Tuple
 
@@ -195,30 +194,6 @@ class MatrixGame(Game):
                 "Probabilities must sum to 1 for player {}".format(player)
             assert torch.all(strategy >= 0.0), \
                 "Probabilities must be positive for player {}".format(player)
-
-    def _tensorize_strategy_profile(self, strategy_profile_list: List[torch.Tensor]) -> torch.Tensor:
-        """Deprecated (no longer needed due to new implementation of play_mixed)
-
-        Turns a list of strategies (1-d-tensors) into a n-player dimensional joint strategy profile tensor"""
-
-        warnings.warn('_tensorize_strategy_profile is deprecated, you should no longer use this method.')
-
-        # set einsum_string depending on number of players
-        einsum_strings = {
-            1: 'i->i',
-            2: 'i,j->ij',
-            3: 'i,j,k->ijk',
-            4: 'i,j,k,l->ijkl',
-            5: 'i,j,k,l,m->ijklm',
-            6: 'i,j,k,l,m,n->ijklmn'
-        }
-
-        try:
-            einsum_string = einsum_strings[self.n_players]
-        except KeyError:
-            raise NotImplementedError('Playing mixed strategies is only implemented for up to 6 players!')
-
-        return torch.einsum(einsum_string, strategy_profile_list)
 
     def _calculate_utilities_mixed(self, strategy_profile: List[torch.Tensor], player_position=None,
                                    validate: bool = None) -> torch.Tensor:

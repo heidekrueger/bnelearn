@@ -24,9 +24,10 @@ class Player(ABC):
         self.strategy = strategy
         self.batch_size = batch_size
 
+    @abstractmethod
     def get_action(self):
         """Chooses an action according to the player's strategy."""
-        return self.strategy.play(batch_size=self.batch_size)
+        raise NotImplementedError
 
     def prepare_iteration(self):
         """ Prepares one iteration of environment-observation."""
@@ -35,7 +36,7 @@ class Player(ABC):
     @abstractmethod
     def get_utility(self, **kwargs):
         """Calculates player's utility based on outcome of a game."""
-        pass #pylint: disable=unnecessary-pass
+        raise NotImplementedError
 
 class MatrixGamePlayer(Player):
     """ A player playing a matrix game"""

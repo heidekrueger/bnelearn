@@ -23,10 +23,10 @@ pylint.txt
 # experiment logs, tensorboard files, figures, model checkpoints
 /**/events.out.*
 /**/*.npz
-
-#don't check in experiment results for now
 /runs
 /notebooks/runs
+/notebooks/**/*.png
+
 
 # dont check in figures created from R -- only keep the source code
 /R/figures/*.eps

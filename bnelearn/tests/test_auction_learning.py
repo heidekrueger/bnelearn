@@ -5,8 +5,7 @@
     - whether the loop runs without runtime exceptions for a small number of iterations
     - whether the model learnt the appropriate bid for the top-range of valuations
       (this value is expected to be learned _very_ fast as it's most significant
-       and as such should always be found (up to a certain range) even in a short amount of time
-      )
+       and as such should always be found (up to a certain range) even in a short amount of time)
     - Further, the script tests whether the utility after 200 iterations is in the expected range,
        if it isn't it won't fail but issue a warning (because this might just be due to
         stochasticity as it would take a significantly longer test time / more iterations to make sure.)
@@ -18,7 +17,7 @@ import torch.nn as nn
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.mechanism import FirstPriceSealedBidAuction
-from bnelearn.optimizer import ES
+from bnelearn.learner import ESPGLearner
 from bnelearn.strategy import NeuralNetStrategy
 
 cuda = torch.cuda.is_available()
@@ -37,12 +36,18 @@ input_length = 1
 hidden_nodes = [5,5]
 hidden_activations = [nn.SELU(), nn.SELU()]
 epoch = 100
-learning_rate = 1e-1
-lr_decay = False
-baseline = True
-momentum = .7
-sigma = .02
-n_perturbations = 64
+
+learner_hyperparams = {
+    'sigma': 0.1,
+    'population_size': 64,
+    'scale_sigma_by_model_size': False
+}
+
+optimizer_type = torch.optim.SGD
+optimizer_hyperparams = {
+    'lr': 1e-2,
+    'momentum': 0.7
+}
 
 mechanism = FirstPriceSealedBidAuction(cuda = True)
 
@@ -60,7 +65,6 @@ def test_learning_in_fpsb_environment():
     model = NeuralNetStrategy(input_length,
                               hidden_nodes= hidden_nodes,
                               hidden_activations= hidden_activations,
-                              requires_grad=False,
                               ensure_positive_output=torch.tensor([float(u_hi)])
                              ).to(device)
 
@@ -68,20 +72,22 @@ def test_learning_in_fpsb_environment():
     bidder2 = strat_to_bidder(model, batch_size,1)
 
     env = AuctionEnvironment(mechanism,
-                             agents = [bidder1, bidder2], #static
+                             agents = [bidder1, bidder2],
                              batch_size = batch_size,
                              n_players =n_players,
-                             strategy_to_player_closure = strat_to_bidder
-                             )
-
-    # we'll simply bidder1's model, as it's shard between players.
-    optimizer = ES(model=model, environment = env,
-                   lr = learning_rate, momentum=momentum,
-                   sigma=sigma, n_perturbations=n_perturbations, baseline=baseline,
-                   strat_to_player_kwargs={'player_position':bidder1.player_position})
+                             strategy_to_player_closure = strat_to_bidder)
+    learner = ESPGLearner(
+        model = model,
+        environment = env,
+        hyperparams = learner_hyperparams,
+        optimizer_type = optimizer_type,
+        optimizer_hyperparams = optimizer_hyperparams,
+        strat_to_player_kwargs={'player_position':bidder1.player_position})
 
     for _ in range(epoch+1):
-        utility = -optimizer.step()
+        learner.update_strategy()
+
+    utility = env.get_reward(env.agents[0])
 
     ## no fail until here means the loop ran properly (i.e. no runtime errors)
 

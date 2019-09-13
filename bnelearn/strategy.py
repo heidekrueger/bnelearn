@@ -36,6 +36,8 @@ class ClosureStrategy(Strategy):
     """
 
     def __init__(self, closure: Callable, parallel: int = 0):
+        if not isinstance(closure, Callable):
+            raise ValueError("Provided closure must be Callable!")
         self.closure = closure
         self.parallel = parallel
 
@@ -203,15 +205,13 @@ class MatrixGameStrategy(Strategy, nn.Module):
             if init_weight_normalization:
                 self.logits.weight.data = self.logits.weight.data/torch.norm(init_weights)
 
-        for param in self.parameters():
-            param.requires_grad = False
 
         # initialize distribution
         self._update_distribution()
 
     def _update_distribution(self):
         self.device = next(self.parameters()).device
-        probs = self.forward(torch.ones(1,  device=self.device))
+        probs = self.forward(torch.ones(1,  device=self.device)).detach()
         self.distribution = Categorical(probs=probs)
 
     def forward(self, x):
@@ -246,9 +246,6 @@ class NeuralNetStrategy(Strategy, nn.Module):
         hidden_activations:
             Iterable of activation functions to be used in the hidden layers.
             Should be instances of classes defined in `torch.nn.modules.activation`
-        requires_grad:
-            whether pytorch should build the whole DAG.
-            Since ES is gradient-free, we can save some cycles and memory here.
         ensure_positive_output (optional): torch.Tensor
             When provided, will check whether the initialized model will return a
             positive bid anywhere at the given input tensor. Otherwise,
@@ -257,7 +254,6 @@ class NeuralNetStrategy(Strategy, nn.Module):
     def __init__(self, input_length: int,
                  hidden_nodes: Iterable[int],
                  hidden_activations: Iterable[nn.Module],
-                 requires_grad = True,
                  ensure_positive_output: torch.Tensor or None = None):
 
         assert len(hidden_nodes) == len(hidden_activations), \
@@ -265,7 +261,6 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         nn.Module.__init__(self)
 
-        self.requires_grad = requires_grad
         self.input_length = input_length
         self.hidden_nodes = copy(hidden_nodes)
         self.activations = copy(hidden_activations) # do not write to list outside!
@@ -284,11 +279,6 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.layers['activation_out'] = nn.ReLU()
         self.activations.append(nn.ReLU())
 
-        # turn off gradients if not required (e.g. for ES-training)
-        if not requires_grad:
-            for param in self.parameters():
-                param.requires_grad = False
-
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization
         if ensure_positive_output:
@@ -297,8 +287,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
-        self.__init__(self.input_length, self.hidden_nodes, self.activations[:-1],
-                      self.requires_grad, ensure_positive_output)
+        self.__init__(self.input_length, self.hidden_nodes,
+                      self.activations[:-1], ensure_positive_output)
 
     def forward(self, x):
         for layer in self.layers.values():

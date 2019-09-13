@@ -1,4 +1,4 @@
-"""This module tests implemented optimizers in a 'static' environment."""
+"""This module tests implemented learner in a 'static' environment."""
 import warnings
 import pytest
 import torch
@@ -6,8 +6,8 @@ import torch.nn as nn
 from bnelearn.strategy import NeuralNetStrategy
 from bnelearn.mechanism import StaticMechanism
 from bnelearn.bidder import Bidder
-from bnelearn.optimizer import ES #, SimpleReinforce
 from bnelearn.environment import AuctionEnvironment
+from bnelearn.learner import ESPGLearner
 
 # Shared objects
 cuda = torch.cuda.is_available()
@@ -37,7 +37,6 @@ def test_static_mechanism():
         input_length,
         hidden_nodes =hidden_nodes,
         hidden_activations=hidden_activations,
-        requires_grad=False,
         ensure_positive_output=torch.tensor([float(u_hi)])
         ).to(device)
 
@@ -65,25 +64,21 @@ def test_static_mechanism():
     assert torch.isclose(utilities.mean(), torch.tensor(3.75, device=device), atol=3e-2), \
         "StaticMechanism returned unexpected rewards."
 
-def test_ES_optimizer():
-    """Tests ES optimizer in static environment.
+def test_ES_learner_SGD():
+    """Tests ES PG learner with SGD optimizer in static environment.
        This does not test complete convergence but 'running in the right direction'.
     """
-    BATCH_SIZE = 2**18
-    epoch = 200
-    LEARNING_RATE = 1e-1
-    lr_decay = True
-    lr_decay_every = 150
-    lr_decay_factor = 0.3
+    BATCH_SIZE = 2**12
+    epoch = 100
 
-    sigma = .1 #ES noise parameter
-    n_perturbations = 32
+    optimizer_type = torch.optim.SGD
+    optimizer_hyperparams = {'lr': 1e-1, 'momentum': 0.5}
+    learner_hyperparams = {'sigma': .1, 'population_size': 32, 'scale_sigma_by_model_size': False}
 
     model = NeuralNetStrategy(
         input_length,
         hidden_nodes =hidden_nodes,
         hidden_activations=hidden_activations,
-        requires_grad=False,
         ensure_positive_output=torch.tensor([float(u_hi)])
         ).to(device)
 
@@ -93,67 +88,15 @@ def test_ES_optimizer():
         strategy_to_player_closure=strat_to_bidder,
         batch_size = BATCH_SIZE, n_players=1)
 
-    optimizer = ES(model=model, environment = env,
-                   lr = LEARNING_RATE, sigma=sigma,
-                   n_perturbations=n_perturbations)
+    learner = ESPGLearner(
+        model = model,
+        environment=env,
+        hyperparams=learner_hyperparams,
+        optimizer_type=optimizer_type,
+        optimizer_hyperparams=optimizer_hyperparams
+    )
 
-    for e in range(epoch+1):
-        # lr decay?
-        if lr_decay and e % lr_decay_every == 0 and e > 0:
-            LEARNING_RATE = LEARNING_RATE * lr_decay_factor
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = LEARNING_RATE
-
-        # always: do optimizer step
-        utility = -optimizer.step()
+    for _ in range(epoch+1):
+        utility = learner.update_strategy_and_evaluate_utility()
 
     assert utility > 1.4, "optimizer did not learn sufficiently (1.4), got {:.2f}".format(utility)
-
-def test_ES_momentum():
-    """Tests ES optimizer in static environment.
-       This does not test complete convergence but 'running in the right direction'.
-    """
-    BATCH_SIZE = 2**12
-    epoch = 200
-    LEARNING_RATE = 1e-1
-    MOMENTUM = 0.5
-    lr_decay = True
-    lr_decay_every = 150
-    lr_decay_factor = 0.3
-
-    sigma = .1 #ES noise parameter
-    n_perturbations = 32
-
-    model = NeuralNetStrategy(
-        input_length,
-        hidden_nodes =hidden_nodes,
-        hidden_activations=hidden_activations,
-        requires_grad=False,
-        ensure_positive_output=torch.tensor([float(u_hi)])
-        ).to(device)
-
-    bidder = strat_to_bidder(model, BATCH_SIZE, 0)
-
-    env = AuctionEnvironment(
-        mechanism,
-        agents = [bidder], strategy_to_player_closure=strat_to_bidder,
-        batch_size = BATCH_SIZE, n_players=1)
-
-    optimizer = ES(
-        model=model, environment = env,
-        lr = LEARNING_RATE, momentum = MOMENTUM,
-        sigma=sigma, n_perturbations=n_perturbations)
-
-    torch.cuda.empty_cache()
-
-    for e in range(epoch+1):
-        # lr decay?
-        if lr_decay and e % lr_decay_every == 0 and e > 0:
-            LEARNING_RATE = LEARNING_RATE * lr_decay_factor
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = LEARNING_RATE
-
-        # always: do optimizer step
-        utility = -optimizer.step()
-
-    assert utility > 1.4, "optimizer did not learn the optimum. Utility is {:.2f}".format(utility)
