@@ -97,7 +97,6 @@ def test_ES_learner_SGD():
     )
 
     for _ in range(epoch+1):
-        learner.update_strategy()
-        utility = env.get_reward(env.agents[0])
+        utility = learner.update_strategy_and_evaluate_utility()
 
     assert utility > 1.4, "optimizer did not learn sufficiently (1.4), got {:.2f}".format(utility)

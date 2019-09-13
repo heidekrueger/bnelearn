@@ -42,6 +42,8 @@ class Environment(ABC):
             for player_position, agent in enumerate(agents)
         ]
         self.agents: Iterable[Player] = agents
+        self.__len__ = self.agents.__len__
+
         # test whether all provided agents implement correct batch_size
         for i, agent in enumerate(self.agents):
             if agent.batch_size != self.batch_size:
@@ -91,13 +93,9 @@ class Environment(ABC):
         """
         pass #pylint: disable=unnecessary-pass
 
-    def size(self):
-        """Returns the number of agents/opponent setups in the environment."""
-        return len(self.agents)
-
     def is_empty(self):
         """True if no agents in the environment"""
-        return len(self.agents) == 0
+        return len(self) == 0
 
 
 class MatrixGameEnvironment(Environment):

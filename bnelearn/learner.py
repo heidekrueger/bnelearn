@@ -176,11 +176,11 @@ class ESPGLearner(GradientBasedLearner):
             Note that for large sigma, this grad becomes smaller tha
         """
 
-        # 1. if required redraw valuations / perform random moves (determined by env)
+        ### 1. if required redraw valuations / perform random moves (determined by env)
         self.environment.prepare_iteration()
-        # 2. Create a population of perturbations of the original model
+        ### 2. Create a population of perturbations of the original model
         population = (self._perturb_model(self.model) for _ in range(self.population_size))
-        # 3. let each candidate against the environment and get their utils
+        ### 3. let each candidate against the environment and get their utils ###
         # both of these as a row-matrix. i.e.
         # rewards: population_size x 1
         # epsilons: population_size x parameter_length
@@ -196,7 +196,9 @@ class ESPGLearner(GradientBasedLearner):
                 for (model, epsilon) in population
                 ))
             )
-        # 4. calculate the ES-pseuogradients
+        ### 4. calculate the ES-pseuogradients   ####
+        # See ES_Analysis notebook in repository for more information about where
+        # these choices come from.
         baseline = \
             self.environment.get_strategy_reward(self.model,**self.strat_to_player_kwargs).detach().view(1) \
                 if self.baseline == 'current_reward' \
@@ -215,19 +217,20 @@ class ESPGLearner(GradientBasedLearner):
         gradient_params = deepcopy(list(self.params()))
         vector_to_parameters(gradient_vector, gradient_params)
 
-        # assign gradients to model gradient.
-        # We assume the gradients have been flushed, before calling _set_gradients
-        # thus we actually _add_  to existing gradient (as common in pytorch.)
+        ### 5. assign gradients to model gradient ####
+        # We actually _add_ to existing gradient (as common in pytorch), to make it
+        # possible to accumulate gradients over multiple batches.
+        # When this is not desired (most of the time!), you need to flush the gradients
+        # before calling this method.
 
-        # note that torch otpimizers minimize but we used maximization formulation in the
-        # rewards, thus we need to use the negative gradient here.
+        # NOTE: torch.otpimizers minimize but we use a maximization formulation
+        # in the rewards, thus we need to use the negative gradient here.
 
         for p, d_p in zip(self.params(), gradient_params):
             if p.grad is not None:
                 p.grad.add_(-d_p)
             else:
                 p.grad = -d_p
-
 
     def _perturb_model(self, model: torch.nn.Module) -> Tuple[torch.nn.Module, torch.Tensor]:
         """
@@ -242,7 +245,6 @@ class ESPGLearner(GradientBasedLearner):
         vector_to_parameters(params_flat + noise, perturbed.parameters())
 
         return perturbed, noise
-
 
 class DPGLearner(GradientBasedLearner):
     """Neural Self-Play with Deterministic Policy Gradients."""
