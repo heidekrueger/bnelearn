@@ -6,7 +6,7 @@ from copy import deepcopy
 from bnelearn.strategy import MatrixGameStrategy, Strategy
 from bnelearn.bidder import Bidder, Player, MatrixGamePlayer
 from bnelearn.mechanism import PrisonersDilemma, BattleOfTheSexes, MatchingPennies, RockPaperScissors, JordanGame
-from bnelearn.optimizer import ES
+from bnelearn.learner import ESPGLearner
 from bnelearn.environment import Environment, AuctionEnvironment, MatrixGameEnvironment
 
 from torch.utils.tensorboard import SummaryWriter
@@ -46,18 +46,24 @@ def main(args):
 
     ## Environment settings
     #training batch size
-    batch_size = args[2][0] #2**10
+    batch_size =  2**10
     input_length = 1
-
     # optimization params
     # NN Parameters
+    hyperparams = {"population_size": args[2][6],
+                    "sigma": args[2][5],
+                    "scale_sigma_by_model_size": False,
+                    "normalize_gradients": True,
+                    "baseline": 'mean_reward'}
+    optimizer_type = torch.optim.SGD
+    optimizer_hyperparams = {"lr": args[2][1]}
     learning_rate = args[2][1]
     lr_decay = args[2][2]
     lr_decay_every = args[2][3]
     lr_decay_factor = args[2][4]
 
     sigma = args[2][5] #ES noise parameter
-    n_perturbations = args[2][6]
+    #n_perturbations = args[2][6]
 
     game = options[setting[1]]()
 
@@ -87,16 +93,15 @@ def main(args):
                      )
 
     for i in range(game.n_players):
-        players[i] = ES(model=strats[i], environment = env, lr = learning_rate, sigma=sigma,
-                        n_perturbations=n_perturbations, gradient_normalization=weight_normalization,
-                        strat_to_player_kwargs={'player_position':i})
+        players[i] = ESPGLearner(model=strats[i], environment = env, hyperparams = hyperparams, 
+                        optimizer_type = optimizer_type, optimizer_hyperparams = optimizer_hyperparams, strat_to_player_kwargs={'player_position':i})
         print(strats[i].distribution.probs)
 
     def log_hyperparams(writer):
         writer.add_scalar('hyperparams/batch_size', batch_size)
         writer.add_scalar('hyperparams/learning_rate', learning_rate)
         writer.add_scalar('hyperparams/sigma', sigma)
-        writer.add_scalar('hyperparams/n_perturbations', n_perturbations)
+        writer.add_scalar('hyperparams/n_perturbations', hyperparams["population_size"])
     ############################Training#################################
     with SummaryWriter(log_dir=logdir) as writer:
         torch.cuda.empty_cache()
@@ -114,7 +119,7 @@ def main(args):
             # always: do optimizer step
             utility = [None] * game.n_players
             for i in range(game.n_players):
-                utility[i] = -players[i].step()
+                utility[i] = -players[i].update_strategy_and_evaluate_utility()
 
             #env.agents = [env._strategy_to_player(agent, batch_size, player_position) if isinstance(agent, Strategy) else agent
             #    for player_position, agent in enumerate([deepcopy(a) for a in strats])]

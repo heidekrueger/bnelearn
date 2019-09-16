@@ -7,14 +7,14 @@ import scripts.run_matrix_NN as NN
 import scripts.run_matrix_FP as FP
 import random
 
-games = ['RPS','JG']#['PD', 'MP', 'BoS', 'RPS','JG']#['PD', 'MP', 'BoS']
-learners = [ 'FP', 'FPS', 'FPM', 'NSP']
+games = ['MP']#['PD', 'MP', 'BoS', 'RPS','JG']#['PD', 'MP', 'BoS']
+learners = ['NSP']#[ 'FP', 'FPS', 'FPM', 'NSP']
 
 # smallest tau, update interval, tau (update size)
 epochs = 5000
 params_fp = [[0.2, 10, 0.9]]#[0.0001, 10, 0.99],[0.2, 10, 0.9],[0.5, 10,0.9]]
 # batch size, learning_rate, lr_decay, lr_decay_every, lr_decay_factor, siga, n_perturbations
-params_nsp = [[2**10, 1, False, 100, 0.8, 5, 10]]
+params_nsp = [[2**10, 1/5, False, 100, 0.8, 5, 10]]
 
 
 equilibria = {'PD': [[[0,1],[1,0]]],

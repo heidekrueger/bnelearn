@@ -152,7 +152,7 @@ class ESPGLearner(GradientBasedLearner):
 
         # overwrite baseline method if provided
         if 'baseline' in hyperparams:
-            self.baseline_method = hyperparams('baseline')
+            self.baseline_method = hyperparams['baseline']
             if not isinstance(self.baseline_method, float) \
                     and not self.baseline_method in ['current_reward', 'mean_reward']:
                 raise ValueError('Invalid baseline provided. Should be float or '\
