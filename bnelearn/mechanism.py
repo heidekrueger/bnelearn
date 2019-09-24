@@ -447,9 +447,6 @@ class MatchingPennies(MatrixGame):
 class VickreyAuction(Mechanism):
     "Vickrey / Second Price Sealed Bid Auctions"
 
-    def __init__(self, cuda: bool = True):
-        super().__init__(cuda)
-
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Runs a (batch of) Vickrey/Second Price Sealed Bid Auctions.
@@ -505,9 +502,6 @@ class VickreyAuction(Mechanism):
 
 class FirstPriceSealedBidAuction(Mechanism):
     """First Price Sealed Bid auction"""
-
-    def __init__(self, cuda: bool = True):
-        super().__init__(cuda)
 
     # TODO: If multiple players submit the highest bid, the implementation chooses the first rather than at random
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -660,11 +654,11 @@ class LLGAuction(Mechanism):
 
         # 1. Determine efficient allocation
         locals_win = (b1 + b2 > bg).float() # batch_size x 1
-        allocation = locals_win * torch.tensor([[1.,1.,0.]], device=self.device) + \
+        allocations = locals_win * torch.tensor([[1.,1.,0.]], device=self.device) + \
                      (1-locals_win) * torch.tensor([[0.,0.,1.]], device=self.device) # batch x players
 
         if self.rule == 'first_price':
-            payments = allocation * bids # batch x players
+            payments = allocations * bids # batch x players
         else: # calculate local and global winner prices separately
             payments = torch.zeros(batch_size, n_players, device = self.device)
             global_winner_prices = b1 + b2 # batch_size x 1
@@ -704,4 +698,4 @@ class LLGAuction(Mechanism):
 
             payments[:, [0,1]] = locals_win * local_winner_prices
 
-        return (allocations, payments) # payments: batches x players, allocation: batch x players x items
+        return (allocations.unsqueeze(-1), payments) # payments: batches x players, allocation: batch x players x items
