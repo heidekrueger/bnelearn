@@ -633,7 +633,7 @@ class LLGAuction(Mechanism):
         (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
             allocation: tensor of dimension (n_batches x n_players x 1),
                         1 indicating the desired bundle is allocated to corresponding player
-                        in that batch, 0 otherwise. 
+                        in that batch, 0 otherwise.
                         (i.e. 1 for player0 means {1} allocated, for player2 means {2} allocated,
                         for player3 means {1,2} allocated.)
             payments:   tensor of dimension (n_batches x n_players)
@@ -646,45 +646,59 @@ class LLGAuction(Mechanism):
         batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
         batch_size, n_players, n_items = bids.shape
 
-        assert n_players == 3, "invalid n_players in LLG setting"        
+        assert n_players == 3, "invalid n_players in LLG setting"
         assert n_items == 1, "invalid bid_dimensionality in LLG setting" # dummy item is desired bundle for each player
 
-        # move bids to gpu/cpu if necessary
-        bids = bids.to(self.device)
+        # move bids to gpu/cpu if necessary, get rid of unused item_dim
+        bids = bids.squeeze(item_dim).to(self.device) # batch_size x n_players
+        # individual bids as batch_size x 1 tensors:
+        b1, b2, bg = bids.split(1, dim=1)
 
         # allocate return variables
         payments = torch.zeros(batch_size, n_players, device = self.device)
         allocations = torch.zeros(batch_size, n_players, n_items, device = self.device)
 
         # 1. Determine efficient allocation
-        locals_win = (bids[:,0] + bids[:,1] > bids[:, 2]).float() # batch_size x 1
+        locals_win = (b1 + b2 > bg).float() # batch_size x 1
         allocation = locals_win * torch.tensor([[1.,1.,0.]], device=self.device) + \
                      (1-locals_win) * torch.tensor([[0.,0.,1.]], device=self.device) # batch x players
 
         if self.rule == 'first_price':
-            payments = allocation * bids.squeeze(-1) # batch x players
+            payments = allocation * bids # batch x players
         else: # calculate local and global winner prices separately
             payments = torch.zeros(batch_size, n_players, device = self.device)
-            global_winner_prices = (bids[:,0]+bids[:,1]) # batch_size x 1
-            payments[:, 2] = ((1-locals_win) * global_winner_prices).squeeze(1)
+            global_winner_prices = b1 + b2 # batch_size x 1
+            payments[:, [2]] = (1-locals_win) * global_winner_prices
 
             local_winner_prices = torch.zeros(batch_size, 2, device = self.device)
 
-            if self.rule in ['vcg', 'nearest_vcg']: 
+            if self.rule in ['vcg', 'nearest_vcg']:
                 # vcg prices are needed for vcg, nearest_vcg
-                local_vcg_prices = (bids[:,2] - bids[:,[1,0]]).view(batch_size,2).relu()
+                local_vcg_prices = (bg - bids[:,[1,0]]).relu()
 
                 if self.rule == 'vcg':
                     local_winner_prices = local_vcg_prices
                 else: #nearest_vcg
-                    delta = 0.5 * (
-                        bids[:,2] - local_vcg_prices[:,0].view(batch_size,1) - local_vcg_prices[:,1].view(batch_size,1)
-                    ) # batch_size x 1
-                    local_winner_prices = local_vcg_prices + delta
-            elif self.rule == 'nearest_zero':
-                raise NotImplementedError()
+                    delta = 0.5 * (bg - local_vcg_prices[:,[0]] - local_vcg_prices[:,[1]]) # batch_size x 1
+                    local_winner_prices = local_vcg_prices + delta # batch_size x 2
+            elif self.rule in ['proxy', 'nearest_zero']:
+                # two cases: global bidder bids less than twice as much as second local or not
+                global_less_than_twice_local = (bg <= 2*b2).float() # batch_size x 1
+                local_prices_case_yes = 0.5 * torch.cat(2*[bg], dim=player_dim)
+                local_prices_case_no = torch.cat([bg-b2,  b2] , dim=player_dim)
+
+                local_winner_prices = global_less_than_twice_local * local_prices_case_yes + \
+                                      (1-global_less_than_twice_local) * local_prices_case_no
             elif self.rule == 'nearest_bid':
-                raise NotImplementedError()
+                case_yes = (bg < b1 - b2).float() # batch_size x 1
+
+                local_prices_case_yes = torch.cat([bg, torch.zeros_like(bg)], dim=player_dim)
+
+                delta = 0.5*(b1 + b2 - bg)
+                local_prices_case_no = bids[:, [0,1]] - delta
+
+                local_winner_prices = case_yes * local_prices_case_yes + (1-case_yes) * local_prices_case_no
+
             else:
                 raise ValueError("invalid bid rule")
 

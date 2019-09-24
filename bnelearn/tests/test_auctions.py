@@ -107,3 +107,9 @@ def test_vickrey_correctness():
         [[4.9900, 3.6000, 0.0000],
          [1.9900, 1.0000, 0.0000]],
         device = payments.device))
+
+def test_llg_auctions():
+    """Correctness tests for learning rules in LLG auctions.
+        Using examples from Ausubel & Baranov 2019, Figure 2
+    """
+    pass
