@@ -2,10 +2,18 @@
 
 import pytest
 import torch
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
+from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, \
+    MultiItemDiscriminatoryAuction, MultiItemUniformPriceAuction, \
+    MultiItemVickreyAuction
 
-fpsb = FirstPriceSealedBidAuction(cuda=True)
-vickrey = VickreyAuction(cuda = True)
+cuda = True
+
+fpsb = FirstPriceSealedBidAuction(cuda=cuda)
+vickrey = VickreyAuction(cuda=cuda)
+mida = MultiItemDiscriminatoryAuction(cuda=cuda)
+miup = MultiItemUniformPriceAuction(cuda=cuda)
+miva = MultiItemVickreyAuction(cuda=cuda)
+
 device = fpsb.device
 
 bids_unambiguous = torch.tensor([
@@ -29,7 +37,7 @@ bids_ambiguous = torch.tensor([
     ]], device = device)
 bids_cpu = bids_ambiguous.cpu()
 
-bids_illegal_negative =  torch.tensor([
+bids_illegal_negative = torch.tensor([
     [[1,   2,    3],
      [3.7, 2,    0],
      [3.6, 1.99, 2.99]
@@ -42,6 +50,20 @@ bids_illegal_negative =  torch.tensor([
 bids_illegal_dimensions = torch.tensor([
     [1, 2, 3]
     ], device = device)
+
+bids_multi_unit = torch.tensor([
+    [[3.00, 2.00, 1.00],
+     [3.70, 2.00, 0.00],
+     [3.60, 2.99, 1.99]
+    ],
+    [[1.02, 1.01, 1.00],
+     [1.01, 0.99, 0.93],
+     [0.99, 0.95, 0.93]
+    ],
+    [[4.0, 3.0, 2.0],
+     [1.0, 0.9, 0.0],
+     [1.5, 1.1, 1.0]
+    ]], device = device)
 
 def test_fpsb_cuda():
     """FPSB should run on GPU if available on the system and desired."""
@@ -67,13 +89,12 @@ def test_fpsb_illegal_arguments():
     with pytest.raises(AssertionError):
         fpsb.run(bids_illegal_dimensions)
 
-
 def test_fpsb_correctness():
     """FPSB should return correct allocations and payments."""
 
     allocations, payments = fpsb.run(bids_unambiguous)
 
-    assert torch.equal(allocations,torch.tensor(
+    assert torch.equal(allocations, torch.tensor(
         [
             [[0., 1., 1.],
              [1., 0., 0.],
@@ -93,7 +114,7 @@ def test_vickrey_correctness():
 
     allocations, payments = vickrey.run(bids_unambiguous)
 
-    assert torch.equal(allocations,torch.tensor(
+    assert torch.equal(allocations, torch.tensor(
         [
             [[0., 1., 1.],
              [1., 0., 0.],
@@ -106,4 +127,81 @@ def test_vickrey_correctness():
     assert torch.equal(payments, torch.tensor(
         [[4.9900, 3.6000, 0.0000],
          [1.9900, 1.0000, 0.0000]],
+        device = payments.device))
+
+def test_mida_correctness():
+    """Test of allocation and payments in MultiItemDiscriminatoryAuction."""
+
+    allocations, payments = mida.run(bids_multi_unit)
+
+    assert torch.equal(allocations, torch.tensor(
+        [[[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]
+         ],
+         [[1., 1., 0.],
+          [1., 0., 0.],
+          [0., 0., 0.]
+         ],
+         [[1., 1., 1.],
+          [0., 0., 0.],
+          [0., 0., 0.]
+         ]], device = allocations.device))
+
+    assert torch.equal(payments, torch.tensor(
+        [[3.0000, 3.7000, 3.6000],
+         [2.0300, 1.0100, 0.0000],
+         [9.0000, 0.0000, 0.0000]],
+        device = payments.device))
+
+def test_miup_correctness():
+    """Test of allocation and payments in MultiItemUniformPriceAuction."""
+
+    allocations, payments = miup.run(bids_multi_unit)
+
+    assert torch.equal(allocations, torch.tensor(
+        [[[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]
+         ],
+         [[1., 1., 0.],
+          [1., 0., 0.],
+          [0., 0., 0.]
+         ],
+         [[1., 1., 1.],
+          [0., 0., 0.],
+          [0., 0., 0.]
+         ]], device = allocations.device))
+
+    assert torch.equal(payments, torch.tensor(
+        [[2.9900, 2.9900, 2.9900],
+         [2.0000, 1.0000, 0.0000],
+         [4.5000, 0.0000, 0.0000]],
+        device = payments.device))
+
+def test_miva_correctness():
+    """Test of allocation and payments in MultiItemVickreyAuction."""
+
+    allocations, payments = miva.run(bids_multi_unit)
+
+    assert torch.equal(allocations, torch.tensor(
+        [[[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]
+         ],
+         [[1., 1., 0.],
+          [1., 0., 0.],
+          [0., 0., 0.]
+         ],
+         [[1., 1., 1.],
+          [0., 0., 0.],
+          [0., 0., 0.]
+         ]], device = allocations.device))
+
+    print(allocations, payments)
+
+    assert torch.equal(payments, torch.tensor(
+        [[2.9900, 2.9900, 2.0000],
+         [1.9800, 1.0000, 0.0000],
+         [3.6000, 0.0000, 0.0000]],
         device = payments.device))

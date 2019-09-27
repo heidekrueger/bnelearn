@@ -595,3 +595,216 @@ class StaticMechanism(Mechanism):
         allocations = (bids >= torch.rand_like(bids).mul_(10)).float()
 
         return (allocations, payments)
+
+# TODO: handeling of multiple eual bids?
+
+class MultiItemDiscriminatoryAuction(Mechanism):
+    """Multi item discriminatory auction"""
+
+    def __init__(self, cuda: bool = True):
+        self.cuda = cuda and torch.cuda.is_available()
+        self.device = 'cuda' if self.cuda else 'cpu'
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs a (batch of) Multi item discriminatory auction(s).
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, n_items); first entry of
+            n_items dim corrsponds to bid of first unit, second entry to bid of second
+            unit, etc. (how much one add. unit is ´valued´)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches x n_players x n_items),
+                        1 indicating item is allocated to corresponding player
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (n_batches x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # name dimensions for readibility
+        batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
+        batch_size, n_players, n_items = bids.shape
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # only accept decreasing bids
+        indecies = [i for i in range(n_items)]
+        assert torch.equal(bids.sort(dim=item_dim, descending=True)[1],
+                           torch.tensor(indecies, device=self.device).repeat(batch_size, n_players, 1)), \
+            "Bids must be in decreasing oreder"
+
+        # add fictitious negative bids (for case in which one bidder wins all items -> IndexError)
+        bids_extend = -1 * torch.ones(batch_size, n_players, n_items+1, device=self.device)
+        bids_extend[:,:,:-1] = bids
+
+        # allocate return variables
+        allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
+
+        # TODO: speedup by better usage of torch?
+        for batch in range(batch_size):
+            current_bids = bids_extend.clone().detach()[batch,:,0]
+            current_bids_indices = [0] * n_players
+            for _ in range(n_items):
+                winner = current_bids.argmax()
+                allocations[batch,winner,current_bids_indices[winner]] = 1
+                current_bids_indices[winner] += 1
+                current_bids[winner] = bids_extend.clone().detach()[batch,winner,current_bids_indices[winner]]
+
+        payments = torch.sum(allocations * bids, dim=item_dim)
+
+        return (allocations, payments) # payments: batches x players, allocation: batch x players x items
+
+class MultiItemUniformPriceAuction(Mechanism):
+    """ In a uniform-price auction all units are sold at a “market-clearing” price
+        such that the total amount demanded is equal to the total amount supplied.
+        We adopt the rule that the market-clearing price is the same as the highest
+        losing bid.
+    """
+
+    def __init__(self, cuda: bool = True):
+        self.cuda = cuda and torch.cuda.is_available()
+        self.device = 'cuda' if self.cuda else 'cpu'
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs a (batch of) Multi Item Uniform-Price Auction(s).
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, n_items)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches x n_players x n_items),
+                        1 indicating item is allocated to corresponding player
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (n_batches x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # name dimensions for readibility
+        batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
+        batch_size, n_players, n_items = bids.shape
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # only accept decreasing bids
+        indecies = [i for i in range(n_items)]
+        assert torch.equal(bids.sort(dim=item_dim, descending=True)[1],
+                           torch.tensor(indecies, device=self.device).repeat(batch_size, n_players, 1)), \
+            "Bids must be in decreasing oreder"
+
+        # add fictitious negative bids (for case in which one bidder wins all items -> IndexError)
+        bids_extend = -1 * torch.ones(batch_size, n_players, n_items+1, device=self.device)
+        bids_extend[:,:,:-1] = bids
+
+        # allocate return variables
+        allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
+        payments = torch.zeros(batch_size, n_players, device=self.device)
+
+        # TODO: speedup by better usage of torch?
+        for batch in range(batch_size):
+            current_bids = bids_extend.clone().detach()[batch,:,0]
+            current_bids_indices = [0] * n_players
+            for _ in range(n_items):
+                winner = current_bids.argmax()
+                allocations[batch,winner,current_bids_indices[winner]] = 1
+                current_bids_indices[winner] += 1
+                current_bids[winner] = bids_extend.clone().detach()[batch,winner,current_bids_indices[winner]]
+            market_clearing_price = current_bids.max()
+            payments[batch,:] = market_clearing_price * torch.sum(allocations[batch,::], dim=item_dim-1)
+
+        return (allocations, payments) # payments: batches x players, allocation: batch x players x items
+
+class MultiItemVickreyAuction(Mechanism):
+    """ In a uniform-price auction all units are sold at a “market-clearing” price
+        such that the total amount demanded is equal to the total amount supplied.
+        We adopt the rule that the market-clearing price is the same as the highest
+        losing bid.
+    """
+
+    def __init__(self, cuda: bool = True):
+        self.cuda = cuda and torch.cuda.is_available()
+        self.device = 'cuda' if self.cuda else 'cpu'
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs a (batch of) Multi Item Uniform-Price Auction(s).
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, n_items)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches x n_players x n_items),
+                        1 indicating item is allocated to corresponding player
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (n_batches x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # name dimensions for readibility
+        batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
+        batch_size, n_players, n_items = bids.shape
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # only accept decreasing bids
+        indecies = [i for i in range(n_items)]
+        assert torch.equal(bids.sort(dim=item_dim, descending=True)[1],
+                           torch.tensor(indecies, device=self.device).repeat(batch_size, n_players, 1)), \
+            "Bids must be in decreasing oreder"
+
+        # add fictitious negative bids (for case in which one bidder wins all items -> IndexError)
+        bids_extend = -1 * torch.ones(batch_size, n_players, n_items+1, device=self.device)
+        bids_extend[:,:,:-1] = bids
+
+        # allocate return variables
+        allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
+        payments = torch.zeros(batch_size, n_players, device=self.device)
+
+        # TODO: speedup by better usage of torch?
+        for batch in range(batch_size):
+            current_bids = bids_extend.clone().detach()[batch,:,0]
+            current_bids_indices = torch.tensor([0] * n_players, device=self.device)
+            for _ in range(n_items):
+                winner = current_bids.argmax()
+                allocations[batch,winner,current_bids_indices[winner]] = 1
+                current_bids_indices[winner] += 1
+                current_bids[winner] = bids_extend.clone().detach()[batch,winner,current_bids_indices[winner]]
+            won_items_per_agent = torch.sum(allocations[batch,::], dim=item_dim-1)
+            for agent in range(n_players):
+                mask = [True] * n_players
+                mask[agent] = False
+                highest_losing_prices_indices = current_bids_indices.clone().detach()[mask]
+                highest_losing_prices = current_bids.clone().detach()[mask]
+                for _ in range(int(won_items_per_agent[agent])):
+                    highest_losing_price_agent = int(highest_losing_prices.argmax())
+                    payments[batch,agent] += highest_losing_prices[highest_losing_price_agent]
+                    highest_losing_prices_indices[highest_losing_price_agent] += 1
+                    highest_losing_prices = \
+                        bids_extend.clone().detach()[batch,mask,highest_losing_prices_indices]
+
+        return (allocations, payments) # payments: batches x players, allocation: batch x players x items
