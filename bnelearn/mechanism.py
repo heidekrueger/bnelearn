@@ -17,7 +17,9 @@ class Game(ABC):
     """
     Base class for any kind of games
     """
-    device: str
+    def __init__(self, cuda: bool=True):
+        self.cuda = cuda and torch.cuda.is_available()
+        self.device = 'cuda' if self.cuda else 'cpu'
 
     @abstractmethod
     def play(self, action_profile):
@@ -25,12 +27,13 @@ class Game(ABC):
         # get actions from players and define outcome
         raise NotImplementedError()
 
-class Mechanism(Game):
+class Mechanism(Game, ABC):
     """
     Auction Mechanism - Interpreted as a Bayesian game.
     A Mechanism collects bids from all players, then allocates available
     items as well as payments for each of the players.
     """
+
     def play(self, action_profile):
         return self.run(bids=action_profile)
 
@@ -48,8 +51,7 @@ class MatrixGame(Game):
     # pylint: disable=abstract-method
     def __init__(self, n_players: int, outcomes: torch.Tensor,
                  cuda: bool = True, names: dict = None, validate_inputs: bool = True):
-        self.cuda = cuda and torch.cuda.is_available()
-        self.device = 'cuda' if self.cuda else 'cpu'
+        super().__init__(cuda)
         self.n_players = n_players
         self.validate_inputs = validate_inputs
 
@@ -316,9 +318,7 @@ class MatrixGame(Game):
 
 class RockPaperScissors(MatrixGame):
     """2 player, 3 action game rock paper scissors"""
-    def __init__(self, cuda: bool = True, **kwargs):
-
-        device = 'cuda' if cuda and torch.cuda.is_available() else 'cpu'
+    def __init__(self, **kwargs):
 
         outcomes = torch.tensor([
         # pylint:disable=bad-continuation
@@ -326,14 +326,14 @@ class RockPaperScissors(MatrixGame):
             [   [ 0., 0],  [-1, 1],  [ 1,-1]   ], #  Rock
             [   [ 1.,-1],  [ 0, 0],  [-1, 1]   ], #  Paper
             [   [-1., 1],  [ 1,-1],  [ 0, 0]   ] #  Scissors
-            ], device = device)
+            ])
 
         names = {
             "player_names": ["RowPlayer", "ColPlayer"],
             "action_names": ["Rock", "Paper", "Scissors"]
             }
 
-        super().__init__(2, outcomes, cuda=cuda, names=names, **kwargs)
+        super().__init__(2, outcomes, names=names, **kwargs)
 
 class JordanGame(MatrixGame):
     """Jordan Anticoordination game (1993), FP does not converge. 3P version of Shapley fashion game:
@@ -342,7 +342,7 @@ class JordanGame(MatrixGame):
         P2 wants to be different from P3
         P3 wants to be different from P1
     """
-    def __init__(self, **kwargs):
+    def __init__(self,  **kwargs):
         #pylint:disable=bad-continuation
         outcomes = torch.tensor([
             [   [   #LL
@@ -447,10 +447,6 @@ class MatchingPennies(MatrixGame):
 class VickreyAuction(Mechanism):
     "Vickrey / Second Price Sealed Bid Auctions"
 
-    def __init__(self, cuda: bool = True):
-        self.cuda = cuda and torch.cuda.is_available()
-        self.device = 'cuda' if self.cuda else 'cpu'
-
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Runs a (batch of) Vickrey/Second Price Sealed Bid Auctions.
@@ -506,10 +502,6 @@ class VickreyAuction(Mechanism):
 
 class FirstPriceSealedBidAuction(Mechanism):
     """First Price Sealed Bid auction"""
-
-    def __init__(self, cuda: bool = True):
-        self.cuda = cuda and torch.cuda.is_available()
-        self.device = 'cuda' if self.cuda else 'cpu'
 
     # TODO: If multiple players submit the highest bid, the implementation chooses the first rather than at random
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -581,8 +573,7 @@ class StaticMechanism(Mechanism):
     """
 
     def __init__(self, cuda: bool = True):
-        self.cuda = cuda and torch.cuda.is_available()
-        self.device = 'cuda' if self.cuda else 'cpu'
+        super().__init__(cuda)
 
     def run(self, bids):
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
@@ -595,3 +586,116 @@ class StaticMechanism(Mechanism):
         allocations = (bids >= torch.rand_like(bids).mul_(10)).float()
 
         return (allocations, payments)
+
+
+class LLGAuction(Mechanism):
+    """
+        Implements simple auctions in the LLG setting with 3 bidders and
+        2 goods.
+        Notably, this is not an implementation of a general Combinatorial auction
+        and bidders do not submit full bundle (XOR) bids: Rather, it's assumed
+        a priori that each bidder bids on a specific bundle:
+        The first bidder will only bid on the bundle {1}, the second on {2},
+        the third on {1,2}, thus actions are scalar for each bidder.
+
+        For the LLG Domain see e.g. Ausubel & Milgrom 2006 or Bosshard et al 2017
+    """
+
+    def __init__(self, rule = 'first_price', cuda: bool = True):
+        super().__init__(cuda)
+
+        if rule not in ['first_price', 'vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
+            raise ValueError('Invalid Pricing rule!')
+        # 'nearest_zero' and 'proxy' are aliases
+        if rule == 'proxy':
+            rule = 'nearest_zero'
+        self.rule = rule
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs a (batch of) LLG Combinatorial auction(s).
+
+        We assume n_players == 3 with 0,1 being local bidders and 3 being the global bidder.
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, 1)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches x n_players x 1),
+                        1 indicating the desired bundle is allocated to corresponding player
+                        in that batch, 0 otherwise.
+                        (i.e. 1 for player0 means {1} allocated, for player2 means {2} allocated,
+                        for player3 means {1,2} allocated.)
+            payments:   tensor of dimension (n_batches x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x 1)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+        # name dimensions for readibility
+        batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
+        batch_size, n_players, n_items = bids.shape
+
+        assert n_players == 3, "invalid n_players in LLG setting"
+        assert n_items == 1, "invalid bid_dimensionality in LLG setting" # dummy item is desired bundle for each player
+
+        # move bids to gpu/cpu if necessary, get rid of unused item_dim
+        bids = bids.squeeze(item_dim).to(self.device) # batch_size x n_players
+        # individual bids as batch_size x 1 tensors:
+        b1, b2, bg = bids.split(1, dim=1)
+
+        # allocate return variables
+        payments = torch.zeros(batch_size, n_players, device = self.device)
+        allocations = torch.zeros(batch_size, n_players, n_items, device = self.device)
+
+        # 1. Determine efficient allocation
+        locals_win = (b1 + b2 > bg).float() # batch_size x 1
+        allocations = locals_win * torch.tensor([[1.,1.,0.]], device=self.device) + \
+                     (1-locals_win) * torch.tensor([[0.,0.,1.]], device=self.device) # batch x players
+
+        if self.rule == 'first_price':
+            payments = allocations * bids # batch x players
+        else: # calculate local and global winner prices separately
+            payments = torch.zeros(batch_size, n_players, device = self.device)
+            global_winner_prices = b1 + b2 # batch_size x 1
+            payments[:, [2]] = (1-locals_win) * global_winner_prices
+
+            local_winner_prices = torch.zeros(batch_size, 2, device = self.device)
+
+            if self.rule in ['vcg', 'nearest_vcg']:
+                # vcg prices are needed for vcg, nearest_vcg
+                local_vcg_prices = (bg - bids[:,[1,0]]).relu()
+
+                if self.rule == 'vcg':
+                    local_winner_prices = local_vcg_prices
+                else: #nearest_vcg
+                    delta = 0.5 * (bg - local_vcg_prices[:,[0]] - local_vcg_prices[:,[1]]) # batch_size x 1
+                    local_winner_prices = local_vcg_prices + delta # batch_size x 2
+            elif self.rule in ['proxy', 'nearest_zero']:
+                # two cases: global bidder bids less than twice as much as second local or not
+                global_less_than_twice_local = (bg <= 2*b2).float() # batch_size x 1
+                local_prices_case_yes = 0.5 * torch.cat(2*[bg], dim=player_dim)
+                local_prices_case_no = torch.cat([bg-b2,  b2] , dim=player_dim)
+
+                local_winner_prices = global_less_than_twice_local * local_prices_case_yes + \
+                                      (1-global_less_than_twice_local) * local_prices_case_no
+            elif self.rule == 'nearest_bid':
+                case_yes = (bg < b1 - b2).float() # batch_size x 1
+
+                local_prices_case_yes = torch.cat([bg, torch.zeros_like(bg)], dim=player_dim)
+
+                delta = 0.5*(b1 + b2 - bg)
+                local_prices_case_no = bids[:, [0,1]] - delta
+
+                local_winner_prices = case_yes * local_prices_case_yes + (1-case_yes) * local_prices_case_no
+
+            else:
+                raise ValueError("invalid bid rule")
+
+            payments[:, [0,1]] = locals_win * local_winner_prices
+
+        return (allocations.unsqueeze(-1), payments) # payments: batches x players, allocation: batch x players x items
