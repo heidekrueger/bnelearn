@@ -20,6 +20,9 @@ def run_llg_test(rule, device, expected_payments):
     """Run correctness test for a given llg rule on given device"""
     cuda = device == 'cuda' and torch.cuda.is_available()
 
+    if device == 'cuda' and not cuda:
+        pytest.skip("This test needs CUDA, but it's not available.")
+
     game = LLGAuction(rule = rule, cuda=cuda)
     allocation, payments = game.run(bids.to(device))
 
