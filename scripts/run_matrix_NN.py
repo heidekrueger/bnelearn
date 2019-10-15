@@ -3,7 +3,7 @@ import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 from copy import deepcopy
-from bnelearn.strategy import MatrixGameStrategy, Strategy
+from bnelearn.strategy import MatrixGameStrategy, Strategy, FictitiousNeuralPlayStrategy
 from bnelearn.bidder import Bidder, Player, MatrixGamePlayer
 from bnelearn.mechanism import PrisonersDilemma, BattleOfTheSexes, MatchingPennies, RockPaperScissors, JordanGame
 from bnelearn.learner import ESPGLearner
@@ -27,6 +27,18 @@ def strat_to_player(strategy, batch_size, player_position=None):
 def main(args):
     #################################Read parameters#######################
     # args: [game, learner, param, belief, epoch]
+
+    # Set seeds
+    torch.manual_seed(args[6])
+    torch.cuda.manual_seed(args[6])
+    np.random.seed(args[6])
+
+
+    # FP Parameters
+    tau_minimum = 0.5
+    tau_update_interval =  10
+    tau_update =  0.95
+
     setting = ["None",args[0]]
     weight_normalization = True
 
@@ -46,17 +58,21 @@ def main(args):
 
     ## Environment settings
     #training batch size
-    batch_size =  2**10
+    batch_size =  args[2][0]
     input_length = 1
     # optimization params
     # NN Parameters
     hyperparams = {"population_size": args[2][6],
                     "sigma": args[2][5],
                     "scale_sigma_by_model_size": False,
-                    "normalize_gradients": True,
+                    "normalize_gradients": False,
                     "baseline": 'mean_reward'}
-    optimizer_type = torch.optim.SGD
+    #######################################################
+    ####################optimizer_type#####################
+    # Adam doesn't work well, it starts oscillating (because it's learning is too extreme!?)
     optimizer_hyperparams = {"lr": args[2][1]}
+    optimizer_type = torch.optim.SGD
+    
     learning_rate = args[2][1]
     lr_decay = args[2][2]
     lr_decay_every = args[2][3]
@@ -74,7 +90,7 @@ def main(args):
             actions = [None] * game.outcomes.shape[player]
             for action in range(game.outcomes.shape[player]):
                 actions[action] = [args[3][player][action]]
-            initial_beliefs[player] = torch.Tensor(actions).to('cpu')
+            initial_beliefs[player] = torch.Tensor(actions).t().to('cpu')
     ##############################End Read parameters#######################
     strats = [None] * game.n_players
     strats_copies = [None] * game.n_players
@@ -82,11 +98,11 @@ def main(args):
     hist_utility = [0] * game.n_players
     hist_probs = [torch.Tensor([0] * game.outcomes.shape[i]).to(device) for i in range(game.n_players)]
     for i in range(game.n_players):
-        strats[i] = MatrixGameStrategy(n_actions=game.outcomes.shape[i],
-                                       init_weights = initial_beliefs[i],
+        strats[i] = FictitiousNeuralPlayStrategy(n_actions=game.outcomes.shape[i],
+                                       beliefs = initial_beliefs[i],
                                        init_weight_normalization = weight_normalization).cuda()
 
-    env = MatrixGameEnvironment(game, agents=[deepcopy(a) for a in strats],
+    env = MatrixGameEnvironment(game, agents= [deepcopy(a) for a in strats],
                      n_players=game.n_players,
                      batch_size=batch_size,
                      strategy_to_player_closure=strat_to_player
@@ -112,22 +128,18 @@ def main(args):
             if lr_decay and e % lr_decay_every == 0 and e > 0:
                 learning_rate = learning_rate * lr_decay_factor
                 writer.add_scalar('hyperparams/learning_rate', learning_rate, e)
-                for optimizer in players:
-                    for param_group in optimizer.param_groups:
-                        param_group['lr'] = learning_rate
+                for p in players:
+                    p.optimizer.param_groups[0]['lr'] = learning_rate
 
             # always: do optimizer step
             utility = [None] * game.n_players
             for i in range(game.n_players):
                 utility[i] = -players[i].update_strategy_and_evaluate_utility()
 
-            #env.agents = [env._strategy_to_player(agent, batch_size, player_position) if isinstance(agent, Strategy) else agent
-            #    for player_position, agent in enumerate([deepcopy(a) for a in strats])]
-
-
             for i in range(game.n_players):
                 params = parameters_to_vector(strats[i].parameters()).clone()
                 vector_to_parameters(params, env.agents[i].strategy.parameters())
+                env.agents[i].strategy.beliefs = strats[i].beliefs.clone()
 
             for i in range(game.n_players):
                 hist_utility[i] = (e * hist_utility[i] + utility[i])/ (e+1)
@@ -135,7 +147,11 @@ def main(args):
 
             # Logging
             for i,strat in enumerate(strats):
-                hist_probs[i] = (e * hist_probs[i] + strat.distribution.probs)/(e+1)
+                if (False and e > 0 
+                    and e%tau_update_interval == 0 
+                    and strat.temperature >= tau_minimum):
+                        strat.temperature = strat.temperature * tau_update
+                        print("updated temperature")
 
                 for a in range(len(strat.distribution.probs)-1):
                     # Historical probability for actions
@@ -149,7 +165,13 @@ def main(args):
                     writer.add_scalar('eval_player_{}/utility'.format(i), utility[i], e)
                     # Expected Historical Utility
                     writer.add_scalar('eval_player_{}/hist_utility'.format(i), hist_utility[i], e)
-            if not e % 50: print(e)
+            
+            # Update beliefs
+            for i,strat in enumerate(strats):
+                strat.beliefs = hist_probs[-i] #strats[-i].distribution.probs
+
+            if not e % 50: 
+                print(e)
 
 if __name__ == '__main__':
     main(sys.argv[1:])

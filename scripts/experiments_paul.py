@@ -11,10 +11,10 @@ games = ['MP']#['PD', 'MP', 'BoS', 'RPS','JG']#['PD', 'MP', 'BoS']
 learners = ['NSP']#[ 'FP', 'FPS', 'FPM', 'NSP']
 
 # smallest tau, update interval, tau (update size)
-epochs = 5000
+epochs = 10000
 params_fp = [[0.2, 10, 0.9]]#[0.0001, 10, 0.99],[0.2, 10, 0.9],[0.5, 10,0.9]]
 # batch size, learning_rate, lr_decay, lr_decay_every, lr_decay_factor, siga, n_perturbations
-params_nsp = [[2**10, 1/5, False, 100, 0.8, 5, 10]]
+params_nsp = [[2**10, 1/5, False, 100, 0.9, 5, 10]]
 
 
 equilibria = {'PD': [[[0,1],[1,0]]],
@@ -34,10 +34,12 @@ equilibria = {'PD': [[[0,1],[1,0]]],
 beliefs_tracking = [None] * len(games)
 iterationen = 10
 
+random.seed(1)
 
 for g,game in enumerate(games):
-    #create random beliefs for game
+    #create random beliefs and seeds for game 
     random_beliefs = [None] * iterationen
+    seeds = [None] * iterationen
     for i in range(iterationen):
         n_players = len(equilibria[game][0])
         belief = [None] * n_players
@@ -47,7 +49,7 @@ for g,game in enumerate(games):
             for action in range(actions):
                 belief[player][action] = random.random()
         random_beliefs[i] = belief
-
+        seeds[i] = random.randint(1,1024)
 
     beliefs_tracking[g] = random_beliefs
     for learner in learners:
@@ -58,6 +60,10 @@ for g,game in enumerate(games):
             params = params_fp
             model = FP
         for param in params:
-            for belief in random_beliefs:
+            for i, belief in enumerate(random_beliefs):
                 # game, learner, param, belief, epoch
-                model.main([game, learner, param, belief, epochs, root_path])
+                # Skip easy first 2 iterations
+                epochs_tmp = epochs
+                #if i<2:
+                #    epochs_tmp = 1000
+                model.main([game, learner, param, belief, epochs_tmp, root_path, seeds[i]])

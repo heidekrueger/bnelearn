@@ -194,6 +194,50 @@ class FictitiousPlayMixedStrategy(FictitiousPlaySmoothStrategy):
             if action is not None:
                 self.historical_actions[player] += action
 
+class FictitiousNeuralPlayStrategy(Strategy, nn.Module):
+    """
+    An implementation of the concept of Fictitious Play with NN. 
+    An implementation inspired by: 
+    https://www.groundai.com/project/deep-fictitious-play-for-stochastic-differential-games2589/2
+    Take the beliefs about others strategies as input for the NN.
+    """
+    def __init__(self, n_actions, beliefs, init_weight_normalization = False):
+        self.temperature = 1.0
+        nn.Module.__init__(self)
+        beliefs = beliefs.reshape(-1)
+        self.logits = nn.Linear(len(beliefs), n_actions, bias=False)
+
+        if init_weight_normalization:
+            self.beliefs = beliefs/torch.norm(beliefs)
+
+        # initialize distribution
+        self._update_distribution()
+
+    def _update_distribution(self):
+        self.device = next(self.parameters()).device
+        probs = self.forward(torch.Tensor(self.beliefs.tolist()).to(self.device)).detach()
+        self.distribution = Categorical(probs=probs)
+    
+    def forward(self, x):
+        logits = self.logits(x)
+        probs = torch.softmax(1/self.temperature * logits, 0)
+        return probs
+
+    def play(self, inputs=None, batch_size = 1):
+        if inputs is None:
+            inputs= torch.ones(batch_size, 1, device=self.device)
+
+        self._update_distribution()
+        # is of shape batch size x 1
+        # TODO: this is probably slow AF. fix when needed.
+        return self.distribution.sample(inputs.shape)
+
+    def to(self, device):
+        # when moving the net to a different device (nn.Module.to), also update the distribution.
+        result = super().to(device)
+        result._update_distribution() #pylint: disable=protected-access
+        return result
+
 class MatrixGameStrategy(Strategy, nn.Module):
     """ A dummy neural network that encodes and returns a mixed strategy"""
     def __init__(self, n_actions, init_weights = None, init_weight_normalization = False):
