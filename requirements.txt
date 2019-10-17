@@ -1,4 +1,3 @@
-gurobi
 numpy
 future #required for pytorch 1.1 tensorboard integration
 jupyterlab
