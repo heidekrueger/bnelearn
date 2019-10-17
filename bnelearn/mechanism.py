@@ -6,6 +6,8 @@ This module implements games such as matrix games and auctions.
 
 from abc import ABC, abstractmethod
 from typing import List, Tuple
+import gurobipy as grb
+import sys, os
 
 #pylint: disable=E1102
 import torch
@@ -699,3 +701,160 @@ class LLGAuction(Mechanism):
             payments[:, [0,1]] = locals_win * local_winner_prices
 
         return (allocations.unsqueeze(-1), payments) # payments: batches x players, allocation: batch x players x items
+
+class LLLLGGAuction(Mechanism):
+    def __init__(self, rule = 'first_price', cuda: bool = True):
+        super().__init__(cuda)
+
+        if rule not in ['first_price', 'vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
+            raise ValueError('Invalid Pricing rule!')
+        # 'nearest_zero' and 'proxy' are aliases
+        if rule == 'proxy':
+            rule = 'nearest_zero'
+        self.rule = rule
+        self.n_players = 6
+        self.n_actions = 2
+    
+        # Bundles specific to LLLLGG setting in Bosshard et a. (2019) and Asubel and Baranov (2018)
+        self.bundles = torch.tensor([
+            #A,B,C,D,E,F,G,H
+            [1,1,0,0,0,0,0,0], #B1
+            [0,1,1,0,0,0,0,0], #B2
+            [0,0,1,1,0,0,0,0], #B3
+            [0,0,0,1,1,0,0,0], #B4
+            [0,0,0,0,1,1,0,0], #B5
+            [0,0,0,0,0,1,1,0], #B6
+            [0,0,0,0,0,0,1,1], #B7
+            [1,0,0,0,0,0,0,1], #B8
+            [1,1,1,1,0,0,0,0], #B9
+            [0,0,0,0,1,1,1,1], #B10
+            [0,0,1,1,1,1,0,0], #B11
+            [1,1,0,0,0,0,1,1], #B12
+        ], dtype=torch.float)
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        TODO: Currently every bidder bids on every bundle (often 0). 
+                To reduce the problem size bidders should only bid on bundles with v_i > 0
+
+        Performs a general Combinatorial auction
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (n_players, 2) [0,Inf]
+        bundles: torch.Tensor
+            of bundles with dimnesions (n_bundles, n_items), {0,1}
+
+        Returns
+        -------
+        tba
+        """
+        
+        bids = self.transform_bids(bids)
+        self.bundles = self.bundles.tolist()
+
+        model_all, assign_i_s = self.build_AP(bids, self.bundles)
+
+        self.solve_AP(model_all)
+        # Store winners
+        winners = [0] * len(bids)
+        bidders_util = [0] * len(bids)
+        for k,v in enumerate(assign_i_s):
+            winners[k] = [0] * len(bids[k])
+            for k2,v2 in enumerate(v):
+                if v2.X > 0:
+                    winners[k][k2] = 1
+                    bidders_util[k] = bids[k][k2]
+
+        model_all.update()
+        payment = [None] * len(bids)
+        for bidder in range(len(bids)):
+            copy = model_all.copy()
+            for bundle in range(len(bids[bidder])):
+                copy.addConstr(copy.getVarByName('assign_%s_%s'%(bidder,bundle)) <= 0, name = 'disregarding_bidder_%s'%bidder)
+            copy.update()
+            self.solve_AP(copy)
+            payment[bidder] = bidders_util[bidder] - (model_all.ObjVal - copy.ObjVal)
+
+        return winners, payment
+
+    def transform_bids(self, bids):
+        bids_format = torch.tensor([
+            #B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11,B12
+            [0,0,0,0,0,0,0,0,0,0,0,0], #L1
+            [0,0,0,0,0,0,0,0,0,0,0,0], #L2
+            [0,0,0,0,0,0,0,0,0,0,0,0], #L3
+            [0,0,0,0,0,0,0,0,0,0,0,0], #L4
+            [0,0,0,0,0,0,0,0,0,0,0,0], #G1
+            [0,0,0,0,0,0,0,0,0,0,0,0], #G2
+        ], dtype=torch.float)
+
+        for k,v in enumerate(bids):
+            for k2, v2 in enumerate(v):
+                bids_format[k][(k*len(bids)) + k2] = v2
+
+        return bids_format.tolist()
+
+    def solve_AP(self, model):
+        root_path = os.path.abspath(os.path.join('..'))
+        if root_path not in sys.path:
+            sys.path.append(root_path)
+        log_root = os.path.abspath('.')
+        #=======================================================================
+        model.write(os.path.join(log_root, 'GurobiSol.lp'))
+        #=======================================================================
+            
+        model.optimize()
+        #=======================================================================
+        try:
+            model.write(os.path.join(log_root, 'GurobiSol.sol'))
+        except:
+            model.computeIIS()
+            model.write(log_root+'\\GurobiSol.ilp')
+            raise
+        #=======================================================================
+
+    def build_AP(self, bids, bundles):
+        '''
+        bids: Float [numberOfBidders, numberOfBundles], valuation for bundles
+        bundles: [numberOfBundles, numberOfItems], 1 if item is in bundle, else 0
+        '''
+        m = grb.Model()
+        
+        #m.params.timelimit = 600
+         
+        # assign vars
+        assign_i_s = [None] * len(bids)
+        for bidder in range(len(bids)):
+            assign_i_s[bidder]=[None] * len(bids[bidder])
+            for bundle in range(len(bids[bidder])):
+                assign_i_s[bidder][bundle]=m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1, name='assign_%s_%s' % (bidder,bundle))   
+        m.update()
+         
+        # Bidder can at most win one bundle 
+        for bidder in range(len(bids)):
+            sum_winning_bundles = grb.LinExpr()
+            for bundle in range(len(bids[bidder])):
+                sum_winning_bundles += assign_i_s[bidder][bundle]
+            m.addConstr(sum_winning_bundles <= 1, name = '1_max_bundle_bidder_%s' %bidder)
+
+        # Each item can be at most in one winning bundle
+        for item in range(len(bundles[0])):
+            sum_item = 0
+            for bundle_index, bundle in enumerate(bundles):
+                if bundle[item] > 0:
+                    for bidder in range(len(bids)):
+                        sum_item += assign_i_s[bidder][bundle_index]
+            m.addConstr(sum_item <= 1, name = '2_max_ass_item_%s' %item)
+                
+        # Obj. Min: sum_i(sum_b(x_(ib)*p_(ib)* y_(ib)))
+        objective = grb.LinExpr()
+        for bidder in range(len(bids)):
+            for bundle in range(len(bids[bidder])):
+                objective += assign_i_s[bidder][bundle] * bids[bidder][bundle]
+         
+        m.setObjective(objective, sense=grb.GRB.MAXIMIZE)
+        m.update()
+        
+        return m, assign_i_s
