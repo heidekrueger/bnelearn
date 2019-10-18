@@ -1,3 +1,5 @@
+""" This test file checks whether bidders and strategies have expected behaviour"""
+
 import time
 
 import pytest
