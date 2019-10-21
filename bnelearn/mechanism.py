@@ -676,13 +676,19 @@ class LLGAuction(Mechanism):
                     delta = 0.5 * (bg - local_vcg_prices[:,[0]] - local_vcg_prices[:,[1]]) # batch_size x 1
                     local_winner_prices = local_vcg_prices + delta # batch_size x 2
             elif self.rule in ['proxy', 'nearest_zero']:
-                # two cases: global bidder bids less than twice as much as second local or not
-                global_less_than_twice_local = (bg <= 2*b2).float() # batch_size x 1
-                local_prices_case_yes = 0.5 * torch.cat(2*[bg], dim=player_dim)
-                local_prices_case_no = torch.cat([bg-b2,  b2] , dim=player_dim)
+                # three cases when local bidders win:
+                #  1. "both_strong": each local > half of global --> both play same
+                #  2. / 3. one player 'weak': weak local player pays her bid, other pays enough to match global
+                both_strong = ((bg <= 2*b1) & (bg <= 2*b2)).float() # batch_size x 1
+                first_weak = (2*b1 < bg).float()
+                # (second_weak implied otherwise)
+                local_prices_case_both_strong = 0.5 * torch.cat(2*[bg], dim=player_dim)
+                local_prices_case_first_weak  = torch.cat([b1, bg-b1] , dim=player_dim)
+                local_prices_case_second_weak = torch.cat([bg-b2, b2] , dim=player_dim)
 
-                local_winner_prices = global_less_than_twice_local * local_prices_case_yes + \
-                                      (1-global_less_than_twice_local) * local_prices_case_no
+                local_winner_prices = both_strong * local_prices_case_both_strong + \
+                                      first_weak  * local_prices_case_first_weak  + \
+                                      (1-both_strong - first_weak) * local_prices_case_second_weak
             elif self.rule == 'nearest_bid':
                 case_yes = (bg < b1 - b2).float() # batch_size x 1
 

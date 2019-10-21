@@ -196,8 +196,8 @@ class FictitiousPlayMixedStrategy(FictitiousPlaySmoothStrategy):
 
 class FictitiousNeuralPlayStrategy(Strategy, nn.Module):
     """
-    An implementation of the concept of Fictitious Play with NN. 
-    An implementation inspired by: 
+    An implementation of the concept of Fictitious Play with NN.
+    An implementation inspired by:
     https://www.groundai.com/project/deep-fictitious-play-for-stochastic-differential-games2589/2
     Take the beliefs about others strategies as input for the NN.
     """
@@ -217,7 +217,7 @@ class FictitiousNeuralPlayStrategy(Strategy, nn.Module):
         self.device = next(self.parameters()).device
         probs = self.forward(torch.Tensor(self.beliefs.tolist()).to(self.device)).detach()
         self.distribution = Categorical(probs=probs)
-    
+
     def forward(self, x):
         logits = self.logits(x)
         probs = torch.softmax(1/self.temperature * logits, 0)
