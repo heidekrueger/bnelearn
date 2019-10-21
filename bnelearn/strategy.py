@@ -275,7 +275,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
             self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
             self.layers['activation_' + str(i)] = hidden_activations[i]
 
-        self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], 1)
+        self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], input_length)
         self.layers['activation_out'] = nn.ReLU()
         self.activations.append(nn.ReLU())
 

@@ -69,6 +69,7 @@ class Bidder(Player):
                  player_position=None,
                  batch_size=1,
                  n_items = 1,
+                 descending_valuations = False,
                  cuda=True,
                  cache_actions:bool = False
                  ):
@@ -76,6 +77,7 @@ class Bidder(Player):
 
         self.value_distribution = value_distribution
         self.n_items = n_items
+        self.descending_valuations = descending_valuations
         self._cache_actions = cache_actions
         self._valuations_changed = False # true if new valuation drawn since actions calculated
         self.valuations = torch.zeros(batch_size, n_items, device=self.device)
@@ -113,6 +115,8 @@ class Bidder(Player):
         # uniform
         if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
             self.valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
+            if self.descending_valuations:
+                self.valuations = self.valuations.sort(dim=1, descending=True)[0]
         # gaussian
         elif isinstance(self.value_distribution, torch.distributions.normal.Normal):
             self.valuations.normal_(mean = self.value_distribution.loc, std = self.value_distribution.scale).relu_()
