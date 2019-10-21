@@ -6,11 +6,15 @@ from bnelearn.mechanism import LLGAuction
 bids = torch.tensor([
     [1., 1., 2.1], # global bidder wins
     [8., 6., 10.], # see Ausubel and Baranov 2019 Fig 2
-    [12., 6., 10]  # same
+    [12., 6., 10], # same
+    [4. , 6., 9],  # weak first player in proxy rule
+    [6. , 4. ,9.]  # weak second player in proxy rule
     ]).unsqueeze(-1)
 
 expected_allocation = torch.tensor([
         [ [0], [0], [1] ],
+        [ [1], [1], [0] ],
+        [ [1], [1], [0] ],
         [ [1], [1], [0] ],
         [ [1], [1], [0]]
     ], dtype=torch.float)
@@ -37,7 +41,9 @@ def test_LLG_first_price():
     expected_payments = torch.tensor([
         [0. , 0., 2.1],
         [8., 6., 0.],
-        [12., 6., 0.]])
+        [12., 6., 0.],
+        [4., 6., 0.],
+        [6., 4., 0.]])
 
     run_llg_test(rule, 'cpu', expected_payments)
     run_llg_test(rule, 'cuda', expected_payments)
@@ -50,7 +56,9 @@ def test_LLG_vcg():
     expected_payments = torch.tensor([
         [0. , 0., 2.0],
         [4., 2., 0.],
-        [4., 0., 0.]])
+        [4., 0., 0.],
+        [3., 5., 0.],
+        [5., 3., 0.]])
 
     run_llg_test(rule, 'cpu', expected_payments)
     run_llg_test(rule, 'cuda', expected_payments)
@@ -62,7 +70,9 @@ def test_LLG_proxy():
     expected_payments = torch.tensor([
         [0. , 0., 2.0],
         [5., 5., 0.],
-        [5., 5., 0.]])
+        [5., 5., 0.],
+        [4., 5., 0.],
+        [5., 4., 0.]])
 
     run_llg_test(rule, 'cpu', expected_payments)
     run_llg_test(rule, 'cuda', expected_payments)
@@ -74,7 +84,9 @@ def test_LLG_nearest_vcg():
     expected_payments = torch.tensor([
         [0. , 0., 2.],
         [6., 4., 0.],
-        [7., 3., 0.]])
+        [7., 3., 0.],
+        [3.5, 5.5, 0.],
+        [5.5, 3.5, 0.]])
 
     run_llg_test(rule, 'cpu', expected_payments)
     run_llg_test(rule, 'cuda', expected_payments)
@@ -86,7 +98,9 @@ def test_LLG_nearest_bid():
     expected_payments = torch.tensor([
         [0. , 0., 2.],
         [6., 4., 0.],
-        [8., 2., 0.]])
+        [8., 2., 0.],
+        [3.5, 5.5, 0.],
+        [5.5, 3.5, 0.]])
 
     run_llg_test(rule, 'cpu', expected_payments)
     run_llg_test(rule, 'cuda', expected_payments)
