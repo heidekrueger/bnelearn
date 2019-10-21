@@ -654,7 +654,7 @@ class LLGAuction(Mechanism):
         # 1. Determine efficient allocation
         locals_win = (b1 + b2 > bg).float() # batch_size x 1
         allocations = locals_win * torch.tensor([[1.,1.,0.]], device=self.device) + \
-                        (1-locals_win) * torch.tensor([[0.,0.,1.]], device=self.device) # batch x players
+                      (1-locals_win) * torch.tensor([[0.,0.,1.]], device=self.device) # batch x players
 
         if self.rule == 'first_price':
             payments = allocations * bids # batch x players
