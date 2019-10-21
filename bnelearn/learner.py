@@ -26,7 +26,9 @@ class GradientBasedLearner(Learner):
     def __init__(self,
                  model: torch.nn.Module, environment: Environment,
                  optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 strat_to_player_kwargs: dict = None):
+                 strat_to_player_kwargs: dict = None,
+                 lr_scheduler_type: Type[torch.optim.lr_scheduler._LRScheduler] = None,
+                 lr_scheduler_hyperparams: dict = None):
         self.model = model
         self.params = model.parameters
         self.n_parameters = sum([p.numel() for p in self.params()])
@@ -43,6 +45,14 @@ class GradientBasedLearner(Learner):
             raise ValueError('Optimizer hyperparams must be a dict (even if empty).')
         self.optimizer_hyperparams = optimizer_hyperparams
         self.optimizer: torch.optim.Optimizer = optimizer_type(self.params(), **self.optimizer_hyperparams)
+
+        if not isinstance(lr_scheduler_hyperparams, dict):
+            raise ValueError('Learning rate scheduler hyperparams must be a dict (even if empty).')
+        self.lr_scheduler_hyperparams = lr_scheduler_hyperparams
+        self.lr_scheduler: torch.optim.lr_scheduler._LRScheduler = lr_scheduler_type(
+                optimizer = self.optimizer,
+                **self.lr_scheduler_hyperparams
+            )
 
     @abstractmethod
     def _set_gradients(self):
