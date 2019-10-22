@@ -60,18 +60,22 @@ class MatrixGamePlayer(Player):
         raise ValueError("Invalid Strategy Type for Matrix game: {}".format(type(self.strategy)))
 
 class Bidder(Player):
-    """
-        A player in an auction game. Has a distribution over valuations/types that is common knowledge.
+    """ A player in an auction game. Has a distribution over valuations/types that is
+        common knowledge. These valuations correspond to the ´n_items´ available.
+        ´batch_size´ corresponds to the number of individual auctions.
+
+        If ´descending_valuations´ is true, the valuations will be returned
+        in decreasing order.
     """
     def __init__(self,
                  value_distribution: Distribution,
                  strategy,
-                 player_position=None,
-                 batch_size=1,
+                 player_position = None,
+                 batch_size = 1,
                  n_items = 1,
-                 descending_valuations = False,
-                 cuda=True,
-                 cache_actions:bool = False
+                 cuda = True,
+                 cache_actions: bool = False,
+                 descending_valuations = False
                  ):
         super().__init__(strategy, player_position, batch_size, cuda)
 
@@ -104,8 +108,11 @@ class Bidder(Player):
         self.draw_valuations_()
 
     def draw_valuations_(self):
-        """Sample a new batch of valuations from the Bidder's prior.
-           Negative draws will be clipped at 0.0!
+        """ Sample a new batch of valuations from the Bidder's prior. Negative
+            draws will be clipped at 0.0!
+
+            If ´descending_valuations´ is true, the valuations will be returned
+            in decreasing order.
         """
         # If in place sampling is available for our distribution, use it!
         # This will save time for memory allocation and/or copying between devices
@@ -115,8 +122,6 @@ class Bidder(Player):
         # uniform
         if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
             self.valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
-            if self.descending_valuations:
-                self.valuations = self.valuations.sort(dim=1, descending=True)[0]
         # gaussian
         elif isinstance(self.value_distribution, torch.distributions.normal.Normal):
             self.valuations.normal_(mean = self.value_distribution.loc, std = self.value_distribution.scale).relu_()
@@ -124,6 +129,9 @@ class Bidder(Player):
         else:
             # slow! (sampling on cpu then copying to GPU)
             self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device).relu()
+
+        if self.descending_valuations:
+            self.valuations, _ = self.valuations.sort(dim=1, descending=True)
 
         self._valuations_changed = True
         return self.valuations
