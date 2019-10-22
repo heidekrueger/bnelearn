@@ -2,10 +2,14 @@
 
 import pytest
 import torch
+
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 
-fpsb = FirstPriceSealedBidAuction(cuda=True)
-vickrey = VickreyAuction(cuda = True)
+cuda = torch.cuda.is_available()
+
+fpsb = FirstPriceSealedBidAuction(cuda=cuda)
+vickrey = VickreyAuction(cuda=cuda)
+
 device = fpsb.device
 
 bids_unambiguous = torch.tensor([
@@ -29,7 +33,7 @@ bids_ambiguous = torch.tensor([
     ]], device = device)
 bids_cpu = bids_ambiguous.cpu()
 
-bids_illegal_negative =  torch.tensor([
+bids_illegal_negative = torch.tensor([
     [[1,   2,    3],
      [3.7, 2,    0],
      [3.6, 1.99, 2.99]
@@ -42,6 +46,7 @@ bids_illegal_negative =  torch.tensor([
 bids_illegal_dimensions = torch.tensor([
     [1, 2, 3]
     ], device = device)
+
 
 def test_fpsb_cuda():
     """FPSB should run on GPU if available on the system and desired."""
@@ -67,13 +72,12 @@ def test_fpsb_illegal_arguments():
     with pytest.raises(AssertionError):
         fpsb.run(bids_illegal_dimensions)
 
-
 def test_fpsb_correctness():
     """FPSB should return correct allocations and payments."""
 
     allocations, payments = fpsb.run(bids_unambiguous)
 
-    assert torch.equal(allocations,torch.tensor(
+    assert torch.equal(allocations, torch.tensor(
         [
             [[0., 1., 1.],
              [1., 0., 0.],
@@ -93,7 +97,7 @@ def test_vickrey_correctness():
 
     allocations, payments = vickrey.run(bids_unambiguous)
 
-    assert torch.equal(allocations,torch.tensor(
+    assert torch.equal(allocations, torch.tensor(
         [
             [[0., 1., 1.],
              [1., 0., 0.],
