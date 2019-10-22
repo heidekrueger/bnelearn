@@ -716,7 +716,7 @@ class LLLLGGAuction(Mechanism):
         self.n_actions = 2
     
         # Bundles specific to LLLLGG setting in Bosshard et a. (2019) and Asubel and Baranov (2018)
-        self.bundles = torch.tensor([
+        self.bundles = [
             #A,B,C,D,E,F,G,H
             [1,1,0,0,0,0,0,0], #B1
             [0,1,1,0,0,0,0,0], #B2
@@ -730,57 +730,91 @@ class LLLLGGAuction(Mechanism):
             [0,0,0,0,1,1,1,1], #B10
             [0,0,1,1,1,1,0,0], #B11
             [1,1,0,0,0,0,1,1], #B12
-        ], dtype=torch.float)
+        ]
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         TODO: Currently every bidder bids on every bundle (often 0). 
                 To reduce the problem size bidders should only bid on bundles with v_i > 0
 
-        Performs a general Combinatorial auction
+        Performs a general Combinatorial auction (currently the LLLLGG special case!)
 
         Parameters
         ----------
         bids: torch.Tensor
-            of bids with dimensions (n_players, 2) [0,Inf]
+            of bids with dimensions (batch_size, n_players, 2) [0,Inf]
         bundles: torch.Tensor
-            of bundles with dimnesions (n_bundles, n_items), {0,1}
+            of bundles with dimensions (batch_size, 2, n_items), {0,1}
 
         Returns
         -------
-        tba
+        allocation: torch.Tensor(batch_size, n_bidders, 2)
+        payments: torch.Tensor(batch_size, n_bidders)
         """
         
-        bids = self.transform_bids(bids)
-        self.bundles = self.bundles.tolist()
+        bids = self.transform_bids(bids) # bids.squeeze(0)
 
-        model_all, assign_i_s = self.build_AP(bids, self.bundles)
 
-        self.solve_AP(model_all)
-        # Store winners
-        winners = [0] * len(bids)
-        bidders_util = [0] * len(bids)
-        for k,v in enumerate(assign_i_s):
-            winners[k] = [0] * len(bids[k])
-            for k2,v2 in enumerate(v):
-                if v2.X > 0:
-                    winners[k][k2] = 1
-                    bidders_util[k] = bids[k][k2]
-
-        model_all.update()
+        winners = [None] * len(bids)
         payment = [None] * len(bids)
-        for bidder in range(len(bids)):
-            copy = model_all.copy()
-            for bundle in range(len(bids[bidder])):
-                copy.addConstr(copy.getVarByName('assign_%s_%s'%(bidder,bundle)) <= 0, name = 'disregarding_bidder_%s'%bidder)
-            copy.update()
-            self.solve_AP(copy)
-            payment[bidder] = bidders_util[bidder] - (model_all.ObjVal - copy.ObjVal)
+        for k0, bids_batch in enumerate(bids):
+            model_all, assign_i_s = self.build_AP(bids_batch, self.bundles)
 
-        return winners, payment
+            self.solve_AP(model_all)
+            # Store winners
+            winners[k0] = [0] * len(bids_batch)
+            bidders_util = [0] * len(bids_batch)
+            for k,v in enumerate(assign_i_s):
+                winners[k0][k] = [0] * len(bids_batch[k])
+                for k2,v2 in enumerate(v):
+                    if v2.X > 0:
+                        winners[k0][k][k2] = 1
+                        bidders_util[k] = bids_batch[k][k2]
+
+            model_all.update()
+            payment[k0] = [None] * len(bids_batch)
+            for bidder in range(len(bids_batch)):
+                copy = model_all.copy()
+                for bundle in range(len(bids_batch[bidder])):
+                    copy.addConstr(copy.getVarByName('assign_%s_%s'%(bidder,bundle)) <= 0, name = 'disregarding_bidder_%s'%bidder)
+                copy.update()
+                self.solve_AP(copy)
+                payment[k0][bidder] = bidders_util[bidder] - (model_all.ObjVal - copy.ObjVal)
+            # Delete model
+            del model_all, copy, assign_i_s, bidders_util
+        # $$$Are the payments calculated correctly?
+
+        winners = self.transform_winners(winners)
+
+        return torch.Tensor(winners).to('cuda'), torch.Tensor(payment).to('cuda')
+
+    def transform_winners(self, winners):
+        '''
+        transforming full gurobi representation to compact LLLLGG special case below
+        '''
+        winners_format = torch.tensor([[
+            #Bundle1, Bundle2
+            [0,0], #L1
+            [0,0], #L2
+            [0,0], #L3
+            [0,0], #L4
+            [0,0], #G1
+            [0,0], #G2
+        ]] * len(winners), dtype=torch.float)
+
+        for k0, batch in enumerate(winners_format):
+            for k1, v in enumerate(batch):
+                for k2 in range(len(v)):
+                    winners_format[k0][k1][k2] = winners[k0][k1][(k1*len(v)) + k2]
+
+        return winners_format
+
 
     def transform_bids(self, bids):
-        bids_format = torch.tensor([
+        '''
+        transforming compact LLLLGG special case representation to full gurobi representation below
+        '''
+        bids_format = torch.tensor([[
             #B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11,B12
             [0,0,0,0,0,0,0,0,0,0,0,0], #L1
             [0,0,0,0,0,0,0,0,0,0,0,0], #L2
@@ -788,40 +822,50 @@ class LLLLGGAuction(Mechanism):
             [0,0,0,0,0,0,0,0,0,0,0,0], #L4
             [0,0,0,0,0,0,0,0,0,0,0,0], #G1
             [0,0,0,0,0,0,0,0,0,0,0,0], #G2
-        ], dtype=torch.float)
+        ]] * len(bids), dtype=torch.float)
 
-        for k,v in enumerate(bids):
-            for k2, v2 in enumerate(v):
-                bids_format[k][(k*len(bids)) + k2] = v2
+        for k0, batch in enumerate(bids):
+            for k1,v in enumerate(batch):
+                for k2, v2 in enumerate(v):
+                    bids_format[k0][k1][(k1*len(v)) + k2] = v2
 
         return bids_format.tolist()
 
     def solve_AP(self, model):
+        '''
+        solving handed model
+        '''
         root_path = os.path.abspath(os.path.join('..'))
         if root_path not in sys.path:
             sys.path.append(root_path)
         log_root = os.path.abspath('.')
         #=======================================================================
-        model.write(os.path.join(log_root, 'GurobiSol.lp'))
+        #model.write(os.path.join(log_root, 'GurobiSol.lp'))
         #=======================================================================
-            
+        model.setParam('OutputFlag',0)
         model.optimize()
         #=======================================================================
-        try:
-            model.write(os.path.join(log_root, 'GurobiSol.sol'))
-        except:
-            model.computeIIS()
-            model.write(log_root+'\\GurobiSol.ilp')
-            raise
+        #try:
+        #    model.write(os.path.join(log_root, 'GurobiSol.sol'))
+        #except:
+        #    model.computeIIS()
+        #    model.write(log_root+'\\GurobiSol.ilp')
+        #    raise
         #=======================================================================
 
     def build_AP(self, bids, bundles):
         '''
+        Parameters
+        ----------
         bids: Float [numberOfBidders, numberOfBundles], valuation for bundles
         bundles: [numberOfBundles, numberOfItems], 1 if item is in bundle, else 0
+        ----------
+        Returns
+        ----------
+        model: full gurobi model
+        assign_i_s: gurobi var [numberOfBidders, numberOfBundles], 1 if bundle is assigned to bidder, else 0 
         '''
         m = grb.Model()
-        
         #m.params.timelimit = 600
          
         # assign vars

@@ -298,6 +298,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
     def __init__(self, input_length: int,
                  hidden_nodes: Iterable[int],
                  hidden_activations: Iterable[nn.Module],
+                 output_length: int,
                  ensure_positive_output: torch.Tensor or None = None):
 
         assert len(hidden_nodes) == len(hidden_activations), \
@@ -306,6 +307,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         nn.Module.__init__(self)
 
         self.input_length = input_length
+        self.output_length = output_length
         self.hidden_nodes = copy(hidden_nodes)
         self.activations = copy(hidden_activations) # do not write to list outside!
 
@@ -319,20 +321,20 @@ class NeuralNetStrategy(Strategy, nn.Module):
             self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
             self.layers['activation_' + str(i)] = hidden_activations[i]
 
-        self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], 1)
+        self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
         self.layers['activation_out'] = nn.ReLU()
         self.activations.append(nn.ReLU())
 
-        # test whether output at ensure_positive_output is positive,
+        # test whether output at ensure_posi tive_output is positive,
         # if it isn't --> reset the initialization
-        if ensure_positive_output:
-            if not any(self.forward(ensure_positive_output).gt(0)):
+        if not ensure_positive_output is None:            
+            if not any(self.forward(ensure_positive_output).gt(0)): 
                 self.reset(ensure_positive_output)
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
         self.__init__(self.input_length, self.hidden_nodes,
-                      self.activations[:-1], ensure_positive_output)
+                      self.activations[:-1], self.output_length, ensure_positive_output)
 
     def forward(self, x):
         for layer in self.layers.values():
