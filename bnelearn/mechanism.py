@@ -709,9 +709,10 @@ class LLGAuction(Mechanism):
 
 def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
     """
-    For multi-unit actions bids must be in decreasing order. If agents´ bids fail
-    to fulfill this property, this method is responsible for allocating no units at
-    all to those agents (setting bids to zero).
+    Helper function for cleaning bids in multi-unit auctions.
+    For multi-unit actions bids per must be in decreasing for each bidder.
+    If agents' bids fail to fulfill this property, this function sets their bid
+    to zero, which will result in no items allocated and thus zero payoff.
 
     Parameters
     ----------
@@ -722,30 +723,60 @@ def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
 
     Returns
     -------
-    cleaned_bids: torch.Tensor
-        same dimension as bids, with zero entries for those bidders who bidded
-        in increasing order.
+    cleaned_bids: torch.Tensor (batch_size, n_players, n_items)
+        same dimension as bids, with zero entries whenever a bidder bid
+        nondecreasing in a batch.
     """
     cleaned_bids = bids.clone()
 
     diff = bids.sort(dim=2, descending=True)[0] - bids
-    diff = torch.abs_(diff).sum(dim=2) != 0
+    diff = torch.abs(diff).sum(dim=2) != 0 # boolean, batch_size x n_players
     if diff.any():
         warnings.warn('bids which were not in dcreasing order have been ignored!')
     cleaned_bids[diff] = 0.0
 
     return cleaned_bids
 
+def _get_multiunit_allocation(bids: torch.Tensor) -> torch.Tensor:
+    """For bids (batch x player x item) in descending order for each batch/player,
+       returns efficient allocation (0/1, batch x player x item)
+
+       This function assumes that validity checks have already been performed.
+    """
+    # for readability
+    batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
+    batch_size, n_players, n_items = bids.shape
+
+    allocations = torch.zeros(batch_size, n_players*n_items, device=bids.device)
+    bids_flat = bids.reshape(batch_size, n_players*n_items)
+    _, sorted_idx = torch.sort(bids_flat, descending=True)
+    allocations.scatter_(player_dim, sorted_idx[:,:n_items], 1)
+    allocations = allocations.reshape_as(bids)
+    allocations.masked_fill_(mask=bids==0, value=0)
+
+    # Equivalent but slow: for loops
+    # # add fictitious negative bids (for case in which one bidder wins all items -> IndexError)
+    # allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
+    # bids_extend = -1 * torch.ones(batch_size, n_players, n_items+1, device=self.device)
+    # bids_extend[:,:,:-1] = bids
+    # for batch in range(batch_size):
+    #     current_bids = bids_extend.clone().detach()[batch,:,0]
+    #     current_bids_indices = [0] * n_players
+    #     for _ in range(n_items):
+    #         winner = current_bids.argmax()
+    #         allocations[batch,winner,current_bids_indices[winner]] = 1
+    #         current_bids_indices[winner] += 1
+    #         current_bids[winner] = bids_extend.clone().detach()[batch,winner,current_bids_indices[winner]]
+    return allocations
 
 class MultiItemDiscriminatoryAuction(Mechanism):
-    """ Multi item discriminatory auction. Bids of each bidder must be in decreasing
+    """ Multi item discriminatory auction.
+        Items are allocated to the highest n_item bids, winners pay as bid.
+
+        Bids of each bidder must be in decreasing
         order, otherwise the mechanism does not accept these bids and allocates no units
         to this bidder.
     """
-
-    def __init__(self, cuda: bool=True):
-        self.cuda = cuda and torch.cuda.is_available()
-        self.device = 'cuda' if self.cuda else 'cpu'
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -773,10 +804,6 @@ class MultiItemDiscriminatoryAuction(Mechanism):
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
-        # name dimensions for readibility
-        batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
-        batch_size, n_players, n_items = bids.shape
-
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
 
@@ -786,28 +813,9 @@ class MultiItemDiscriminatoryAuction(Mechanism):
         bids = _remove_invalid_bids(bids)
 
         # Alternative w/o loops
-        allocations = torch.zeros(batch_size, n_players*n_items, device=self.device)
-        bids_flat = bids.reshape(batch_size, n_players*n_items)
-        _, sorted_idx = torch.sort(bids_flat, descending=True)
-        allocations.scatter_(1, sorted_idx[:,:n_items], 1)
-        allocations = allocations.reshape_as(bids)
-        allocations.masked_fill_(mask=bids==0, value=0)
+        allocations = _get_multiunit_allocation(bids)
 
-        # Simple but slow: for loops
-        # # add fictitious negative bids (for case in which one bidder wins all items -> IndexError)
-        # allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
-        # bids_extend = -1 * torch.ones(batch_size, n_players, n_items+1, device=self.device)
-        # bids_extend[:,:,:-1] = bids
-        # for batch in range(batch_size):
-        #     current_bids = bids_extend.clone().detach()[batch,:,0]
-        #     current_bids_indices = [0] * n_players
-        #     for _ in range(n_items):
-        #         winner = current_bids.argmax()
-        #         allocations[batch,winner,current_bids_indices[winner]] = 1
-        #         current_bids_indices[winner] += 1
-        #         current_bids[winner] = bids_extend.clone().detach()[batch,winner,current_bids_indices[winner]]
-
-        payments = torch.sum(allocations * bids, dim=item_dim)
+        payments = torch.sum(allocations * bids, dim=2) # sum over items
 
         return (allocations, payments) # payments: batches x players, allocation: batch x players x items
 
@@ -820,10 +828,6 @@ class MultiItemUniformPriceAuction(Mechanism):
         Bids of each bidder must be in decreasing order, otherwise the mechanism
         does not accept these bids and allocates no units to this bidder.
     """
-
-    def __init__(self, cuda: bool = True):
-        self.cuda = cuda and torch.cuda.is_available()
-        self.device = 'cuda' if self.cuda else 'cpu'
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -849,23 +853,18 @@ class MultiItemUniformPriceAuction(Mechanism):
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
 
-        # only accept decreasing bids # TODO: too time consuming?
+        # only accept decreasing bids
         # assert torch.equal(bids.sort(dim=item_dim, descending=True)[0], bids), \
         #     "Bids must be in decreasing order"
         bids = _remove_invalid_bids(bids)
 
         # allocate return variables (flat at this stage)
-        allocations = torch.zeros(batch_size, n_players*n_items, device=self.device)
-        payments = torch.zeros(batch_size, n_players*n_items, device=self.device)
+        allocations = _get_multiunit_allocation(bids)
 
-        # allocation
+        # pricing
+        payments = torch.zeros(batch_size, n_players*n_items, device=self.device)
         bids_flat = bids.reshape(batch_size, n_players*n_items)
         _, sorted_idx = torch.sort(bids_flat, descending=True)
-        allocations.scatter_(1, sorted_idx[:,:n_items], 1)
-        allocations = allocations.reshape_as(bids)
-        allocations.masked_fill_(mask=bids==0, value=0)
-
-        # priceing
         payments.scatter_(1, sorted_idx[:,n_items:n_items+1], 1)
         payments = torch.t(bids_flat[payments.bool()].repeat(n_players, 1)) \
             * torch.sum(allocations, dim=item_dim)
@@ -898,10 +897,6 @@ class MultiItemVickreyAuction(Mechanism):
         mechanism does not accept these bids and allocates no units to this
         bidder.
     """
-
-    def __init__(self, cuda: bool = True):
-        self.cuda = cuda and torch.cuda.is_available()
-        self.device = 'cuda' if self.cuda else 'cpu'
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -940,16 +935,13 @@ class MultiItemVickreyAuction(Mechanism):
         bids = _remove_invalid_bids(bids)
 
         # allocate return variables
-        allocations = torch.zeros(batch_size, n_players*n_items, device=self.device)
+        allocations = _get_multiunit_allocation(bids)
 
         # allocations
         bids_flat = bids.reshape(batch_size, n_players*n_items)
         sorted_bids, sorted_idx = torch.sort(bids_flat, descending=True)
-        allocations.scatter_(1, sorted_idx[:,:n_items], 1)
-        allocations = allocations.reshape_as(bids)
-        allocations.masked_fill_(mask=bids==0, value=0)
 
-        # priceing TODO: less reshaping?:-D
+        # priceing TODO: optimize this, possibly with torch.topk?
         agent_ids = torch.arange(0, n_players, device=self.device) \
                 .repeat(batch_size, n_items, 1).transpose_(1, 2)
         highest_loosing_player = agent_ids.reshape(batch_size, n_players*n_items) \
@@ -961,9 +953,6 @@ class MultiItemVickreyAuction(Mechanism):
                 .reshape_as(bids).masked_fill_((highest_loosing_player == agent_ids) \
                 .reshape_as(bids), 0).sort(descending=True)[0]
         payments = (allocations * highest_losing_prices).sum(item_dim)
-
-        # # free memory?
-        # del highest_loosing_prices, valid_prices_idx, highest_loosing_player, temp, agent_ids
 
         # # add fictitious negative bids (for case in which one bidder wins all items -> IndexError)
         # bids_extend = -1 * torch.ones(batch_size, n_players, n_items+1, device=self.device)

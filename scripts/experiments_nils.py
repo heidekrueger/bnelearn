@@ -362,7 +362,8 @@ for vals in product(*hyperparams.values()):
         model = NeuralNetStrategy(input_length,
                 hidden_nodes = hidden_nodes,
                 hidden_activations = hidden_activations,
-                ensure_positive_output = None
+                ensure_positive_output = None,
+                output_length=input_length
             ).to(device)
         models = [model for _ in range(n_players)]
     else:
@@ -372,7 +373,8 @@ for vals in product(*hyperparams.values()):
                     NeuralNetStrategy(input_length,
                             hidden_nodes = hidden_nodes,
                             hidden_activations = hidden_activations,
-                            ensure_positive_output = None
+                            ensure_positive_output = None,
+                            output_length=input_length
                         ).to(device)
                 )
 

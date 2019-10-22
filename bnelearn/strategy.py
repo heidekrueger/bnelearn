@@ -279,7 +279,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
     def __init__(self, input_length: int,
                  hidden_nodes: Iterable[int],
                  hidden_activations: Iterable[nn.Module],
-                 ensure_positive_output: torch.Tensor or None = None):
+                 ensure_positive_output: torch.Tensor or None = None,
+                 output_length: int = 1):
 
         assert len(hidden_nodes) == len(hidden_activations), \
             "Provided nodes and activations do not match!"
@@ -287,6 +288,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         nn.Module.__init__(self)
 
         self.input_length = input_length
+        self.output_length = output_length
         self.hidden_nodes = copy(hidden_nodes)
         self.activations = copy(hidden_activations) # do not write to list outside!
 
@@ -300,7 +302,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
             self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
             self.layers['activation_' + str(i)] = hidden_activations[i]
 
-        self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], input_length)
+        self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
         self.layers['activation_out'] = nn.ReLU()
         self.activations.append(nn.ReLU())
 

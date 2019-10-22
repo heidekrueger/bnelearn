@@ -2,9 +2,10 @@
 
 import pytest
 import torch
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, \
-    MultiItemDiscriminatoryAuction, MultiItemUniformPriceAuction, \
-    MultiItemVickreyAuction
+
+from bnelearn.mechanism import (MultiItemDiscriminatoryAuction,
+                                MultiItemUniformPriceAuction,
+                                MultiItemVickreyAuction)
 
 cuda = torch.cuda.is_available()
 

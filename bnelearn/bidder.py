@@ -62,10 +62,12 @@ class MatrixGamePlayer(Player):
 class Bidder(Player):
     """ A player in an auction game. Has a distribution over valuations/types that is
         common knowledge. These valuations correspond to the ´n_items´ available.
-        ´batch_size´ corresponds to the number of individual auctions.
 
+        ´batch_size´ corresponds to the number of individual auctions.
         If ´descending_valuations´ is true, the valuations will be returned
         in decreasing order.
+        `cache_actions` determines whether actions should be cached and retrieved from memory,
+            rather than recomputed as long as valuations haven't changed.
     """
     def __init__(self,
                  value_distribution: Distribution,

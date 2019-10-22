@@ -2,9 +2,8 @@
 
 import pytest
 import torch
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, \
-    MultiItemDiscriminatoryAuction, MultiItemUniformPriceAuction, \
-    MultiItemVickreyAuction
+
+from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 
 cuda = torch.cuda.is_available()
 
@@ -12,7 +11,6 @@ fpsb = FirstPriceSealedBidAuction(cuda=cuda)
 vickrey = VickreyAuction(cuda=cuda)
 
 device = fpsb.device
-
 
 bids_unambiguous = torch.tensor([
     [[1,   2.1,    3],
