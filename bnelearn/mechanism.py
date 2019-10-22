@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from typing import List, Tuple
 import gurobipy as grb
 import sys, os
+from tqdm import tqdm
 
 #pylint: disable=E1102
 import torch
@@ -755,38 +756,50 @@ class LLLLGGAuction(Mechanism):
         bids = self.transform_bids(bids) # bids.squeeze(0)
 
 
-        winners = [None] * len(bids)
+        allocation = [None] * len(bids)
         payment = [None] * len(bids)
-        for k0, bids_batch in enumerate(bids):
-            model_all, assign_i_s = self.build_AP(bids_batch, self.bundles)
+        #for k0, bids_batch in enumerate(bids):
 
-            self.solve_AP(model_all)
-            # Store winners
-            winners[k0] = [0] * len(bids_batch)
-            bidders_util = [0] * len(bids_batch)
-            for k,v in enumerate(assign_i_s):
-                winners[k0][k] = [0] * len(bids_batch[k])
-                for k2,v2 in enumerate(v):
-                    if v2.X > 0:
-                        winners[k0][k][k2] = 1
-                        bidders_util[k] = bids_batch[k][k2]
+        self.parallel = len(bids)
+        # detect appropriate pool size
+        pool_size = min(24,len(bids))
 
-            model_all.update()
-            payment[k0] = [None] * len(bids_batch)
-            for bidder in range(len(bids_batch)):
-                copy = model_all.copy()
-                for bundle in range(len(bids_batch[bidder])):
-                    copy.addConstr(copy.getVarByName('assign_%s_%s'%(bidder,bundle)) <= 0, name = 'disregarding_bidder_%s'%bidder)
-                copy.update()
-                self.solve_AP(copy)
-                payment[k0][bidder] = bidders_util[bidder] - (model_all.ObjVal - copy.ObjVal)
-            # Delete model
-            del model_all, copy, assign_i_s, bidders_util
+        # parallel version
+        if pool_size > 1:
+            in_device = bids.device
+            split_tensor = bids.detach().cpu().split(1)
+            n_chunks = len(split_tensor)
+
+            def mute():
+                sys.stdout = open(os.devnull, 'w')
+
+            print("Stefans penis is growing...")
+            with torch.multiprocessing.Pool(pool_size, initializer=mute) as p:
+                # as we handled chunks ourselves, each element of our list should be an individual chunk,
+                # so the pool.map will get argument chunksize=1
+                # The following code is wrapped to produce progess bar, without it simplifies to:
+                # result = p.map(self.closure, split_tensor, chunksize=1)
+                result = list(tqdm(
+                    p.imap(self.run_parallel, split_tensor, chunksize=1),
+                    total = n_chunks, unit='chunks',
+                    desc = 'Calculating strategy for batch_size {} with {} processes, chunk size of {}'.format(
+                        len(split_tensor), pool_size, 1)
+                    ))
+            print("Stefans penis is done.")
+                #result = p.map(self.run_parallel, split_tensor, chunksize=1)
+            # finally stitch the tensor back together
+            allocation = [a[0] for a in result] #torch.cat(result).view(out_shape).to(in_device)
+            payment = [a[1] for a in result]
+        else:
+            for k0, batch_bid in enumerate(bids):
+                allocation[k0], payment[k0] = self.run_parallel(batch_bid)
+        
+            
         # $$$Are the payments calculated correctly?
 
-        winners = self.transform_winners(winners)
+        winners = self.transform_winners(allocation)
 
-        return torch.Tensor(winners).to('cuda'), torch.Tensor(payment).to('cuda')
+        return torch.Tensor(winners).to(self.device), torch.Tensor(payment).to(self.device)
 
     def transform_winners(self, winners):
         '''
@@ -809,6 +822,35 @@ class LLLLGGAuction(Mechanism):
 
         return winners_format
 
+    def run_parallel(self, bids_batch):
+        bids_batch = bids_batch.squeeze(0).tolist()
+        model_all, assign_i_s = self.build_AP(bids_batch, self.bundles)
+
+        self.solve_AP(model_all)
+        # Store winners
+        winners = [0] * len(bids_batch)
+        bidders_util = [0] * len(bids_batch)
+        for k,v in enumerate(assign_i_s):
+            winners[k] = [0] * len(bids_batch[k])
+            for k2,v2 in enumerate(v):
+                if v2.X > 0:
+                    winners[k][k2] = 1
+                    bidders_util[k] = bids_batch[k][k2]
+        model_all.update()
+        payment = [None] * len(bids_batch)
+        for bidder in range(len(bids_batch)):
+            copy = model_all.copy()
+            for bundle in range(len(bids_batch[bidder])):
+                copy.addConstr(copy.getVarByName('assign_%s_%s'%(bidder,bundle)) <= 0, name = 'disregarding_bidder_%s'%bidder)
+            copy.update()
+            self.solve_AP(copy)
+            payment[bidder] = bidders_util[bidder] - (model_all.ObjVal - copy.ObjVal)
+        
+        del model_all, copy, assign_i_s, bidders_util
+        return winners, payment
+        # Delete model
+        #
+
 
     def transform_bids(self, bids):
         '''
@@ -829,7 +871,7 @@ class LLLLGGAuction(Mechanism):
                 for k2, v2 in enumerate(v):
                     bids_format[k0][k1][(k1*len(v)) + k2] = v2
 
-        return bids_format.tolist()
+        return bids_format
 
     def solve_AP(self, model):
         '''
@@ -866,6 +908,7 @@ class LLLLGGAuction(Mechanism):
         assign_i_s: gurobi var [numberOfBidders, numberOfBundles], 1 if bundle is assigned to bidder, else 0 
         '''
         m = grb.Model()
+        m.setParam('OutputFlag',0)
         #m.params.timelimit = 600
          
         # assign vars

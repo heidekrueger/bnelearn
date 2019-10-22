@@ -1,9 +1,10 @@
 ##############################Imports###################################
 import os
 import sys
-root_path = os.path.abspath(os.path.join('..'))
+root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
 if root_path not in sys.path:
     sys.path.append(root_path)
+
 import time
 from timeit import default_timer as timer
 from functools import partial
@@ -64,7 +65,7 @@ def strat_to_bidder(strategy, batch_size, player_position):
 
 ## Environment settings
 #training batch size
-batch_size = 2**5
+batch_size = 2**8
 eval_batch_size = 2**25
 epoch = 2000
 
@@ -75,7 +76,7 @@ hidden_activations = [nn.SELU()]#nn.SELU()]#, nn.SELU()]
 
 
 learner_hyperparams = {
-    'population_size': 128,
+    'population_size': 16,
     'sigma': 1.,
     'scale_sigma_by_model_size': True
 }
@@ -285,6 +286,7 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
 
 
     for e in range(epoch+1):
+        print(e)
 
         # always: do optimizer step
         utility_0 = learner_0.update_strategy_and_evaluate_utility()
