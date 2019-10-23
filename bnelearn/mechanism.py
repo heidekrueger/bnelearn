@@ -751,14 +751,9 @@ class CombinatorialAuction(Mechanism):
         payments: torch.Tensor(batch_size, n_bidders)
         """
 
-        allocation = [None] * len(bids)
-        payment = [None] * len(bids)
-        #for k0, bids_batch in enumerate(bids):
-
-        self.parallel = len(bids)
         # detect appropriate pool size
         pool_size = min(self.cores,len(bids))
-        
+
         # parallel version
         if pool_size > 1:
 
@@ -784,7 +779,6 @@ class CombinatorialAuction(Mechanism):
             iterator = bids.detach().split(1)
             allocation, payment = [torch.cat(x) for x in zip(*map(self.run_parallel, iterator))]
 
-
         return allocation.to(self.device), payment.to(self.device)
 
     def run_parallel(self, bids):
@@ -794,7 +788,7 @@ class CombinatorialAuction(Mechanism):
             bids: torch.Tensor (1 x n_player x n_bundles)
 
         Returns:
-            winners: torch.Tensor
+            winners: torch.Tensor (1 x n_player x n_bundles), payments: torch.Tensor (1 x n_player)
         """
 
         # # for now we're assuming all bidders submit same number of bundle bids
@@ -805,37 +799,30 @@ class CombinatorialAuction(Mechanism):
         model_all, assign_i_s = self.build_AP(bids.tolist())
 
         self.solve_AP(model_all)
-        # Store winners
-
 
         # following line (and more changes!) are needed to make it work vor varible number of bundles per bidder
         #winners_tensor_list = [torch.zeros(n_bundles_per_player[bidder]) for bidder in range(n_players)]
-        winners_tensor = torch.zeros_like(bids)
-        bidders_val_tensor = torch.zeros(n_players, device = bids.device)
+        #winners_tensor = torch.zeros_like(bids)
 
+        winners_tensor = torch.tensor(model_all.getAttr('x', assign_i_s).values(),
+                          device = bids.device).view(n_players, n_bundles)
 
-
-        for (bidder, bundle) in assign_i_s: #pylint: disable=dict-iter-missing-items
-            if assign_i_s[(bidder, bundle)].X > 0:
-                winners_tensor[bidder, bundle] = 1.
-                #winners_tensor_list[bidder][bundle] = 1.
-                bidders_val_tensor[bidder] = bids[bidder, bundle]
-        
-        # TODO: vectorize bidders_val_tensor computation by uncommenting following line:
-        # bidders_val_tensor = (winners_tensor * bids).sum(dim=1)
+        bidders_val_tensor = (winners_tensor * bids).sum(dim=1)
 
         model_all.update()
+
+        global_objective = model_all.ObjVal
+        n_global_constr = len(model_all.getConstrs())
 
         # Solve allocation problem without each player to get vcg prices
         delta_tensor = torch.zeros(n_players, device = bids.device)
         for bidder in range(n_players):
-            copy = model_all.copy()
-            for bundle in range(n_bundles): #range(n_bundles_per_player[bidder]):
-                copy.addConstr(copy.getVarByName('assign_%s_%s'%(bidder,bundle)) <= 0,
-                               name = 'disregarding_bidder_%s'%bidder)
-            copy.update()
-            self.solve_AP(copy)
-            delta = model_all.ObjVal - copy.ObjVal # pylint: disable = no-member
+            model_all.addConstrs((assign_i_s[(bidder, bundle)] <=0 for bundle in range(n_bundles)))
+
+            model_all.update()
+            self.solve_AP(model_all)
+            delta = global_objective - model_all.ObjVal # pylint: disable = no-member
+            model_all.remove(model_all.getConstrs()[n_global_constr:])
             delta_tensor[bidder] = delta
 
         payment_tensor = bidders_val_tensor - delta_tensor
@@ -889,9 +876,9 @@ class CombinatorialAuction(Mechanism):
         for bidder in range(n_players):
             # number of bundles might be specific to the bidder
             n_bundles = len(bids[bidder])
-            #assign_i_s[bidder] = [None] * n_bundles
             for bundle in range(n_bundles):
-                assign_i_s[(bidder,bundle)]=m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1, name='assign_%s_%s' % (bidder,bundle))
+                assign_i_s[(bidder,bundle)] = m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1,
+                                                       name='assign_%s_%s' % (bidder,bundle))
         m.update()
 
         # Bidder can at most win one bundle
@@ -965,7 +952,8 @@ class LLLLGGAuction(CombinatorialAuction):
         assign_i_s = {}
         for bidder in range(N_PLAYERS):
             for bundle in range(N_BUNDLES):
-                assign_i_s[(bidder,bundle)]=m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1, name='assign_%s_%s' % (bidder,bundle))
+                assign_i_s[(bidder,bundle)] = m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1,
+                                                       name='assign_%s_%s' % (bidder,bundle))
         m.update()
 
         # Bidder can at most win one bundle
