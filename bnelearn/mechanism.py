@@ -704,6 +704,7 @@ class LLGAuction(Mechanism):
         return (allocations.unsqueeze(-1), payments) # payments: batches x players, allocation: batch x players x items
 
 class CombinatorialAuction(Mechanism):
+    """A combinatorial auction, implemented via (possibly parallel) calls to the gurobi solver."""
     def __init__(self, rule = 'first_price', cuda: bool = True, bundles = None, cores = 1):
         super().__init__(cuda)
 
@@ -724,6 +725,11 @@ class CombinatorialAuction(Mechanism):
         # ]
 
         self.bundles = bundles
+
+    def __mute(self):
+        """suppresses stdout output from workers (avoid gurobi startup licence message clutter)"""
+        sys.stdout = open(os.devnull, 'w')
+
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -752,85 +758,89 @@ class CombinatorialAuction(Mechanism):
         self.parallel = len(bids)
         # detect appropriate pool size
         pool_size = min(self.cores,len(bids))
-
+        
         # parallel version
         if pool_size > 1:
+
             in_device = bids.device
-            split_tensor = bids.detach().cpu().split(1)
-            n_chunks = len(split_tensor)
+            iterator =  bids.detach().cpu().split(1)
+            n_chunks = len(iterator)
 
-            def mute():
-                # suppresses stdout output from workers (avoid gurobi startup licence message clutter)
-                sys.stdout = open(os.devnull, 'w')
-
-            with torch.multiprocessing.Pool(pool_size, initializer=mute) as p:
+            with torch.multiprocessing.Pool(pool_size, initializer=self.__mute) as p:
                 # as we handled chunks ourselves, each element of our list should be an individual chunk,
                 # so the pool.map will get argument chunksize=1
                 # The following code is wrapped to produce progess bar, without it simplifies to:
                 # result = p.map(self.closure, split_tensor, chunksize=1)
                 result = list(tqdm(
-                    p.imap(self.run_parallel, split_tensor, chunksize=1),
+                    p.imap(self.run_parallel, iterator, chunksize=1),
                     total = n_chunks, unit='chunks',
                     desc = 'Calculating strategy for batch_size {} with {} processes, chunk size of {}'.format(
-                        len(split_tensor), pool_size, 1)
+                        n_chunks, pool_size, 1)
                     ))
-            allocation = [a[0] for a in result] #torch.cat(result).view(out_shape).to(in_device)
-            payment = [a[1] for a in result]
+            allocation, payment = [torch.cat(x) for x in zip(*result)]
+            #allocation = [a[0] for a in result] #torch.cat(result).view(out_shape).to(in_device)
+            #payment = [a[1] for a in result]
         else:
-            for k0, batch_bid in enumerate(bids):
-                allocation[k0], payment[k0] = self.run_parallel(batch_bid)
+            iterator = bids.detach().split(1)
+            allocation, payment = [torch.cat(x) for x in zip(*map(self.run_parallel, iterator))]
 
-        return torch.Tensor(allocation).to(self.device), torch.Tensor(payment).to(self.device)
+
+        return allocation.to(self.device), payment.to(self.device)
 
     def run_parallel(self, bids):
         """Runs the auction for a single batch of bids.
 
         Args:
-            bids: torch.Tensor (n_player x n_bundles)
+            bids: torch.Tensor (1 x n_player x n_bundles)
 
         Returns:
             winners: torch.Tensor
         """
-        n_players, _ = bids.shape # this will not work if different n_bundles per player
 
-
-        bids_list = bids.squeeze(0).tolist()
-        n_bundles_per_player = {bidder: len(bids_list[bidder]) for bidder in range(n_players)}
-        model_all, assign_i_s = self.build_AP(bids_list)
+        # # for now we're assuming all bidders submit same number of bundle bids
+        n_batch, n_players, n_bundles = bids.shape # this will not work if different n_bundles per player
+        assert n_batch == 1, "You should only submit a single batch to this function!"
+        bids = bids.squeeze(0)
+        #n_bundles_per_player = {bidder: len(bids_list[bidder]) for bidder in range(n_players)}
+        model_all, assign_i_s = self.build_AP(bids.tolist())
 
         self.solve_AP(model_all)
         # Store winners
-        winners = [None] * n_players # list of length n_players
-        bidders_val = [0] * n_players #list of length n_players
-        for bidder in range(n_players):
-            winners[bidder] = [0] * n_bundles_per_player[bidder]
-        # for k,v in enumerate(assign_i_s):
-        #     winners[k] = [0] * n_bundles_per_player[k]
-        #     for k2,v2 in enumerate(v):
-        #         winners[k][k2] = assign_i_s[k][k2].X
-        #         if(assign_i_s[k][k2].X > 0):
-        #             bidders_val[k] = bids_list[k][k2]
+
+
+        # following line (and more changes!) are needed to make it work vor varible number of bundles per bidder
+        #winners_tensor_list = [torch.zeros(n_bundles_per_player[bidder]) for bidder in range(n_players)]
+        winners_tensor = torch.zeros_like(bids)
+        bidders_val_tensor = torch.zeros(n_players, device = bids.device)
+
+
+
         for (bidder, bundle) in assign_i_s: #pylint: disable=dict-iter-missing-items
-            winners[bidder][bundle] = assign_i_s[(bidder, bundle)].X
             if assign_i_s[(bidder, bundle)].X > 0:
-                bidders_val[bidder] = bids_list[bidder][bundle]
+                winners_tensor[bidder, bundle] = 1.
+                #winners_tensor_list[bidder][bundle] = 1.
+                bidders_val_tensor[bidder] = bids[bidder, bundle]
+        
+        # TODO: vectorize bidders_val_tensor computation by uncommenting following line:
+        # bidders_val_tensor = (winners_tensor * bids).sum(dim=1)
 
         model_all.update()
 
         # Solve allocation problem without each player to get vcg prices
-        payment = [None] * n_players
+        delta_tensor = torch.zeros(n_players, device = bids.device)
         for bidder in range(n_players):
             copy = model_all.copy()
-            for bundle in range(len(bids_list[bidder])):
+            for bundle in range(n_bundles): #range(n_bundles_per_player[bidder]):
                 copy.addConstr(copy.getVarByName('assign_%s_%s'%(bidder,bundle)) <= 0,
                                name = 'disregarding_bidder_%s'%bidder)
             copy.update()
             self.solve_AP(copy)
-            payment[bidder] = bidders_val[bidder] - (model_all.ObjVal - copy.ObjVal)
-        # winners: list[player x list[item]]
-        # payment: list[player]
-        #del model_all, copy, assign_i_s, bidders_val
-        return winners, payment
+            delta = model_all.ObjVal - copy.ObjVal # pylint: disable = no-member
+            delta_tensor[bidder] = delta
+
+        payment_tensor = bidders_val_tensor - delta_tensor
+
+        return winners_tensor.unsqueeze(0), payment_tensor.unsqueeze(0)
 
     def solve_AP(self, model):
         '''
@@ -858,7 +868,7 @@ class CombinatorialAuction(Mechanism):
         '''
         Parameters
         ----------
-        bids: List[List[Float]] [numberOfBidders = 6, numberOfTheirBundles = 2], valuation for bundles
+        bids: List[List[Float]] [numberOfBidders, numberOfTheirBundles], valuation for bundles
 
         ----------
         Returns
@@ -872,7 +882,6 @@ class CombinatorialAuction(Mechanism):
         m = grb.Model()
         m.setParam('OutputFlag',0)
         #m.params.timelimit = 600
-
 
         n_players = len(bids)
         # assign vars
