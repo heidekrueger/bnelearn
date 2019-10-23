@@ -60,10 +60,10 @@ def test_1_combinatorial_vcg():
     """"""
     rule = 'vcg'
     expected_VCG_payments = torch.Tensor([[0,0,0,0,3,0]])
-    run_combinatorial_test(rule, 'cpu', bids_1, expected_allocation_1, expected_VCG_payments)
+    run_combinatorial_test(rule, 'cuda', bids_1, expected_allocation_1, expected_VCG_payments)
 
 def test_2_combinatorial_vcg():
     """"""
     rule = 'vcg'
     expected_VCG_payments = torch.Tensor([[0.4,0,0.3,0.4,0,0]])
-    run_combinatorial_test(rule, 'cpu', bids_2, expected_allocation_2, expected_VCG_payments)
+    run_combinatorial_test(rule, 'cuda', bids_2, expected_allocation_2, expected_VCG_payments)

@@ -65,18 +65,18 @@ def strat_to_bidder(strategy, batch_size, player_position):
 
 ## Environment settings
 #training batch size
-batch_size = 2**8
+batch_size = 2**9
 eval_batch_size = 2**25
 epoch = 2000
 
 # strategy model architecture
 input_length = 2
-hidden_nodes = [2]#, 5]
-hidden_activations = [nn.SELU()]#nn.SELU()]#, nn.SELU()]
+hidden_nodes = [5, 5]
+hidden_activations = [nn.SELU(), nn.SELU()]#, nn.SELU()]
 
 
 learner_hyperparams = {
-    'population_size': 16,
+    'population_size': 64,
     'sigma': 1.,
     'scale_sigma_by_model_size': True
 }

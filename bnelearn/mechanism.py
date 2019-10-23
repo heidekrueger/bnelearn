@@ -753,7 +753,7 @@ class LLLLGGAuction(Mechanism):
         payments: torch.Tensor(batch_size, n_bidders)
         """
         
-        bids = self.transform_bids(bids) # bids.squeeze(0)
+        #bids = self.transform_bids(bids) # bids.squeeze(0)
 
 
         allocation = [None] * len(bids)
@@ -773,7 +773,6 @@ class LLLLGGAuction(Mechanism):
             def mute():
                 sys.stdout = open(os.devnull, 'w')
 
-            print("Stefans penis is growing...")
             with torch.multiprocessing.Pool(pool_size, initializer=mute) as p:
                 # as we handled chunks ourselves, each element of our list should be an individual chunk,
                 # so the pool.map will get argument chunksize=1
@@ -785,7 +784,6 @@ class LLLLGGAuction(Mechanism):
                     desc = 'Calculating strategy for batch_size {} with {} processes, chunk size of {}'.format(
                         len(split_tensor), pool_size, 1)
                     ))
-            print("Stefans penis is done.")
                 #result = p.map(self.run_parallel, split_tensor, chunksize=1)
             # finally stitch the tensor back together
             allocation = [a[0] for a in result] #torch.cat(result).view(out_shape).to(in_device)
@@ -797,45 +795,45 @@ class LLLLGGAuction(Mechanism):
             
         # $$$Are the payments calculated correctly?
 
-        winners = self.transform_winners(allocation)
+        #winners = self.transform_winners(allocation)
 
-        return torch.Tensor(winners).to(self.device), torch.Tensor(payment).to(self.device)
+        return torch.Tensor(allocation).to(self.device), torch.Tensor(payment).to(self.device)
 
-    def transform_winners(self, winners):
-        '''
-        transforming full gurobi representation to compact LLLLGG special case below
-        '''
-        winners_format = torch.tensor([[
-            #Bundle1, Bundle2
-            [0,0], #L1
-            [0,0], #L2
-            [0,0], #L3
-            [0,0], #L4
-            [0,0], #G1
-            [0,0], #G2
-        ]] * len(winners), dtype=torch.float)
+    # def transform_winners(self, winners):
+    #     '''
+    #     transforming full gurobi representation to compact LLLLGG special case below
+    #     '''
+    #     winners_format = torch.tensor([[
+    #         #Bundle1, Bundle2
+    #         [0,0], #L1
+    #         [0,0], #L2
+    #         [0,0], #L3
+    #         [0,0], #L4
+    #         [0,0], #G1
+    #         [0,0], #G2
+    #     ]] * len(winners), dtype=torch.float)
 
-        for k0, batch in enumerate(winners_format):
-            for k1, v in enumerate(batch):
-                for k2 in range(len(v)):
-                    winners_format[k0][k1][k2] = winners[k0][k1][(k1*len(v)) + k2]
+    #     for k0, batch in enumerate(winners_format):
+    #         for k1, v in enumerate(batch):
+    #             for k2 in range(len(v)):
+    #                 winners_format[k0][k1][k2] = winners[k0][k1][(k1*len(v)) + k2]
 
-        return winners_format
+    #     return winners_format
 
     def run_parallel(self, bids_batch):
         bids_batch = bids_batch.squeeze(0).tolist()
-        model_all, assign_i_s = self.build_AP(bids_batch, self.bundles)
+        model_all, assign_i_s = self.build_AP(bids_batch)
 
         self.solve_AP(model_all)
         # Store winners
         winners = [0] * len(bids_batch)
-        bidders_util = [0] * len(bids_batch)
+        bidders_val = [0] * len(bids_batch)
         for k,v in enumerate(assign_i_s):
-            winners[k] = [0] * len(bids_batch[k])
+            winners[k] = [0] * len(v)
             for k2,v2 in enumerate(v):
-                if v2.X > 0:
-                    winners[k][k2] = 1
-                    bidders_util[k] = bids_batch[k][k2]
+                winners[k][k2] = assign_i_s[k][k2].X
+                if(assign_i_s[k][k2].X > 0):
+                    bidders_val[k] = bids_batch[k][k2]
         model_all.update()
         payment = [None] * len(bids_batch)
         for bidder in range(len(bids_batch)):
@@ -844,9 +842,9 @@ class LLLLGGAuction(Mechanism):
                 copy.addConstr(copy.getVarByName('assign_%s_%s'%(bidder,bundle)) <= 0, name = 'disregarding_bidder_%s'%bidder)
             copy.update()
             self.solve_AP(copy)
-            payment[bidder] = bidders_util[bidder] - (model_all.ObjVal - copy.ObjVal)
+            payment[bidder] = bidders_val[bidder] - (model_all.ObjVal - copy.ObjVal)
         
-        del model_all, copy, assign_i_s, bidders_util
+        del model_all, copy, assign_i_s, bidders_val
         return winners, payment
         # Delete model
         #
@@ -865,6 +863,7 @@ class LLLLGGAuction(Mechanism):
             [0,0,0,0,0,0,0,0,0,0,0,0], #G1
             [0,0,0,0,0,0,0,0,0,0,0,0], #G2
         ]] * len(bids), dtype=torch.float)
+
 
         for k0, batch in enumerate(bids):
             for k1,v in enumerate(batch):
@@ -895,12 +894,12 @@ class LLLLGGAuction(Mechanism):
         #    raise
         #=======================================================================
 
-    def build_AP(self, bids, bundles):
+    def build_AP(self, bids):
         '''
         Parameters
         ----------
-        bids: Float [numberOfBidders, numberOfBundles], valuation for bundles
-        bundles: [numberOfBundles, numberOfItems], 1 if item is in bundle, else 0
+        bids: Float [numberOfBidders = 6, numberOfTheirBundles = 2], valuation for bundles
+        
         ----------
         Returns
         ----------
@@ -926,16 +925,13 @@ class LLLLGGAuction(Mechanism):
                 sum_winning_bundles += assign_i_s[bidder][bundle]
             m.addConstr(sum_winning_bundles <= 1, name = '1_max_bundle_bidder_%s' %bidder)
 
-        # Each item can be at most in one winning bundle
-        for item in range(len(bundles[0])):
+        for item in range(len(self.bundles[0])):
             sum_item = 0
-            for bundle_index, bundle in enumerate(bundles):
-                if bundle[item] > 0:
-                    for bidder in range(len(bids)):
-                        sum_item += assign_i_s[bidder][bundle_index]
+            for k, v in enumerate(assign_i_s):
+                for k2, v2 in enumerate(v):
+                    sum_item += v2 * self.bundles[k * len(v) + k2][item]
             m.addConstr(sum_item <= 1, name = '2_max_ass_item_%s' %item)
-                
-        # Obj. Min: sum_i(sum_b(x_(ib)*p_(ib)* y_(ib)))
+
         objective = grb.LinExpr()
         for bidder in range(len(bids)):
             for bundle in range(len(bids[bidder])):
