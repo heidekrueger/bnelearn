@@ -714,7 +714,7 @@ class CombinatorialAuction(Mechanism):
             rule = 'nearest_zero'
         self.rule = rule
         self.cores = cores
-    
+
         # Bundles specific to LLLLGG setting in Bosshard et a. (2019) and Asubel and Baranov (2018)
         #self.bundles = [[a,] for a ]
 
@@ -727,7 +727,7 @@ class CombinatorialAuction(Mechanism):
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        TODO: Currently every bidder bids on every bundle (often 0). 
+        TODO: Currently every bidder bids on every bundle (often 0).
                 To reduce the problem size bidders should only bid on bundles with v_i > 0
 
         Performs a general Combinatorial auction (currently the LLLLGG special case!)
@@ -760,6 +760,7 @@ class CombinatorialAuction(Mechanism):
             n_chunks = len(split_tensor)
 
             def mute():
+                # suppresses stdout output from workers (avoid gurobi startup licence message clutter)
                 sys.stdout = open(os.devnull, 'w')
 
             with torch.multiprocessing.Pool(pool_size, initializer=mute) as p:
@@ -781,41 +782,55 @@ class CombinatorialAuction(Mechanism):
 
         return torch.Tensor(allocation).to(self.device), torch.Tensor(payment).to(self.device)
 
-    def run_parallel(self, bids_batch):
-        bids_batch = bids_batch.squeeze(0).tolist()
-        model_all, assign_i_s = self.build_AP(bids_batch)
+    def run_parallel(self, bids):
+        """Runs the auction for a single batch of bids.
+        
+        Args:
+            bids: torch.Tensor (n_player x n_bundles)
+
+        Returns:
+            winners: torch.Tensor
+        """
+        n_players, n_items = bids.shape
+
+        bids_list = bids.squeeze(0).tolist()
+        model_all, assign_i_s = self.build_AP(bids_list)
 
         self.solve_AP(model_all)
         # Store winners
-        winners = [0] * len(bids_batch)
-        bidders_val = [0] * len(bids_batch)
+        winners = [0] * n_players # list of length n_players
+        bidders_val = [0] * n_players #list of length n_players
         for k,v in enumerate(assign_i_s):
             winners[k] = [0] * len(v)
             for k2,v2 in enumerate(v):
                 winners[k][k2] = assign_i_s[k][k2].X
                 if(assign_i_s[k][k2].X > 0):
-                    bidders_val[k] = bids_batch[k][k2]
+                    bidders_val[k] = bids_list[k][k2]
         model_all.update()
-        payment = [None] * len(bids_batch)
-        for bidder in range(len(bids_batch)):
+
+        # Solve allocation problem without each player to get vcg prices
+        payment = [None] * n_players
+        for bidder in range(n_players):
             copy = model_all.copy()
-            for bundle in range(len(bids_batch[bidder])):
-                copy.addConstr(copy.getVarByName('assign_%s_%s'%(bidder,bundle)) <= 0, name = 'disregarding_bidder_%s'%bidder)
+            for bundle in range(len(bids_list[bidder])):
+                copy.addConstr(copy.getVarByName('assign_%s_%s'%(bidder,bundle)) <= 0,
+                               name = 'disregarding_bidder_%s'%bidder)
             copy.update()
             self.solve_AP(copy)
             payment[bidder] = bidders_val[bidder] - (model_all.ObjVal - copy.ObjVal)
-        
-        del model_all, copy, assign_i_s, bidders_val
+        # winners: list[player x list[item]]
+        # payment: list[player]
+        #del model_all, copy, assign_i_s, bidders_val
         return winners, payment
 
     def solve_AP(self, model):
         '''
         solving handed model
         '''
-        root_path = os.path.abspath(os.path.join('..'))
-        if root_path not in sys.path:
-            sys.path.append(root_path)
-        log_root = os.path.abspath('.')
+        # root_path = os.path.abspath(os.path.join('..'))
+        # if root_path not in sys.path:
+        #     sys.path.append(root_path)
+        # log_root = os.path.abspath('.')
         #=======================================================================
         #model.write(os.path.join(log_root, 'GurobiSol.lp'))
         #=======================================================================
@@ -834,13 +849,13 @@ class CombinatorialAuction(Mechanism):
         '''
         Parameters
         ----------
-        bids: Float [numberOfBidders = 6, numberOfTheirBundles = 2], valuation for bundles
-        
+        bids: List[List[Float]] [numberOfBidders = 6, numberOfTheirBundles = 2], valuation for bundles
+
         ----------
         Returns
         ----------
         model: full gurobi model
-        assign_i_s: gurobi var [numberOfBidders, numberOfBundles], 1 if bundle is assigned to bidder, else 0 
+        assign_i_s: gurobi var [numberOfBidders, numberOfBundles], 1 if bundle is assigned to bidder, else 0
         '''
         # In the standard case every bidder has to bid on every bundle.
         assert len(bids[0]) == len(self.bundles), "Bidder 0 doesn't bid on all bundles"
@@ -848,17 +863,21 @@ class CombinatorialAuction(Mechanism):
         m = grb.Model()
         m.setParam('OutputFlag',0)
         #m.params.timelimit = 600
-         
+
+
+        n_players = len(bids)
         # assign vars
-        assign_i_s = [None] * len(bids)
-        for bidder in range(len(bids)):
-            assign_i_s[bidder]=[None] * len(bids[bidder])
-            for bundle in range(len(bids[bidder])):
-                assign_i_s[bidder][bundle]=m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1, name='assign_%s_%s' % (bidder,bundle))   
+        assign_i_s = [None] * n_players
+        for bidder in range(n_players):
+            # number of bundles might be specific to the bidder
+            n_bundles = len(bids[bidder])
+            assign_i_s[bidder] = [None] * n_bundles
+            for bundle in range(n_bundles):
+                assign_i_s[bidder][bundle]=m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1, name='assign_%s_%s' % (bidder,bundle))
         m.update()
-         
-        # Bidder can at most win one bundle 
-        for bidder in range(len(bids)):
+
+        # Bidder can at most win one bundle
+        for bidder in range(n_players):
             sum_winning_bundles = grb.LinExpr()
             for bundle in range(len(bids[bidder])):
                 sum_winning_bundles += assign_i_s[bidder][bundle]
@@ -872,13 +891,13 @@ class CombinatorialAuction(Mechanism):
             m.addConstr(sum_item <= 1, name = '2_max_ass_item_%s' %item)
 
         objective = grb.LinExpr()
-        for bidder in range(len(bids)):
+        for bidder in range(n_players):
             for bundle in range(len(bids[bidder])):
                 objective += assign_i_s[bidder][bundle] * bids[bidder][bundle]
-         
+
         m.setObjective(objective, sense=grb.GRB.MAXIMIZE)
         m.update()
-        
+
         return m, assign_i_s
 
 class LLLLGGAuction(CombinatorialAuction):
@@ -887,7 +906,7 @@ class LLLLGGAuction(CombinatorialAuction):
 
         self.n_players = 6
         self.n_actions = 2
-    
+
         # Bundles specific to LLLLGG setting in Bosshard et a. (2019) and Asubel and Baranov (2018)
         self.bundles = [
             #A,B,C,D,E,F,G,H
@@ -909,30 +928,34 @@ class LLLLGGAuction(CombinatorialAuction):
         '''
         Parameters
         ----------
-        bids: Float [numberOfBidders = 6, numberOfTheirBundles = 2], valuation for bundles
-        
+        bids: List, Float [numberOfBidders = 6, numberOfTheirBundles = 2], valuation for bundles
+
         ----------
         Returns
         ----------
         model: full gurobi model
-        assign_i_s: gurobi var [numberOfBidders, numberOfBundles], 1 if bundle is assigned to bidder, else 0 
+        assign_i_s: gurobi var [numberOfBidders, numberOfBundles], 1 if bundle is assigned to bidder, else 0
         '''
+
+        N_PLAYERS = 6
+        N_BUNDLES = 2
+
         m = grb.Model()
         m.setParam('OutputFlag',0)
         #m.params.timelimit = 600
-         
+
         # assign vars
-        assign_i_s = [None] * len(bids)
-        for bidder in range(len(bids)):
-            assign_i_s[bidder]=[None] * len(bids[bidder])
-            for bundle in range(len(bids[bidder])):
-                assign_i_s[bidder][bundle]=m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1, name='assign_%s_%s' % (bidder,bundle))   
+        assign_i_s = [None] * N_PLAYERS
+        for bidder in range(N_PLAYERS):
+            assign_i_s[bidder]=[None] * N_BUNDLES
+            for bundle in range(N_BUNDLES):
+                assign_i_s[bidder][bundle]=m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1, name='assign_%s_%s' % (bidder,bundle))
         m.update()
-         
-        # Bidder can at most win one bundle 
-        for bidder in range(len(bids)):
+
+        # Bidder can at most win one bundle
+        for bidder in range(N_PLAYERS):
             sum_winning_bundles = grb.LinExpr()
-            for bundle in range(len(bids[bidder])):
+            for bundle in range(N_BUNDLES):
                 sum_winning_bundles += assign_i_s[bidder][bundle]
             m.addConstr(sum_winning_bundles <= 1, name = '1_max_bundle_bidder_%s' %bidder)
 
@@ -944,13 +967,13 @@ class LLLLGGAuction(CombinatorialAuction):
             m.addConstr(sum_item <= 1, name = '2_max_ass_item_%s' %item)
 
         objective = grb.LinExpr()
-        for bidder in range(len(bids)):
-            for bundle in range(len(bids[bidder])):
+        for bidder in range(N_PLAYERS):
+            for bundle in range(N_BUNDLES):
                 objective += assign_i_s[bidder][bundle] * bids[bidder][bundle]
-         
+
         m.setObjective(objective, sense=grb.GRB.MAXIMIZE)
         m.update()
-        
+
         return m, assign_i_s
 
 
@@ -976,7 +999,7 @@ class LLLLGGAuction(CombinatorialAuction):
 
     #     return winners_format
 
-    
+
         # Delete model
         #
 
