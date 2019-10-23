@@ -703,8 +703,8 @@ class LLGAuction(Mechanism):
 
         return (allocations.unsqueeze(-1), payments) # payments: batches x players, allocation: batch x players x items
 
-class LLLLGGAuction(Mechanism):
-    def __init__(self, rule = 'first_price', cuda: bool = True):
+class CombinatorialAuction(Mechanism):
+    def __init__(self, rule = 'first_price', cuda: bool = True, bundles = None, cores = 1):
         super().__init__(cuda)
 
         if rule not in ['first_price', 'vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
@@ -713,25 +713,17 @@ class LLLLGGAuction(Mechanism):
         if rule == 'proxy':
             rule = 'nearest_zero'
         self.rule = rule
-        self.n_players = 6
-        self.n_actions = 2
+        self.cores = cores
     
         # Bundles specific to LLLLGG setting in Bosshard et a. (2019) and Asubel and Baranov (2018)
-        self.bundles = [
-            #A,B,C,D,E,F,G,H
-            [1,1,0,0,0,0,0,0], #B1
-            [0,1,1,0,0,0,0,0], #B2
-            [0,0,1,1,0,0,0,0], #B3
-            [0,0,0,1,1,0,0,0], #B4
-            [0,0,0,0,1,1,0,0], #B5
-            [0,0,0,0,0,1,1,0], #B6
-            [0,0,0,0,0,0,1,1], #B7
-            [1,0,0,0,0,0,0,1], #B8
-            [1,1,1,1,0,0,0,0], #B9
-            [0,0,0,0,1,1,1,1], #B10
-            [0,0,1,1,1,1,0,0], #B11
-            [1,1,0,0,0,0,1,1], #B12
-        ]
+        #self.bundles = [[a,] for a ]
+
+        # self.bundles = [
+        #     #A
+        #     [1], #B1
+        # ]
+
+        self.bundles = bundles
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -752,9 +744,6 @@ class LLLLGGAuction(Mechanism):
         allocation: torch.Tensor(batch_size, n_bidders, 2)
         payments: torch.Tensor(batch_size, n_bidders)
         """
-        
-        #bids = self.transform_bids(bids) # bids.squeeze(0)
-
 
         allocation = [None] * len(bids)
         payment = [None] * len(bids)
@@ -762,7 +751,7 @@ class LLLLGGAuction(Mechanism):
 
         self.parallel = len(bids)
         # detect appropriate pool size
-        pool_size = min(24,len(bids))
+        pool_size = min(self.cores,len(bids))
 
         # parallel version
         if pool_size > 1:
@@ -784,41 +773,13 @@ class LLLLGGAuction(Mechanism):
                     desc = 'Calculating strategy for batch_size {} with {} processes, chunk size of {}'.format(
                         len(split_tensor), pool_size, 1)
                     ))
-                #result = p.map(self.run_parallel, split_tensor, chunksize=1)
-            # finally stitch the tensor back together
             allocation = [a[0] for a in result] #torch.cat(result).view(out_shape).to(in_device)
             payment = [a[1] for a in result]
         else:
             for k0, batch_bid in enumerate(bids):
                 allocation[k0], payment[k0] = self.run_parallel(batch_bid)
-        
-            
-        # $$$Are the payments calculated correctly?
-
-        #winners = self.transform_winners(allocation)
 
         return torch.Tensor(allocation).to(self.device), torch.Tensor(payment).to(self.device)
-
-    # def transform_winners(self, winners):
-    #     '''
-    #     transforming full gurobi representation to compact LLLLGG special case below
-    #     '''
-    #     winners_format = torch.tensor([[
-    #         #Bundle1, Bundle2
-    #         [0,0], #L1
-    #         [0,0], #L2
-    #         [0,0], #L3
-    #         [0,0], #L4
-    #         [0,0], #G1
-    #         [0,0], #G2
-    #     ]] * len(winners), dtype=torch.float)
-
-    #     for k0, batch in enumerate(winners_format):
-    #         for k1, v in enumerate(batch):
-    #             for k2 in range(len(v)):
-    #                 winners_format[k0][k1][k2] = winners[k0][k1][(k1*len(v)) + k2]
-
-    #     return winners_format
 
     def run_parallel(self, bids_batch):
         bids_batch = bids_batch.squeeze(0).tolist()
@@ -846,31 +807,6 @@ class LLLLGGAuction(Mechanism):
         
         del model_all, copy, assign_i_s, bidders_val
         return winners, payment
-        # Delete model
-        #
-
-
-    def transform_bids(self, bids):
-        '''
-        transforming compact LLLLGG special case representation to full gurobi representation below
-        '''
-        bids_format = torch.tensor([[
-            #B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11,B12
-            [0,0,0,0,0,0,0,0,0,0,0,0], #L1
-            [0,0,0,0,0,0,0,0,0,0,0,0], #L2
-            [0,0,0,0,0,0,0,0,0,0,0,0], #L3
-            [0,0,0,0,0,0,0,0,0,0,0,0], #L4
-            [0,0,0,0,0,0,0,0,0,0,0,0], #G1
-            [0,0,0,0,0,0,0,0,0,0,0,0], #G2
-        ]] * len(bids), dtype=torch.float)
-
-
-        for k0, batch in enumerate(bids):
-            for k1,v in enumerate(batch):
-                for k2, v2 in enumerate(v):
-                    bids_format[k0][k1][(k1*len(v)) + k2] = v2
-
-        return bids_format
 
     def solve_AP(self, model):
         '''
@@ -893,6 +829,81 @@ class LLLLGGAuction(Mechanism):
         #    model.write(log_root+'\\GurobiSol.ilp')
         #    raise
         #=======================================================================
+
+    def build_AP(self, bids):
+        '''
+        Parameters
+        ----------
+        bids: Float [numberOfBidders = 6, numberOfTheirBundles = 2], valuation for bundles
+        
+        ----------
+        Returns
+        ----------
+        model: full gurobi model
+        assign_i_s: gurobi var [numberOfBidders, numberOfBundles], 1 if bundle is assigned to bidder, else 0 
+        '''
+        # In the standard case every bidder has to bid on every bundle.
+        assert len(bids[0]) == len(self.bundles), "Bidder 0 doesn't bid on all bundles"
+
+        m = grb.Model()
+        m.setParam('OutputFlag',0)
+        #m.params.timelimit = 600
+         
+        # assign vars
+        assign_i_s = [None] * len(bids)
+        for bidder in range(len(bids)):
+            assign_i_s[bidder]=[None] * len(bids[bidder])
+            for bundle in range(len(bids[bidder])):
+                assign_i_s[bidder][bundle]=m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1, name='assign_%s_%s' % (bidder,bundle))   
+        m.update()
+         
+        # Bidder can at most win one bundle 
+        for bidder in range(len(bids)):
+            sum_winning_bundles = grb.LinExpr()
+            for bundle in range(len(bids[bidder])):
+                sum_winning_bundles += assign_i_s[bidder][bundle]
+            m.addConstr(sum_winning_bundles <= 1, name = '1_max_bundle_bidder_%s' %bidder)
+
+        for item in range(len(self.bundles[0])):
+            sum_item = 0
+            for k, v in enumerate(assign_i_s):
+                for k2, v2 in enumerate(v):
+                    sum_item += v2 * self.bundles[k2][item]
+            m.addConstr(sum_item <= 1, name = '2_max_ass_item_%s' %item)
+
+        objective = grb.LinExpr()
+        for bidder in range(len(bids)):
+            for bundle in range(len(bids[bidder])):
+                objective += assign_i_s[bidder][bundle] * bids[bidder][bundle]
+         
+        m.setObjective(objective, sense=grb.GRB.MAXIMIZE)
+        m.update()
+        
+        return m, assign_i_s
+
+class LLLLGGAuction(CombinatorialAuction):
+    def __init__(self, rule = 'first_price', cuda: bool = True):
+        super().__init__(rule, cuda)
+
+        self.n_players = 6
+        self.n_actions = 2
+    
+        # Bundles specific to LLLLGG setting in Bosshard et a. (2019) and Asubel and Baranov (2018)
+        self.bundles = [
+            #A,B,C,D,E,F,G,H
+            [1,1,0,0,0,0,0,0], #B1
+            [0,1,1,0,0,0,0,0], #B2
+            [0,0,1,1,0,0,0,0], #B3
+            [0,0,0,1,1,0,0,0], #B4
+            [0,0,0,0,1,1,0,0], #B5
+            [0,0,0,0,0,1,1,0], #B6
+            [0,0,0,0,0,0,1,1], #B7
+            [1,0,0,0,0,0,0,1], #B8
+            [1,1,1,1,0,0,0,0], #B9
+            [0,0,0,0,1,1,1,1], #B10
+            [0,0,1,1,1,1,0,0], #B11
+            [1,1,0,0,0,0,1,1], #B12
+        ]
 
     def build_AP(self, bids):
         '''
@@ -941,3 +952,53 @@ class LLLLGGAuction(Mechanism):
         m.update()
         
         return m, assign_i_s
+
+
+
+        # def transform_winners(self, winners):
+    #     '''
+    #     transforming full gurobi representation to compact LLLLGG special case below
+    #     '''
+    #     winners_format = torch.tensor([[
+    #         #Bundle1, Bundle2
+    #         [0,0], #L1
+    #         [0,0], #L2
+    #         [0,0], #L3
+    #         [0,0], #L4
+    #         [0,0], #G1
+    #         [0,0], #G2
+    #     ]] * len(winners), dtype=torch.float)
+
+    #     for k0, batch in enumerate(winners_format):
+    #         for k1, v in enumerate(batch):
+    #             for k2 in range(len(v)):
+    #                 winners_format[k0][k1][k2] = winners[k0][k1][(k1*len(v)) + k2]
+
+    #     return winners_format
+
+    
+        # Delete model
+        #
+
+
+    # def transform_bids(self, bids):
+    #     '''
+    #     transforming compact LLLLGG special case representation to full gurobi representation below
+    #     '''
+    #     bids_format = torch.tensor([[
+    #         #B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11,B12
+    #         [0,0,0,0,0,0,0,0,0,0,0,0], #L1
+    #         [0,0,0,0,0,0,0,0,0,0,0,0], #L2
+    #         [0,0,0,0,0,0,0,0,0,0,0,0], #L3
+    #         [0,0,0,0,0,0,0,0,0,0,0,0], #L4
+    #         [0,0,0,0,0,0,0,0,0,0,0,0], #G1
+    #         [0,0,0,0,0,0,0,0,0,0,0,0], #G2
+    #     ]] * len(bids), dtype=torch.float)
+
+
+    #     for k0, batch in enumerate(bids):
+    #         for k1,v in enumerate(batch):
+    #             for k2, v2 in enumerate(v):
+    #                 bids_format[k0][k1][(k1*len(v)) + k2] = v2
+
+    #     return bids_format

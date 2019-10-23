@@ -43,7 +43,7 @@ expected_allocation_2 = torch.tensor([[
     [0,0], #G2
     ]], dtype=torch.float)
 
-def run_combinatorial_test(rule, device, bids, expected_allocation, expected_VCG_payments):
+def run_LLLLGG_test(rule, device, bids, expected_allocation, expected_VCG_payments):
     """Run correctness test for a given LLLLGG rule"""
     cuda = device == 'cuda' and torch.cuda.is_available()
 
@@ -56,14 +56,14 @@ def run_combinatorial_test(rule, device, bids, expected_allocation, expected_VCG
     assert torch.equal(allocation, expected_allocation.to('cuda')), "Wrong allocation"
     assert torch.equal(payments, expected_VCG_payments.to('cuda')), "Wrong payments"
 
-def test_1_combinatorial_vcg():
+def test_1_LLLLGG_vcg():
     """"""
     rule = 'vcg'
-    expected_VCG_payments = torch.Tensor([[0,0,0,0,3,0]])
-    run_combinatorial_test(rule, 'cuda', bids_1, expected_allocation_1, expected_VCG_payments)
+    expected_VCG_payments = torch.Tensor([[0.0, 0.0, 0.0, 0.0, 3.0, 0.0]])
+    run_LLLLGG_test(rule, 'cuda', bids_1, expected_allocation_1, expected_VCG_payments)
 
-def test_2_combinatorial_vcg():
+def test_2_LLLLGG_vcg():
     """"""
     rule = 'vcg'
-    expected_VCG_payments = torch.Tensor([[0.4,0,0.3,0.4,0,0]])
-    run_combinatorial_test(rule, 'cuda', bids_2, expected_allocation_2, expected_VCG_payments)
+    expected_VCG_payments = torch.Tensor([[0.4, 0.0, 0.3, 0.4, 0.0, 0.0]])
+    run_LLLLGG_test(rule, 'cuda', bids_2, expected_allocation_2, expected_VCG_payments)

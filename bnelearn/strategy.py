@@ -92,6 +92,71 @@ class ClosureStrategy(Strategy):
         # serial version on single processor
         return self.closure(inputs)
 
+class MatrixGameStrategy(Strategy, nn.Module):
+    """ A dummy neural network that encodes and returns a mixed strategy"""
+    def __init__(self, n_actions, init_weights = None, init_weight_normalization = False):
+        nn.Module.__init__(self)
+        self.logits = nn.Linear(1, n_actions, bias=False)
+
+        if init_weights is not None:
+            self.logits.weight.data = init_weights
+            if init_weight_normalization:
+                self.logits.weight.data = self.logits.weight.data/torch.norm(init_weights)
+
+        # initialize distribution
+        self._update_distribution()
+
+    def _update_distribution(self):
+        self.device = next(self.parameters()).device
+        probs = self.forward(torch.ones(1,  device=self.device)).detach()
+        self.distribution = Categorical(probs=probs)
+
+    def forward(self, x):
+        logits = self.logits(x)
+        probs = torch.softmax(logits, 0)
+        return probs
+
+    def play(self, inputs=None, batch_size = 1):
+        if inputs is None:
+            inputs= torch.ones(batch_size, 1, device=self.device)
+
+        self._update_distribution()
+        # is of shape batch size x 1
+        # TODO: this is probably slow AF. fix when needed.
+        return self.distribution.sample(inputs.shape)
+
+    def to(self, device):
+        # when moving the net to a different device (nn.Module.to), also update the distribution.
+        result = super().to(device)
+        result._update_distribution() #pylint: disable=protected-access
+        return result
+
+class FictitiousNeuralPlayStrategy(MatrixGameStrategy, nn.Module):
+    """
+    An implementation of the concept of Fictitious Play with NN.
+    An implementation inspired by:
+    https://www.groundai.com/project/deep-fictitious-play-for-stochastic-differential-games2589/2
+    Take the beliefs about others strategies as input for the NN.
+    """
+    def __init__(self, n_actions, beliefs, init_weight_normalization = False):
+        # pylint: disable=super-init-not-called
+        # deliberately not calling MatrixGameStrategy.__init__ but building layers from scratch
+        self.temperature = 1.0
+        nn.Module.__init__(self)
+        beliefs = beliefs.reshape(-1)
+        self.logits = nn.Linear(len(beliefs), n_actions, bias=False)
+
+        if init_weight_normalization:
+            self.beliefs = beliefs/torch.norm(beliefs)
+
+        # initialize distribution
+        self._update_distribution()
+
+    def forward(self, x):
+        logits = self.logits(x)
+        probs = torch.softmax(1/self.temperature * logits, 0)
+        return probs
+
 class FictitiousPlayStrategy(Strategy):
     """
     Based on description in: Fudenberg, 1999 - The Theory of Learning, Chapter 2.2
@@ -194,90 +259,6 @@ class FictitiousPlayMixedStrategy(FictitiousPlaySmoothStrategy):
             if action is not None:
                 self.historical_actions[player] += action
 
-class FictitiousNeuralPlayStrategy(Strategy, nn.Module):
-    """
-    An implementation of the concept of Fictitious Play with NN. 
-    An implementation inspired by: 
-    https://www.groundai.com/project/deep-fictitious-play-for-stochastic-differential-games2589/2
-    Take the beliefs about others strategies as input for the NN.
-    """
-    def __init__(self, n_actions, beliefs, init_weight_normalization = False):
-        self.temperature = 1.0
-        nn.Module.__init__(self)
-        beliefs = beliefs.reshape(-1)
-        self.logits = nn.Linear(len(beliefs), n_actions, bias=False)
-
-        if init_weight_normalization:
-            self.beliefs = beliefs/torch.norm(beliefs)
-
-        # initialize distribution
-        self._update_distribution()
-
-    def _update_distribution(self):
-        self.device = next(self.parameters()).device
-        probs = self.forward(torch.Tensor(self.beliefs.tolist()).to(self.device)).detach()
-        self.distribution = Categorical(probs=probs)
-    
-    def forward(self, x):
-        logits = self.logits(x)
-        probs = torch.softmax(1/self.temperature * logits, 0)
-        return probs
-
-    def play(self, inputs=None, batch_size = 1):
-        if inputs is None:
-            inputs= torch.ones(batch_size, 1, device=self.device)
-
-        self._update_distribution()
-        # is of shape batch size x 1
-        # TODO: this is probably slow AF. fix when needed.
-        return self.distribution.sample(inputs.shape)
-
-    def to(self, device):
-        # when moving the net to a different device (nn.Module.to), also update the distribution.
-        result = super().to(device)
-        result._update_distribution() #pylint: disable=protected-access
-        return result
-
-class MatrixGameStrategy(Strategy, nn.Module):
-    """ A dummy neural network that encodes and returns a mixed strategy"""
-    def __init__(self, n_actions, init_weights = None, init_weight_normalization = False):
-        nn.Module.__init__(self)
-        self.logits = nn.Linear(1, n_actions, bias=False)
-
-        if init_weights is not None:
-            self.logits.weight.data = init_weights
-            if init_weight_normalization:
-                self.logits.weight.data = self.logits.weight.data/torch.norm(init_weights)
-
-
-        # initialize distribution
-        self._update_distribution()
-
-    def _update_distribution(self):
-        self.device = next(self.parameters()).device
-        probs = self.forward(torch.ones(1,  device=self.device)).detach()
-        self.distribution = Categorical(probs=probs)
-
-    def forward(self, x):
-        logits = self.logits(x)
-        probs = torch.softmax(logits, 0)
-        return probs
-
-    def play(self, inputs=None, batch_size = 1):
-        if inputs is None:
-            inputs= torch.ones(batch_size, 1, device=self.device)
-
-        self._update_distribution()
-        # is of shape batch size x 1
-        # TODO: this is probably slow AF. fix when needed.
-        return self.distribution.sample(inputs.shape)
-
-    def to(self, device):
-        # when moving the net to a different device (nn.Module.to), also update the distribution.
-        result = super().to(device)
-        result._update_distribution() #pylint: disable=protected-access
-        return result
-
 class NeuralNetStrategy(Strategy, nn.Module):
     """
     A strategy played by a fully connected neural network
@@ -298,8 +279,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
     def __init__(self, input_length: int,
                  hidden_nodes: Iterable[int],
                  hidden_activations: Iterable[nn.Module],
-                 output_length: int,
-                 ensure_positive_output: torch.Tensor or None = None):
+                 ensure_positive_output: torch.Tensor or None = None,
+                 output_length: int = 1):
 
         assert len(hidden_nodes) == len(hidden_activations), \
             "Provided nodes and activations do not match!"
@@ -325,16 +306,16 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.layers['activation_out'] = nn.ReLU()
         self.activations.append(nn.ReLU())
 
-        # test whether output at ensure_posi tive_output is positive,
+        # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization
-        if not ensure_positive_output is None:            
-            if not any(self.forward(ensure_positive_output).gt(0)): 
+        if ensure_positive_output:
+            if not any(self.forward(ensure_positive_output).gt(0)):
                 self.reset(ensure_positive_output)
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
         self.__init__(self.input_length, self.hidden_nodes,
-                      self.activations[:-1], self.output_length, ensure_positive_output)
+                      self.activations[:-1], ensure_positive_output)
 
     def forward(self, x):
         for layer in self.layers.values():
