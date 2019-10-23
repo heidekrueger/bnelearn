@@ -784,28 +784,37 @@ class CombinatorialAuction(Mechanism):
 
     def run_parallel(self, bids):
         """Runs the auction for a single batch of bids.
-        
+
         Args:
             bids: torch.Tensor (n_player x n_bundles)
 
         Returns:
             winners: torch.Tensor
         """
-        n_players, n_items = bids.shape
+        n_players, _ = bids.shape # this will not work if different n_bundles per player
+
 
         bids_list = bids.squeeze(0).tolist()
+        n_bundles_per_player = {bidder: len(bids_list[bidder]) for bidder in range(n_players)}
         model_all, assign_i_s = self.build_AP(bids_list)
 
         self.solve_AP(model_all)
         # Store winners
-        winners = [0] * n_players # list of length n_players
+        winners = [None] * n_players # list of length n_players
         bidders_val = [0] * n_players #list of length n_players
-        for k,v in enumerate(assign_i_s):
-            winners[k] = [0] * len(v)
-            for k2,v2 in enumerate(v):
-                winners[k][k2] = assign_i_s[k][k2].X
-                if(assign_i_s[k][k2].X > 0):
-                    bidders_val[k] = bids_list[k][k2]
+        for bidder in range(n_players):
+            winners[bidder] = [0] * n_bundles_per_player[bidder]
+        # for k,v in enumerate(assign_i_s):
+        #     winners[k] = [0] * n_bundles_per_player[k]
+        #     for k2,v2 in enumerate(v):
+        #         winners[k][k2] = assign_i_s[k][k2].X
+        #         if(assign_i_s[k][k2].X > 0):
+        #             bidders_val[k] = bids_list[k][k2]
+        for (bidder, bundle) in assign_i_s: #pylint: disable=dict-iter-missing-items
+            winners[bidder][bundle] = assign_i_s[(bidder, bundle)].X
+            if assign_i_s[(bidder, bundle)].X > 0:
+                bidders_val[bidder] = bids_list[bidder][bundle]
+
         model_all.update()
 
         # Solve allocation problem without each player to get vcg prices
@@ -867,33 +876,32 @@ class CombinatorialAuction(Mechanism):
 
         n_players = len(bids)
         # assign vars
-        assign_i_s = [None] * n_players
+        assign_i_s = {} #[None] * n_players
         for bidder in range(n_players):
             # number of bundles might be specific to the bidder
             n_bundles = len(bids[bidder])
-            assign_i_s[bidder] = [None] * n_bundles
+            #assign_i_s[bidder] = [None] * n_bundles
             for bundle in range(n_bundles):
-                assign_i_s[bidder][bundle]=m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1, name='assign_%s_%s' % (bidder,bundle))
+                assign_i_s[(bidder,bundle)]=m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1, name='assign_%s_%s' % (bidder,bundle))
         m.update()
 
         # Bidder can at most win one bundle
         for bidder in range(n_players):
             sum_winning_bundles = grb.LinExpr()
             for bundle in range(len(bids[bidder])):
-                sum_winning_bundles += assign_i_s[bidder][bundle]
+                sum_winning_bundles += assign_i_s[(bidder,bundle)]
             m.addConstr(sum_winning_bundles <= 1, name = '1_max_bundle_bidder_%s' %bidder)
 
         for item in range(len(self.bundles[0])):
             sum_item = 0
-            for k, v in enumerate(assign_i_s):
-                for k2, v2 in enumerate(v):
-                    sum_item += v2 * self.bundles[k2][item]
+            for (k1, k2) in assign_i_s: # the keys are tuples thus pylint: disable=dict-iter-missing-items
+                sum_item += assign_i_s[(k1,k2)] * self.bundles[k2][item]
             m.addConstr(sum_item <= 1, name = '2_max_ass_item_%s' %item)
 
         objective = grb.LinExpr()
         for bidder in range(n_players):
             for bundle in range(len(bids[bidder])):
-                objective += assign_i_s[bidder][bundle] * bids[bidder][bundle]
+                objective += assign_i_s[(bidder,bundle)] * bids[bidder][bundle]
 
         m.setObjective(objective, sense=grb.GRB.MAXIMIZE)
         m.update()
@@ -945,31 +953,29 @@ class LLLLGGAuction(CombinatorialAuction):
         #m.params.timelimit = 600
 
         # assign vars
-        assign_i_s = [None] * N_PLAYERS
+        assign_i_s = {}
         for bidder in range(N_PLAYERS):
-            assign_i_s[bidder]=[None] * N_BUNDLES
             for bundle in range(N_BUNDLES):
-                assign_i_s[bidder][bundle]=m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1, name='assign_%s_%s' % (bidder,bundle))
+                assign_i_s[(bidder,bundle)]=m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1, name='assign_%s_%s' % (bidder,bundle))
         m.update()
 
         # Bidder can at most win one bundle
         for bidder in range(N_PLAYERS):
             sum_winning_bundles = grb.LinExpr()
             for bundle in range(N_BUNDLES):
-                sum_winning_bundles += assign_i_s[bidder][bundle]
+                sum_winning_bundles += assign_i_s[(bidder,bundle)]
             m.addConstr(sum_winning_bundles <= 1, name = '1_max_bundle_bidder_%s' %bidder)
 
         for item in range(len(self.bundles[0])):
             sum_item = 0
-            for k, v in enumerate(assign_i_s):
-                for k2, v2 in enumerate(v):
-                    sum_item += v2 * self.bundles[k * len(v) + k2][item]
+            for (k1, k2) in assign_i_s: # the keys are tuples thus pylint: disable=dict-iter-missing-items
+                sum_item += assign_i_s[(k1,k2)] * self.bundles[k1 * N_BUNDLES + k2][item]
             m.addConstr(sum_item <= 1, name = '2_max_ass_item_%s' %item)
 
         objective = grb.LinExpr()
         for bidder in range(N_PLAYERS):
             for bundle in range(N_BUNDLES):
-                objective += assign_i_s[bidder][bundle] * bids[bidder][bundle]
+                objective += assign_i_s[(bidder,bundle)] * bids[bidder][bundle]
 
         m.setObjective(objective, sense=grb.GRB.MAXIMIZE)
         m.update()
