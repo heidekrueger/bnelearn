@@ -4,14 +4,15 @@
 This module implements games such as matrix games and auctions.
 """
 
+import os
+import sys
 from abc import ABC, abstractmethod
 from typing import List, Tuple
-import gurobipy as grb
-import sys, os
-from tqdm import tqdm
 
+import gurobipy as grb
 #pylint: disable=E1102
 import torch
+from tqdm import tqdm
 
 # Type declarations
 Outcome = Tuple[torch.Tensor, torch.Tensor]
@@ -704,27 +705,30 @@ class LLGAuction(Mechanism):
         return (allocations.unsqueeze(-1), payments) # payments: batches x players, allocation: batch x players x items
 
 class CombinatorialAuction(Mechanism):
-    """A combinatorial auction, implemented via (possibly parallel) calls to the gurobi solver."""
-    def __init__(self, rule = 'first_price', cuda: bool = True, bundles = None, cores = 1):
+    """A combinatorial auction, implemented via (possibly parallel) calls to the gurobi solver.
+    
+       Args:
+        rule: pricing rule
+    
+    """
+    def __init__(self, rule = 'first_price', cuda: bool = True, bundles = None, parallel: int = 1):
         super().__init__(cuda)
 
         if rule not in ['first_price', 'vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
             raise ValueError('Invalid Pricing rule!')
+
+        if rule not in ['vcg']:
+            raise NotImplementedError(':(')
+
         # 'nearest_zero' and 'proxy' are aliases
         if rule == 'proxy':
             rule = 'nearest_zero'
+
         self.rule = rule
-        self.cores = cores
-
-        # Bundles specific to LLLLGG setting in Bosshard et a. (2019) and Asubel and Baranov (2018)
-        #self.bundles = [[a,] for a ]
-
-        # self.bundles = [
-        #     #A
-        #     [1], #B1
-        # ]
+        self.parallel = parallel
 
         self.bundles = bundles
+        self.n_items = len(self.bundles[0])
 
     def __mute(self):
         """suppresses stdout output from workers (avoid gurobi startup licence message clutter)"""
@@ -752,12 +756,11 @@ class CombinatorialAuction(Mechanism):
         """
 
         # detect appropriate pool size
-        pool_size = min(self.cores,len(bids))
+        pool_size = min(self.parallel,len(bids))
 
         # parallel version
         if pool_size > 1:
 
-            in_device = bids.device
             iterator =  bids.detach().cpu().split(1)
             n_chunks = len(iterator)
 
@@ -769,14 +772,13 @@ class CombinatorialAuction(Mechanism):
                 result = list(tqdm(
                     p.imap(self.run_parallel, iterator, chunksize=1),
                     total = n_chunks, unit='chunks',
-                    desc = 'Calculating strategy for batch_size {} with {} processes, chunk size of {}'.format(
+                    desc = 'Solving mechanism for batch_size {} with {} processes, chunk size of {}'.format(
                         n_chunks, pool_size, 1)
                     ))
             allocation, payment = [torch.cat(x) for x in zip(*result)]
-            #allocation = [a[0] for a in result] #torch.cat(result).view(out_shape).to(in_device)
-            #payment = [a[1] for a in result]
+
         else:
-            iterator = bids.detach().split(1)
+            iterator = bids.split(1) #bids.detach().split(1) #no need to detach if not using parallelization (???)
             allocation, payment = [torch.cat(x) for x in zip(*map(self.run_parallel, iterator))]
 
         return allocation.to(self.device), payment.to(self.device)
@@ -797,18 +799,13 @@ class CombinatorialAuction(Mechanism):
         n_batch, n_players, n_bundles = bids.shape # this will not work if different n_bundles per player
         assert n_batch == 1, "You should only submit a single batch to this function!"
         bids = bids.squeeze(0)
-        #n_bundles_per_player = {bidder: len(bids_list[bidder]) for bidder in range(n_players)}
-        model_all, assign_i_s = self.build_AP(bids.tolist())
+        model_all, assign_i_s = self.build_AP(bids)
 
         self.solve_AP(model_all)
 
-        # following line (and more changes!) are needed to make it work vor varible number of bundles per bidder
-        #winners_tensor_list = [torch.zeros(n_bundles_per_player[bidder]) for bidder in range(n_players)]
-
-        winners_tensor = torch.tensor(model_all.getAttr('x', assign_i_s).values(),
+        allocation = torch.tensor(model_all.getAttr('x', assign_i_s).values(),
                                       device = bids.device).view(n_players, n_bundles)
-
-        bidders_val_tensor = (winners_tensor * bids).sum(dim=1)
+        utilities = (allocation * bids).sum(dim=1) # shape: n_players
 
         # get relevant state of full model
         n_global_constr = len(model_all.getConstrs())
@@ -816,92 +813,81 @@ class CombinatorialAuction(Mechanism):
 
         # Solve allocation problem without each player to get vcg prices
         delta_tensor = torch.zeros(n_players, device = bids.device)
-
         for bidder in range(n_players):
             # additional constraints: no assignment to bidder i
             model_all.addConstrs((assign_i_s[(bidder, bundle)] <=0 for bundle in range(n_bundles)))
             model_all.update()
 
             self.solve_AP(model_all)
+            delta_tensor[bidder] = global_objective - model_all.ObjVal # pylint: disable = no-member
 
-            delta = global_objective - model_all.ObjVal # pylint: disable = no-member
-            delta_tensor[bidder] = delta
+            # get rid of additional constraints added above
+            model_all.remove(model_all.getConstrs()[n_global_constr:]) 
 
-            model_all.remove(model_all.getConstrs()[n_global_constr:]) # get rid of additional constraints added above
+        payments = utilities - delta_tensor
 
-        payment_tensor = bidders_val_tensor - delta_tensor
-
-        return winners_tensor.unsqueeze(0), payment_tensor.unsqueeze(0)
+        return allocation.unsqueeze(0), payments.unsqueeze(0)
 
     def solve_AP(self, model):
-        '''
+        """
         solving handed model
-        '''
-        # root_path = os.path.abspath(os.path.join('..'))
-        # if root_path not in sys.path:
-        #     sys.path.append(root_path)
-        # log_root = os.path.abspath('.')
-        #=======================================================================
-        #model.write(os.path.join(log_root, 'GurobiSol.lp'))
-        #=======================================================================
+
+        Args: a gurobi model object
+
+        Returns: nothing, model object is updated in place
+        """
         model.setParam('OutputFlag',0)
         model.optimize()
-        #=======================================================================
-        #try:
-        #    model.write(os.path.join(log_root, 'GurobiSol.sol'))
-        #except:
-        #    model.computeIIS()
-        #    model.write(log_root+'\\GurobiSol.ilp')
-        #    raise
-        #=======================================================================
 
     def build_AP(self, bids):
-        '''
+        """
         Parameters
         ----------
-        bids: List[List[Float]] [numberOfBidders, numberOfTheirBundles], valuation for bundles
+        bids: torch.Tensor [numberOfBidders, numberOfTheirBundles], valuation for bundles
 
-        ----------
+
         Returns
         ----------
         model: full gurobi model
-        assign_i_s: gurobi var [numberOfBidders, numberOfBundles], 1 if bundle is assigned to bidder, else 0
-        '''
+        assign_i_s: dict of gurobi vars with keys (bidder, bundle), 1 if bundle is assigned to bidder, else 0
+                    value of the gurobi var can be accessed with assign_i_s[key].X
+        """
         # In the standard case every bidder has to bid on every bundle.
-        assert len(bids[0]) == len(self.bundles), "Bidder 0 doesn't bid on all bundles"
+        n_players, n_bundles = bids.shape
+        assert n_bundles == len(self.bundles), "Bidder 0 doesn't bid on all bundles"
 
         m = grb.Model()
         m.setParam('OutputFlag',0)
         #m.params.timelimit = 600
 
-        n_players = len(bids)
         # assign vars
         assign_i_s = {} #[None] * n_players
         for bidder in range(n_players):
             # number of bundles might be specific to the bidder
-            n_bundles = len(bids[bidder])
             for bundle in range(n_bundles):
                 assign_i_s[(bidder,bundle)] = m.addVar(vtype=grb.GRB.BINARY,
                                                        name='assign_%s_%s' % (bidder,bundle))
         m.update()
 
         # Bidder can at most win one bundle
+        # NOTE: this block can be sped up by ~20% (94.4 +- 4.9 microseconds vs 76.3+2.3 microseconds in timeit)
+        # by replacing the inner for loop with
+        # sum_winning_bundles = sum(list(assign_i_s.values())[bidder*N_BUNDLES:(bidder+1)*N_BUNDLES])
+        # but that's probably not worth the loss in readability
         for bidder in range(n_players):
             sum_winning_bundles = grb.LinExpr()
-            for bundle in range(len(bids[bidder])):
+            for bundle in range(n_bundles):
                 sum_winning_bundles += assign_i_s[(bidder,bundle)]
             m.addConstr(sum_winning_bundles <= 1, name = '1_max_bundle_bidder_%s' %bidder)
 
-        for item in range(len(self.bundles[0])):
+        # every item can be allocated at most once
+        for item in range(self.n_items):
             sum_item = 0
             for (k1, k2) in assign_i_s: # the keys are tuples thus pylint: disable=dict-iter-missing-items
                 sum_item += assign_i_s[(k1,k2)] * self.bundles[k2][item]
             m.addConstr(sum_item <= 1, name = '2_max_ass_item_%s' %item)
 
-        objective = grb.LinExpr()
-        for bidder in range(n_players):
-            for bundle in range(len(bids[bidder])):
-                objective += assign_i_s[(bidder,bundle)] * bids[bidder][bundle]
+        objective = sum([var * coeff for var,coeff in zip(assign_i_s.values(), bids.flatten().tolist())])
 
         m.setObjective(objective, sense=grb.GRB.MAXIMIZE)
         m.update()
@@ -909,14 +895,17 @@ class CombinatorialAuction(Mechanism):
         return m, assign_i_s
 
 class LLLLGGAuction(CombinatorialAuction):
-    def __init__(self, rule = 'first_price', cuda: bool = True):
-        super().__init__(rule, cuda)
+    """
+        Implements LLLLGGAuction as special case of Combinatorial auction,
+        where each player is only interested in two specific bundles.
+    """
+    def __init__(self, rule = 'vcg', cuda: bool = True, parallel: int = 1):
 
         self.n_players = 6
         self.n_actions = 2
 
         # Bundles specific to LLLLGG setting in Bosshard et a. (2019) and Asubel and Baranov (2018)
-        self.bundles = [
+        bundles = [
             #A,B,C,D,E,F,G,H
             [1,1,0,0,0,0,0,0], #B1
             [0,1,1,0,0,0,0,0], #B2
@@ -932,18 +921,25 @@ class LLLLGGAuction(CombinatorialAuction):
             [1,1,0,0,0,0,1,1], #B12
         ]
 
+        super().__init__(rule, cuda, bundles, parallel)
+
     def build_AP(self, bids):
-        '''
+        """
+
+        Specific implementation of build_AP in a more compact way, due to singlemindedness of bidders.
+
         Parameters
         ----------
-        bids: List, Float [numberOfBidders = 6, numberOfTheirBundles = 2], valuation for bundles
+        bids: torch.Tensor [numberOfBidders = 6 x N_BUNDLES = 2], valuation for bundles
+              where N_BUNDLES refers to the number of bids each player submits, not the total number of bundles in the setting
 
         ----------
         Returns
         ----------
         model: full gurobi model
-        assign_i_s: gurobi var [numberOfBidders, numberOfBundles], 1 if bundle is assigned to bidder, else 0
-        '''
+        assign_i_s: dict of gurobi vars with keys (bidder, bundle), 1 if bundle is assigned to bidder, else 0
+                    value of the gurobi var can be accessed with assign_i_s[key].X
+        """
 
         N_PLAYERS = 6
         N_BUNDLES = 2
@@ -953,83 +949,32 @@ class LLLLGGAuction(CombinatorialAuction):
         #m.params.timelimit = 600
 
         # assign vars
-
         assign_i_s = {}
         for bidder in range(N_PLAYERS):
             for bundle in range(N_BUNDLES):
                 assign_i_s[(bidder,bundle)] = m.addVar(vtype=grb.GRB.BINARY,
                                                        name='assign_%s_%s' % (bidder,bundle))
-        #m.update()
 
         # Bidder can at most win one bundle
+        # NOTE: this block can be sped up by ~20% (94.4 +- 4.9 microseconds vs 76.3+2.3 microseconds in timeit)
+        # by replacing the inner for loop with
+        # sum_winning_bundles = sum(list(assign_i_s.values())[bidder*N_BUNDLES:(bidder+1)*N_BUNDLES])
+        # but that's probably not worth the loss in readability
         for bidder in range(N_PLAYERS):
             sum_winning_bundles = grb.LinExpr()
             for bundle in range(N_BUNDLES):
                 sum_winning_bundles += assign_i_s[(bidder,bundle)]
             m.addConstr(sum_winning_bundles <= 1, name = '1_max_bundle_bidder_%s' %bidder)
 
-        for item in range(len(self.bundles[0])):
+        for item in range(self.n_items):
             sum_item = 0
             for (k1, k2) in assign_i_s: # the keys are tuples thus pylint: disable=dict-iter-missing-items
                 sum_item += assign_i_s[(k1,k2)] * self.bundles[k1 * N_BUNDLES + k2][item]
             m.addConstr(sum_item <= 1, name = '2_max_ass_item_%s' %item)
 
-        objective = grb.LinExpr()
-        for bidder in range(N_PLAYERS):
-            for bundle in range(N_BUNDLES):
-                objective += assign_i_s[(bidder,bundle)] * bids[bidder][bundle]
+        objective = sum([var * coeff for var,coeff in zip(assign_i_s.values(), bids.flatten().tolist())])
 
         m.setObjective(objective, sense=grb.GRB.MAXIMIZE)
         m.update()
 
         return m, assign_i_s
-
-
-
-        # def transform_winners(self, winners):
-    #     '''
-    #     transforming full gurobi representation to compact LLLLGG special case below
-    #     '''
-    #     winners_format = torch.tensor([[
-    #         #Bundle1, Bundle2
-    #         [0,0], #L1
-    #         [0,0], #L2
-    #         [0,0], #L3
-    #         [0,0], #L4
-    #         [0,0], #G1
-    #         [0,0], #G2
-    #     ]] * len(winners), dtype=torch.float)
-
-    #     for k0, batch in enumerate(winners_format):
-    #         for k1, v in enumerate(batch):
-    #             for k2 in range(len(v)):
-    #                 winners_format[k0][k1][k2] = winners[k0][k1][(k1*len(v)) + k2]
-
-    #     return winners_format
-
-
-        # Delete model
-        #
-
-
-    # def transform_bids(self, bids):
-    #     '''
-    #     transforming compact LLLLGG special case representation to full gurobi representation below
-    #     '''
-    #     bids_format = torch.tensor([[
-    #         #B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11,B12
-    #         [0,0,0,0,0,0,0,0,0,0,0,0], #L1
-    #         [0,0,0,0,0,0,0,0,0,0,0,0], #L2
-    #         [0,0,0,0,0,0,0,0,0,0,0,0], #L3
-    #         [0,0,0,0,0,0,0,0,0,0,0,0], #L4
-    #         [0,0,0,0,0,0,0,0,0,0,0,0], #G1
-    #         [0,0,0,0,0,0,0,0,0,0,0,0], #G2
-    #     ]] * len(bids), dtype=torch.float)
-
-
-    #     for k0, batch in enumerate(bids):
-    #         for k1,v in enumerate(batch):
-    #             for k2, v2 in enumerate(v):
-    #                 bids_format[k0][k1][(k1*len(v)) + k2] = v2
-
-    #     return bids_format
