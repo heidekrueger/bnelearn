@@ -784,6 +784,8 @@ class CombinatorialAuction(Mechanism):
     def run_parallel(self, bids):
         """Runs the auction for a single batch of bids.
 
+        Currently only supports bid languages where all players bid on the same number of bundles.
+
         Args:
             bids: torch.Tensor (1 x n_player x n_bundles)
 
@@ -802,28 +804,30 @@ class CombinatorialAuction(Mechanism):
 
         # following line (and more changes!) are needed to make it work vor varible number of bundles per bidder
         #winners_tensor_list = [torch.zeros(n_bundles_per_player[bidder]) for bidder in range(n_players)]
-        #winners_tensor = torch.zeros_like(bids)
 
         winners_tensor = torch.tensor(model_all.getAttr('x', assign_i_s).values(),
-                          device = bids.device).view(n_players, n_bundles)
+                                      device = bids.device).view(n_players, n_bundles)
 
         bidders_val_tensor = (winners_tensor * bids).sum(dim=1)
 
-        model_all.update()
-
-        global_objective = model_all.ObjVal
+        # get relevant state of full model
         n_global_constr = len(model_all.getConstrs())
+        global_objective = model_all.ObjVal # pylint: disable = no-member
 
         # Solve allocation problem without each player to get vcg prices
         delta_tensor = torch.zeros(n_players, device = bids.device)
-        for bidder in range(n_players):
-            model_all.addConstrs((assign_i_s[(bidder, bundle)] <=0 for bundle in range(n_bundles)))
 
+        for bidder in range(n_players):
+            # additional constraints: no assignment to bidder i
+            model_all.addConstrs((assign_i_s[(bidder, bundle)] <=0 for bundle in range(n_bundles)))
             model_all.update()
+
             self.solve_AP(model_all)
+
             delta = global_objective - model_all.ObjVal # pylint: disable = no-member
-            model_all.remove(model_all.getConstrs()[n_global_constr:])
             delta_tensor[bidder] = delta
+
+            model_all.remove(model_all.getConstrs()[n_global_constr:]) # get rid of additional constraints added above
 
         payment_tensor = bidders_val_tensor - delta_tensor
 
@@ -877,7 +881,7 @@ class CombinatorialAuction(Mechanism):
             # number of bundles might be specific to the bidder
             n_bundles = len(bids[bidder])
             for bundle in range(n_bundles):
-                assign_i_s[(bidder,bundle)] = m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1,
+                assign_i_s[(bidder,bundle)] = m.addVar(vtype=grb.GRB.BINARY,
                                                        name='assign_%s_%s' % (bidder,bundle))
         m.update()
 
@@ -949,12 +953,13 @@ class LLLLGGAuction(CombinatorialAuction):
         #m.params.timelimit = 600
 
         # assign vars
+
         assign_i_s = {}
         for bidder in range(N_PLAYERS):
             for bundle in range(N_BUNDLES):
-                assign_i_s[(bidder,bundle)] = m.addVar(vtype=grb.GRB.BINARY, lb=0, ub=1,
+                assign_i_s[(bidder,bundle)] = m.addVar(vtype=grb.GRB.BINARY,
                                                        name='assign_%s_%s' % (bidder,bundle))
-        m.update()
+        #m.update()
 
         # Bidder can at most win one bundle
         for bidder in range(N_PLAYERS):
