@@ -6,6 +6,7 @@ import math
 from abc import ABC, abstractmethod
 from copy import copy
 from typing import Callable, Iterable
+import warnings
 
 import torch
 import torch.nn as nn
@@ -25,6 +26,10 @@ class Strategy(ABC):
     def play(self, inputs):
         """Takes (private) information as input and decides on the actions an agent should play."""
         raise NotImplementedError()
+
+    def pretrain(self, input_time, iterations, transformation=None):
+        """If implemented by subclass, pretrains the strategy to yield desired initial outputs."""
+        warnings.warn('Strategy of type {} does not support pretraining'.format(str(type(self))))
 
 class ClosureStrategy(Strategy):
     """A strategy specified by a closure
@@ -276,11 +281,12 @@ class NeuralNetStrategy(Strategy, nn.Module):
             positive bid anywhere at the given input tensor. Otherwise,
             the weights will be reinitialized.
     """
-    def __init__(self, input_length: int,
+    def __init__(self, input_length: int, 
                  hidden_nodes: Iterable[int],
                  hidden_activations: Iterable[nn.Module],
                  ensure_positive_output: torch.Tensor or None = None,
-                 output_length: int = 1):
+                 output_length: int = 1 # currently last argument for backwards-compatibility
+                 ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
             "Provided nodes and activations do not match!"
@@ -311,6 +317,29 @@ class NeuralNetStrategy(Strategy, nn.Module):
         if ensure_positive_output:
             if not any(self.forward(ensure_positive_output).gt(0)):
                 self.reset(ensure_positive_output)
+
+    def pretrain(self, input_tensor: torch.Tensor, iters: int, transformation: Callable = None):
+        """Performs `iters` steps of supervised learning on `input` tensor,
+           in order to find an initial bid function that is suitable for learning.
+
+           args:
+               input: torch.Tensor, same dimension as self.input_length
+               iters: number of iterations for supervised learning
+               transformation (optional): Callable. Defaulting to identity function if input_length == output_length
+           returns: Nothing
+        """
+        
+        desired_output = input_tensor
+        if transformation is not None:
+            desired_output = transformation(input_tensor)
+        
+        optimizer = torch.optim.Adam(self.parameters())
+        for _ in range(iters):
+            self.zero_grad()
+            diff = (self.forward(input_tensor) - desired_output)
+            loss = (diff * diff).sum()
+            loss.backward()
+            optimizer.step()
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
