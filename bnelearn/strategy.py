@@ -296,20 +296,23 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         # first layer
         self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
+        # torch.nn.init.normal_(self.layers['fc_0'].weight, mean=0, std=.1)
         self.layers['activation_0'] = hidden_activations[0]
 
         for i in range (1, len(hidden_nodes)):
             self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
+            # torch.nn.init.normal_(self.layers['fc_' + str(i)].weight, mean=0, std=.1)
             self.layers['activation_' + str(i)] = hidden_activations[i]
 
         self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
+        # torch.nn.init.normal_(self.layers['fc_out'].weight, mean=0, std=.1)
         self.layers['activation_out'] = nn.ReLU()
         self.activations.append(nn.ReLU())
 
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization
-        if ensure_positive_output:
-            if not any(self.forward(ensure_positive_output).gt(0)):
+        if not ensure_positive_output is None:
+            if not torch.any(self.forward(ensure_positive_output).gt(0)):
                 self.reset(ensure_positive_output)
 
     def reset(self, ensure_positive_output=None):

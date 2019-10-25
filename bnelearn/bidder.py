@@ -77,13 +77,15 @@ class Bidder(Player):
                  n_items = 1,
                  cuda = True,
                  cache_actions: bool = False,
-                 descending_valuations = False
+                 descending_valuations = False,
+                 item_interest_limit = None,
                  ):
         super().__init__(strategy, player_position, batch_size, cuda)
 
         self.value_distribution = value_distribution
         self.n_items = n_items
         self.descending_valuations = descending_valuations
+        self.item_interest_limit = item_interest_limit
         self._cache_actions = cache_actions
         self._valuations_changed = False # true if new valuation drawn since actions calculated
         self.valuations = torch.zeros(batch_size, n_items, device=self.device)
@@ -131,6 +133,9 @@ class Bidder(Player):
         else:
             # slow! (sampling on cpu then copying to GPU)
             self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device).relu()
+
+        if isinstance(self.item_interest_limit, int):
+            self.valuations[:,self.item_interest_limit:] = 0
 
         if self.descending_valuations:
             self.valuations, _ = self.valuations.sort(dim=1, descending=True)

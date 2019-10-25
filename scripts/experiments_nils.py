@@ -49,11 +49,11 @@ if cuda:
     print(torch.cuda.current_device())
 
 # Set random seeds
-seed = 1234
-random.seed(seed)
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-np.random.seed(seed)
+# seed = 69
+# random.seed(seed)
+# torch.manual_seed(seed)
+# torch.cuda.manual_seed(seed)
+# np.random.seed(seed)
 
 
 # ## Settings
@@ -64,6 +64,7 @@ mechanism = MultiItemVickreyAuction(cuda=True)
 ## Experiment setup
 n_players = 2
 n_items = 2
+item_interest_limit = None#2
 model_sharing = False
 
 # log in folder
@@ -78,20 +79,22 @@ log_name = auction_type_str + '_' + str(n_players) + 'players_' + str(n_items) +
 
 # valuation distribution
 u_lo = 0
-u_hi = 10
+u_hi = 1
 
 def strat_to_bidder(strategy, batch_size, player_position):
     return Bidder.uniform(
             u_lo, u_hi, strategy,
             n_items = n_items,
+            item_interest_limit = item_interest_limit,
             descending_valuations = True,
             player_position = player_position,
             batch_size = batch_size
         )
 
 ## Environment settings
-batch_size = 2**18
+batch_size = 2**17
 epoch = 4000
+epo_n = 8
 
 # strategy model architecture
 input_length = n_items
@@ -99,13 +102,13 @@ hidden_nodes = [5, 5]
 hidden_activations = [nn.SELU(), nn.SELU()]
 
 hyperparams = {
-        'population_size':           [32],
+        'population_size':           [64],
         'sigma':                     [1.0],
         'scale_sigma_by_model_size': [True],
         'normalize_gradients':       [True],
         'lr':                        [1e-2],
         'momentum':                  [0.9]
-}
+    }
 
 
 for vals in product(*hyperparams.values()):
@@ -124,7 +127,7 @@ for vals in product(*hyperparams.values()):
         }
 
     optimizer_type = torch.optim.SGD
-    lr_scheduler = ReduceLROnPlateau(optimizer, 'min')
+    # lr_scheduler = ReduceLROnPlateau(optimizer, 'min')
     optimizer_hyperparams = {
             'lr': lr,
             # 'weight_decay': 0.,
@@ -135,11 +138,13 @@ for vals in product(*hyperparams.values()):
 
     # ## Setting up the Environment
 
-    def optimal_bid(valuation: torch.Tensor or np.ndarray or float,
-                    player_position: int = 0) -> torch.Tensor:
+    def optimal_bid(
+            valuation: torch.Tensor or np.ndarray or float,
+            player_position: int = 0
+        ) -> torch.Tensor:
 
         if not isinstance(valuation, torch.Tensor):
-            valuation = torch.tensor(valuation, dtype=torch.float)
+            valuation = torch.tensor(valuation, dtype=torch.float, device=device)
 
         # unsqueeze if simple float
         if valuation.dim() == 0:
@@ -149,8 +154,15 @@ for vals in product(*hyperparams.values()):
             warnings.warn("No explict BNE for MultiItemDiscriminatoryAuction known.", Warning)
             return valuation
         elif isinstance(mechanism, MultiItemUniformPriceAuction): # is inefficient
-            warnings.warn("No explict BNE for MultiItemUniformPriceAuction known.", Warning)
-            return valuation
+            if n_players == 2 and n_items == 3 and u_lo == 0 \
+                and u_hi == 1 and item_interest_limit == 2:
+                opt_bid = torch.clone(valuation)
+                opt_bid[1,:] = opt_bid[1,:] ** 2
+                opt_bid[2,:] = 0
+                return opt_bid
+            else:
+                warnings.warn("No explict BNE for MultiItemUniformPriceAuction known.", Warning)
+                return valuation
         elif isinstance(mechanism, MultiItemVickreyAuction): # is efficient
             return valuation
         else:
@@ -179,7 +191,8 @@ for vals in product(*hyperparams.values()):
     def log_once(writer, e):
         """Everything that should be logged only once on initialization."""
         for agent in range(n_players):
-            writer.add_scalar(log_name + ' hyperparameters/p{}_model_parameters'.format(agent), n_parameters[agent], e)
+            writer.add_scalar(log_name + ' hyperparameters/p{}_model_parameters'.format(agent),
+                              n_parameters[agent], e)
         writer.add_scalar(log_name + ' hyperparameters/model_parameters', sum(n_parameters), e)
         writer.add_text(log_name + ' hyperparameters/neural_net_spec', str(models[0]), 0)
         writer.add_scalar(log_name + ' hyperparameters/batch_size', batch_size, e)
@@ -196,18 +209,18 @@ for vals in product(*hyperparams.values()):
         u, bne_u = iter(utilities), iter(bne_utilities)
         u_vs_bne = iter(utilities - bne_utilities)
         writer.add_scalars(log_name + ' eval/utilities',
-                        dict(zip(['player_{}'.format(i) for i in range(n_players)], u)), e)
+                           dict(zip(['player_{}'.format(i) for i in range(n_players)], u)), e)
         writer.add_scalars(log_name + ' eval/bne_utilities',
-                        dict(zip(['player_{}'.format(i) for i in range(n_players)], bne_u)), e)
+                           dict(zip(['player_{}'.format(i) for i in range(n_players)], bne_u)), e)
         writer.add_scalars(log_name + ' eval/utilities_vs_bne',
-                        dict(zip(['player_{}'.format(i) for i in range(n_players)], u_vs_bne)), e)
+                           dict(zip(['player_{}'.format(i) for i in range(n_players)], u_vs_bne)), e)
         writer.add_scalar(log_name + ' eval/total_bne_utilities', sum(bne_utilities), e)
         writer.add_scalar(log_name + ' eval/total_utilites', sum(utilities), e)
         writer.add_scalar(log_name + ' eval/total_utilities_vs_bne', sum(utilities - bne_utilities), e)
 
 
-    v_opt = np.linspace(u_lo, u_hi, 25)
-    b_opt = optimal_bid(v_opt).numpy()
+    v_opt = torch.linspace(u_lo, u_hi, 25).repeat(n_items, 1)
+    b_opt = optimal_bid(v_opt).cpu().numpy()
 
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
               '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
@@ -278,7 +291,7 @@ for vals in product(*hyperparams.values()):
             axs = [axs]
 
         for item in range(n_items):
-            axs[item].plot(v_opt, b_opt, '--', color='grey')
+            axs[item].plot(v_opt[item,:], b_opt[item,:], '--', color='grey')
             for agent_idx in range(n_players):
                 zeros = acts[agent_idx][:,item] < 1e-9
                 axs[item].plot(
@@ -358,12 +371,13 @@ for vals in product(*hyperparams.values()):
 
 
     # initialize models
+    ensure_positive_output = torch.zeros(epo_n, n_items).uniform_(u_lo, u_hi).sort(dim=1, descending=True)[0]
     if model_sharing:
         model = NeuralNetStrategy(input_length,
                 hidden_nodes = hidden_nodes,
                 hidden_activations = hidden_activations,
-                ensure_positive_output = None,
-                output_length=input_length
+                ensure_positive_output = ensure_positive_output,
+                output_length = input_length
             ).to(device)
         models = [model for _ in range(n_players)]
     else:
@@ -373,8 +387,8 @@ for vals in product(*hyperparams.values()):
                     NeuralNetStrategy(input_length,
                             hidden_nodes = hidden_nodes,
                             hidden_activations = hidden_activations,
-                            ensure_positive_output = None,
-                            output_length=input_length
+                            ensure_positive_output = ensure_positive_output,
+                            output_length = input_length
                         ).to(device)
                 )
 
@@ -412,13 +426,13 @@ for vals in product(*hyperparams.values()):
                       for i in range(n_players)]
 
     bne_env = AuctionEnvironment(
-        mechanism,
-        agents = [strat_to_bidder(bne_strategies[i], batch_size, i)
-                  for i in range(n_players)],
-        n_players = n_players,
-        batch_size = batch_size,
-        strategy_to_player_closure = strat_to_bidder
-    )
+            mechanism,
+            agents = [strat_to_bidder(bne_strategies[i], batch_size, i)
+                    for i in range(n_players)],
+            n_players = n_players,
+            batch_size = batch_size,
+            strategy_to_player_closure = strat_to_bidder
+        )
 
     # bne_utilities_sampled = torch.tensor([bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
     # print(('Utilities in BNE (sampled):'+ '\t{:.5f}'*n_players + '.').format(*bne_utilities_sampled))
@@ -461,7 +475,7 @@ for vals in product(*hyperparams.values()):
         for e in range(epoch + 1):
 
             start_time = time.time()
-            torch.cuda.reset_max_memory_allocated(device=device)
+            # torch.cuda.reset_max_memory_allocated(device=device)
 
             # do optimizer step and record utilities
             utilities = torch.tensor([learner.update_strategy_and_evaluate_utility()
@@ -488,7 +502,8 @@ for vals in product(*hyperparams.values()):
 
             elapsed = time.time() - start_time
             overhead_mins += elapsed
-            memory = torch.cuda.max_memory_allocated(device=device) * (2**-17)
+            # memory = torch.cuda.max_memory_allocated(device=device) * (2**-17)
 
-            print('epoch {}:\t{}s\t({}mb)'.format(e, round(elapsed, 4), int(memory)))
+            # print('epoch {}:\t{}s\t({}mb)'.format(e, round(elapsed, 4), int(memory)))
+            print('epoch {}:\t{}s'.format(e, round(elapsed, 4)))
             writer.add_scalar(log_name + ' eval/overhead_mins', elapsed, e)
