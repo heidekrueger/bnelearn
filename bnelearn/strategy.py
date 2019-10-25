@@ -344,7 +344,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
         self.__init__(self.input_length, self.hidden_nodes,
-                      self.activations[:-1], ensure_positive_output)
+                      self.activations[:-1], ensure_positive_output, self.output_length)
 
     def forward(self, x):
         for layer in self.layers.values():
