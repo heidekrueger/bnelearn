@@ -281,7 +281,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
             positive bid anywhere at the given input tensor. Otherwise,
             the weights will be reinitialized.
     """
-    def __init__(self, input_length: int, 
+    def __init__(self, input_length: int,
                  hidden_nodes: Iterable[int],
                  hidden_activations: Iterable[nn.Module],
                  ensure_positive_output: torch.Tensor or None = None,
@@ -300,17 +300,23 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         self.layers = nn.ModuleDict()
 
-        # first layer
-        self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
-        self.layers['activation_0'] = hidden_activations[0]
-
-        for i in range (1, len(hidden_nodes)):
-            self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
-            self.layers['activation_' + str(i)] = hidden_activations[i]
-
+        if len(hidden_nodes) > 0:
+            ## create hdiden layers
+            # first hidden layer (from input)
+            self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
+            self.layers['activation_0'] = self.activations[0]
+            # hidden-to-hidden-layers
+            for i in range (1, len(hidden_nodes)):
+                self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
+                self.layers['activation_' + str(i)] = self.activations[i]
+        else:
+            # output layer directly from inputs
+            hidden_nodes = [input_length] #don't write to self.hidden nodes, just ensure correct creation
+        
+        # create output layer
         self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
         self.layers['activation_out'] = nn.ReLU()
-        self.activations.append(nn.ReLU())
+        self.activations.append(self.layers['activation_out'])
 
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization
@@ -332,6 +338,9 @@ class NeuralNetStrategy(Strategy, nn.Module):
         desired_output = input_tensor
         if transformation is not None:
             desired_output = transformation(input_tensor)
+
+        if desired_output.shape[-1] != self.output_length:
+            raise ValueError('Desired pretraining output does not match NN output dimension.')
         
         optimizer = torch.optim.Adam(self.parameters())
         for _ in range(iters):
