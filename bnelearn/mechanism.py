@@ -1378,11 +1378,11 @@ class LLLLGGAuction(Mechanism):
         for bidder in range(players):
             bidsClone = bids.clone()
             bidsClone[:,bidder] = 0
-          bidder_bundles = self.player_bundles[0][[2*bidder,2*bidder+1]]
-          val[:,bidder] = torch.sum(
-              bids_flat.index_select(1, bidder_bundles) * allocation.index_select(1, bidder_bundles),
-              dim =1, keepdim=True).view(-1)
-            vcgPayments[:,bidder] =  val[:,bidder] - (welfare - self.solveWD(bidsClone)[1])
+            bidder_bundles = self.player_bundles[0][[2*bidder,2*bidder+1]]
+            val[:,bidder] = torch.sum(
+                bids_flat.index_select(1, bidder_bundles) * allocation.index_select(1, bidder_bundles),
+                dim =1, keepdim=True).view(-1)
+
 
         return vcgPayments
 
