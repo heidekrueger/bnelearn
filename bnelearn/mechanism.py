@@ -1383,6 +1383,7 @@ class LLLLGGAuction(Mechanism):
                 bids_flat.index_select(1, bidder_bundles) * allocation.index_select(1, bidder_bundles),
                 dim =1, keepdim=True).view(-1)
 
+            vcgPayments[:,bidder] =  val[:,bidder] - (welfare - self.solveWD(bidsClone)[1])
 
         return vcgPayments
 
