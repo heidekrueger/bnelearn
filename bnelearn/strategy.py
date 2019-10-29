@@ -303,19 +303,19 @@ class NeuralNetStrategy(Strategy, nn.Module):
             self.layers['activation_' + str(i)] = hidden_activations[i]
 
         self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
-        self.layers['activation_out'] = nn.ReLU()
-        self.activations.append(nn.ReLU())
+        self.layers['activation_out'] = nn.ReLU() # nn.SELU()
+        self.activations.append(nn.ReLU())# nn.SELU())
 
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization
-        if ensure_positive_output:
-            if not any(self.forward(ensure_positive_output).gt(0)):
+        if not ensure_positive_output is None:
+            if not torch.all(self.forward(ensure_positive_output).gt(0)):
                 self.reset(ensure_positive_output)
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
         self.__init__(self.input_length, self.hidden_nodes,
-                      self.activations[:-1], ensure_positive_output)
+                      self.activations[:-1], ensure_positive_output, output_length=self.output_length)
 
     def forward(self, x):
         for layer in self.layers.values():

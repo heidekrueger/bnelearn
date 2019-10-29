@@ -764,6 +764,7 @@ class CombinatorialAuction(Mechanism):
             iterator =  bids.detach().cpu().split(1)
             n_chunks = len(iterator)
 
+            torch.multiprocessing.set_sharing_strategy('file_system')
             with torch.multiprocessing.Pool(pool_size, initializer=self.__mute) as p:
                 # as we handled chunks ourselves, each element of our list should be an individual chunk,
                 # so the pool.map will get argument chunksize=1
@@ -825,7 +826,7 @@ class CombinatorialAuction(Mechanism):
             model_all.remove(model_all.getConstrs()[n_global_constr:]) 
 
         payments = utilities - delta_tensor
-
+        #print(' a' + str(allocation.shape) + '  p'  + str(payments.shape))
         return allocation.unsqueeze(0), payments.unsqueeze(0)
 
     def solve_AP(self, model):
@@ -894,87 +895,248 @@ class CombinatorialAuction(Mechanism):
 
         return m, assign_i_s
 
-class LLLLGGAuction(CombinatorialAuction):
+class LLLLGGAuction(Mechanism):
     """
-        Implements LLLLGGAuction as special case of Combinatorial auction,
-        where each player is only interested in two specific bundles.
+    Inspired by implementation of Seuken Paper (Bosshard et al. (2019)).
+    Hard coded possible solutions for faster batch computations.
     """
-    def __init__(self, rule = 'vcg', cuda: bool = True, parallel: int = 1):
+    def __init__(self, batch_size, rule = 'first_price', cuda: bool = True):
+        super().__init__(cuda)
 
+        if rule not in ['first_price', 'vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
+            raise ValueError('Invalid Pricing rule!')
+
+        if rule not in ['vcg']:
+            raise NotImplementedError(':(')
+
+        # 'nearest_zero' and 'proxy' are aliases
+        if rule == 'proxy':
+            rule = 'nearest_zero'
+        self.batch_size = batch_size
+        self.rule = rule
+        self.bundles = 12
+        self.n_items = 8
         self.n_players = 6
         self.n_actions = 2
 
-        # Bundles specific to LLLLGG setting in Bosshard et a. (2019) and Asubel and Baranov (2018)
-        bundles = [
-            #A,B,C,D,E,F,G,H
-            [1,1,0,0,0,0,0,0], #B1
-            [0,1,1,0,0,0,0,0], #B2
-            [0,0,1,1,0,0,0,0], #B3
-            [0,0,0,1,1,0,0,0], #B4
-            [0,0,0,0,1,1,0,0], #B5
-            [0,0,0,0,0,1,1,0], #B6
-            [0,0,0,0,0,0,1,1], #B7
-            [1,0,0,0,0,0,0,1], #B8
-            [1,1,1,1,0,0,0,0], #B9
-            [0,0,0,0,1,1,1,1], #B10
-            [0,0,1,1,1,1,0,0], #B11
-            [1,1,0,0,0,0,1,1], #B12
-        ]
+        self.solutions = torch.tensor([
+            # 4 local bidders win
+            [0, 2, 4, 6], 	# AB CD EF GH
+            [1, 3, 5, 7], 	# BC DE FG HA
+            # a global bidder wins (2 possibilities for each global bundle)
+            [4, 6, 8, 99],     # EF GH ABCD
+            [0, 2, 9, 99],    	# AB CD EFGH
+            [0, 6, 10, 99],   	# AB GH CDEF
+            [2, 4, 11, 99],    # CD EF GHAB
+            [5, 8, 99, 99],        # FG ABCD
+            [1, 9, 99, 99],		# BC EFGH 
+            [7, 10, 99, 99],       # HA CDEF
+            [3, 11, 99, 99],       # DE GHAB
+            # 3 locals win. This implies that 2 locals have adjacent bundles, and one doesn't. 
+            # there are 8 possibilities (choose bundle that has no adjacent bundles, the rest is determined)
+            [0, 2, 5, 99],    	# AB CD FG
+            [2, 4, 7, 99],     # CD EF HA
+            [1, 4, 6, 99],		# BC EF GH
+            [0, 3, 6, 99],    	# AB DE GH
+            [0, 3, 5, 99],    	# AB DE FG
+            [2, 5, 7, 99],     # CD FG HA
+            [1, 3, 6, 99],		# BC DE GH
+            [1, 4, 7, 99],		# BC EF HA
+            ]).to(self.device)
 
-        super().__init__(rule, cuda, bundles, parallel)
 
-    def build_AP(self, bids):
+        self.solutions_sparse = torch.tensor([
+            # 4 local bidders win
+            [1,0,1,0, 1,0,1,0, 0,0,0,0], # AB CD EF GH
+            [0,1,0,1, 0,1,0,1, 0,0,0,0], # BC DE FG HA
+            # a global bidder wins (2 possibilities for each global bundle)
+            [0,0,0,0, 1,0,1,0, 1,0,0,0], # EF GH ABCD
+            [1,0,1,0, 0,0,0,0, 0,1,0,0], # AB CD EFGH
+            [1,0,0,0, 0,0,1,0, 0,0,1,0], # AB GH CDEF
+            [0,0,1,0, 1,0,0,0, 0,0,0,1], # CD EF GHAB
+            [0,0,0,0, 0,1,0,0, 1,0,0,0], # FG ABCD
+            [0,1,0,0, 0,0,0,0, 0,1,0,0], # BC EFGH 
+            [0,0,0,0, 0,0,0,1, 0,0,1,0], # HA CDEF
+            [0,0,0,1, 0,0,0,0, 0,0,0,1], # DE GHAB
+            # 3 locals win. This implies that 2 locals have adjacent bundles, and one doesn't. 
+            # there are 8 possibilities (choose bundle that has no adjacent bundles, the rest is determined)
+            [1,0,1,0, 0,1,0,0, 0,0,0,0], # AB CD FG
+            [0,0,1,0, 1,0,0,1, 0,0,0,0], # CD EF HA
+            [0,1,0,0, 1,0,1,0, 0,0,0,0], # BC EF GH
+            [1,0,0,1, 0,0,1,0, 0,0,0,0], # AB DE GH
+            [1,0,0,1, 0,1,0,0, 0,0,0,0], # AB DE FG
+            [0,0,1,0, 0,1,0,1, 0,0,0,0], # CD FG HA
+            [0,1,0,1, 0,0,1,0, 0,0,0,0], # BC DE GH
+            [0,1,0,0, 1,0,0,1, 0,0,0,0], # BC EF HA
+        ], dtype = torch.float).to(self.device)
+
+        # $ Not transformed to sparse tensor since not needed yet.
+        self.subsolutions = torch.tensor([
+            [0, 99, 99, 99],
+            [1, 99, 99, 99],
+            [2, 99, 99, 99],
+            [3, 99, 99, 99],
+            [4, 99, 99, 99],
+            [5, 99, 99, 99],
+            [6, 99, 99, 99],
+            [7, 99, 99, 99],
+            [8, 99, 99, 99],
+            [9, 99, 99, 99],
+            [10, 99, 99, 99],
+            [11, 99, 99, 99],
+            [0,2, 99, 99],
+            [0,3, 99, 99],
+            [0,4, 99, 99],
+            [0,5, 99, 99],
+            [0,6, 99, 99],
+            [0,9, 99, 99],
+            [0,10, 99, 99],
+            [1,3, 99, 99],
+            [1,4, 99, 99],
+            [1,5, 99, 99],
+            [1,6, 99, 99],
+            [1,7, 99, 99],
+            [1,9, 99, 99],
+            [2,4, 99, 99],
+            [2,5, 99, 99],
+            [2,6, 99, 99],
+            [2,7, 99, 99],
+            [2,9, 99, 99],
+            [2,11, 99, 99],
+            [3,5, 99, 99],
+            [3,6, 99, 99],
+            [3,7, 99, 99],
+            [3,11, 99, 99],
+            [4,6, 99, 99],
+            [4,7, 99, 99],
+            [4,8, 99, 99],
+            [4,11, 99, 99],
+            [5,7, 99, 99],
+            [5,8, 99, 99],
+            [6,8, 99, 99],
+            [6,10, 99, 99],
+            [7,10, 99, 99],
+            [0,2,4, 99],
+            [0,2,5, 99],
+            [0,2,6, 99],
+            [0,2,9, 99],
+            [0,3,5, 99],
+            [0,3,6, 99],
+            [0,4,6, 99],
+            [0,6,10, 99],
+            [1,3,5, 99],
+            [1,3,6, 99],
+            [1,3,7, 99],
+            [1,4,6, 99],
+            [1,4,7, 99],
+            [1,5,7, 99],
+            [2,4,6, 99],
+            [2,4,7, 99],
+            [2,4,11, 99],
+            [2,5,7, 99],
+            [3,5,7, 99],
+            [4,6,8, 99],
+            [0,2,4,6],
+            [1,3,5,7]
+            ]).to(self.device)
+
+        self.player_bundles = torch.tensor([
+                        #Bundles
+            #B1,B2,B3,B4, B5,B6,B7,B8, B9,B10,B11,B12
+            [0,1,2,3,4,5,6,7,8,9,10,11]
+        ], dtype = torch.int64).to(self.device)
+
+
+    def solveWD(self, bids: torch.Tensor):
         """
+        Computes allocation and welfare
+        
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players=6, n_bids=2), values = [0,Inf]
 
-        Specific implementation of build_AP in a more compact way, due to singlemindedness of bidders.
+        Returns
+        -------
+        allocation: torch.Tensor(batch_size, b_bundles = 18), values = {0,1}
+        welfare: torch.Tensor(batch_size), values = [0, Inf]
+        """
+        batch, players, bundles = bids.shape
+        bids_flat = bids.view(batch, players*bundles)
+        zswu = torch.mm(bids_flat, torch.transpose(self.solutions_sparse,0,1))
+        welfare, solution = torch.max(zswu,dim=1)
+        winning_bundles = self.solutions_sparse.index_select(0,solution)
+
+        return winning_bundles, welfare
+
+
+
+    def computeVCG(self, bids: torch.Tensor, allocation: torch.Tensor, welfare: torch.Tensor):
+        """
+        Computes VCG prices
+        
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players=6, n_bids=2), values = [0,Inf]
+        allocation: torch.Tensor(batch_size, b_bundles = 18), values = {0,1}
+        welfare: torch.Tensor(batch_size), values = [0, Inf]
+
+        Returns
+        -------
+        payments: torch.Tensor(batch_size, n_bidders), values = [0, Inf]
+        """
+        batch, players, bundles = bids.shape
+        bids_flat = bids.view(batch, players*bundles)
+        vcgPayments = torch.zeros(batch,players, device = self.device)
+        val = torch.zeros(batch,players, device = self.device)
+
+        for bidder in range(players):
+            bidsClone = bids.clone()
+            bidsClone[:,bidder] = 0
+            val[:,bidder] = (torch.index_select(
+                bids_flat,1,self.player_bundles[0][[2*bidder,2*bidder+1]])*
+                torch.index_select(
+                    allocation,1,self.player_bundles[0][[2*bidder,2*bidder+1]])).sum(dim=1,keepdim=True).view(-1)
+
+            vcgPayments[:,bidder] =  val[:,bidder] - (welfare - self.solveWD(bidsClone)[1])
+
+        return vcgPayments
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        TODO: Currently every bidder bids on every bundle (often 0).
+                To reduce the problem size bidders should only bid on bundles with v_i > 0
+
+        Performs a general Combinatorial auction (currently the LLLLGG special case!)
 
         Parameters
         ----------
-        bids: torch.Tensor [numberOfBidders = 6 x N_BUNDLES = 2], valuation for bundles
-              where N_BUNDLES refers to the number of bids each player submits, not the total number of bundles in the setting
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, 2) [0,Inf]
+        bundles: torch.Tensor
+            of bundles with dimensions (batch_size, 2, n_items), {0,1}
 
-        ----------
         Returns
-        ----------
-        model: full gurobi model
-        assign_i_s: dict of gurobi vars with keys (bidder, bundle), 1 if bundle is assigned to bidder, else 0
-                    value of the gurobi var can be accessed with assign_i_s[key].X
+        -------
+        allocation: torch.Tensor(batch_size, n_bidders, 2)
+        payments: torch.Tensor(batch_size, n_bidders)
         """
+        
+        # # $$$If using nn.SELU() in strategy to avoid 0 bidding: 
+        # # 1. Store indices of negative bids
+        # # 2. set to 0
+        # bids_copy = bids.clone()
+        # bids[bids<0] = 0
 
-        N_PLAYERS = 6
-        N_BUNDLES = 2
 
-        m = grb.Model()
-        m.setParam('OutputFlag',0)
-        #m.params.timelimit = 600
+        allocation, welfare = self.solveWD(bids)
+        payments = self.computeVCG(bids, allocation, welfare)
+        #transform allocation
+        allocation = allocation.view(bids.shape)
 
-        # assign vars
-        assign_i_s = {}
-        for bidder in range(N_PLAYERS):
-            for bundle in range(N_BUNDLES):
-                assign_i_s[(bidder,bundle)] = m.addVar(vtype=grb.GRB.BINARY,
-                                                       name='assign_%s_%s' % (bidder,bundle))
+        # # 3. Adjust payments to -bid
+        # bids_copy[bids_copy>0] = 0
+        # payments = payments - bids_copy.sum(2)
 
-        # Bidder can at most win one bundle
-        # NOTE: this block can be sped up by ~20% (94.4 +- 4.9 microseconds vs 76.3+2.3 microseconds in timeit)
-        # by replacing the inner for loop with
-        # sum_winning_bundles = sum(list(assign_i_s.values())[bidder*N_BUNDLES:(bidder+1)*N_BUNDLES])
-        # but that's probably not worth the loss in readability
-        for bidder in range(N_PLAYERS):
-            sum_winning_bundles = grb.LinExpr()
-            for bundle in range(N_BUNDLES):
-                sum_winning_bundles += assign_i_s[(bidder,bundle)]
-            m.addConstr(sum_winning_bundles <= 1, name = '1_max_bundle_bidder_%s' %bidder)
-
-        for item in range(self.n_items):
-            sum_item = 0
-            for (k1, k2) in assign_i_s: # the keys are tuples thus pylint: disable=dict-iter-missing-items
-                sum_item += assign_i_s[(k1,k2)] * self.bundles[k1 * N_BUNDLES + k2][item]
-            m.addConstr(sum_item <= 1, name = '2_max_ass_item_%s' %item)
-
-        objective = sum([var * coeff for var,coeff in zip(assign_i_s.values(), bids.flatten().tolist())])
-
-        m.setObjective(objective, sense=grb.GRB.MAXIMIZE)
-        m.update()
-
-        return m, assign_i_s
+        return allocation, payments

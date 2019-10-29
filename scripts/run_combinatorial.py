@@ -59,7 +59,7 @@ u_lo =   0.0
 u0_hi = 1.
 
 def strat_to_bidder(strategy, batch_size, player_position):
-    return Bidder.uniform(u_lo, u0_hi, strategy, n_items = 2, player_position=player_position, batch_size = batch_size, cuda = cuda)
+    return Bidder.uniform(u_lo, u0_hi, strategy, n_items = n_items, player_position=player_position, batch_size = batch_size, cuda = cuda)
 
 ## Environment settings
 #training batch size
