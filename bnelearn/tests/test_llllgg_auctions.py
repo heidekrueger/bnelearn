@@ -101,6 +101,11 @@ ids, testdata = zip(*[
                                          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                                          [1.0, 2.0, 0.0, 0.0, 0.0, 0.0]]))],
     ['vcg - single-batch', ('vcg', bids_2, expected_allocation_2, torch.Tensor([[0.4, 0.0, 0.3, 0.4, 0.0, 0.0]]))],
+    ['fp - multi-batch', ('first_price', bids_1, expected_allocation_1, torch.Tensor(
+                                        [[0.0, 0.0, 1.0, 1.0, 4.0, 0.0],
+                                         [4.0, 6.0, 3.0, 5.0, 0.0, 0.0],
+                                         [4.0, 5.0, 3.0, 5.0, 0.0, 0.0]]))],
+    ['fp - single-batch', ('first_price', bids_2, expected_allocation_2, torch.Tensor([[0.9, 0.0, 0.9, 0.9, 0.0, 0.0]]))]
     #['vcg - neg. bids and nn.SELU()', ('vcg', bids_3, expected_allocation_3, torch.Tensor([[0.5, 0.7, 1.5, 0.0, 0.9, 1.1]]))]
 ])
 

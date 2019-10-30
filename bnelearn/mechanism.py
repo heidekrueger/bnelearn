@@ -989,8 +989,6 @@ class MultiItemVickreyAuction(Mechanism):
 
         return (allocations, payments) # payments: batches x players, allocation: batch x players x items
 
-
-
 class CombinatorialAuction(Mechanism):
     """A combinatorial auction, implemented via (possibly parallel) calls to the gurobi solver.
 
@@ -1205,10 +1203,7 @@ class LLLLGGAuction(Mechanism):
     def __init__(self, batch_size, rule = 'first_price', cuda: bool = True):
         super().__init__(cuda)
 
-        if rule not in ['first_price', 'vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
-            raise ValueError('Invalid Pricing rule!')
-
-        if rule not in ['vcg']:
+        if rule not in ['vcg','first_price']:
             raise NotImplementedError(':(')
 
         # 'nearest_zero' and 'proxy' are aliases
@@ -1260,6 +1255,23 @@ class LLLLGGAuction(Mechanism):
         winning_bundles = self.solutions_sparse.index_select(0,solution)
 
         return winning_bundles, welfare
+
+    def calculate_payments_with_first_price(self, bids: torch.Tensor, allocation: torch.Tensor):
+        """
+        Computes first prices
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players=6, n_bids=2), values = [0,Inf]
+        allocation: torch.Tensor(batch_size, b_bundles = 18), values = {0,1}
+
+        Returns
+        -------
+        payments: torch.Tensor(batch_size, n_bidders), values = [0, Inf]
+        """
+        n_batch, n_players, n_bundles = bids.shape
+        return (allocation.view(n_batch, n_players, n_bundles)*bids).sum(dim=2)
 
     def calculate_payments_with_vcg(self, bids: torch.Tensor, allocation: torch.Tensor, welfare: torch.Tensor):
         """
@@ -1321,10 +1333,14 @@ class LLLLGGAuction(Mechanism):
 
 
         allocation, welfare = self.solve_allocation_problem(bids)
-        payments = self.calculate_payments_with_vcg(bids, allocation, welfare)
+        if self.rule == 'vcg':
+            payments = self.calculate_payments_with_vcg(bids, allocation, welfare)
+        elif self.rule == 'first_price':
+            payments = self.calculate_payments_with_first_price(bids, allocation)
+        else:
+            raise ValueError('Invalid Pricing rule!')
         #transform allocation
         allocation = allocation.view(bids.shape)
-
         # # 3. Adjust payments to -bid
         # bids_copy[bids_copy>0] = 0
         # payments = payments - bids_copy.sum(2)

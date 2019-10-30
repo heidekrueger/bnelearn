@@ -24,6 +24,11 @@ from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import matplotlib.pyplot as plt
 
+# Set seeds
+torch.manual_seed(3)
+torch.cuda.manual_seed(3)
+np.random.seed(3)
+
 # set up matplotlib
 is_ipython = 'inline' in plt.get_backend()
 if is_ipython:
@@ -48,7 +53,7 @@ if cuda: print(torch.cuda.current_device())
 log_root = os.path.abspath('.')
 run_comment = 'espg'
 save_figure_data_to_disc = False
-save_figure_to_disc = False
+save_figure_to_disc = True
 
 ## Experiment setup
 n_players = 3
@@ -63,19 +68,19 @@ def strat_to_bidder(strategy, batch_size, player_position):
 
 ## Environment settings
 #training batch size
-batch_size = 2**10
+batch_size = 2**8
 eval_batch_size = 2**25
 epoch = 3000
 
 # strategy model architecture
 input_length = 1
 output_length = 1
-hidden_nodes = [2]#5, 5]
-hidden_activations = [nn.SELU()]#, nn.SELU()]#, nn.SELU()]
+hidden_nodes = []#5, 5]
+hidden_activations = []#, nn.SELU()]#, nn.SELU()]
 
 
 learner_hyperparams = {
-    'population_size':16,
+    'population_size':4,
     'sigma': 1.,
     'scale_sigma_by_model_size': True
 }
@@ -90,10 +95,10 @@ learner_hyperparams = {
     # 'eps': 1e-8 , # added to denominator for numeric stability
     # 'weight_decay': 0, #L2-decay
     # 'amsgrad': False #whether to use amsgrad-variant
-optimizer_type = torch.optim.SGD
+optimizer_type = torch.optim.Adam
 optimizer_hyperparams ={    
-    'lr': 1e-3,
-    'momentum': 0.9
+    #'lr': 1e-3,
+    #'momentum': 0.9
 }
 
 # plot and log training options
@@ -190,7 +195,7 @@ def plot_bid_function(fig, valuations, bids, writer=None, e=None,
         display.clear_output(wait=True)
     #display.display(fig)
     #plt.show()
-    plt.plot(v_print[1], b_print[1], 'bo')
+    #plt.plot(v_print[1], b_print[1], 'bo')
     #display.display(fig)
     #plt.show()
     if save_png_to_disc:
@@ -203,8 +208,8 @@ def plot_bid_function(fig, valuations, bids, writer=None, e=None,
 model_0 = NeuralNetStrategy(input_length = input_length,                            
                             hidden_nodes = hidden_nodes,
                             hidden_activations = hidden_activations,
-                            output_length = output_length).to(device)#,
-                            #ensure_positive_output = torch.tensor([float(u_lo), float(u_lo)])).to(device)
+                            output_length = output_length,
+                            ensure_positive_output = torch.tensor([float(u0_hi)])).to(device)
    
 
 #model_1 = NeuralNetStrategy(input_length,
@@ -226,7 +231,7 @@ bundles_1 = torch.Tensor([
     [1] #B1
     ])
 
-mechanism = CombinatorialAuction(cuda = cuda, bundles = bundles_1)
+mechanism = CombinatorialAuction(cuda = cuda, rule = 'vcg', bundles = bundles_1, parallel = 4)
 env = AuctionEnvironment(mechanism,
                   agents = bidders,
                   batch_size = batch_size,
@@ -302,19 +307,19 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
         utilities = torch.tensor([utility_0])#, utility_1])
             
         # plot current function output
+        if e%10 == 0: 
+            v = [None] * len(bidders)
+            b = [None] * len(bidders)
+            for k, bidder in enumerate(bidders):
+                bidder.draw_valuations_()
+                v[k] = bidder.valuations#.squeeze(0)
+                b[k] = bidder.get_action()#.squeeze(0)
+            fig = plt.figure()
             
-        v = [None] * len(bidders)
-        b = [None] * len(bidders)
-        for k, bidder in enumerate(bidders):
-            bidder.draw_valuations_()
-            v[k] = bidder.valuations#.squeeze(0)
-            b[k] = bidder.get_action()#.squeeze(0)
-        fig = plt.figure()
-        
-        #print(('Epoch: {}: Model utility in learning env:'+'\t{:.5f}'*n_players).format(e, *utilities))            
-        #print("Epoch {}: \tutilities: \t p0: {:.3f} \t p1: {:.3f}".format(e, utility_0, utility_1))
-        plot_bid_function(fig, v, b, writer,e,
-                              save_png_to_disc=save_figure_to_disc)  
+            #print(('Epoch: {}: Model utility in learning env:'+'\t{:.5f}'*n_players).format(e, *utilities))            
+            #print("Epoch {}: \tutilities: \t p0: {:.3f} \t p1: {:.3f}".format(e, utility_0, utility_1))
+            plot_bid_function(fig, v, b, writer,e,
+                                save_png_to_disc=save_figure_to_disc)  
         
         elapsed = timer() - start_time
         overhead_mins = overhead_mins + elapsed/60
