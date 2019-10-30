@@ -61,7 +61,7 @@ def run_Combinatorial_test(rule, device, bids, bundle, expected_allocation, expe
     allocation, payments = game.run(bids.to(device))
 
     assert torch.equal(allocation, expected_allocation.to(device)), "Wrong allocation"
-    assert torch.equal(payments, expected_VCG_payments.to(device)), "Wrong payments"
+    assert torch.allclose(payments, expected_VCG_payments.to(device)), "Wrong payments"
 
 @pytest.mark.parametrize("rule,bids,bundles,expected_allocation,expected_payments", testdata, ids=ids)
 def test_Combinatorial(rule,bids,bundles,expected_allocation,expected_payments):
