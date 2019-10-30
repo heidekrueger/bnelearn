@@ -43,27 +43,28 @@ bundles_2 = torch.Tensor([
     [1,1], #B3
     ])
 
+# each test input takes form rule: string, bids:torch.tensor, bundles: torch.tensor,
+#                            expected_allocation: torch.tensor, expected_payments: torch.tensor
+ids, testdata = zip(*[
+    ['vcg - single-item', ('vcg', bids_1, bundles_1, expected_allocation_1, torch.Tensor([[1.5, 0.0, 0.0]]))],
+    ['vcg - multi-item', ('vcg', bids_2, bundles_2, expected_allocation_2, torch.Tensor([[0.0, 0.0, 1.8]]))]
+])
+
 def run_Combinatorial_test(rule, device, bids, bundle, expected_allocation, expected_VCG_payments):
     """Run correctness test for a given LLLLGG rule"""
     cuda = device == 'cuda' and torch.cuda.is_available()
 
-    if device == 'cuda' and not cuda:
-        pytest.skip("This test needs CUDA, but it's not available.")
+    if device == 'cuda' and not torch.cuda.is_available():
+        pytest.skip("CUDA not available. skipping...")
 
     game = CombinatorialAuction(rule = rule, cuda=cuda, bundles = bundle)
     allocation, payments = game.run(bids.to(device))
 
-    assert torch.equal(allocation, expected_allocation.to('cuda')), "Wrong allocation"
-    assert torch.equal(payments, expected_VCG_payments.to('cuda')), "Wrong payments"
+    assert torch.equal(allocation, expected_allocation.to(device)), "Wrong allocation"
+    assert torch.equal(payments, expected_VCG_payments.to(device)), "Wrong payments"
 
-def test_1_Combinatorial_vcg():
-    """"""
-    rule = 'vcg'
-    expected_VCG_payments = torch.Tensor([[1.5, 0.0, 0.0]])
-    run_Combinatorial_test(rule, 'cuda', bids_1, bundles_1, expected_allocation_1, expected_VCG_payments)
-
-def test_2_Combinatorial_vcg():
-    """"""
-    rule = 'vcg'
-    expected_VCG_payments = torch.Tensor([[0.0, 0.0, 1.8]])
-    run_Combinatorial_test(rule, 'cuda', bids_2, bundles_2, expected_allocation_2, expected_VCG_payments)
+@pytest.mark.parametrize("rule,bids,bundles,expected_allocation,expected_payments", testdata, ids=ids)
+def test_Combinatorial(rule,bids,bundles,expected_allocation,expected_payments):
+    """ Tests allocation and payments in combinatorial auctions"""
+    run_Combinatorial_test(rule, 'cpu', bids, bundles, expected_allocation, expected_payments)
+    run_Combinatorial_test(rule, 'cuda', bids, bundles, expected_allocation, expected_payments)
