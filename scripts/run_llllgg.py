@@ -75,19 +75,19 @@ def strat_to_bidder(strategy, batch_size, player_position):
 ## Environment settings
 n_threads = 1
 model_sharing = True
-#training batch size
-batch_size = 2**17
+#training batch size (2**17 - 2**18 for vcg)
+batch_size = 2**18
 eval_batch_size = 2**25
-epoch = 7000
+epoch = 10000
 
 # strategy model architecture
 input_length = 2
-hidden_nodes = [5, 5]
-hidden_activations = [nn.SELU(), nn.SELU()]
+hidden_nodes = [5, 3, 5, 2]
+hidden_activations = [nn.SELU(), nn.Tanh(), nn.Tanh(), nn.SELU()]
 
 
 learner_hyperparams = {
-    'population_size':32,
+    'population_size':512,
     'sigma': 1.,
     'scale_sigma_by_model_size': True
 }
@@ -102,10 +102,10 @@ learner_hyperparams = {
     # 'eps': 1e-8 , # added to denominator for numeric stability
     # 'weight_decay': 0, #L2-decay
     # 'amsgrad': False #whether to use amsgrad-variant
-optimizer_type = torch.optim.Adam
+optimizer_type = torch.optim.SGD
 optimizer_hyperparams ={    
-    #'lr': 1e-3,
-    #'momentum': 0.9
+    'lr': 1e-3,
+    'momentum': 0.8
 }
 
 # plot and log training options
@@ -117,7 +117,7 @@ plot_xmax = u1_hi
 plot_ymin = u_lo
 plot_ymax = u1_hi
 plot_zmin = u_lo
-plot_zmax = u1_hi * 2
+plot_zmax = u1_hi * 1
 
 ############################Setting up the Environment##########################
 # for evaluation
@@ -181,23 +181,32 @@ def plot_bid_function_3d(writer, e, save_figure_to_disc=False):
     xv[1], yv[1] = torch.meshgrid([lin_global, lin_global])
     valuations = torch.zeros(plot_points**2, len(models), input_length, device=device)
     models_print = [None] * len(models)
+    models_print_wf = [None] * len(models)
 
     for model_idx in range(len(models)):
         valuations[:,model_idx,0] = xv[model_idx].reshape(plot_points**2)
         valuations[:,model_idx,1] = yv[model_idx].reshape(plot_points**2)
         models_print[model_idx] = models[model_idx].play(valuations[:,model_idx,:])
+        models_print_wf[model_idx] = models_print[model_idx].view(100,100,2)
 
     fig = plt.figure()
     for model_idx in range(len(models)):
         for input_idx in range(input_length):
             ax = fig.add_subplot(len(models), 2, model_idx*input_length+input_idx+1, projection='3d')
             ax.plot_trisurf(
+                
                 xv[model_idx].reshape(plot_points**2).detach().cpu().numpy(),
                 yv[model_idx].reshape(plot_points**2).detach().cpu().numpy(),
                 models_print[model_idx][:,input_idx].reshape(plot_points**2).detach().cpu().numpy(),
-                cmap = 'plasma',
-                # linewidth = 0,
+                color = 'yellow',
+                linewidth = 0.2,
                 antialiased = True
+            )
+            ax.plot_wireframe(
+                xv[model_idx].detach().cpu().numpy(),
+                yv[model_idx].detach().cpu().numpy(),
+                models_print_wf[model_idx][:,:,input_idx].detach().cpu().numpy(),
+                rstride=4, cstride=4
             )
             # Axis labeling
             if model_idx == 0:
@@ -227,6 +236,21 @@ if model_sharing:
 else:
     models = [None] * n_players
 
+# Generate sample
+tmp_plot_points = plot_points
+plot_points = 100
+lin_local = torch.linspace(u_lo, u0_hi, plot_points)
+lin_global = torch.linspace(u_lo, u1_hi, plot_points)
+xv = [None] * 2
+yv = [None] * 2
+xv[0], yv[0] = torch.meshgrid([lin_local, lin_local])
+xv[1], yv[1] = torch.meshgrid([lin_global, lin_global])
+valuations = torch.zeros(plot_points**2, len(models), input_length, device=device)
+models_print = [None] * len(models)
+for model_idx in range(len(models)):
+    valuations[:,model_idx,0] = xv[model_idx].reshape(plot_points**2)
+    valuations[:,model_idx,1] = yv[model_idx].reshape(plot_points**2)
+
 sample = torch.tensor([[float(u0_hi), float(u0_hi)],
              [float(u0_hi), float(u1_hi)],
              [float(u1_hi), float(u1_hi)]])
@@ -237,6 +261,9 @@ for k,v in enumerate(models):
                             hidden_activations = hidden_activations,
                             ensure_positive_output = sample,
                             output_length = 2).to(device)
+    models[k].pretrain(valuations[:,k,:],1000)
+
+plot_points = tmp_plot_points
 
 n_parameters = [sum([p.numel() for model in models for p in model.parameters()]),sum([p.numel() for model in models for p in model.parameters()])]
 
@@ -250,7 +277,7 @@ for k,v in enumerate(bidders):
     else:
         bidders[k] = strat_to_bidder(models[k], batch_size, player_position=k)
 
-mechanism = LLLLGGAuction(batch_size = batch_size, rule = 'vcg', cuda = cuda)
+mechanism = LLLLGGAuction(batch_size = batch_size, rule = 'first_price', cuda = cuda)
 env = AuctionEnvironment(mechanism,
                   agents = bidders,
                   batch_size = batch_size,
@@ -328,7 +355,7 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
             plot_bid_function(fig, v, b, writer,e,plot_points = plot_points,
                                   save_png_to_disc=save_figure_to_disc)  
             plot_bid_function_3d(writer=None,e=e,save_figure_to_disc = save_figure_to_disc) 
-        
+
         elapsed = timer() - start_time
         overhead_mins = overhead_mins + elapsed/60
         writer.add_scalar('debug/overhead_mins', overhead_mins, e)

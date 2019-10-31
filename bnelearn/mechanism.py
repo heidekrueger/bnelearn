@@ -7,7 +7,6 @@ This module implements games such as matrix games and auctions.
 import os
 import sys
 
-from bnelearn.util import large_lists
 from abc import ABC, abstractmethod
 from typing import List, Tuple
 import warnings
@@ -1019,7 +1018,7 @@ class CombinatorialAuction(Mechanism):
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Performs a general Combinatorial auction (currently the LLLLGG special case!)
+        Performs a general Combinatorial auction
 
         Parameters
         ----------
@@ -1050,7 +1049,7 @@ class CombinatorialAuction(Mechanism):
                 # The following code is wrapped to produce progess bar, without it simplifies to:
                 # result = p.map(self.closure, split_tensor, chunksize=1)
                 result = list(tqdm(
-                    p.imap(self.run_single_batch, iterator, chunksize=1),
+                    p.imap(self._run_single_batch, iterator, chunksize=1),
                     total = n_chunks, unit='chunks',
                     desc = 'Solving mechanism for batch_size {} with {} processes, chunk size of {}'.format(
                         n_chunks, pool_size, 1)
@@ -1059,11 +1058,11 @@ class CombinatorialAuction(Mechanism):
 
         else:
             iterator = bids.split(1)
-            allocation, payment = [torch.cat(x) for x in zip(*map(self.run_single_batch, iterator))]
+            allocation, payment = [torch.cat(x) for x in zip(*map(self._run_single_batch, iterator))]
 
         return allocation.to(self.device), payment.to(self.device)
 
-    def run_single_batch(self, bids):
+    def _run_single_batch(self, bids):
         """Runs the auction for a single batch of bids.
 
         Currently only supports bid languages where all players bid on the same number of bundles.
@@ -1078,19 +1077,19 @@ class CombinatorialAuction(Mechanism):
         # # for now we're assuming all bidders submit same number of bundle bids
         n_batch, n_players, n_bundles = bids.shape # this will not work if different n_bundles per player
         bids = bids.squeeze(0)
-        model_all, assign_i_s = self.build_allocation_problem(bids)
-        self.solve_allocation_problem(model_all)
+        model_all, assign_i_s = self._build_allocation_problem(bids)
+        self._solve_allocation_problem(model_all)
 
         allocation = torch.tensor(model_all.getAttr('x', assign_i_s).values(),
                                   device = bids.device).view(n_players, n_bundles)
         if self.rule == 'vcg':
-            payments = self.calculate_payments_with_vcg(bids, model_all, allocation, assign_i_s)
+            payments = self._calculate_payments_vcg(bids, model_all, allocation, assign_i_s)
         else:
             raise ValueError('Invalid Pricing rule!')
 
         return allocation.unsqueeze(0), payments.unsqueeze(0)
 
-    def calculate_payments_with_vcg(self, bids, model_all, allocation, assign_i_s):
+    def _calculate_payments_vcg(self, bids, model_all, allocation, assign_i_s):
         """
         Caculating vcg payments
         """
@@ -1106,7 +1105,7 @@ class CombinatorialAuction(Mechanism):
             model_all.addConstrs((assign_i_s[(bidder, bundle)] <=0 for bundle in range(n_bundles)))
             model_all.update()
 
-            self.solve_allocation_problem(model_all)
+            self._solve_allocation_problem(model_all)
             delta_tensor[bidder] = global_objective - model_all.ObjVal # pylint: disable = no-member
 
             # get rid of additional constraints added above
@@ -1114,7 +1113,7 @@ class CombinatorialAuction(Mechanism):
 
         return utilities - delta_tensor
 
-    def solve_allocation_problem(self, model):
+    def _solve_allocation_problem(self, model):
         """
         solving handed model
 
@@ -1137,7 +1136,7 @@ class CombinatorialAuction(Mechanism):
         
 
 
-    def build_allocation_problem(self, bids):
+    def _build_allocation_problem(self, bids):
         """
         Parameters
         ----------
@@ -1194,13 +1193,14 @@ class CombinatorialAuction(Mechanism):
 
 class LLLLGGAuction(Mechanism):
     """
-    Inspired by implementation of Seuken Paper (Bosshard et al. (2019)).
+    Inspired by implementation of Seuken Paper (Bosshard et al. (2019), https://arxiv.org/abs/1812.01955).
     Hard coded possible solutions for faster batch computations.
 
     Args:
         rule: pricing rule
     """
     def __init__(self, batch_size, rule = 'first_price', cuda: bool = True):
+        from bnelearn.util import large_lists_LLLLGG
         super().__init__(cuda)
 
         if rule not in ['vcg','first_price']:
@@ -1215,12 +1215,12 @@ class LLLLGGAuction(Mechanism):
         self.n_bidders = 6
         self.n_bundles = 2
 
-        self.solutions = torch.tensor(large_lists.solutions, device = self.device)
+        self.solutions_sparse = torch.tensor(large_lists_LLLLGG.solutions_sparse, device = self.device)
 
-        self.solutions_sparse = torch.tensor(large_lists.solutions_sparse, dtype = torch.float, device = self.device)
+        self.solutions_non_sparse = torch.tensor(large_lists_LLLLGG.solutions_non_sparse, dtype = torch.float, device = self.device)
 
         # $ Not transformed to sparse tensor since not needed yet.
-        self.subsolutions = torch.tensor(large_lists.subsolutions, device = self.device)
+        self.subsolutions = torch.tensor(large_lists_LLLLGG.subsolutions, device = self.device)
 
         self.player_bundles = torch.tensor([
                         #Bundles
@@ -1234,7 +1234,7 @@ class LLLLGGAuction(Mechanism):
         ], dtype = torch.long, device = self.device)
 
 
-    def solve_allocation_problem(self, bids: torch.Tensor):
+    def _solve_allocation_problem(self, bids: torch.Tensor):
         """
         Computes allocation and welfare
 
@@ -1250,13 +1250,13 @@ class LLLLGGAuction(Mechanism):
         """
         n_batch, n_players, n_bundles = bids.shape
         bids_flat = bids.view(n_batch, n_players*n_bundles)
-        solutions_welfare = torch.mm(bids_flat, torch.transpose(self.solutions_sparse,0,1))
+        solutions_welfare = torch.mm(bids_flat, torch.transpose(self.solutions_non_sparse,0,1))
         welfare, solution = torch.max(solutions_welfare,dim=1)  # maximizes over all possible allocations
-        winning_bundles = self.solutions_sparse.index_select(0,solution)
+        winning_bundles = self.solutions_non_sparse.index_select(0,solution)
 
         return winning_bundles, welfare
 
-    def calculate_payments_with_first_price(self, bids: torch.Tensor, allocation: torch.Tensor):
+    def _calculate_payments_first_price(self, bids: torch.Tensor, allocation: torch.Tensor):
         """
         Computes first prices
 
@@ -1273,7 +1273,7 @@ class LLLLGGAuction(Mechanism):
         n_batch, n_players, n_bundles = bids.shape
         return (allocation.view(n_batch, n_players, n_bundles)*bids).sum(dim=2)
 
-    def calculate_payments_with_vcg(self, bids: torch.Tensor, allocation: torch.Tensor, welfare: torch.Tensor):
+    def _calculate_payments_vcg(self, bids: torch.Tensor, allocation: torch.Tensor, welfare: torch.Tensor):
         """
         Computes VCG prices
 
@@ -1301,16 +1301,13 @@ class LLLLGGAuction(Mechanism):
                 bids_flat.index_select(1, bidder_bundles) * allocation.index_select(1, bidder_bundles),
                 dim =1, keepdim=True).view(-1)
 
-            vcg_payments[:,bidder] =  val[:,bidder] - (welfare - self.solve_allocation_problem(bids_clone)[1])
+            vcg_payments[:,bidder] =  val[:,bidder] - (welfare - self._solve_allocation_problem(bids_clone)[1])
 
         return vcg_payments
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        TODO: Currently every bidder bids on every bundle (often 0).
-                To reduce the problem size bidders should only bid on bundles with v_i > 0
-
-        Performs a general Combinatorial auction (currently the LLLLGG special case!)
+        Performs a specific LLLLGG auction as in Seuken Paper (Bosshard et al. (2019))
 
         Parameters
         ----------
@@ -1323,6 +1320,8 @@ class LLLLGGAuction(Mechanism):
         -------
         allocation: torch.Tensor(batch_size, n_bidders, 2)
         payments: torch.Tensor(batch_size, n_bidders)
+        TODO: Currently every bidder bids on every bundle (often 0).
+                To reduce the problem size bidders should only bid on bundles with v_i > 0
         """
 
         # # $$$If using nn.SELU() in strategy to avoid 0 bidding:
@@ -1332,11 +1331,11 @@ class LLLLGGAuction(Mechanism):
         # bids[bids<0] = 0
 
 
-        allocation, welfare = self.solve_allocation_problem(bids)
+        allocation, welfare = self._solve_allocation_problem(bids)
         if self.rule == 'vcg':
-            payments = self.calculate_payments_with_vcg(bids, allocation, welfare)
+            payments = self._calculate_payments_vcg(bids, allocation, welfare)
         elif self.rule == 'first_price':
-            payments = self.calculate_payments_with_first_price(bids, allocation)
+            payments = self._calculate_payments_first_price(bids, allocation)
         else:
             raise ValueError('Invalid Pricing rule!')
         #transform allocation

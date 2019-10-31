@@ -67,7 +67,7 @@ subsolutions  = [
             [1,3,5,7]
             ]
 
-solutions = [
+solutions_sparse = [
             # 4 local bidders win
             [0, 2, 4, 6], 	# AB CD EF GH
             [1, 3, 5, 7], 	# BC DE FG HA
@@ -92,7 +92,7 @@ solutions = [
             [1, 4, 7, 99],		# BC EF HA
             ]
 
-solutions_sparse = [
+solutions_non_sparse = [
             # 4 local bidders win
             [1,0,1,0, 1,0,1,0, 0,0,0,0], # AB CD EF GH
             [0,1,0,1, 0,1,0,1, 0,0,0,0], # BC DE FG HA
