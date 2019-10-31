@@ -37,3 +37,6 @@ pylint.txt
 
 # ignore experiments subdirectory used for logging
 /experiments/*
+
+# gurobi log files
+**/gurobi.log

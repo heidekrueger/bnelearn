@@ -4,12 +4,19 @@
 This module implements games such as matrix games and auctions.
 """
 
+import os
+import sys
+
 from abc import ABC, abstractmethod
 from typing import List, Tuple
 import warnings
 
+import gurobipy as grb
+
 #pylint: disable=E1102
 import torch
+
+from tqdm import tqdm
 
 # Type declarations
 Outcome = Tuple[torch.Tensor, torch.Tensor]
@@ -980,3 +987,361 @@ class MultiItemVickreyAuction(Mechanism):
         #                 bids_extend.clone().detach()[batch,mask,highest_losing_prices_indices]
 
         return (allocations, payments) # payments: batches x players, allocation: batch x players x items
+
+class CombinatorialAuction(Mechanism):
+    """A combinatorial auction, implemented via (possibly parallel) calls to the gurobi solver.
+
+       Args:
+        rule: pricing rule
+
+    """
+    def __init__(self, rule = 'first_price', cuda: bool = True, bundles = None, parallel: int = 1):
+        super().__init__(cuda)
+
+        if rule not in ['vcg']:
+            raise NotImplementedError(':(')
+
+        # 'nearest_zero' and 'proxy' are aliases
+        if rule == 'proxy':
+            rule = 'nearest_zero'
+
+        self.rule = rule
+        self.parallel = parallel
+
+        self.bundles = bundles
+        self.n_items = len(self.bundles[0])
+
+    def __mute(self):
+        """suppresses stdout output from workers (avoid gurobi startup licence message clutter)"""
+        sys.stdout = open(os.devnull, 'w')
+
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Performs a general Combinatorial auction
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, 2) [0,Inf]
+        bundles: torch.Tensor
+            of bundles with dimensions (batch_size, 2, n_items), {0,1}
+
+        Returns
+        -------
+        allocation: torch.Tensor(batch_size, n_bidders, 2)
+        payments: torch.Tensor(batch_size, n_bidders)
+        """
+
+        # detect appropriate pool size
+        pool_size = min(self.parallel,len(bids))
+
+        # parallel version
+        if pool_size > 1:
+
+            iterator =  bids.detach().cpu().split(1)
+            n_chunks = len(iterator)
+
+            torch.multiprocessing.set_sharing_strategy('file_system')
+            with torch.multiprocessing.Pool(pool_size, initializer=self.__mute) as p:
+                # as we handled chunks ourselves, each element of our list should be an individual chunk,
+                # so the pool.map will get argument chunksize=1
+                # The following code is wrapped to produce progess bar, without it simplifies to:
+                # result = p.map(self.closure, split_tensor, chunksize=1)
+                result = list(tqdm(
+                    p.imap(self._run_single_batch, iterator, chunksize=1),
+                    total = n_chunks, unit='chunks',
+                    desc = 'Solving mechanism for batch_size {} with {} processes, chunk size of {}'.format(
+                        n_chunks, pool_size, 1)
+                    ))
+            allocation, payment = [torch.cat(x) for x in zip(*result)]
+
+        else:
+            iterator = bids.split(1)
+            allocation, payment = [torch.cat(x) for x in zip(*map(self._run_single_batch, iterator))]
+
+        return allocation.to(self.device), payment.to(self.device)
+
+    def _run_single_batch(self, bids):
+        """Runs the auction for a single batch of bids.
+
+        Currently only supports bid languages where all players bid on the same number of bundles.
+
+        Args:
+            bids: torch.Tensor (1 x n_player x n_bundles)
+
+        Returns:
+            winners: torch.Tensor (1 x n_player x n_bundles), payments: torch.Tensor (1 x n_player)
+        """
+
+        # # for now we're assuming all bidders submit same number of bundle bids
+        n_batch, n_players, n_bundles = bids.shape # this will not work if different n_bundles per player
+        bids = bids.squeeze(0)
+        model_all, assign_i_s = self._build_allocation_problem(bids)
+        self._solve_allocation_problem(model_all)
+
+        allocation = torch.tensor(model_all.getAttr('x', assign_i_s).values(),
+                                  device = bids.device).view(n_players, n_bundles)
+        if self.rule == 'vcg':
+            payments = self._calculate_payments_vcg(bids, model_all, allocation, assign_i_s)
+        else:
+            raise ValueError('Invalid Pricing rule!')
+
+        return allocation.unsqueeze(0), payments.unsqueeze(0)
+
+    def _calculate_payments_vcg(self, bids, model_all, allocation, assign_i_s):
+        """
+        Caculating vcg payments
+        """
+        n_players, n_bundles = bids.shape
+        utilities = (allocation * bids).sum(dim=1) # shape: n_players
+        # get relevant state of full model
+        n_global_constr = len(model_all.getConstrs())
+        global_objective = model_all.ObjVal # pylint: disable = no-member
+        # Solve allocation problem without each player to get vcg prices
+        delta_tensor = torch.zeros(n_players, device = bids.device)
+        for bidder in range(n_players):
+            # additional constraints: no assignment to bidder i
+            model_all.addConstrs((assign_i_s[(bidder, bundle)] <=0 for bundle in range(n_bundles)))
+            model_all.update()
+
+            self._solve_allocation_problem(model_all)
+            delta_tensor[bidder] = global_objective - model_all.ObjVal # pylint: disable = no-member
+
+            # get rid of additional constraints added above
+            model_all.remove(model_all.getConstrs()[n_global_constr:])
+
+        return utilities - delta_tensor
+
+    def _solve_allocation_problem(self, model):
+        """
+        solving handed model
+
+        Args: a gurobi model object
+
+        Returns: nothing, model object is updated in place
+        """
+        model.setParam('OutputFlag',0)
+        # if print_gurobi_model:
+        #     model.write(os.path.join(util.PATH, 'GurobiSol', '%s.lp' % model_name))
+        model.optimize()
+
+        # if print_gurobi_model:
+        #     try:
+        #         model.write(os.path.join(util.PATH, 'GurobiSol', '%s.sol' % model_name))
+        #     except:
+        #         model.computeIIS()
+        #         model.write(util.PATH+'\\GurobiSol\\%s.ilp' % model_name)
+        #         raise
+        
+
+
+    def _build_allocation_problem(self, bids):
+        """
+        Parameters
+        ----------
+        bids: torch.Tensor [n_bidders, n_bundles], valuation for bundles
+
+
+        Returns
+        ----------
+        model: full gurobi model
+        assign_i_s: dict of gurobi vars with keys (bidder, bundle), 1 if bundle is assigned to bidder, else 0
+                    value of the gurobi var can be accessed with assign_i_s[key].X
+        """
+        # In the standard case every bidder has to bid on every bundle.
+        n_players, n_bundles = bids.shape
+        assert n_bundles == len(self.bundles), "Bidder 0 doesn't bid on all bundles"
+
+        m = grb.Model()
+        m.setParam('OutputFlag',0)
+        #m.params.timelimit = 600
+
+        # assign vars
+        assign_i_s = {} #[None] * n_players
+        for bidder in range(n_players):
+            # number of bundles might be specific to the bidder
+            for bundle in range(n_bundles):
+                assign_i_s[(bidder,bundle)] = m.addVar(vtype=grb.GRB.BINARY,
+                                                       name='assign_%s_%s' % (bidder,bundle))
+        m.update()
+
+        # Bidder can at most win one bundle
+        # NOTE: this block can be sped up by ~20% (94.4 +- 4.9 microseconds vs 76.3+2.3 microseconds in timeit)
+        # by replacing the inner for loop with
+        # sum_winning_bundles = sum(list(assign_i_s.values())[bidder*N_BUNDLES:(bidder+1)*N_BUNDLES])
+        # but that's probably not worth the loss in readability
+        for bidder in range(n_players):
+            sum_winning_bundles = grb.LinExpr()
+            for bundle in range(n_bundles):
+                sum_winning_bundles += assign_i_s[(bidder,bundle)]
+            m.addConstr(sum_winning_bundles <= 1, name = '1_max_bundle_bidder_%s' %bidder)
+
+        # every item can be allocated at most once
+        for item in range(self.n_items):
+            sum_item = 0
+            for (k1, k2) in assign_i_s: # the keys are tuples thus pylint: disable=dict-iter-missing-items
+                sum_item += assign_i_s[(k1,k2)] * self.bundles[k2][item]
+            m.addConstr(sum_item <= 1, name = '2_max_ass_item_%s' %item)
+
+        objective = sum([var * coeff for var,coeff in zip(assign_i_s.values(), bids.flatten().tolist())])
+
+        m.setObjective(objective, sense=grb.GRB.MAXIMIZE)
+        m.update()
+
+        return m, assign_i_s
+
+class LLLLGGAuction(Mechanism):
+    """
+    Inspired by implementation of Seuken Paper (Bosshard et al. (2019), https://arxiv.org/abs/1812.01955).
+    Hard coded possible solutions for faster batch computations.
+
+    Args:
+        rule: pricing rule
+    """
+    def __init__(self, batch_size, rule = 'first_price', cuda: bool = True):
+        from bnelearn.util import large_lists_LLLLGG
+        super().__init__(cuda)
+
+        if rule not in ['vcg','first_price']:
+            raise NotImplementedError(':(')
+
+        # 'nearest_zero' and 'proxy' are aliases
+        if rule == 'proxy':
+            rule = 'nearest_zero'
+        self.batch_size = batch_size
+        self.rule = rule
+        self.n_items = 8
+        self.n_bidders = 6
+        self.n_bundles = 2
+
+        self.solutions_sparse = torch.tensor(large_lists_LLLLGG.solutions_sparse, device = self.device)
+
+        self.solutions_non_sparse = torch.tensor(large_lists_LLLLGG.solutions_non_sparse, dtype = torch.float, device = self.device)
+
+        # $ Not transformed to sparse tensor since not needed yet.
+        self.subsolutions = torch.tensor(large_lists_LLLLGG.subsolutions, device = self.device)
+
+        self.player_bundles = torch.tensor([
+                        #Bundles
+            #B1,B2,B3,B4, B5,B6,B7,B8, B9,B10,B11,B12
+            [0,1],
+            [2,3],
+            [4,5],
+            [6,7],
+            [8,9],
+            [10,11]
+        ], dtype = torch.long, device = self.device)
+
+
+    def _solve_allocation_problem(self, bids: torch.Tensor):
+        """
+        Computes allocation and welfare
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players=6, n_bids=2), values = [0,Inf]
+
+        Returns
+        -------
+        allocation: torch.Tensor(batch_size, b_bundles = 18), values = {0,1}
+        welfare: torch.Tensor(batch_size), values = [0, Inf]
+        """
+        n_batch, n_players, n_bundles = bids.shape
+        bids_flat = bids.view(n_batch, n_players*n_bundles)
+        solutions_welfare = torch.mm(bids_flat, torch.transpose(self.solutions_non_sparse,0,1))
+        welfare, solution = torch.max(solutions_welfare,dim=1)  # maximizes over all possible allocations
+        winning_bundles = self.solutions_non_sparse.index_select(0,solution)
+
+        return winning_bundles, welfare
+
+    def _calculate_payments_first_price(self, bids: torch.Tensor, allocation: torch.Tensor):
+        """
+        Computes first prices
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players=6, n_bids=2), values = [0,Inf]
+        allocation: torch.Tensor(batch_size, b_bundles = 18), values = {0,1}
+
+        Returns
+        -------
+        payments: torch.Tensor(batch_size, n_bidders), values = [0, Inf]
+        """
+        n_batch, n_players, n_bundles = bids.shape
+        return (allocation.view(n_batch, n_players, n_bundles)*bids).sum(dim=2)
+
+    def _calculate_payments_vcg(self, bids: torch.Tensor, allocation: torch.Tensor, welfare: torch.Tensor):
+        """
+        Computes VCG prices
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players=6, n_bids=2), values = [0,Inf]
+        allocation: torch.Tensor(batch_size, b_bundles = 18), values = {0,1}
+        welfare: torch.Tensor(batch_size), values = [0, Inf]
+
+        Returns
+        -------
+        payments: torch.Tensor(batch_size, n_bidders), values = [0, Inf]
+        """
+        n_batch, n_players, n_bundles = bids.shape
+        bids_flat = bids.view(n_batch, n_players*n_bundles)
+        vcg_payments = torch.zeros(n_batch,n_players, device = self.device)
+        val = torch.zeros(n_batch,n_players, device = self.device)
+        #TODO: (for later) Can be speed up by computing in parallel instead of a loop
+        for bidder in range(n_players):
+            bids_clone = bids.clone()
+            bids_clone[:,bidder] = 0
+            bidder_bundles = self.player_bundles[bidder]
+            val[:,bidder] = torch.sum(
+                bids_flat.index_select(1, bidder_bundles) * allocation.index_select(1, bidder_bundles),
+                dim =1, keepdim=True).view(-1)
+
+            vcg_payments[:,bidder] =  val[:,bidder] - (welfare - self._solve_allocation_problem(bids_clone)[1])
+
+        return vcg_payments
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Performs a specific LLLLGG auction as in Seuken Paper (Bosshard et al. (2019))
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, 2) [0,Inf]
+        bundles: torch.Tensor
+            of bundles with dimensions (batch_size, 2, n_items), {0,1}
+
+        Returns
+        -------
+        allocation: torch.Tensor(batch_size, n_bidders, 2)
+        payments: torch.Tensor(batch_size, n_bidders)
+        TODO: Currently every bidder bids on every bundle (often 0).
+                To reduce the problem size bidders should only bid on bundles with v_i > 0
+        """
+
+        # # $$$If using nn.SELU() in strategy to avoid 0 bidding:
+        # # 1. Store indices of negative bids
+        # # 2. set to 0
+        # bids_copy = bids.clone()
+        # bids[bids<0] = 0
+
+
+        allocation, welfare = self._solve_allocation_problem(bids)
+        if self.rule == 'vcg':
+            payments = self._calculate_payments_vcg(bids, allocation, welfare)
+        elif self.rule == 'first_price':
+            payments = self._calculate_payments_first_price(bids, allocation)
+        else:
+            raise ValueError('Invalid Pricing rule!')
+        #transform allocation
+        allocation = allocation.view(bids.shape)
+        # # 3. Adjust payments to -bid
+        # bids_copy[bids_copy>0] = 0
+        # payments = payments - bids_copy.sum(2)
+
+        return allocation, payments
