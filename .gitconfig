@@ -1,3 +1,7 @@
+## Note: on your development machine, you must run the following once
+## to apply these filters to you .git/config file:
+# git config --local include.path ../.gitconfig
+
 [core]
 attributesfile = .gitattributes
 

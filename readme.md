@@ -22,3 +22,9 @@ Running experiments for n-player Matrix and single-item one-shot auction Games w
 
 ## Installation and Running the software
 See [Installation](installation.md)
+
+### git filters
+When developing on a new machine, run 
+```git config --local include.path ../.gitconfig```
+in your repository root once.
+This ensures the filters in `.gitconfig` will be applied to commits (e.g. cleaning up notebook output)
