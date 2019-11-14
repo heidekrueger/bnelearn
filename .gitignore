@@ -26,6 +26,8 @@ pylint.txt
 /runs
 /notebooks/runs
 /notebooks/**/*.png
+/notebooks/**/*.svg
+/notebooks/**/*.gif
 /notebooks/**/*.csv
 
 

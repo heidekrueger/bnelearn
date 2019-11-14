@@ -12,34 +12,22 @@ from torch.utils.tensorboard import SummaryWriter
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
 
-    def __init__(self, name, options, device = 'cuda', specific_gpu = 0, seed = None, log_root = None):
+    def __init__(self, name, mechanism, n_players, logging_options):
+        self.n_players = n_players
+        self.mechanism = mechanism
 
         self.base_dir = os.path.join(*name)
-        self.log_root = os.path.abspath(log_root) if log_root else '.'
+        self._logging_options = logging_options # TODO: add error handling?
 
-        self.device = device
-        self.specific_gpu = specific_gpu
-        self.seed = seed
-        
-
-        # Set class-specific options
-        self.__init_options()
+        self.log_dir = None # is set dynamically in each run
+        self.fig = None     # is set dynamically in each run
 
         ## Setup the experiment
-        self.setup_game()
         self.setup_players()
         self.setup_learning_environment()
         self.setup_learners()
         self.setup_eval_environment()
 
-
-
-    def __init_options(self):
-        pass
-
-    @abstractmethod
-    def setup_game(self):
-        pass
 
     @abstractmethod
     def setup_players(self):
@@ -62,10 +50,23 @@ class Experiment(ABC):
         pass
 
 
-    def plot(self,fig, plot_data, writer: SummaryWriter or None,
-             plot_points_limit: int = 100, save_data_to_disc = False,
-             save_png_to_disc = False):
+    def plot(self,fig, plot_data, writer: SummaryWriter or None, e=None):
         warnings.warn('no plotting method set!')
+
+    def _process_figure(self, fig, writer = None, e=None):
+        """displays, logs and/or saves figure built in plot method"""
+
+        if self._logging_options['save_figure_to_disc_png']:
+            plt.savefig(os.path.join(self.log_dir, 'png', f'epoch_{e:05}.png'))
+
+        if self._logging_options['save_figure_to_disc_svg']:
+            plt.savefig(os.path.join(self.log_dir, 'svg', f'epoch_{e:05}.svg'),
+                        format='svg', dpi=1200)
+        if writer:
+            writer.add_figure('eval/bid_function', fig, e)
+        if self._logging_options['show_plot_inline']:
+            #display.display(plt.gcf())
+            plt.show()
 
     def log_once(self, writer, e):
         pass
@@ -82,23 +83,29 @@ class Experiment(ABC):
         pass
 
     def run(self, epochs, run_comment = None):
-        if os.name == 'nt': raise ValueError('The run_name may not contain : on Windows! (change datetime format to fix this)')
-        run_name = time.strftime('%Y-%m-%d %a %H:%M')
+        if os.name == 'nt':
+            raise ValueError('The run_name may not contain : on Windows!')
+        run_name = time.strftime('%Y-%m-%d %a %H:%M:%S')
         if run_comment:
             run_name = run_name + ' - ' + str(run_comment)
 
-        self.logdir = os.path.join(self.log_root, self.base_dir, run_name)
+        self.log_dir = os.path.join(self._logging_options['log_root'], self.base_dir, run_name)
+        os.makedirs(self.log_dir, exist_ok=False)
+        if self._logging_options['save_figure_to_disc_png']:
+            os.mkdir(os.path.join(self.log_dir, 'png'))
+        if self._logging_options['save_figure_to_disc_svg']:
+            os.mkdir(os.path.join(self.log_dir, 'svg'))
 
         # disable this to continue training?
         e = 0
         self.overhead_mins = 0.0
 
-        print(self.logdir)
+        print('Started run. Logging to {}'.format(self.log_dir))
         self.fig = plt.figure()
 
         torch.cuda.empty_cache()
 
-        with SummaryWriter(self.logdir, flush_secs=30) as writer:
+        with SummaryWriter(self.log_dir, flush_secs=30) as writer:
             self.log_once(writer, 0)
             self.log_hyperparams(writer, 0)
 
