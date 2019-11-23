@@ -207,7 +207,7 @@ if valuation_prior == 'uniform':
                                 )
         self.bne_utility = risk/(n_players - 1 + risk)*(u_hi - u_lo)/(n_players+1)
 
-if valuation_prior == 'normal':
+elif valuation_prior == 'normal':
     ## define bne agents once then use them in all runs
     global_bne_env = AuctionEnvironment(mechanism,
                                 agents = [strat_to_bidder(bneStrategy,
