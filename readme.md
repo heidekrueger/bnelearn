@@ -1,3 +1,21 @@
+```diff
+- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+```
+# AAMAS 2020
+**_This is a snapshot of this project as it was used for the AAMAS 2020 submission. (15th November 2019) Please see `conda-env-export.yaml` for full list of dependencies including package versions. (created using `conda env export`)_**
+
+* `/experiments` contains a tar archive that includes skripts used to run the experiments as well as all artefacts.
+* 2 player asymmetric setting was run from the respective notebook with incrementing seeds set manually, all other experiments run via script (see above).
+
+```diff
+- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+```
+
+
+
+
 # Learning Equilibria in Bayesian Games
 
 
