@@ -50,7 +50,7 @@ class Experiment(ABC):
         pass
 
 
-    def plot(self,fig, plot_data, writer: SummaryWriter or None, e=None):
+    def plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
         warnings.warn('no plotting method set!')
 
     def _process_figure(self, fig, writer = None, e=None):

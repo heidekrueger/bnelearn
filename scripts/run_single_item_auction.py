@@ -1,40 +1,42 @@
 """ The run function of this script runs multiple runs of training on single_item auctions """
 
-import os, sys, time, warnings
+import os
+import sys
+import warnings
 from timeit import default_timer as timer
+
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy.integrate as integrate
+import torch
+import torch.nn as nn
+
 root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
 if root_path not in sys.path:
     sys.path.append(root_path)
 
-import numpy as np
-import matplotlib.pyplot as plt
+# pylint: disable=wrong-import-position
 
-import torch
-import torch.nn as nn
-import torch.nn.utils as ut
-from torch.optim.optimizer import Optimizer, required #pylint: disable=no-name-in-module
-from torch.utils.tensorboard import SummaryWriter
-
-from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
 from bnelearn.bidder import Bidder
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
-from bnelearn.learner import ESPGLearner
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment
+from bnelearn.learner import ESPGLearner
+from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
+from bnelearn.strategy import ClosureStrategy, NeuralNetStrategy
 
 ##%%%%%%%%%%%%%%%%%%%%%%%%%%    Settings
 # device and seed
 cuda = True
 specific_gpu = 3
 
-n_runs = 3
+n_runs = 1
 seeds = list(range(n_runs))
 epochs = 100
 
 # Logging and plotting
 logging_options = dict(
     log_root = os.path.join(root_path, 'experiments'),
-    save_figure_to_disc_png = False,
+    save_figure_to_disc_png = True,
     save_figure_to_disc_svg = False, #for publishing. better quality but a pain to work with
     plot_epoch = 100,
     show_plot_inline = True
@@ -42,8 +44,8 @@ logging_options = dict(
 
 # Experiment setting parameters
 n_players = 2
-auction_mechanism = 'first_price' # one of 'first_price', 'second_price'
-valuation_prior = 'uniform' # for now, one of 'uniform' / 'normal', specific params defined in script
+auction_mechanism = 'second_price' # one of 'first_price', 'second_price'
+valuation_prior = 'normal' # for now, one of 'uniform' / 'normal', specific params defined in script
 
 
 # Learning
@@ -78,9 +80,9 @@ hidden_nodes = [5, 5, 5]
 hidden_activations = [nn.SELU(), nn.SELU(), nn.SELU()]
 
 # Evaluation
-eval_batch_size = 2**15
+eval_batch_size = 2**22
 cache_eval_actions = True
-n_processes_optimal_strategy = 44 if valuation_prior != 'uniform' else 0
+n_processes_optimal_strategy = 44 if valuation_prior != 'uniform' and auction_mechanism != 'second_price' else 0
 
 ######################### No settings beyond this point ######################
 
@@ -107,14 +109,15 @@ elif auction_mechanism == 'second_price':
     mechanism = VickreyAuction(cuda = cuda)
 
 ### Set up experiment domain and bidders
-
-
-
 if valuation_prior == 'uniform':
+    risk = 1 # risk parameter for agent <-- not implemented in bidder yet but used in calculation of optimal utility
+
     u_lo =0
     u_hi =10
-    risk = 1 # risk parameter for agent <-- not implemented in bidder yet but used in calculation of optimal utility
+    common_prior = torch.distributions.uniform.Uniform(low = u_lo, high = u_hi)
+
     positive_output_point = u_hi
+
     def strat_to_bidder(strategy, batch_size=batch_size, player_position=None, cache_actions=False):
         return Bidder.uniform(u_lo, u_hi, strategy, batch_size = batch_size,
                               player_position=player_position, cache_actions=cache_actions)
@@ -122,22 +125,27 @@ if valuation_prior == 'uniform':
     plot_xmax = u_hi
     plot_ymin = 0
     plot_ymax = 10
+
 elif valuation_prior == 'normal':
     valuation_mean = 10.0
     valuation_std = 5.0
+    common_prior = torch.distributions.normal.Normal(loc = valuation_mean, scale = valuation_std)
+
     positive_output_point = valuation_mean
+
+    def strat_to_bidder(strategy, batch_size=batch_size, player_position=None, cache_actions=False):
+        return Bidder.normal(valuation_mean, valuation_std, strategy,
+                             batch_size = batch_size,
+                             player_position=player_position,
+                             cache_actions=cache_actions)
 
     plot_xmin = int(max(0, valuation_mean - 3*valuation_std))
     plot_xmax = int(valuation_mean + 3*valuation_std)
     plot_ymin = 0
-    plot_ymax = 20
-    def strat_to_bidder(strategy, batch_size=batch_size, player_position=None, cache_actions=False):
-        return Bidder.normal(valuation_mean,valuation_std, strategy,
-                             batch_size = batch_size,
-                             player_position=player_position,
-                             cache_actions=cache_actions)
+    plot_ymax = 20 if auction_mechanism == 'first_price' else plot_xmax
+
 else:
-    raise ValueError('Only normal and uniform prios supported by this script.')
+    raise ValueError('Only normal and uniform priors supported by this script.')
 
 def setup_bidders(self, model_sharing = True):
     if model_sharing:
@@ -148,95 +156,106 @@ def setup_bidders(self, model_sharing = True):
             ).to(device)
 
 
-        self.bidders = [strat_to_bidder(self.model, batch_size, player_position)
-                   for player_position in range(n_players)]
+        self.bidders = [
+            strat_to_bidder(self.model, batch_size, player_position)
+            for player_position in range(n_players)]
         if pretrain_iters > 0:
             print('\tpretraining...')
             self.model.pretrain(self.bidders[0].valuations, pretrain_iters)
 
 ### Setup Learning Environment and Learner(s)
-def setup_learning_environment(self): self.env = AuctionEnvironment(self.mechanism, agents = self.bidders,
+def setup_learning_environment(self):
+    self.env = AuctionEnvironment(self.mechanism, agents = self.bidders,
                                   batch_size = batch_size, n_players =n_players,
                                   strategy_to_player_closure = strat_to_bidder)
-def setup_learner(self): self.learner = ESPGLearner(
+def setup_learner(self):
+    self.learner = ESPGLearner(
         model = self.model, environment = self.env, hyperparams = learner_hyperparams,
         optimizer_type = optimizer_type, optimizer_hyperparams = optimizer_hyperparams)
 
 
 ### Setup Evaluation
 # for evaluation
-if valuation_prior == 'uniform':
+if auction_mechanism == 'second_price':
     def optimal_bid(valuation):
-        return valuation * (n_players - 1) / n_players
-elif valuation_prior == 'normal':
-    import scipy.integrate as integrate
-    common_dist = torch.distributions.normal.Normal(loc = valuation_mean, scale = valuation_std)
-    def optimal_bid(valuation: torch.Tensor or np.ndarray or float) -> torch.Tensor:
-        # For float and numpy --> convert to tensor
-        if not isinstance(valuation, torch.Tensor):
-            valuation = torch.tensor(valuation, dtype = torch.float)
-        # For float / 0d tensors --> unsqueeze to allow list comprehension below
-        if valuation.dim() == 0:
-            valuation.unsqueeze_(0)
+        return valuation
+elif auction_mechanism == 'first_price':
+    if valuation_prior == 'uniform':
+        def optimal_bid(valuation):
+            return valuation * (n_players - 1) / n_players
+    elif valuation_prior == 'normal':
+        def optimal_bid(valuation: torch.Tensor or np.ndarray or float) -> torch.Tensor:
+            # For float and numpy --> convert to tensor
+            if not isinstance(valuation, torch.Tensor):
+                valuation = torch.tensor(valuation, dtype = torch.float)
+            # For float / 0d tensors --> unsqueeze to allow list comprehension below
+            if valuation.dim() == 0:
+                valuation.unsqueeze_(0)
 
-        # shorthand notation for F^(n-1)
-        Fpowered = lambda v: torch.pow(common_dist.cdf(v), n_players - 1)
+            # shorthand notation for F^(n-1)
+            Fpowered = lambda v: torch.pow(common_prior.cdf(v), n_players - 1)
 
-        # do the calculations
-        numerator = torch.tensor(
+            # do the calculations
+            numerator = torch.tensor(
                 [integrate.quad(Fpowered, 0, v)[0] for v in valuation],
                 device = valuation.device
-            ).reshape(valuation.shape)
-        return valuation - numerator / Fpowered(valuation)
+                ).reshape(valuation.shape)
+            return valuation - numerator / Fpowered(valuation)
+else:
+    raise ValueError('Invalid Auction Mechanism')
 
 bneStrategy = ClosureStrategy(optimal_bid, parallel=n_processes_optimal_strategy)
 
-if valuation_prior == 'uniform':
-    def setup_eval_environment(self):
-        # environment filled with optimal players for logging
-        # use higher batch size for calculating optimum
-        self.bne_env = AuctionEnvironment(self.mechanism,
-                                    agents = [strat_to_bidder(bneStrategy,
-                                                            player_position= i,
-                                                            batch_size = eval_batch_size,
-                                                            cache_actions=cache_eval_actions)
-                                            for i in range(n_players)],
-                                    batch_size = eval_batch_size,
-                                    n_players=n_players,
-                                    strategy_to_player_closure = strat_to_bidder
-                                )
-        self.bne_utility = risk/(n_players - 1 + risk)*(u_hi - u_lo)/(n_players+1)
 
-elif valuation_prior == 'normal':
-    ## define bne agents once then use them in all runs
-    global_bne_env = AuctionEnvironment(mechanism,
-                                agents = [strat_to_bidder(bneStrategy,
-                                                          player_position= i,
-                                                          batch_size = eval_batch_size,
-                                                          cache_actions=cache_eval_actions)
-                                          for i in range(n_players)],
-                                batch_size = eval_batch_size,
-                                n_players=n_players,
-                                strategy_to_player_closure = strat_to_bidder
-                               )
-    with warnings.catch_warnings(): 
-        warnings.simplefilter('ignore')
-        # don't print scipy accuracy warnings
-        global_bne_utility, analytical_error = integrate.dblquad(
-            lambda x,v: common_dist.cdf(x)**(n_players - 1) * common_dist.log_prob(v).exp(),
-            0, float('inf'), # outer boundaries
-            lambda v: 0, lambda v: v) # inner boundaries
-        global_bne_utility_sampled = global_bne_env.get_reward(global_bne_env.agents[0], draw_valuations = True)
-        if analytical_error > 1e-7:
-            warnings.warn('Error in optimal utility might not be negligible')
-    print("Utility in BNE (analytical): \t{:.5f}".format(global_bne_utility))
-    print('Utility in BNE (sampled): \t{:.5f}'.format(global_bne_utility_sampled))
+## define bne agents once then use them in all runs
+global_bne_env = AuctionEnvironment(
+    mechanism,
+    agents = [strat_to_bidder(bneStrategy,
+                              player_position=i,
+                              batch_size=eval_batch_size,
+                              cache_actions=cache_eval_actions)
+              for i in range(n_players)],
+    batch_size = eval_batch_size,
+    n_players=n_players,
+    strategy_to_player_closure = strat_to_bidder
+    )
 
-    def setup_eval_environment(self):
-        # environment filled with optimal players for logging
-        # use higher batch size for calculating optimum
-        self.bne_env = global_bne_env
-        self.bne_utility = global_bne_utility
+if auction_mechanism == 'first_price':
+    if valuation_prior == 'uniform':
+        global_bne_utility = risk/(n_players - 1 + risk)*(u_hi - u_lo)/(n_players+1)
+    elif valuation_prior == 'normal':
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            # don't print scipy accuracy warnings
+            global_bne_utility, error_estimate = integrate.dblquad(
+                lambda x, v: common_prior.cdf(x)**(n_players - 1) * common_prior.log_prob(v).exp(),
+                0, float('inf'), # outer boundaries
+                lambda v: 0, lambda v: v) # inner boundaries
+            global_bne_utility_sampled = global_bne_env.get_reward(global_bne_env.agents[0], draw_valuations=True)
+            if error_estimate > 1e-6:
+                warnings.warn('Error in optimal utility might not be negligible')
+        print("Utility in BNE (analytical): \t{:.5f}".format(global_bne_utility))
+        print('Utility in BNE (sampled): \t{:.5f}'.format(global_bne_utility_sampled))
+elif auction_mechanism == 'second_price':
+    F = common_prior.cdf
+    f = lambda x: common_prior.log_prob(torch.tensor(x)).exp()
+    f1n = lambda x,n: n * F(x)**(n - 1) * f(x)
+
+    global_bne_utility, error_estimate = integrate.dblquad(
+        lambda x,v: (v-x) * f1n(x, n_players-1) * f(v) ,
+        0, float('inf'), # outer boundaries
+        lambda v: 0, lambda v: v) # inner boundaries
+
+    if error_estimate > 1e-6:
+        warnings.warn('Error bound on analytical bne utility is not negligible!')
+else:
+    raise ValueError("Invalid auction mechanism.")
+
+def setup_eval_environment(self):
+    # environment filled with optimal players for logging
+    # use higher batch size for calculating optimum
+    self.bne_env = global_bne_env
+    self.bne_utility = global_bne_utility
 
 
 
@@ -277,7 +296,7 @@ def log_metrics(self, writer, e):
     writer.add_scalar('debug/norm_parameter_update', self.update_norm, e)
     writer.add_scalar('eval/utility_vs_bne', self.utility_vs_bne, e)
     writer.add_scalar('eval/epsilon_relative', self.epsilon_relative, e)
-    writer.add_scalar('eval/epsilon_absolute', self.epsilon_absolute, e) # debug because only interesting to see if numeric precision is a problem, otherwise same as relative but scaled.
+    writer.add_scalar('eval/epsilon_absolute', self.epsilon_absolute, e)
 
 # TODO: deferred until writing logger
 def log_hyperparams(self, writer, e):
@@ -304,7 +323,9 @@ def training_loop(self, writer, e):
     new_params = torch.nn.utils.parameters_to_vector(self.model.parameters())
     self.update_norm = (new_params - prev_params).norm(float('inf'))
     # calculate utility vs bne
-    self.utility_vs_bne = self.bne_env.get_reward(strat_to_bidder(self.model, batch_size = eval_batch_size), draw_valuations=False)
+    self.utility_vs_bne = self.bne_env.get_reward(
+        strat_to_bidder(self.model, batch_size = eval_batch_size),
+        draw_valuations=False)
     self.epsilon_relative = 1 - self.utility_vs_bne / self.bne_utility
     self.epsilon_absolute = self.bne_utility - self.utility_vs_bne
 
