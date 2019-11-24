@@ -56,3 +56,4 @@ This should be done in the following way:
 1. To make the snapshot reproducible, we need the full status of the conda env includign package version numbers. Export the current conda env using `conda env export` and add the results to a file `conda-env-export.yml` in the root of the repository.
 1. Add a description of the snapshot including the current date in the top of readme.md.
 1. Create a "Tag" on the branch in gitlab.
+1. Go to gitlab Settings -> repository -> protected tags and protect the tag (can edit: no one)
