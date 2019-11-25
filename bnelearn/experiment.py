@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
+# pylint: disable=unnecessary-pass,unused-argument
 
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
@@ -31,26 +32,33 @@ class Experiment(ABC):
 
     @abstractmethod
     def setup_players(self):
+        """This method should set up the set of Players/Bidders
+        """
         pass
 
     @abstractmethod
     def setup_learning_environment(self):
+        """This method should set up the environment that is used for learning. """
         pass
 
     @abstractmethod
     def setup_learners(self):
+        """This method should set up learners for each of the models that are learnable."""
         pass
 
     @staticmethod
     def equilibrium_strategy(inputs):
+        """Defines optimal BNE strategy in this setting"""
         pass
 
     @abstractmethod
     def setup_eval_environment(self):
+        """Sets up an environment used for evaluation of learning agents (e.g.) vs known BNE"""
         pass
 
 
     def plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
+        """This method should implement a vizualization of the experiment at the current state"""
         warnings.warn('no plotting method set!')
 
     def _process_figure(self, fig, writer = None, e=None):
@@ -69,20 +77,26 @@ class Experiment(ABC):
             plt.show()
 
     def log_once(self, writer, e):
+        """Logging function called once at the beginning of the experiment."""
         pass
 
     def log_metrics(self, writer, e):
+        """Logging function called after each learning iteration"""
         pass
 
 
     def log_hyperparams(self, writer, e):
+        """Logging function called when hyperparameters have changed"""
         pass
 
     @abstractmethod
     def training_loop(self, writer, e):
+        """Main training loop to be executed in each iteration."""
         pass
 
     def run(self, epochs, run_comment = None):
+        """Runs the experiment implemented by this class for `epochs` number of iterations."""
+
         if os.name == 'nt':
             raise ValueError('The run_name may not contain : on Windows!')
         run_name = time.strftime('%Y-%m-%d %a %H:%M:%S')
