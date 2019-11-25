@@ -27,8 +27,9 @@ class Strategy(ABC):
         """Takes (private) information as input and decides on the actions an agent should play."""
         raise NotImplementedError()
 
-    def pretrain(self, input_time, iterations, transformation=None):
+    def pretrain(self, input_tensor, iterations, transformation=None):
         """If implemented by subclass, pretrains the strategy to yield desired initial outputs."""
+        # pylint: disable=unused-argument # this method is 'soft-abstract'
         warnings.warn('Strategy of type {} does not support pretraining'.format(str(type(self))))
 
 class ClosureStrategy(Strategy):
@@ -312,7 +313,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         else:
             # output layer directly from inputs
             hidden_nodes = [input_length] #don't write to self.hidden nodes, just ensure correct creation
-        
+
         # create output layer
         self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
         self.layers['activation_out'] = nn.ReLU()
@@ -334,14 +335,14 @@ class NeuralNetStrategy(Strategy, nn.Module):
                transformation (optional): Callable. Defaulting to identity function if input_length == output_length
            returns: Nothing
         """
-        
+
         desired_output = input_tensor
         if transformation is not None:
             desired_output = transformation(input_tensor)
 
         if desired_output.shape[-1] != self.output_length:
             raise ValueError('Desired pretraining output does not match NN output dimension.')
-        
+
         optimizer = torch.optim.Adam(self.parameters())
         for _ in range(iters):
             self.zero_grad()

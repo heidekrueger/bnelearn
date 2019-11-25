@@ -20,12 +20,15 @@ pylint.txt
 /.vscode/
 "vscode - bnelearn.Ink"
 
-# experiment logs, tensorboard files, figures, model checkpoints
+# experiment logs, tensorboard files, figures, parsed tabular data and model checkpoints
 /**/events.out.*
 /**/*.npz
 /runs
 /notebooks/runs
 /notebooks/**/*.png
+/notebooks/**/*.svg
+/notebooks/**/*.gif
+/notebooks/**/*.csv
 
 
 # dont check in figures created from R -- only keep the source code
