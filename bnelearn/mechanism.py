@@ -1541,7 +1541,7 @@ class LLLLGGAuction(Mechanism):
                     ))
                 p.close()
                 p.join()
-            payment = torch.cat([x for x in result])
+            payment = torch.cat(result)
         else:
             iterator_A = A.detach()
             iterator_beta = beta.detach()
@@ -1550,9 +1550,7 @@ class LLLLGGAuction(Mechanism):
 
             iterable_input = zip(iterator_A, iterator_beta, iterator_payment_vcg, iterator_b)
 
-            payment = torch.cat([
-                x for x in map(self._run_single_mini_batch_nearest_vcg_core_gurobi, iterable_input)
-                ])
+            payment = torch.cat(list(map(self._run_single_mini_batch_nearest_vcg_core_gurobi, iterable_input)))
         return payment
 
     def _run_single_mini_batch_nearest_vcg_core_gurobi(self, param, min_core_payments = True):
@@ -1677,6 +1675,7 @@ class LLLLGGAuction(Mechanism):
         return payment_out
 
     # Adjusted to LEQ with 1e-5 instead of equals (according to Bosshard code)
+    # TODO: method could be a function (no self use)
     def _add_constraint_min_payments(self, model, mu, n_mini_batch, n_player):
         # p1 = mu
         for batch_k in range(n_mini_batch):
