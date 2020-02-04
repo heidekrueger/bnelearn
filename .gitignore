@@ -42,4 +42,5 @@ pylint.txt
 /experiments/*
 
 # gurobi log files
+/GurobiSol/*
 **/gurobi.log
