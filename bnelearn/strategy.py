@@ -281,12 +281,19 @@ class NeuralNetStrategy(Strategy, nn.Module):
             When provided, will check whether the initialized model will return a
             positive bid anywhere at the given input tensor. Otherwise,
             the weights will be reinitialized.
+        output_length (optional): int
+            length of output/action vectorm defaults to 1
+            (currently given last for backwards-compatibility)
+        dropout (optional): float
+            If not, applies AlphaDropout (https://pytorch.org/docs/stable/nn.html#torch.nn.AlphaDropout)
+            to `dropout` share of nodes in each hidden layer during training.
     """
     def __init__(self, input_length: int,
                  hidden_nodes: Iterable[int],
                  hidden_activations: Iterable[nn.Module],
                  ensure_positive_output: torch.Tensor or None = None,
-                 output_length: int = 1 # currently last argument for backwards-compatibility
+                 output_length: int = 1, # currently last argument for backwards-compatibility
+                 dropout: float = 0.0
                  ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
@@ -298,6 +305,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.output_length = output_length
         self.hidden_nodes = copy(hidden_nodes)
         self.activations = copy(hidden_activations) # do not write to list outside!
+        self.dropout = dropout
 
         self.layers = nn.ModuleDict()
 
@@ -306,10 +314,14 @@ class NeuralNetStrategy(Strategy, nn.Module):
             # first hidden layer (from input)
             self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
             self.layers['activation_0'] = self.activations[0]
+            if self.dropout:
+                self.layers['dropout_0'] = nn.AlphaDropout(p=self.dropout)
             # hidden-to-hidden-layers
             for i in range (1, len(hidden_nodes)):
                 self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
                 self.layers['activation_' + str(i)] = self.activations[i]
+                if self.dropout:
+                    self.layers['dropout_' + str(i)] = nn.AlphaDropout(p=self.dropout)
         else:
             # output layer directly from inputs
             hidden_nodes = [input_length] #don't write to self.hidden nodes, just ensure correct creation
