@@ -1219,7 +1219,7 @@ class CombinatorialAuction(Mechanism):
         return m, assign_i_s
 
 class _OptNet_for_LLLLGG(nn.Module):
-    def __init__(self, device, A, beta, b, payment_vcg, precision = torch.double): 
+    def __init__(self, device, A, beta, b, payment_vcg, precision = torch.double):
         """
         Build basic model
         s.t.
@@ -1244,14 +1244,24 @@ class _OptNet_for_LLLLGG(nn.Module):
         b = torch.as_tensor(b, dtype = precision, device = self.device)
         beta = torch.as_tensor(beta, dtype = precision, device = self.device)
 
-        self.G = torch.cat((-A,
-                            torch.eye(self.n_player, dtype = precision, device = self.device).repeat(self.n_batch,1,1),
-                            -torch.eye(self.n_player, dtype = precision, device = self.device).repeat(self.n_batch,1,1)),1)
-        self.h = torch.cat((-beta,
-                            b,
-                            torch.zeros([self.n_batch,self.n_player], dtype = precision, device = self.device)),1)
+        self.G = torch.cat(
+            (
+                -A,
+                torch.eye(self.n_player, dtype = precision, device = self.device).repeat(self.n_batch,1,1),
+                -torch.eye(self.n_player, dtype = precision, device = self.device).repeat(self.n_batch,1,1)
+            ), 1)
+        self.h = torch.cat(
+            (
+                -beta,
+                b,
+                torch.zeros([self.n_batch,self.n_player], dtype = precision, device = self.device)
+            ),1)
         self.e = torch.zeros(0, dtype = precision, device = self.device, requires_grad = True)
         self.mu = torch.zeros(0, dtype = precision, device = self.device, requires_grad = True)
+
+        # will be set by methods
+        self.Q = None
+        self.q = None
 
     def _add_objective_min_payments(self):
         """
@@ -1278,17 +1288,14 @@ class _OptNet_for_LLLLGG(nn.Module):
 
         payment_vcg = torch.as_tensor(self.payment_vcg, dtype = self.precision, device = self.device)
         self.Q = torch.diag(torch.tensor([2,] * self.n_player, dtype = self.precision, device = self.device))
-        self.q = torch.tensor(-2 * payment_vcg)
+        self.q = -2 * payment_vcg
 
     def forward(self, input=None):
         """input is not used, as problem is fully specified"""
-        '''
 
-
-        verbose=1, eps = 1e-19, maxIter = 100, notImprovedLim=10, check_Q_spd=False
-        '''
-        x = QPFunction(verbose=-1, eps = 1e-19, maxIter = 100, notImprovedLim=10, check_Q_spd=False)(self.Q, self.q, self.G, self.h, self.e, self.mu)
-        return x
+        return QPFunction(
+            verbose=-1, eps = 1e-19, maxIter = 100, notImprovedLim=10, check_Q_spd=False
+            )(self.Q, self.q, self.G, self.h, self.e, self.mu)
 
 class LLLLGGAuction(Mechanism):
     """
@@ -1301,7 +1308,7 @@ class LLLLGGAuction(Mechanism):
         parallel: number of processors for parallelization in gurobi (only)
     """
     def __init__(self, batch_size, rule = 'first_price', core_solver = 'NoCore', parallel: int = 1, cuda: bool = True):
-        from bnelearn.util import large_lists_LLLLGG
+        from bnelearn.util import large_lists_LLLLGG #pylint:disable=import-outside-toplevel
         super().__init__(cuda)
 
         if rule not in ['nearest-vcg','vcg','first_price']:
@@ -1327,7 +1334,8 @@ class LLLLGGAuction(Mechanism):
             _device = 'cpu'
         self.solutions_sparse = torch.tensor(large_lists_LLLLGG.solutions_sparse, device = _device)
 
-        self.solutions_non_sparse = torch.tensor(large_lists_LLLLGG.solutions_non_sparse, dtype = torch.float, device = _device)
+        self.solutions_non_sparse = torch.tensor(large_lists_LLLLGG.solutions_non_sparse,
+                                                 dtype = torch.float, device = _device)
 
         self.subsolutions = torch.tensor(large_lists_LLLLGG.subsolutions, device = _device)
 
@@ -1355,7 +1363,7 @@ class LLLLGGAuction(Mechanism):
         bids: torch.Tensor
             of bids with dimensions (batch_size, n_players=6, n_bids=2), values = [0,Inf]
         solutions: torch.Tensor
-            of possible allocations. 
+            of possible allocations.
 
         Returns
         -------
@@ -1363,7 +1371,7 @@ class LLLLGGAuction(Mechanism):
         welfare: torch.Tensor(batch_size), values = [0, Inf]
         """
         solutions = self.solutions_non_sparse.to(self.device)
-        
+
         n_batch, n_players, n_bundles = bids.shape
         bids_flat = bids.view(n_batch, n_players*n_bundles)
         solutions_welfare = torch.mm(bids_flat, torch.transpose(solutions,0,1))
@@ -1444,7 +1452,7 @@ class LLLLGGAuction(Mechanism):
         p: Variable - Core Payments
         ---
         beta = Parameter - coalitions willingness to pay
-        beta = welfare(coalition) - sum_(j \in coalition){b_j(S_j)} \forall coalitions in subsolutions
+        beta = welfare(coalition) - sum_(j \\in coalition){b_j(S_j)} \\forall coalitions in subsolutions
         with b_j(S_j) being the bid of the actual allocation (their willingness to pay for what they already get.)
         ---
         A = Parameter - winning and not in coalition (1, else 0)
@@ -1454,20 +1462,24 @@ class LLLLGGAuction(Mechanism):
 
         n_batch, n_player, n_bundle = bids.shape
         # Generate dense tensor of subsolutions
-        subsolutions_dense = torch.sparse.FloatTensor(subsolutions.t(), 
-                                                      torch.ones(len(subsolutions), device = self.device),
-                                                      torch.Size([subsolutions[-1][0]+1, n_player * n_bundle],
-                                                                 device = self.device)).to_dense()
+        subsolutions_dense = torch.sparse.FloatTensor(
+            subsolutions.t(),
+            torch.ones(len(subsolutions), device = self.device),
+            torch.Size([subsolutions[-1][0]+1, n_player * n_bundle], device = self.device)
+            ).to_dense()
         # Compute beta
         coalition_willing_to_pay = torch.mm(bids.view(n_batch, n_player*n_bundle), subsolutions_dense.t())
 
-        # For b_j(S_j) we need to consider the actual winning bid of j. Therefore, we adjust the coalition and set 1 for each bundle of j
-        winning_and_in_coalition = torch.einsum('ij,kjl->kijl',
-                                                 subsolutions_dense.view(66,n_player,n_bundle).sum(dim=2),
-                                                 allocation.view(n_batch, n_player, n_bundle)).view(n_batch,66,n_player*n_bundle)
+        # For b_j(S_j) we need to consider the actual winning bid of j.
+        #Therefore, we adjust the coalition and set 1 for each bundle of j
+        winning_and_in_coalition = torch.einsum(
+            'ij,kjl->kijl',
+            subsolutions_dense.view(66,n_player,n_bundle).sum(dim=2),
+            allocation.view(n_batch, n_player, n_bundle)).view(n_batch,66,n_player*n_bundle)
 
-        coalition_already_getting = torch.bmm(bids.view(n_batch, 1, n_player*n_bundle),
-                                               winning_and_in_coalition.permute(0,2,1)).reshape(n_batch,66)
+        coalition_already_getting = torch.bmm(
+            bids.view(n_batch, 1, n_player*n_bundle),
+            winning_and_in_coalition.permute(0,2,1)).reshape(n_batch,66)
 
         beta = coalition_willing_to_pay - coalition_already_getting
         # Fixing numerical imprecision (as occured before!)
@@ -1481,7 +1493,7 @@ class LLLLGGAuction(Mechanism):
         # Computing b
         b = torch.sum(allocation.view(n_batch,n_player,n_bundle) * bids.view(n_batch,n_player,n_bundle), dim = 2)
         payments_vcg = self._calculate_payments_vcg(bids, allocation, welfare)
-        
+
         # Choose core solver
         if self.core_solver == 'gurobi':
             payment = self._run_batch_nearest_vcg_core_gurobi(A, beta, payments_vcg, b)
@@ -1515,18 +1527,18 @@ class LLLLGGAuction(Mechanism):
             iterator_b = b.detach().cpu()
 
             iterable_input = zip(iterator_A,
-                                   iterator_beta, iterator_payment_vcg, iterator_b)
+                                 iterator_beta, iterator_payment_vcg, iterator_b)
 
             chunksize = 1
             n_chunks = n_mini_batch/chunksize
             torch.multiprocessing.set_sharing_strategy('file_system')
             with torch.multiprocessing.Pool(pool_size, initializer=self.__mute) as p: #
                 result = list(tqdm(
-                              p.imap(self._run_single_mini_batch_nearest_vcg_core_gurobi, iterable_input, chunksize=chunksize),
-                              total = n_chunks, unit='chunks',
-                              desc = 'Solving mechanism for batch_size {} with {} processes, chunk size of {}'.format(
-                              n_chunks, pool_size, chunksize)
-                         ))
+                    p.imap(self._run_single_mini_batch_nearest_vcg_core_gurobi, iterable_input, chunksize=chunksize),
+                    total = n_chunks, unit='chunks',
+                    desc = 'Solving mechanism for batch_size {} with {} processes, chunk size of {}'.format(
+                        n_chunks, pool_size, chunksize)
+                    ))
                 p.close()
                 p.join()
             payment = torch.cat([x for x in result])
@@ -1536,11 +1548,11 @@ class LLLLGGAuction(Mechanism):
             iterator_payment_vcg = payments_vcg.detach()
             iterator_b = b.detach()
 
-            iterable_input = zip(iterator_A,
-                                   iterator_beta, iterator_payment_vcg, iterator_b)
+            iterable_input = zip(iterator_A, iterator_beta, iterator_payment_vcg, iterator_b)
 
-            payment = torch.cat([x for x in map(self._run_single_mini_batch_nearest_vcg_core_gurobi, 
-                                                    iterable_input)])
+            payment = torch.cat([
+                x for x in map(self._run_single_mini_batch_nearest_vcg_core_gurobi, iterable_input)
+                ])
         return payment
 
     def _run_single_mini_batch_nearest_vcg_core_gurobi(self, param, min_core_payments = True):
@@ -1554,7 +1566,7 @@ class LLLLGGAuction(Mechanism):
         # init model
         #TODO: Speedup the model creation! Can we reuse a model?
         m = self._setup_init_model(A, beta, b, n_mini_batch, n_player)
-        
+
         if min_core_payments:
             # setup and solve minimizing payments
             m.setParam('FeasibilityTol',1e-9)
@@ -1563,7 +1575,7 @@ class LLLLGGAuction(Mechanism):
             m, mu = self._add_objective_min_payments_and_solve(m, n_mini_batch, n_player)
             # add minimal payments constraint to minimizing vcg distance problem
             m = self._add_constraint_min_payments(m, mu, n_mini_batch, n_player)
-        
+
         # setup and solve minimizing vcg distance
         m.setParam('FeasibilityTol',1e-9)
         m.setParam('MIPGap',1e-9)
@@ -1580,8 +1592,9 @@ class LLLLGGAuction(Mechanism):
         for batch_k in range(n_mini_batch):
             payment[batch_k] = {}
             for player_k in range(n_player):
-                payment[batch_k][player_k] = m.addVar(vtype=grb.GRB.CONTINUOUS, lb = 0, ub = b[batch_k][player_k],
-                                           name = 'payment_%s_%s' %(batch_k, player_k))
+                payment[batch_k][player_k] = m.addVar(
+                    vtype=grb.GRB.CONTINUOUS, lb = 0, ub = b[batch_k][player_k],
+                    name = 'payment_%s_%s' %(batch_k, player_k))
         m.update()
         # pA >= beta
         for batch_k in range(n_mini_batch):
@@ -1595,7 +1608,7 @@ class LLLLGGAuction(Mechanism):
                 m.addConstr(sum_payments >= coalition_v,
                             name = '1_outpay_coalition_%s_%s' %(batch_k,coalition_k))
         return m
-    
+
     def _add_objective_min_payments_and_solve(self, model, n_mini_batch, n_player, print_output = False):
         # min p1
         mu = 0
@@ -1605,10 +1618,10 @@ class LLLLGGAuction(Mechanism):
             for player_k in range(n_player):
                 mu_batch[batch_k] += model.getVarByName("payment_%s_%s"%(batch_k,player_k))
             mu += mu_batch[batch_k]
-        
+
         model.setObjective(mu, sense=grb.GRB.MINIMIZE)
         model.update()
-        
+
         #Solve LP
         if print_output:
             model.write(os.path.join(os.path.expanduser('~'), 'bnelearn','GurobiSol', '%s_LP.lp' % self.rule))
@@ -1621,7 +1634,7 @@ class LLLLGGAuction(Mechanism):
                 model.computeIIS()
                 model.write(os.path.join(os.path.expanduser('~'), 'bnelearn','GurobiSol', '%s_LP.ilp' % self.rule))
                 raise
-        
+
         mu_out = {}
         for batch_k in range(n_mini_batch):
             mu_out[batch_k] = 0
@@ -1630,13 +1643,16 @@ class LLLLGGAuction(Mechanism):
 
         return model, mu_out
 
-    def _add_objective_min_vcg_distance_and_solve(self, model, payments_vcg, n_mini_batch, n_player, print_output = False):
+    def _add_objective_min_vcg_distance_and_solve(
+            self, model, payments_vcg, n_mini_batch, n_player, print_output = False):
         loss = 0
         loss_batch = 0
         for batch_k in range(n_mini_batch):
             loss_batch = 0
             for player_k in range(n_player):
-                loss_batch += (model.getVarByName("payment_%s_%s"%(batch_k,player_k)) - payments_vcg[batch_k][player_k]) * (model.getVarByName("payment_%s_%s"%(batch_k,player_k)) - payments_vcg[batch_k][player_k])
+                loss_batch += (
+                    model.getVarByName("payment_%s_%s"%(batch_k,player_k)) - payments_vcg[batch_k][player_k]
+                    ) * (model.getVarByName("payment_%s_%s"%(batch_k,player_k)) - payments_vcg[batch_k][player_k])
             loss += loss_batch
 
         model.setObjective(loss, sense=grb.GRB.MINIMIZE)
@@ -1675,7 +1691,7 @@ class LLLLGGAuction(Mechanism):
 
     def _run_batch_nearest_vcg_core_qpth(self, A, beta, payments_vcg, b, min_core_payments = True):
         # Initialize the model.
-        warnings.warn('Do not use qpth at this state, since it is very impecise!')
+        warnings.warn('Experimental! Do not use qpth at this state, since it is very imprecise for large batches.')
         model = _OptNet_for_LLLLGG(self.device, A, beta, b, payments_vcg)
         if min_core_payments:
             model._add_objective_min_payments()
@@ -1752,5 +1768,5 @@ class LLLLGGAuction(Mechanism):
             raise ValueError('Invalid Pricing rule!')
         #transform allocation
         allocation = allocation.view(bids.shape)
-        
+
         return allocation.to(self.device), payments.to(self.device)

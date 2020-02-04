@@ -144,6 +144,7 @@ def test_AESPG_learner_SGD():
     """Tests the standard policy gradient learner in static env.
     This does not test complete convergence but 'running in the right direction'.
     """
+    pytest.skip("AESPG is still experimental")
     BATCH_SIZE = 2**10
     epoch = 100
 
