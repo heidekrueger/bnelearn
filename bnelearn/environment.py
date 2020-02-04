@@ -55,6 +55,19 @@ class Environment(ABC):
         pass #pylint: disable=unnecessary-pass
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
+                            draw_valuations=False, aggregate_batch = True,
+                            **strat_to_player_kwargs) -> torch.Tensor:
+        """
+        Returns reward of a given strategy in given environment agent position.
+        """
+        if not self._strategy_to_player:
+            raise NotImplementedError('This environment has no strategy_to_player closure!')
+        agent = self._strategy_to_player(strategy,
+                                         batch_size=self.batch_size,
+                                         player_position=player_position, **strat_to_player_kwargs)
+        return self.get_reward(agent, draw_valuations = draw_valuations, aggregate=aggregate_batch)
+
+    def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
                             draw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
@@ -64,7 +77,8 @@ class Environment(ABC):
         agent = self._strategy_to_player(strategy,
                                          batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
-        return self.get_reward(agent, draw_valuations = draw_valuations)
+        action = agent.get_action()
+        return action, self.get_reward(agent, draw_valuations = draw_valuations, aggregate = False)
 
 
     def _generate_agent_actions(self, exclude: Set[int] or None = None):
@@ -177,7 +191,7 @@ class AuctionEnvironment(Environment):
 
         self.mechanism = mechanism
 
-    def get_reward(self, agent: Bidder, draw_valuations=False) -> torch.Tensor: #pylint: disable=arguments-differ
+    def get_reward(self, agent: Bidder, draw_valuations=False, aggregate = True) -> torch.Tensor: #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment.
            Reward is calculated as average utility for each of the batch_size x env_size games
         """
@@ -203,15 +217,19 @@ class AuctionEnvironment(Environment):
             allocation, payments = self.mechanism.play(
                 agent_bid.view(agent.batch_size, 1, action_length)
             )
-            utility = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
+            utility = agent.get_utility(allocation[:,0,:], payments[:,0])
         else: # at least 2 environment agent --> build bid_profile, then play
             # get bid profile
             bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
                                       dtype=agent_bid.dtype, device = self.mechanism.device)
             bid_profile[:, player_position, :] = agent_bid
 
-            # ugly af hack: if environment is dynamic, all player positions will be
-            # none. simply start at 1 for the first opponent and count up
+            # Get actions for all players in the environment except the one at player_position
+            # which is overwritten by the active agent instead.
+
+            # the counter thing is an ugly af hack: if environment is dynamic, 
+            # all player positions will be none. so simply start at 1 for 
+            # the first opponent and count up
             # TODO: clean this up 🤷 ¯\_(ツ)_/¯
             counter = 1
             for opponent_pos, opponent_bid in self._generate_agent_actions(exclude = set([player_position])):
@@ -224,10 +242,11 @@ class AuctionEnvironment(Environment):
             allocation, payments = self.mechanism.play(bid_profile)
 
             # average over batch against this opponent
-            utility = agent.get_utility(
-                allocation[:,player_position,:],
-                payments[:,player_position]
-                ).mean()
+            utility = agent.get_utility(allocation[:,player_position,:],
+                                        payments[:,player_position])
+
+        if aggregate:
+                utility = utility.mean()
 
         return utility
 
