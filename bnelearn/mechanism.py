@@ -580,9 +580,6 @@ class StaticMechanism(Mechanism):
         The optimal strategy fo an agent with quasilinear utility is given by bidding truthfully.
     """
 
-    def __init__(self, cuda: bool = True):
-        super().__init__(cuda)
-
     def run(self, bids):
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
@@ -594,6 +591,33 @@ class StaticMechanism(Mechanism):
         allocations = (bids >= torch.rand_like(bids).mul_(10)).float()
 
         return (allocations, payments)
+
+class StaticFunctionMechanism(Mechanism):
+    """ A static mechanism that can be used for testing purposes,
+        in order to test functionality/efficiency of optimizers without introducing
+        additional stochasticity from multi-player learning dynamics.
+        This function more straightforward than the Static Mechanism above, which has stochasticity similar to an
+        auction.
+
+        Instead, this class returns a straight up function, designed such that vanilla PG will also work on it.
+
+        Here, the player gets the item with probability 0.5 and pays (5-b)², i.e. it's optimal to always bid 5.
+        The expected utility in optimal strategy is thus 2.5.
+
+    """
+
+    def run(self, bids):
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+        batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
+
+        bids = bids.to(self.device)
+
+        payments = torch.mul(4.0-bids,4.0-bids).sum(item_dim)
+        allocations = (torch.rand_like(bids) > 1.0).float()
+
+        return (allocations, payments)
+
 
 class LLGAuction(Mechanism):
     """
