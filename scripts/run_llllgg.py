@@ -12,7 +12,7 @@ from functools import partial
 import torch
 import torch.nn as nn
 import torch.nn.utils as ut
-from torch.optim.optimizer import Optimizer, required
+from torch.optim.optimizer import required
 
 from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
 from bnelearn.bidder import Bidder
@@ -43,7 +43,7 @@ cuda = torch.cuda.is_available()
 device = 'cuda' if cuda else 'cpu'
 
 # Use specific cuda gpu if desired (i.e. for running multiple experiments in parallel)
-specific_gpu = 5
+specific_gpu = 2
 if cuda and specific_gpu:
     torch.cuda.set_device(specific_gpu)
 
@@ -56,7 +56,7 @@ if cuda: print(torch.cuda.current_device())
 #log_root = os.path.abspath('/srv/bnelearn/experiments')
 log_root = os.path.abspath('.')
 run_comment = 'espg'
-save_figure_data_to_disc = False
+save_figure_data_to_disc = True
 save_figure_to_disc = True
 
 ## Experiment setup
@@ -74,20 +74,23 @@ def strat_to_bidder(strategy, batch_size, player_position):
 
 ## Environment settings
 n_threads = 1
+core_solver = 'cvxpy' #no_core #gurobi
+pricing_rule =  'nearest-vcg'#'first_price'#nearest-vcg'
 model_sharing = True
 #training batch size (2**17 - 2**18 for vcg)
-batch_size = 2**18
+batch_size = 2**8
 eval_batch_size = 2**25
-epoch = 10000
+epoch = 4
+
 
 # strategy model architecture
 input_length = 2
-hidden_nodes = [5, 3, 5, 2]
-hidden_activations = [nn.SELU(), nn.Tanh(), nn.Tanh(), nn.SELU()]
+hidden_nodes = [16, 16]#[8,8, 8]#, 8,8, 8, 8] #8, 8,8, 8, 8]#, 128]#3, 5, 2]
+hidden_activations = [nn.SELU(),nn.SELU()]#,nn.SELU()]#, nn.SELU(),nn.SELU(), nn.SELU(), nn.SELU()] #nn.Tanh(), nn.Tanh(),
 
 
 learner_hyperparams = {
-    'population_size':512,
+    'population_size':4,
     'sigma': 1.,
     'scale_sigma_by_model_size': True
 }
@@ -102,15 +105,19 @@ learner_hyperparams = {
     # 'eps': 1e-8 , # added to denominator for numeric stability
     # 'weight_decay': 0, #L2-decay
     # 'amsgrad': False #whether to use amsgrad-variant
-optimizer_type = torch.optim.SGD
+optimizer_type = torch.optim.Adam
 optimizer_hyperparams ={    
-    'lr': 1e-3,
-    'momentum': 0.8
+    #'lr': 1e-2,
+    #'momentum': 0.6
 }
 
 # plot and log training options
-plot_epoch = 100
-plot_points = min(100, batch_size)
+plot_epoch = 1000
+write_epoch = 1000
+plot_points = 100 #min(100, batch_size)
+# For verification writing
+write_points = 200 #min(200, batch_size)
+
 
 plot_xmin = u_lo
 plot_xmax = u1_hi
@@ -157,15 +164,17 @@ def plot_bid_function(fig, valuations, bids, writer=None, e=None,
         plt.savefig(os.path.join(logdir, 'png', f'_{e:05}_1.png'))
     #display.display(fig)
     plt.show()
+    if writer:
+        writer.add_figure('eval/bid_function_2d_0', fig, e)  
+
     plt.cla()
     plt.plot(v_print[1], b_print[1], 'bo')
     if save_png_to_disc:
         plt.savefig(os.path.join(logdir, 'png', f'_{e:05}_2.png'))
     #display.display(fig)
     plt.show()
-    
     if writer:
-        writer.add_figure('eval/bid_function', fig, e)  
+        writer.add_figure('eval/bid_function_2d_1', fig, e)  
         
 
         
@@ -184,10 +193,24 @@ def plot_bid_function_3d(writer, e, save_figure_to_disc=False):
     models_print_wf = [None] * len(models)
 
     for model_idx in range(len(models)):
-        valuations[:,model_idx,0] = xv[model_idx].reshape(plot_points**2)
-        valuations[:,model_idx,1] = yv[model_idx].reshape(plot_points**2)
+        if len(models) > 2:
+            valuations[:,model_idx,0] = xv[0].reshape(plot_points**2)
+            valuations[:,model_idx,1] = yv[0].reshape(plot_points**2)
+            if model_idx>3:
+                valuations[:,model_idx,0] = xv[1].reshape(plot_points**2)
+                valuations[:,model_idx,1] = yv[1].reshape(plot_points**2)    
+    for model_idx in range(len(models)):
+        if len(models) > 2:
+            valuations[:,model_idx,0] = xv[0].reshape(plot_points**2)
+            valuations[:,model_idx,1] = yv[0].reshape(plot_points**2)
+            if model_idx>3:
+                valuations[:,model_idx,0] = xv[1].reshape(plot_points**2)
+                valuations[:,model_idx,1] = yv[1].reshape(plot_points**2)
+        else:
+            valuations[:,model_idx,0] = xv[model_idx].reshape(plot_points**2)
+            valuations[:,model_idx,1] = yv[model_idx].reshape(plot_points**2)
         models_print[model_idx] = models[model_idx].play(valuations[:,model_idx,:])
-        models_print_wf[model_idx] = models_print[model_idx].view(100,100,2)
+        models_print_wf[model_idx] = models_print[model_idx].view(plot_points,plot_points,2)
 
     fig = plt.figure()
     for model_idx in range(len(models)):
@@ -195,24 +218,30 @@ def plot_bid_function_3d(writer, e, save_figure_to_disc=False):
             ax = fig.add_subplot(len(models), 2, model_idx*input_length+input_idx+1, projection='3d')
             ax.plot_trisurf(
                 
-                xv[model_idx].reshape(plot_points**2).detach().cpu().numpy(),
-                yv[model_idx].reshape(plot_points**2).detach().cpu().numpy(),
+                valuations[:,model_idx,0].detach().cpu().numpy(),
+                valuations[:,model_idx,1].detach().cpu().numpy(),
                 models_print[model_idx][:,input_idx].reshape(plot_points**2).detach().cpu().numpy(),
                 color = 'yellow',
                 linewidth = 0.2,
                 antialiased = True
             )
-            ax.plot_wireframe(
-                xv[model_idx].detach().cpu().numpy(),
-                yv[model_idx].detach().cpu().numpy(),
-                models_print_wf[model_idx][:,:,input_idx].detach().cpu().numpy(),
-                rstride=4, cstride=4
-            )
+            # ax.plot_wireframe(
+            #     xv[model_idx].detach().cpu().numpy(),
+            #     yv[model_idx].detach().cpu().numpy(),
+            #     models_print_wf[model_idx][:,:,input_idx].detach().cpu().numpy(),
+            #     rstride=4, cstride=4
+            # )
             # Axis labeling
-            if model_idx == 0:
-                ax.set_xlim(plot_xmin, plot_xmax-(u1_hi-u0_hi)); ax.set_ylim(plot_ymin, plot_ymax-(u1_hi-u0_hi)); ax.set_zlim(plot_zmin, plot_zmax-(u1_hi-u0_hi))
+            if len(models)>2:
+                if model_idx < 4:
+                    ax.set_xlim(plot_xmin, plot_xmax-(u1_hi-u0_hi)); ax.set_ylim(plot_ymin, plot_ymax-(u1_hi-u0_hi)); ax.set_zlim(plot_zmin, plot_zmax-(u1_hi-u0_hi))
+                else:
+                    ax.set_xlim(plot_xmin, plot_xmax); ax.set_ylim(plot_ymin, plot_ymax); ax.set_zlim(plot_zmin, plot_zmax)
             else:
-                ax.set_xlim(plot_xmin, plot_xmax); ax.set_ylim(plot_ymin, plot_ymax); ax.set_zlim(plot_zmin, plot_zmax)
+                if model_idx == 0:
+                    ax.set_xlim(plot_xmin, plot_xmax-(u1_hi-u0_hi)); ax.set_ylim(plot_ymin, plot_ymax-(u1_hi-u0_hi)); ax.set_zlim(plot_zmin, plot_zmax-(u1_hi-u0_hi))
+                else:
+                    ax.set_xlim(plot_xmin, plot_xmax); ax.set_ylim(plot_ymin, plot_ymax); ax.set_zlim(plot_zmin, plot_zmax)
             ax.set_xlabel('bundle 0 value'); ax.set_ylabel('bundle 1 value')#; ax.set_zlabel('bid')
             ax.zaxis.set_major_locator(LinearLocator(10))
             ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
@@ -223,10 +252,36 @@ def plot_bid_function_3d(writer, e, save_figure_to_disc=False):
 
     if save_figure_to_disc:
         plt.savefig(os.path.join(logdir, 'png', f'_{e:05}_3d.png'))
-    #if writer:
-    #    writer.add_figure(log_name + ' eval/plot_3d', fig, e)
+    if writer:
+        writer.add_figure('eval/bid_function_3d', fig, e)
 
     plt.show()
+
+def write_bid_function_3d():
+    assert input_length == 2, 'Only case of n_items equals 2 can be plotted'
+    write_local = (int)(write_points/2) +1
+    write_global = write_points + 1
+
+    lin_local = torch.linspace(u_lo, u0_hi, write_local)
+    lin_global = torch.linspace(u_lo, u1_hi, write_global)
+
+    prepare_model_output_3d(lin_local,0)
+    prepare_model_output_3d(lin_global,1)
+
+
+def prepare_model_output_3d(points, model_idx):
+    num_points = len(points)
+    xv, yv = torch.meshgrid([points, points])
+    valuations = torch.zeros(num_points**2, input_length, device=device)
+
+    valuations[:,0] = xv.reshape(num_points**2)
+    valuations[:,1] = yv.reshape(num_points**2)
+    models_print = models[model_idx].play(valuations)
+
+    #Adjust for precision loss when converting to numpy
+    np.savetxt(os.path.join(logdir, 'data_%s.csv' %model_idx), torch.cat((valuations.squeeze(0) + 0.00001,
+               models_print), 1).detach().cpu().numpy(), delimiter=',')#, fmt='%1.6f')
+
 
 
 ##########################################################################
@@ -248,20 +303,28 @@ xv[1], yv[1] = torch.meshgrid([lin_global, lin_global])
 valuations = torch.zeros(plot_points**2, len(models), input_length, device=device)
 models_print = [None] * len(models)
 for model_idx in range(len(models)):
-    valuations[:,model_idx,0] = xv[model_idx].reshape(plot_points**2)
-    valuations[:,model_idx,1] = yv[model_idx].reshape(plot_points**2)
+    if len(models) > 2:
+        valuations[:,model_idx,0] = xv[0].reshape(plot_points**2)
+        valuations[:,model_idx,1] = yv[0].reshape(plot_points**2)
+        if model_idx>3:
+            valuations[:,model_idx,0] = xv[1].reshape(plot_points**2)
+            valuations[:,model_idx,1] = yv[1].reshape(plot_points**2)    
+    else:
+        valuations[:,model_idx,0] = xv[model_idx].reshape(plot_points**2)
+        valuations[:,model_idx,1] = yv[model_idx].reshape(plot_points**2)
 
 sample = torch.tensor([[float(u0_hi), float(u0_hi)],
              [float(u0_hi), float(u1_hi)],
              [float(u1_hi), float(u1_hi)]])
     
+
 for k,v in enumerate(models):
     models[k] = NeuralNetStrategy(input_length,                            
                             hidden_nodes = hidden_nodes,
                             hidden_activations = hidden_activations,
                             ensure_positive_output = sample,
                             output_length = 2).to(device)
-    models[k].pretrain(valuations[:,k,:],1000)
+    models[k].pretrain(valuations[:,k,:],100)
 
 plot_points = tmp_plot_points
 
@@ -277,7 +340,8 @@ for k,v in enumerate(bidders):
     else:
         bidders[k] = strat_to_bidder(models[k], batch_size, player_position=k)
 
-mechanism = LLLLGGAuction(batch_size = batch_size, rule = 'first_price', cuda = cuda)
+mechanism = LLLLGGAuction(batch_size = batch_size, rule = pricing_rule, 
+                         cuda = cuda, core_solver = core_solver, parallel = n_threads)
 env = AuctionEnvironment(mechanism,
                   agents = bidders,
                   batch_size = batch_size,
@@ -287,11 +351,16 @@ env = AuctionEnvironment(mechanism,
 
 learners = [None] * len(models)
 for k,v in enumerate(learners):
+        if len(learners) == 2:
+            player_position_tmp = k*4
+        else:
+            player_position_tmp = k
         learners[k] = ESPGLearner(model = models[k],
                                 environment = env,
                                 hyperparams = learner_hyperparams,
                                 optimizer_type = optimizer_type,
-                                optimizer_hyperparams = optimizer_hyperparams)
+                                optimizer_hyperparams = optimizer_hyperparams,
+                                strat_to_player_kwargs = {'player_position': player_position_tmp})
 
 ###################################################Logging####################################################
 print(log_root)
@@ -300,7 +369,7 @@ if os.name == 'nt': raise ValueError('The run_name may not contain : on Windows!
 run_name = time.strftime('%Y-%m-%d %a %H:%M')
 if run_comment:
     run_name = run_name + ' - ' + str(run_comment)
-logdir = os.path.join(log_root, 'LLLLGG', 'asymmetric', 'uniform', str(n_players) + 'p', run_name)
+logdir = os.path.join(log_root, 'experiments', 'LLLLGG', str(n_players) + 'p', run_name)
 print(logdir)
 os.makedirs(logdir, exist_ok=True)
 if save_figure_to_disc:
@@ -322,24 +391,72 @@ if True:
     plot_bid_function_3d(writer=None,e=0,save_figure_to_disc = save_figure_to_disc) 
 
 ###################################################Training####################################################
-
+expect_counter = 0
 with SummaryWriter(logdir, flush_secs=60) as writer:
-    
+    #TODO: Write parameters
+    prep_nodes = ''
+    prep_activations = ''
+    for i in range(len(hidden_nodes)):
+        prep_nodes += str(hidden_nodes[i])
+        prep_activations += str(hidden_activations[i])
+    parameter_setting = 'device: %s,\r\n \
+                         pricing_rule: %s,\r\n \
+                         core_solver: %s,\n \
+                         model_sharing: %s, \
+                         batch_size: %s, \
+                                            \
+                         input_length: %s, \
+                         hidden_nodes_num: %s, \
+                         hidden_nodes: %s, \
+                         hidden_activities: %s, \
+                                                    \
+                         population_size: %s, \
+                         sigma: %s, \
+                         scale_sigma_by_model_size: %s, \
+                                                    \
+                         optimizer_type: %s,    \
+                         optimizer_hyperparams: %s, \
+                                                \
+                         plot_epoch: %s' \
+                         %(device, pricing_rule, core_solver, model_sharing,
+                         batch_size, input_length, len(hidden_nodes), prep_nodes, prep_activations,  
+                         learner_hyperparams['population_size'], learner_hyperparams['sigma'], 
+                         learner_hyperparams['scale_sigma_by_model_size'], optimizer_type,
+                         optimizer_hyperparams, plot_epoch)
+
+    writer.add_text('parameter_setting', parameter_setting)
+
+
     overhead_mins = 0
     torch.cuda.empty_cache()
     fig = plt.figure()
 
     for e in range(epoch+1):
+        #try:
+        #    if expect_counter>5:
+        #        sys.exit()
         print(e)
-
         # always: do optimizer step
         utilities = [None] * len(learners)
         for k,v in enumerate(learners):
             utilities[k] = learners[k].update_strategy_and_evaluate_utility()
-        
         #logging 
         start_time = timer()
-            
+        #TODO: Write 1. Utility of each,
+        if model_sharing:
+            writer.add_scalars('utilities',
+                            {'l': utilities[0],
+                             'g': utilities[1],
+                            }, e)
+        else:
+            writer.add_scalars('utilities',
+                            {'l1': utilities[0],
+                                'l2': utilities[1],
+                                'l3': utilities[2],
+                                'l4': utilities[3],
+                                'g1': utilities[4],
+                                'g2': utilities[5]
+                            }, e)
         # plot current function output
         if e%plot_epoch == 0:
             v = [None] * len(bidders)
@@ -349,13 +466,16 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
                 v[k] = bidder.valuations#.squeeze(0)
                 b[k] = bidder.get_action()#.squeeze(0)
             fig = plt.figure()
-
             print(('Epoch: {}: Model utility in learning env:'+'\t{:.5f}'*len(models)).format(e, *utilities))            
-    
             plot_bid_function(fig, v, b, writer,e,plot_points = plot_points,
                                   save_png_to_disc=save_figure_to_disc)  
-            plot_bid_function_3d(writer=None,e=e,save_figure_to_disc = save_figure_to_disc) 
-
+            plot_bid_function_3d(writer=writer,e=e,save_figure_to_disc = save_figure_to_disc)
+        if e%write_epoch == 0:
+            write_bid_function_3d()
         elapsed = timer() - start_time
         overhead_mins = overhead_mins + elapsed/60
         writer.add_scalar('debug/overhead_mins', overhead_mins, e)
+
+        #except:
+        #    print("------------------A RuntimeError occured by I keep moooving oooon!-----------------------\n")
+        #    except_counter += 1

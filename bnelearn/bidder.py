@@ -146,7 +146,7 @@ class Bidder(Player):
         assert allocations.dim() == 2 # batch_size x items
         assert payments.dim() == 1 # batch_size
 
-        #self.utility = (self.valuations * allocations).sum(dim=1) - payments
+
         return (self.valuations * allocations).sum(dim=1) - payments
 
     def get_action(self):
