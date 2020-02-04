@@ -9,6 +9,7 @@ from typing import Tuple, Type, Callable
 import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from bnelearn.environment import Environment
+from bnelearn.strategy import Strategy, NeuralNetStrategy
 
 
 class Learner(ABC):
@@ -246,11 +247,238 @@ class ESPGLearner(GradientBasedLearner):
 
         return perturbed, noise
 
-class DPGLearner(GradientBasedLearner):
-    """Neural Self-Play with Deterministic Policy Gradients."""
-    def __init__(self):
-        super().__init__()
-        raise NotImplementedError()
+class PGLearner(GradientBasedLearner):
+    """Neural Self-Play with directly computed Policy Gradients.
+
+    """
+    def __init__(self,
+                 model: torch.nn.Module, environment: Environment, hyperparams: dict,
+                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
+                 strat_to_player_kwargs: dict = None):
+        # Create and validate optimizer
+        super().__init__(model, environment,
+                         optimizer_type, optimizer_hyperparams,
+                         strat_to_player_kwargs)
+
+        if 'normalize_gradient' in hyperparams and hyperparams['normalize_gradient']:
+            self.normalize_gradient = True
+        else:
+            self.normalize_gradients = False
+
+        if 'baseline' in hyperparams:
+            self.baseline_method = hyperparams['baseline']
+            if not isinstance(self.baseline_method, float) \
+                    and not self.baseline_method in ['current_reward']:
+                raise ValueError('Invalid baseline provided. Should be float or '\
+                    + '"current_reward"')
+
+            if isinstance(self.baseline_method, float):
+                self.baseline = self.baseline_method
+                self.baseline_method = 'manual'
+            else:
+                 self.baseline = 0 # initial baseline
+
+        else:
+            # standard baseline
+            self.baseline_method = 'current_reward'
+            self.baseline = 0 # init
 
     def _set_gradients(self):
+        self.environment.prepare_iteration()
+
+        if self.baseline_method == 'current_reward':
+            self.baseline = self.environment.get_strategy_reward(
+                self.model,**self.strat_to_player_kwargs
+                ).detach().view(1)
+        else:
+            pass # is already constant float
+
+        loss =  -self.environment.get_strategy_reward(
+                self.model,**self.strat_to_player_kwargs
+                )
+
+        loss.backward()
+
+class DPGLearner(GradientBasedLearner):
+    """Implements Deterministic Policy Gradients
+
+    http://proceedings.mlr.press/v32/silver14.pdf
+
+    via directly calculating `dQ/da and da/d\\theta`
+
+
+    """
+    def __init__(self):
         raise NotImplementedError()
+
+
+class _PerturbedActionModule(Strategy, torch.nn.Module):
+    def __init__(self, module, epsilon):
+        super().__init__()
+        self.module = module
+        self.epsilon = epsilon
+
+    def forward(self, x):
+        return (self.module(x) + self.epsilon).relu()
+
+    def play(self, x):
+        return self.forward(x)
+
+
+class AESPGLearner(GradientBasedLearner):
+    """ Implements Deterministic Policy Gradients http://proceedings.mlr.press/v32/silver14.pdf
+    with ES-pseudogradients of dQ/da
+    """
+    def __init__(self,
+                 model: NeuralNetStrategy, environment: Environment, hyperparams: dict,
+                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
+                 strat_to_player_kwargs: dict = None):
+        # Create and validate optimizer
+        super().__init__(model, environment,
+                         optimizer_type, optimizer_hyperparams,
+                         strat_to_player_kwargs)
+
+        # Validate ES hyperparams
+        if not set(['population_size', 'sigma']) <= set(hyperparams):
+            raise ValueError(
+                'Missing hyperparams for ES. Provide at least, population size, sigma.')
+        if not isinstance(hyperparams['population_size'], int) or hyperparams['population_size'] < 2:
+            # one is invalid because there will be zero variance, leading to div by 0 errors
+            raise ValueError('Please provide a valid `population_size` parameter >=2')
+
+        # set hyperparams
+        self.population_size = hyperparams['population_size']
+        self.sigma = float(hyperparams['sigma'])
+
+        if 'normalize_gradients' in hyperparams and hyperparams['normalize_gradients']:
+            self.normalize_gradients = True
+            self.baseline = 'mean_reward'
+        else:
+            self.normalize_gradients = False
+            self.baseline = 'current_reward'
+
+        # overwrite baseline method if provided
+        if 'baseline' in hyperparams:
+            self.baseline_method = hyperparams['baseline']
+            if not isinstance(self.baseline_method, float) \
+                    and not self.baseline_method in ['current_reward', 'mean_reward']:
+                raise ValueError('Invalid baseline provided. Should be float or '\
+                    + 'one of "mean_reward", "current_reward"')
+
+
+    def _set_gradients(self):
+        """Calculates ES-pseudogradients and applies them to the model parameter
+           gradient data.
+
+            ES gradient is calculated as:
+            mean( rewards - baseline) * epsilons / sigma²
+            and approximates the true gradient.
+
+            In case of gradient normalization, we do not calculate a baseline
+            and instead use the following pseudogradient:
+            mean(rewards - rewards.mean()) / sigma / rewards.std()
+            For small sigma, this will yield a vector that points in the same
+            direction as the gradient and has length (slightly smaller than) 1.
+            Furthermore, the gradient samples will have low variance
+            Note that for large sigma, this grad becomes smaller tha
+        """
+
+        n_pop = self.population_size
+        n_actions =  self.model.output_length
+        n_batch = self.environment.batch_size
+
+        ### 1. if required redraw valuations / perform random moves (determined by env)
+        self.environment.prepare_iteration()
+        ### 2. Create a population of perturbations of the original model outputs
+        population = (self._perturb_model(self.model) for _ in range(n_pop))
+        ### 3. let each candidate against the environment and get their utils ###
+
+        # rewards: population_size x n_batch x 1, epsilons: n_pop x n_batch x n_action
+        rewards, epsilons = (
+            torch.cat(tensors)#.view(n_pop, -1)
+            for tensors in zip(*(
+                (
+                    self.environment.get_strategy_reward(
+                        model, aggregate_batch=False, **self.strat_to_player_kwargs).detach().view(1,n_batch, 1),
+                    epsilon.unsqueeze(0)
+                )
+                for (model, epsilon) in population
+                ))
+            )
+        ### 4. calculate the ES-pseuogradients   ####
+        ## base case: current reward
+        # action: batch x 1, baseline: batch
+        action, baseline = self.environment.get_strategy_action_and_reward(self.model,**self.strat_to_player_kwargs)
+
+        if self.baseline == 'mean_reward':
+            baseline = rewards.mean(dim=0)
+        elif isinstance(self.baseline, float):
+            baseline = self.baseline
+
+        if torch.is_tensor(baseline):
+            baseline = baseline.view(n_batch, 1)
+
+        denominator = self.sigma * rewards.std() if self.normalize_gradients else self.sigma**2
+
+        if denominator == 0:
+            # all candidates returned same reward and normalize is true --> stationary
+            es_dudb = torch.zeros(n_batch, n_actions, 1)
+        else:
+            # mean over pop --> result is (batch), we want batch x n_actions x 1
+            # this should be # batch x n_actions (TODO: test for n_actions >1)
+
+            # pop_size x batch x 1
+            scaled_rewards = (rewards - baseline)/denominator
+
+            es_dudb = (scaled_rewards*epsilons).mean(dim=0)
+            #es_dudb.unsqueeze_(-1) # batch x n_actions x 1
+
+
+        ### 5. assign gradients to model gradient ####
+        # should be ∇_θ π *  ∇^ES_b u
+        # assuming all current `param.grad`s are zero, we set  db/da by
+        #for action_loss in -torch.einsum('ba,ba->b', action, es_dudb):
+        #    action_loss.div(n_batch).backward(retain_graph=True)
+        loss = -torch.einsum('ba,ba->b', action, es_dudb).mean()
+        loss.backward()
+
+    def _perturb_model(self, model: NeuralNetStrategy) -> Tuple[torch.nn.Module, torch.Tensor]:
+        """
+        Returns a model [torch.nn.Module] perturbed via adding random noise to
+        its outputs,
+        as well as the noise vector used to generate the perturbation.
+        """
+        # for now, we'll assume model is a NeuralNetStrategy, i.e. has an attribute output_length
+
+        noise = torch.zeros([self.environment.batch_size, model.output_length],
+                            device = next(model.parameters()).device
+            ).normal_(mean=0.0, std=self.sigma)
+
+        perturbed = _PerturbedActionModule(model, noise)
+
+        return perturbed, noise
+
+
+class DDPGLearner(GradientBasedLearner):
+    """Implements Deep Deterministic Policy Gradients (Lilicrap et al 2016)
+
+       http://arxiv.org/abs/1509.02971
+    """
+    def __init__(self):
+        raise NotImplementedError()
+
+
+class DummyNonLearner(GradientBasedLearner):
+    """A learner that does nothing."""
+
+    def __init__(self,
+                 model: torch.nn.Module, environment: Environment, hyperparams: dict, #pylint:disable=unused-argument
+                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
+                 strat_to_player_kwargs: dict = None):
+        # Create and validate optimizer
+        super().__init__(model, environment,
+                         optimizer_type, optimizer_hyperparams,
+                         strat_to_player_kwargs)
+
+    def _set_gradients(self):
+        pass
