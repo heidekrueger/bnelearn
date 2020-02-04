@@ -62,10 +62,10 @@ def test_prisoners_dilemma_training_shared_model():
     # So far, we have tested whether the loop runs without runtime errors,
     # now check results.
 
-    assert player0.get_action().float().mean().item() > .95, \
+    assert player0.get_action().float().mean().item() > .9, \
             "Player1 should have learnt to play action 1 ('defect')"
 
-    assert player1.get_action().float().mean().item() > .95, \
+    assert player1.get_action().float().mean().item() > .9, \
             "Player1 should have learnt to play action 1 ('defect')"
 
 
