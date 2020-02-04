@@ -31,7 +31,7 @@ specific_gpu = 3
 
 n_runs = 1
 seeds = list(range(n_runs))
-epochs = 100
+epochs = 1000
 
 # Logging and plotting
 logging_options = dict(
@@ -43,10 +43,17 @@ logging_options = dict(
 )
 
 # Experiment setting parameters
-n_players = 2
-auction_mechanism = 'second_price' # one of 'first_price', 'second_price'
-valuation_prior = 'normal' # for now, one of 'uniform' / 'normal', specific params defined in script
+n_players = 5
+auction_mechanism = 'first_price' # one of 'first_price', 'second_price'
+valuation_prior = 'uniform' # for now, one of 'uniform' / 'normal', specific params defined in script
+risk = 0.5
 
+if risk == 1.0:
+    risk_profile = 'risk_neutral'
+elif risk == 0.5:
+    risk_profile = 'risk_averse'
+else:
+    risk_profile = 'other'
 
 # Learning
 model_sharing = True
@@ -110,8 +117,6 @@ elif auction_mechanism == 'second_price':
 
 ### Set up experiment domain and bidders
 if valuation_prior == 'uniform':
-    risk = 1 # risk parameter for agent <-- not implemented in bidder yet but used in calculation of optimal utility
-
     u_lo =0
     u_hi =10
     common_prior = torch.distributions.uniform.Uniform(low = u_lo, high = u_hi)
@@ -120,13 +125,15 @@ if valuation_prior == 'uniform':
 
     def strat_to_bidder(strategy, batch_size=batch_size, player_position=None, cache_actions=False):
         return Bidder.uniform(u_lo, u_hi, strategy, batch_size = batch_size,
-                              player_position=player_position, cache_actions=cache_actions)
+                              player_position=player_position, cache_actions=cache_actions, risk=risk)
     plot_xmin = u_lo
     plot_xmax = u_hi
     plot_ymin = 0
     plot_ymax = 10
 
 elif valuation_prior == 'normal':
+    assert risk_profile == 'risk_neutral', "No optimal solution known for risk != 0 with Gaussian priors. " \
+                       + "Comment out this line only if you know what you're doing!"
     valuation_mean = 10.0
     valuation_std = 5.0
     common_prior = torch.distributions.normal.Normal(loc = valuation_mean, scale = valuation_std)
@@ -137,7 +144,8 @@ elif valuation_prior == 'normal':
         return Bidder.normal(valuation_mean, valuation_std, strategy,
                              batch_size = batch_size,
                              player_position=player_position,
-                             cache_actions=cache_actions)
+                             cache_actions=cache_actions,
+                             risk = risk)
 
     plot_xmin = int(max(0, valuation_mean - 3*valuation_std))
     plot_xmax = int(valuation_mean + 3*valuation_std)
@@ -182,8 +190,10 @@ if auction_mechanism == 'second_price':
 elif auction_mechanism == 'first_price':
     if valuation_prior == 'uniform':
         def optimal_bid(valuation):
-            return valuation * (n_players - 1) / n_players
+            return u_lo + (valuation - u_lo) * (n_players - 1) / (n_players - 1.0 + risk)
     elif valuation_prior == 'normal':
+        if risk_profile != 'risk_neutral':
+            warnings.warn("Ignoring risk-aversion in optimal bid!")
         def optimal_bid(valuation: torch.Tensor or np.ndarray or float) -> torch.Tensor:
             # For float and numpy --> convert to tensor
             if not isinstance(valuation, torch.Tensor):
@@ -222,7 +232,7 @@ global_bne_env = AuctionEnvironment(
 
 if auction_mechanism == 'first_price':
     if valuation_prior == 'uniform':
-        global_bne_utility = risk/(n_players - 1 + risk)*(u_hi - u_lo)/(n_players+1)
+        global_bne_utility = (risk*(u_hi-u_lo)/(n_players-1+risk))**risk / (n_players + risk)
     elif valuation_prior == 'normal':
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
@@ -231,11 +241,8 @@ if auction_mechanism == 'first_price':
                 lambda x, v: common_prior.cdf(x)**(n_players - 1) * common_prior.log_prob(v).exp(),
                 0, float('inf'), # outer boundaries
                 lambda v: 0, lambda v: v) # inner boundaries
-            global_bne_utility_sampled = global_bne_env.get_reward(global_bne_env.agents[0], draw_valuations=True)
             if error_estimate > 1e-6:
                 warnings.warn('Error in optimal utility might not be negligible')
-        print("Utility in BNE (analytical): \t{:.5f}".format(global_bne_utility))
-        print('Utility in BNE (sampled): \t{:.5f}'.format(global_bne_utility_sampled))
 elif auction_mechanism == 'second_price':
     F = common_prior.cdf
     f = lambda x: common_prior.log_prob(torch.tensor(x)).exp()
@@ -251,12 +258,15 @@ elif auction_mechanism == 'second_price':
 else:
     raise ValueError("Invalid auction mechanism.")
 
+global_bne_utility_sampled = global_bne_env.get_reward(global_bne_env.agents[0], draw_valuations=True)
+print("Utility in BNE (analytical): \t{:.5f}".format(global_bne_utility))
+print('Utility in BNE (sampled): \t{:.5f}'.format(global_bne_utility_sampled))
+
 def setup_eval_environment(self):
     # environment filled with optimal players for logging
     # use higher batch size for calculating optimum
     self.bne_env = global_bne_env
     self.bne_utility = global_bne_utility
-
 
 
 ### Setup Plotting
@@ -368,7 +378,8 @@ def run(seed, run_comment, epochs):
         torch.cuda.manual_seed_all(seed)
 
     exp = SymmetricSingleItemAuctionExperiment(
-        name = ['single_item', auction_mechanism, valuation_prior, 'symmetric', str(n_players)+'p'],
+        name = ['single_item', auction_mechanism, valuation_prior,
+                'symmetric', risk_profile, str(n_players)+'p'],
         mechanism = mechanism,
         n_players = n_players,
         logging_options = logging_options)
