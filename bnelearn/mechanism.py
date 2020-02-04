@@ -617,8 +617,8 @@ class StaticFunctionMechanism(Mechanism):
 
         bids = bids.to(self.device)
 
-        payments = torch.mul(4.0-bids,4.0-bids).sum(item_dim)
-        allocations = (torch.rand_like(bids) > 1.0).float()
+        payments = torch.mul(5.0-bids,5.0-bids).sum(item_dim)
+        allocations = (torch.rand_like(bids) > 0.5).float()
 
         return (allocations, payments)
 
