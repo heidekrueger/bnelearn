@@ -3,12 +3,13 @@
 import pytest
 import torch
 
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
+from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, ThirdPriceAuction
 
 cuda = torch.cuda.is_available()
 
 fpsb = FirstPriceSealedBidAuction(cuda=cuda)
 vickrey = VickreyAuction(cuda=cuda)
+third = ThirdPriceAuction(cuda=cuda)
 
 device = fpsb.device
 
@@ -110,4 +111,28 @@ def test_vickrey_correctness():
     assert torch.equal(payments, torch.tensor(
         [[4.9900, 3.6000, 0.0000],
          [1.9900, 1.0000, 0.0000]],
+        device = payments.device))
+
+def test_thirdprice_illegal_arguments():
+    """Illegal bid tensors should cause exceptions"""
+    with pytest.raises(AssertionError):
+        third.run(bids_unambiguous)
+
+def test_thirdprice_correctness():
+    """Thirdprice should return correct allocations and payments."""
+    bids_unambiguous[0,1,2] = 0.1
+    allocations, payments = third.run(bids_unambiguous)
+    assert torch.equal(allocations, torch.tensor(
+        [
+            [[0., 1., 1.],
+             [1., 0., 0.],
+             [0., 0., 0.]],
+            [[0., 1., 1.],
+             [1., 0., 0.],
+             [0., 0., 0.]]
+        ], device = allocations.device))
+
+    assert torch.equal(payments, torch.tensor(
+        [[2.09, 1.0, 0.0000],
+         [1.99, 1.0, 0.0000]],
         device = payments.device))
