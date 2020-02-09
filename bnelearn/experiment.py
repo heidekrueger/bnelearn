@@ -13,8 +13,14 @@ from torch.utils.tensorboard import SummaryWriter
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
 
-    def __init__(self, name, mechanism, n_players, logging_options):
-        self.n_players = n_players
+    def __init__(self, name, mechanism, players_sharing_model, logging_options):
+        self.players_sharing_model = players_sharing_model
+        self.players_sharing_model_index = [0]
+        for i in range(len(self.players_sharing_model)-1):
+            self.players_sharing_model_index.append(
+                self.players_sharing_model_index[i]+self.players_sharing_model[i])
+        self.n_players = sum(players_sharing_model)
+        
         self.mechanism = mechanism
 
         self.base_dir = os.path.join(*name)
