@@ -45,7 +45,7 @@ if cuda and specific_gpu:
 print(device)
 if cuda: print(torch.cuda.current_device())
 
-n_runs = 10
+n_runs = 3
 seeds = list(range(n_runs))
 epochs = 1000
 
@@ -82,7 +82,7 @@ batch_size = 2**18
 
 ## ES
 learner_hyperparams = {
-    'population_size': 64,
+    'population_size': 32,
     'sigma': 1.,
     'scale_sigma_by_model_size': True
 }
@@ -115,7 +115,7 @@ hidden_nodes = [5, 5, 5]
 hidden_activations = [nn.SELU(), nn.SELU(), nn.SELU()]
 
 # Evaluation
-eval_batch_size = 2**22
+eval_batch_size = 2**23
 cache_eval_actions = True
 
 ######################### No settings beyond this point ######################
@@ -233,7 +233,8 @@ global_bne_env = AuctionEnvironment(
 
 
 #print("Utility in BNE (analytical): \t{:.5f}".format(bne_utility))
-global_bne_utility_sampled = torch.tensor([global_bne_env.get_reward(a, draw_valuations = True) for a in global_bne_env.agents])
+global_bne_utility_sampled = torch.tensor(
+    [global_bne_env.get_reward(a, draw_valuations = True) for a in global_bne_env.agents])
 print(('Utilities in BNE (sampled):'+ '\t{:.5f}'*n_players + '.').format(*global_bne_utility_sampled))
 
 
@@ -360,53 +361,50 @@ def log_hyperparams(self, writer, e):
 ## Define Training Loop
 def training_loop(self, writer, e):
 
-    # plot current function output
-    v = []
-    b = []
-    for index in range(self.n_players): #TODO: Change this permantely to this!?: self.players_sharing_model_index:
-        self.bidders[index].draw_valuations_()
-        v.append(self.bidders[index].valuations)
-        b.append(self.bidders[index].get_action())
+
     if e == 0:
+        # plot initialization BEFORE doing the first update
+        v, b = [], []
+        for index in range(self.n_players): #TODO: Change this permantely to this!?: self.players_sharing_model_index:
+            self.bidders[index].draw_valuations_()
+            v.append(self.bidders[index].valuations)
+            b.append(self.bidders[index].get_action())
         self.plot(self.fig, v, b, writer,e)
+    
     # always: do optimizer step
-    utilities = [
+    utilities = torch.tensor([
         learner.update_strategy_and_evaluate_utility()
         for learner in self.learners
-    ]
+        ])
 
     #logging
     start_time = timer()
-    utilities = torch.tensor(utilities)
     utilities_vs_bne = torch.tensor(
-        [global_bne_env.get_strategy_reward(a.strategy, player_position=i)
+        [global_bne_env.get_strategy_reward(
+            a.strategy, player_position=i, draw_valuations=False)
             for i,a in enumerate(self.env.agents)])
 
     # TODO: move this to log_metrics
     for i, a in enumerate(self.env.agents):
         L_2 = strategy_norm(a.strategy,
-                                global_bne_env.agents[i].strategy,
-                                global_bne_env.agents[i].valuations, 2)
+                            global_bne_env.agents[i].strategy,
+                            global_bne_env.agents[i].valuations, 2)
         L_inf = strategy_norm(a.strategy,
-                                global_bne_env.agents[i].strategy,
-                                global_bne_env.agents[i].valuations, float('inf'))
+                              global_bne_env.agents[i].strategy,
+                              global_bne_env.agents[i].valuations, float('inf'))
         writer.add_scalar('eval_players/p{}_L2'.format(i), L_2, e)
-        writer.add_scalar('eval_players/p{}_L2'.format(i), L_inf, e)
+        writer.add_scalar('eval_players/p{}_L_inf'.format(i), L_inf, e)
     
     self.log_metrics(writer, utilities, utilities_vs_bne, e)
     if e % self._logging_options['plot_epoch'] == 0 and e > 0:
         # plot current function output
-        v = []
-        b = []
+        v, b = [], []
         for index in range(n_players):
             self.bidders[index].draw_valuations_()
             v.append(self.bidders[index].valuations)
             b.append(self.bidders[index].get_action())
 
-
         print(('Epoch: {}: Model utility in learning env:'+'\t{:.5f}'*n_players).format(e, *utilities))
-        #print("Epoch {}: \tutilities: \t p0: {:.3f} \t p1: {:.3f}".format(e, utility_0, utility_1))
-
         self.plot(self.fig, v, b, writer,e)
 
     elapsed = timer() - start_time
@@ -414,7 +412,7 @@ def training_loop(self, writer, e):
     writer.add_scalar('debug/overhead_mins', self.overhead_mins, e)
 
 # Define Experiment Class
-class AuctionExperiment(Experiment):
+class LLGExperiment(Experiment):
     setup_players = setup_bidders
     setup_learning_environment = setup_learning_environment
     setup_learners = setup_learner
@@ -433,14 +431,14 @@ def run(seed, run_comment, epochs):
         torch.random.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
 
-    exp = AuctionExperiment(
+    exp = LLGExperiment(
         name = ['LLG', payment_rule, correlation_profile],
         mechanism = auction_mechanism(cuda = cuda, rule = payment_rule),
         n_players = n_players,
         logging_options = logging_options)
 
     #setup_custom_scalar_plots(writer) <- do we still need this?
-    overhead_mins = 0
+    #overhead_mins = 0
 
     exp.run(epochs, run_comment)
 
