@@ -37,14 +37,14 @@ cuda = torch.cuda.is_available()
 device = 'cuda' if cuda else 'cpu'
 
 # Use specific cuda gpu if desired (i.e. for running multiple experiments in parallel)
-specific_gpu = 5
+specific_gpu = 4
 if cuda and specific_gpu:
     torch.cuda.set_device(specific_gpu)
 
 print(device)
 if cuda: print(torch.cuda.current_device())
 
-n_runs = 10
+n_runs = 2
 seeds = list(range(n_runs))
 epochs = 1000
 
@@ -52,7 +52,7 @@ epochs = 1000
 logging_options = dict(
     log_root = os.path.join(root_path, 'experiments'),
     save_figure_to_disc_png = True,
-    save_figure_to_disc_svg = False, #for publishing. better quality but a pain to work with
+    save_figure_to_disc_svg = True, #for publishing. better quality but a pain to work with
     plot_epoch = 100,
     show_plot_inline = True,
     save_figure_data_to_disc = True
@@ -65,15 +65,6 @@ n_players = 3
 auction_mechanism = LLGAuction # FirstPriceSealedBidAuction, VickreyAuction, LLGAuction
 payment_rule =  'vcg'            #'first_price', 'vcg', 'nearest-vcg,...'
 gamma = 0
-valuation_prior = 'uniform' # for now, one of 'uniform' / 'normal', specific params defined in script
-risk = 1.0
-
-if risk == 1.0:
-    risk_profile = 'risk_neutral'
-elif risk == 0.5:
-    risk_profile = 'risk_averse'
-else:
-    risk_profile = 'other'
 
 u_lo = 0
 u_hi_local = 1.0
@@ -83,14 +74,16 @@ u_his = [u_hi_local, u_hi_local, u_hi_global]
 
 # Learning
 model_sharing = True
-pretrain_iters = 500
+pretrain_iters = 0#500
 batch_size = 2**18
+
 ## ES
 learner_hyperparams = {
     'population_size': 64,
     'sigma': 1.,
     'scale_sigma_by_model_size': True
 }
+
 ## Optimizer
             # SGD standards
             #'lr': 1e-3,
@@ -101,8 +94,9 @@ learner_hyperparams = {
             # 'eps': 1e-8 , # added to denominator for numeric stability
             # 'weight_decay': 0, #L2-decay
             # 'amsgrad': False #whether to use amsgrad-variant
-optimizer_type = torch.optim.Adam
+optimizer_type = torch.optim.SGD
 optimizer_hyperparams ={
+    'momentum': 0.9,
     'lr': 3e-3
 }
 
@@ -119,7 +113,6 @@ hidden_activations = [nn.SELU(), nn.SELU(), nn.SELU()]
 # Evaluation
 eval_batch_size = 2**22
 cache_eval_actions = True
-n_processes_optimal_strategy = 44 if valuation_prior != 'uniform' and auction_mechanism != 'second_price' else 0
 
 ######################### No settings beyond this point ######################
 
@@ -166,7 +159,7 @@ def setup_learning_environment(self):
     self.env = AuctionEnvironment(self.mechanism,
                                   agents = self.bidders,
                                   batch_size = batch_size,
-                                  n_players =n_players,
+                                  n_players = n_players,
                                   strategy_to_player_closure = strat_to_bidder)
 def setup_learner(self):
     learner_l1 = ESPGLearner(model = self.bidders[0].strategy,
@@ -271,7 +264,7 @@ def plot_bid_function(self, fig, v, b, writer=None, e=None):
     plt.ylim(0, 2)
     plt.xlabel('valuation')
     plt.ylabel('bid')
-    plt.text(0 + 1, 2 - 1, 'iteration {}'.format(e))
+    plt.text(0 + 0.5, 2 - 0.5, 'iteration {}'.format(e))
     plt.plot(v[0],b[0], 'bo', vl1_opt, bl1_opt, 'b--', v[1],b[1], 'go', vl2_opt, bl2_opt, 'g--', v[2],b[2], 'ro', vg_opt,bg_opt, 'r--')
     self._process_figure(fig, writer, e)
 
@@ -282,8 +275,41 @@ def log_once(self, writer, e):
         writer.add_scalar('debug_players/p{}_model_parameters'.format(i), self.n_parameters[i], e)
     writer.add_scalar('debug/model_parameters', sum(self.n_parameters), e)
     writer.add_scalar('debug/eval_batch_size', eval_batch_size, e)
-    for a in self.bidders:
-        writer.add_text('hyperparams/neural_net_spec', str(a.strategy), 0)
+
+    prep_nodes = ''
+    prep_activations = ''
+    for i in range(len(hidden_nodes)):
+        prep_nodes += str(hidden_nodes[i])
+        prep_activations += str(hidden_activations[i])
+    parameter_setting = 'device: %s,\r\n \
+                         payment_rule: %s,\r\n \
+                         model_sharing: %s, \
+                         batch_size: %s, \
+                                            \
+                         input_length: %s, \
+                         hidden_nodes_num: %s, \
+                         hidden_nodes: %s, \
+                         hidden_activities: %s, \
+                                                    \
+                         population_size: %s, \
+                         sigma: %s, \
+                         scale_sigma_by_model_size: %s, \
+                                                    \
+                         optimizer_type: %s,    \
+                         optimizer_hyperparams: %s, \
+                                                \
+                         plot_epoch: %s' \
+                         %(device, payment_rule, model_sharing,
+                         batch_size, input_length, len(hidden_nodes), prep_nodes, prep_activations,  
+                         learner_hyperparams['population_size'], learner_hyperparams['sigma'], 
+                         learner_hyperparams['scale_sigma_by_model_size'], optimizer_type,
+                         optimizer_hyperparams, plot_epoch)
+
+    writer.add_text('parameter_setting', parameter_setting)
+    # $Using formulations above from llllgg instead
+    # for a in self.bidders:
+    #     writer.add_text('hyperparams/neural_net_spec', str(a.strategy), 0)
+    #     writer.add_text('hyperparams/optimizer', str(optimizer_type),0)
     #writer.add_scalar('debug/eval_batch_size', eval_batch_size, e)
     #Currently only the first grad is printed. TODO: Generalize
     writer.add_graph(self.bidders[0].strategy, self.env.agents[0].valuations)
@@ -310,21 +336,14 @@ def log_metrics(self, writer, utility, utilities_vs_bne, e):
 def log_hyperparams(self, writer, e):
     """Everything that should be logged on every learning_rate updates"""
     writer.add_scalar('hyperparams/batch_size', batch_size, e)
-    writer.add_scalar('hyperparams/learning_rate', optimizer_hyperparams['lr'], e)
+    for k,v in optimizer_hyperparams.items():
+        writer.add_scalar('hypterparams/%s'%k, v, e)
+    # writer.add_scalar('hyperparams/learning_rate', optimizer_hyperparams['lr'], e)
     #writer.add_scalar('hyperparams/momentum', optimizer_hyperparams['momentum'], e)
-    writer.add_scalar('hyperparams/sigma', learner_hyperparams['sigma'], e)
-    writer.add_scalar('hyperparams/n_perturbations', learner_hyperparams['population_size'], e)
-
-def setup_custom_scalar_plots(writer):    
-    ## define layout first, then call add_custom_scalars once
-    layout = {'eval':
-        {
-            #'Loss vs BNE relative': ['Multiline',
-            #                         ['eval_players/p{}_epsilon_relative'.format(i) for i in range(n_players)]]
-            #'How to make a margin chart': ['Margin', ['tag_mean', 'tag_min', 'tag_max']]
-        }
-    }    
-    writer.add_custom_scalars(layout) 
+    for k,v in learner_hyperparams.items():
+        writer.add_scalar('hypterparams/%s'%k, v, e)
+    # writer.add_scalar('hyperparams/sigma', learner_hyperparams['sigma'], e)
+    # writer.add_scalar('hyperparams/n_perturbations', learner_hyperparams['population_size'], e)
 
 ## Define Training Loop
 def training_loop(self, writer, e):
@@ -391,8 +410,7 @@ def run(seed, run_comment, epochs):
         torch.cuda.manual_seed_all(seed)
 
     exp = AuctionExperiment(
-        name = ['single_item', auction_mechanism.name, valuation_prior,
-                'symmetric', risk_profile, str(n_players)+'p'],
+        name = ['combinatorial', auction_mechanism.name, payment_rule],
         mechanism = auction_mechanism(cuda = cuda, rule = payment_rule),
         n_players = n_players,
         logging_options = logging_options)
