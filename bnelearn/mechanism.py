@@ -635,7 +635,7 @@ class LLGAuction(Mechanism):
 
         For the LLG Domain see e.g. Ausubel & Milgrom 2006 or Bosshard et al 2017
     """
-    name = 'LLGAuction'
+
     def __init__(self, rule = 'first_price', cuda: bool = True):
         super().__init__(cuda)
         if rule not in ['first_price', 'vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:

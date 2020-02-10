@@ -24,6 +24,7 @@ from bnelearn.experiment import Experiment
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, LLGAuction
 from bnelearn.strategy import ClosureStrategy, NeuralNetStrategy
+from bnelearn.util.metrics import strategy_norm
 
 ##%%%%%%%%%%%%%%%%%%%%%%%%%%    Settings
 # device and seed
@@ -32,7 +33,7 @@ is_ipython = 'inline' in plt.get_backend()
 if is_ipython:
     from IPython import display
 plt.rcParams['figure.figsize'] = [10, 7]
-    
+
 cuda = torch.cuda.is_available()
 device = 'cuda' if cuda else 'cpu'
 
@@ -44,7 +45,7 @@ if cuda and specific_gpu:
 print(device)
 if cuda: print(torch.cuda.current_device())
 
-n_runs = 2
+n_runs = 10
 seeds = list(range(n_runs))
 epochs = 1000
 
@@ -59,12 +60,14 @@ logging_options = dict(
 )
 
 # Experiment setting parameters
-n_players = 3
+n_players = 3 # fix in LLG, don't change!
 
 
 auction_mechanism = LLGAuction # FirstPriceSealedBidAuction, VickreyAuction, LLGAuction
-payment_rule =  'vcg'            #'first_price', 'vcg', 'nearest-vcg,...'
-gamma = 0
+payment_rule =  'proxy'            #'first_price', 'vcg', 'nearest-vcg,...'
+gamma = 0.0
+
+correlation_profile = 'independent' if gamma == 0.0 else 'correlated'
 
 u_lo = 0
 u_hi_local = 1.0
@@ -74,7 +77,7 @@ u_his = [u_hi_local, u_hi_local, u_hi_global]
 
 # Learning
 model_sharing = True
-pretrain_iters = 0#500
+pretrain_iters = 500
 batch_size = 2**18
 
 ## ES
@@ -94,15 +97,16 @@ learner_hyperparams = {
             # 'eps': 1e-8 , # added to denominator for numeric stability
             # 'weight_decay': 0, #L2-decay
             # 'amsgrad': False #whether to use amsgrad-variant
-optimizer_type = torch.optim.SGD
+optimizer_type = torch.optim.Adam #torch.optim.SGD
 optimizer_hyperparams ={
-    'momentum': 0.9,
+    #'momentum': 0.9,
     'lr': 3e-3
 }
 
 # plot and log training options
 plot_epoch = 100
 plot_points = min(100, batch_size)
+plot_points_locals = int(plot_points/2)
 
 # in single item auctions there's only a single input
 ### strategy model architecture
@@ -145,7 +149,7 @@ def setup_bidders(self, local_model_sharing = True):
     bidder_l2 = strat_to_bidder(model_l1, batch_size, player_position=1) \
                     if local_model_sharing else strat_to_bidder(model_l2, batch_size, player_position=1)
     bidder_g  = strat_to_bidder(model_g,  batch_size, player_position=2)
-    
+
     self.bidders = [bidder_l1, bidder_l2, bidder_g]
     self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in [b.strategy for b in self.bidders]]
 
@@ -204,13 +208,13 @@ def optimal_bid(valuation: torch.Tensor or np.ndarray or float, player_position:
         return valuation
     if payment_rule in ['proxy', 'nearest_zero']:
         bid_if_positive = 1 + torch.log(valuation * (1.0-gamma) + gamma)/(1.0-gamma)
-        return torch.max( torch.zeros_like(valuation), bid_if_positive) 
+        return torch.max( torch.zeros_like(valuation), bid_if_positive)
     if payment_rule == 'nearest_bid':
         return  (np.log(2) - torch.log(2.0 - (1. - gamma) * valuation))/ (1.- gamma)
     if payment_rule == 'nearest_vcg':
-        bid_if_positive = 2. / (2. + gamma) * (valuation - (3. - np.sqrt(9 - (1. - gamma)**2)) / (1. - gamma) ) 
+        bid_if_positive = 2. / (2. + gamma) * (valuation - (3. - np.sqrt(9 - (1. - gamma)**2)) / (1. - gamma) )
         return torch.max(torch.zeros_like(valuation), bid_if_positive)
-    
+
     raise ValueError('optimal bid not implemented for other rules')
 
 bne_strategies = [
@@ -236,6 +240,7 @@ print(('Utilities in BNE (sampled):'+ '\t{:.5f}'*n_players + '.').format(*global
 eps_abs = lambda us: global_bne_utility_sampled - us
 eps_rel = lambda us: 1- us/global_bne_utility_sampled
 
+
 def setup_eval_environment(self):
     # environment filled with optimal players for logging
     # use higher batch size for calculating optimum
@@ -245,18 +250,24 @@ def setup_eval_environment(self):
 
 
 ### Setup Plotting
-vl1_opt = np.linspace(u_lo, u_hi_local, 25)
+vl1_opt = np.linspace(u_lo, u_hi_local, 50)
 bl1_opt = optimal_bid(vl1_opt, 0).numpy()
-vl2_opt = np.linspace(u_lo, u_hi_local, 25)
+vl2_opt = np.linspace(u_lo, u_hi_local, 50)
 bl2_opt = optimal_bid(vl2_opt, 0).numpy()
-vg_opt = np.linspace(u_lo, u_hi_global, 50)
-bg_opt = optimal_bid(vg_opt, 2).numpy() 
+vg_opt = np.linspace(u_lo, u_hi_global, 100)
+bg_opt = optimal_bid(vg_opt, 2).numpy()
 
 def plot_bid_function(self, fig, v, b, writer=None, e=None):
     # subsample points and plot
     for i in range(len(v)):
-        v[i] = v[i].detach().cpu().numpy()[:plot_points]
-        b[i] = b[i].detach().cpu().numpy()[:plot_points]
+        if i in [0,1]:
+            #plot fewer points for local bidders
+            v[i] = v[i].detach().cpu().numpy()[:plot_points_locals]
+            b[i] = b[i].detach().cpu().numpy()[:plot_points_locals]
+        else:
+            v[i] = v[i].detach().cpu().numpy()[:plot_points]
+            b[i] = b[i].detach().cpu().numpy()[:plot_points]
+
 
     fig = plt.gcf()
     plt.cla()
@@ -300,8 +311,8 @@ def log_once(self, writer, e):
                                                 \
                          plot_epoch: %s' \
                          %(device, payment_rule, model_sharing,
-                         batch_size, input_length, len(hidden_nodes), prep_nodes, prep_activations,  
-                         learner_hyperparams['population_size'], learner_hyperparams['sigma'], 
+                         batch_size, input_length, len(hidden_nodes), prep_nodes, prep_activations,
+                         learner_hyperparams['population_size'], learner_hyperparams['sigma'],
                          learner_hyperparams['scale_sigma_by_model_size'], optimizer_type,
                          optimizer_hyperparams, plot_epoch)
 
@@ -318,7 +329,8 @@ def log_metrics(self, writer, utility, utilities_vs_bne, e):
     """log scalar for each player. Tensor should be of shape n_players"""
     epsilons_rel = eps_rel(utilities_vs_bne)
     epsilons_abs = eps_abs(utilities_vs_bne)
-    
+
+
     # redundant logging of utlities for multiline
     for i in range(n_players):
         ## Note: multiline chart capture all tags that match the given beginning of the tag_name,
@@ -328,26 +340,26 @@ def log_metrics(self, writer, utility, utilities_vs_bne, e):
         writer.add_scalar('eval_players/p{}_utility_vs_bne'.format(i), utilities_vs_bne[i], e)
         writer.add_scalar('eval_players/p{}_epsilon_absolute'.format(i), epsilons_abs[i], e)
         writer.add_scalar('eval_players/p{}_epsilon_relative'.format(i), epsilons_rel[i], e)
-    
+
     writer.add_scalar('eval/epsilon_relative', epsilons_rel.mean(),e)
-    writer.add_scalar('debug/epsilon_absolute', epsilons_abs.mean(),e)
+    writer.add_scalar('eval/epsilon_absolute', epsilons_abs.mean(),e)
 
 # TODO: deferred until writing logger
 def log_hyperparams(self, writer, e):
     """Everything that should be logged on every learning_rate updates"""
     writer.add_scalar('hyperparams/batch_size', batch_size, e)
     for k,v in optimizer_hyperparams.items():
-        writer.add_scalar('hypterparams/%s'%k, v, e)
+        writer.add_scalar('hyperparams/%s'%k, v, e)
     # writer.add_scalar('hyperparams/learning_rate', optimizer_hyperparams['lr'], e)
     #writer.add_scalar('hyperparams/momentum', optimizer_hyperparams['momentum'], e)
     for k,v in learner_hyperparams.items():
-        writer.add_scalar('hypterparams/%s'%k, v, e)
+        writer.add_scalar('hyperparams/%s'%k, v, e)
     # writer.add_scalar('hyperparams/sigma', learner_hyperparams['sigma'], e)
     # writer.add_scalar('hyperparams/n_perturbations', learner_hyperparams['population_size'], e)
 
 ## Define Training Loop
 def training_loop(self, writer, e):
-    
+
     # plot current function output
     v = []
     b = []
@@ -355,19 +367,31 @@ def training_loop(self, writer, e):
         self.bidders[index].draw_valuations_()
         v.append(self.bidders[index].valuations)
         b.append(self.bidders[index].get_action())
-    if e == 0:       
-        self.plot(self.fig, v, b, writer,e)     
+    if e == 0:
+        self.plot(self.fig, v, b, writer,e)
     # always: do optimizer step
     utilities = [
         learner.update_strategy_and_evaluate_utility()
         for learner in self.learners
     ]
-    
-    #logging 
+
+    #logging
     start_time = timer()
     utilities = torch.tensor(utilities)
-    utilities_vs_bne = torch.tensor([global_bne_env.get_strategy_reward(a.strategy, player_position=i) for i,a in enumerate(self.env.agents)])
+    utilities_vs_bne = torch.tensor(
+        [global_bne_env.get_strategy_reward(a.strategy, player_position=i)
+            for i,a in enumerate(self.env.agents)])
 
+    # TODO: move this to log_metrics
+    for i, a in enumerate(self.env.agents):
+        L_2 = strategy_norm(a.strategy,
+                                global_bne_env.agents[i].strategy,
+                                global_bne_env.agents[i].valuations, 2)
+        L_inf = strategy_norm(a.strategy,
+                                global_bne_env.agents[i].strategy,
+                                global_bne_env.agents[i].valuations, float('inf'))
+        writer.add_scalar('eval_players/p{}_L2'.format(i), L_2, e)
+        writer.add_scalar('eval_players/p{}_L2'.format(i), L_inf, e)
     
     self.log_metrics(writer, utilities, utilities_vs_bne, e)
     if e % self._logging_options['plot_epoch'] == 0 and e > 0:
@@ -379,15 +403,15 @@ def training_loop(self, writer, e):
             v.append(self.bidders[index].valuations)
             b.append(self.bidders[index].get_action())
 
-        
-        print(('Epoch: {}: Model utility in learning env:'+'\t{:.5f}'*n_players).format(e, *utilities))            
+
+        print(('Epoch: {}: Model utility in learning env:'+'\t{:.5f}'*n_players).format(e, *utilities))
         #print("Epoch {}: \tutilities: \t p0: {:.3f} \t p1: {:.3f}".format(e, utility_0, utility_1))
 
-        self.plot(self.fig, v, b, writer,e)            
-    
+        self.plot(self.fig, v, b, writer,e)
+
     elapsed = timer() - start_time
-    overhead_mins = self.overhead_mins + elapsed/60
-    writer.add_scalar('debug/overhead_mins', overhead_mins, e)
+    self.overhead_mins = self.overhead_mins + elapsed/60
+    writer.add_scalar('debug/overhead_mins', self.overhead_mins, e)
 
 # Define Experiment Class
 class AuctionExperiment(Experiment):
@@ -410,7 +434,7 @@ def run(seed, run_comment, epochs):
         torch.cuda.manual_seed_all(seed)
 
     exp = AuctionExperiment(
-        name = ['combinatorial', auction_mechanism.name, payment_rule],
+        name = ['LLG', payment_rule, correlation_profile],
         mechanism = auction_mechanism(cuda = cuda, rule = payment_rule),
         n_players = n_players,
         logging_options = logging_options)
