@@ -37,7 +37,7 @@ cuda = torch.cuda.is_available()
 device = 'cuda' if cuda else 'cpu'
 
 # Use specific cuda gpu if desired (i.e. for running multiple experiments in parallel)
-specific_gpu = 4
+specific_gpu = 5
 if cuda and specific_gpu:
     torch.cuda.set_device(specific_gpu)
 
@@ -46,7 +46,7 @@ if cuda: print(torch.cuda.current_device())
 
 n_runs = 10
 seeds = list(range(n_runs))
-epochs = 100
+epochs = 1000
 
 # Logging and plotting
 logging_options = dict(
@@ -63,7 +63,7 @@ n_players = 3
 
 
 auction_mechanism = LLGAuction # FirstPriceSealedBidAuction, VickreyAuction, LLGAuction
-payment_rule =  'nearest_zero'            #'first_price', 'vcg', 'nearest-vcg,...'
+payment_rule =  'vcg'            #'first_price', 'vcg', 'nearest-vcg,...'
 gamma = 0
 valuation_prior = 'uniform' # for now, one of 'uniform' / 'normal', specific params defined in script
 risk = 1.0
@@ -328,13 +328,6 @@ def setup_custom_scalar_plots(writer):
 
 ## Define Training Loop
 def training_loop(self, writer, e):
-
-    setup_custom_scalar_plots(writer)
-    overhead_mins = 0
-    torch.cuda.empty_cache()
-    self.log_once(writer, 0)
-    self.log_hyperparams(writer, 0)
-    fig = plt.figure()
     
     # plot current function output
     v = []
@@ -358,8 +351,7 @@ def training_loop(self, writer, e):
 
     
     self.log_metrics(writer, utilities, utilities_vs_bne, e)
-    if e % self._logging_options['plot_epoch'] == 0:
-        
+    if e % self._logging_options['plot_epoch'] == 0 and e > 0:
         # plot current function output
         v = []
         b = []
@@ -375,7 +367,7 @@ def training_loop(self, writer, e):
         self.plot(self.fig, v, b, writer,e)            
     
     elapsed = timer() - start_time
-    overhead_mins = overhead_mins + elapsed/60
+    overhead_mins = self.overhead_mins + elapsed/60
     writer.add_scalar('debug/overhead_mins', overhead_mins, e)
 
 # Define Experiment Class
@@ -404,6 +396,9 @@ def run(seed, run_comment, epochs):
         mechanism = auction_mechanism(cuda = cuda, rule = payment_rule),
         n_players = n_players,
         logging_options = logging_options)
+
+    #setup_custom_scalar_plots(writer) <- do we still need this?
+    overhead_mins = 0
 
     exp.run(epochs, run_comment)
 
