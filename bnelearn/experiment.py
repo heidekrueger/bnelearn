@@ -15,7 +15,6 @@ class Experiment(ABC):
 
     def __init__(self, name, mechanism, n_players, logging_options):
         self.n_players = n_players
-        
         self.mechanism = mechanism
 
         self.base_dir = os.path.join(*name)

@@ -638,6 +638,7 @@ class LLGAuction(Mechanism):
 
     def __init__(self, rule = 'first_price', cuda: bool = True):
         super().__init__(cuda)
+
         if rule not in ['first_price', 'vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
             raise ValueError('Invalid Pricing rule!')
         # 'nearest_zero' and 'proxy' are aliases
