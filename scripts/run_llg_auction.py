@@ -45,7 +45,7 @@ if cuda and specific_gpu:
 print(device)
 if cuda: print(torch.cuda.current_device())
 
-n_runs = 3
+n_runs = 10
 seeds = list(range(n_runs))
 epochs = 1000
 
@@ -55,7 +55,7 @@ logging_options = dict(
     save_figure_to_disc_png = True,
     save_figure_to_disc_svg = True, #for publishing. better quality but a pain to work with
     plot_epoch = 100,
-    show_plot_inline = True,
+    show_plot_inline = False,
     save_figure_data_to_disc = True
 )
 
@@ -82,7 +82,7 @@ batch_size = 2**18
 
 ## ES
 learner_hyperparams = {
-    'population_size': 32,
+    'population_size': 64,
     'sigma': 1.,
     'scale_sigma_by_model_size': True
 }
