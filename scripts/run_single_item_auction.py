@@ -23,30 +23,30 @@ from bnelearn.experiment import Experiment
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import ClosureStrategy, NeuralNetStrategy
-from bnelearn.util.metrics import strategy_norm
+from bnelearn.util.metrics import norm_strategy_and_actions
 
 ##%%%%%%%%%%%%%%%%%%%%%%%%%%    Settings
 # device and seed
 cuda = True
 specific_gpu = 3
 
-n_runs = 1
+n_runs = 10
 seeds = list(range(n_runs))
-epochs = 1000
+epochs = 2000
 
 # Logging and plotting
 logging_options = dict(
     log_root = os.path.join(root_path, 'experiments'),
     save_figure_to_disc_png = True,
-    save_figure_to_disc_svg = False, #for publishing. better quality but a pain to work with
+    save_figure_to_disc_svg = True, #for publishing. better quality but a pain to work with
     plot_epoch = 100,
-    show_plot_inline = True
+    show_plot_inline = False
 )
 
 # Experiment setting parameters
-n_players = 5
+n_players = 2
 auction_mechanism = 'first_price' # one of 'first_price', 'second_price'
-valuation_prior = 'uniform' # for now, one of 'uniform' / 'normal', specific params defined in script
+valuation_prior = 'normal' # for now, one of 'uniform' / 'normal', specific params defined in script
 risk = 1.0
 
 if risk == 1.0:
@@ -88,7 +88,7 @@ hidden_nodes = [5, 5, 5]
 hidden_activations = [nn.SELU(), nn.SELU(), nn.SELU()]
 
 # Evaluation
-eval_batch_size = 2**22
+eval_batch_size = 2**22 #22
 cache_eval_actions = True
 n_processes_optimal_strategy = 44 if valuation_prior != 'uniform' and auction_mechanism != 'second_price' else 0
 
@@ -338,13 +338,13 @@ def training_loop(self, writer, e):
     # calculate utility vs bne
     self.utility_vs_bne = self.bne_env.get_reward(
         strat_to_bidder(self.model, batch_size = eval_batch_size),
-        draw_valuations=False)
+        draw_valuations=False) #False because expensive for normal priors
     self.epsilon_relative = 1 - self.utility_vs_bne / self.bne_utility
     self.epsilon_absolute = self.bne_utility - self.utility_vs_bne
-    self.L_2 = strategy_norm(self.model, bneStrategy,
-                             self.bne_env.agents[0].valuations, 2)
-    self.L_inf = strategy_norm(self.model, bneStrategy,
-                             self.bne_env.agents[0].valuations, float('inf'))
+    self.L_2 =   norm_strategy_and_actions(self.model, self.bne_env.agents[0].actions,
+                                           self.bne_env.agents[0].valuations, 2)
+    self.L_inf = norm_strategy_and_actions(self.model, self.bne_env.agents[0].actions,
+                                           self.bne_env.agents[0].valuations, float('inf'))
     self.log_metrics(writer, e)
 
     if e % self._logging_options['plot_epoch'] == 0:
