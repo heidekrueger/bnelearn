@@ -23,6 +23,7 @@ from bnelearn.experiment import Experiment
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import ClosureStrategy, NeuralNetStrategy
+from bnelearn.util.metrics import strategy_norm
 
 ##%%%%%%%%%%%%%%%%%%%%%%%%%%    Settings
 # device and seed
@@ -46,7 +47,7 @@ logging_options = dict(
 n_players = 5
 auction_mechanism = 'first_price' # one of 'first_price', 'second_price'
 valuation_prior = 'uniform' # for now, one of 'uniform' / 'normal', specific params defined in script
-risk = 0.5
+risk = 1.0
 
 if risk == 1.0:
     risk_profile = 'risk_neutral'
@@ -307,6 +308,8 @@ def log_metrics(self, writer, e):
     writer.add_scalar('eval/utility_vs_bne', self.utility_vs_bne, e)
     writer.add_scalar('eval/epsilon_relative', self.epsilon_relative, e)
     writer.add_scalar('eval/epsilon_absolute', self.epsilon_absolute, e)
+    writer.add_scalar('eval/L_2', self.L_2, e)
+    writer.add_scalar('eval/L_inf', self.L_inf, e)
 
 # TODO: deferred until writing logger
 def log_hyperparams(self, writer, e):
@@ -338,7 +341,10 @@ def training_loop(self, writer, e):
         draw_valuations=False)
     self.epsilon_relative = 1 - self.utility_vs_bne / self.bne_utility
     self.epsilon_absolute = self.bne_utility - self.utility_vs_bne
-
+    self.L_2 = strategy_norm(self.model, bneStrategy,
+                             self.bne_env.agents[0].valuations, 2)
+    self.L_inf = strategy_norm(self.model, bneStrategy,
+                             self.bne_env.agents[0].valuations, float('inf'))
     self.log_metrics(writer, e)
 
     if e % self._logging_options['plot_epoch'] == 0:
