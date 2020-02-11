@@ -24,7 +24,7 @@ from bnelearn.experiment import Experiment
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, LLGAuction
 from bnelearn.strategy import ClosureStrategy, NeuralNetStrategy
-from bnelearn.util.metrics import strategy_norm
+from bnelearn.util.metrics import norm_strategies
 
 ##%%%%%%%%%%%%%%%%%%%%%%%%%%    Settings
 # device and seed
@@ -381,15 +381,15 @@ def training_loop(self, writer, e):
     start_time = timer()
     utilities_vs_bne = torch.tensor(
         [global_bne_env.get_strategy_reward(
-            a.strategy, player_position=i, draw_valuations=False)
+            a.strategy, player_position=i, draw_valuations=True)
             for i,a in enumerate(self.env.agents)])
 
     # TODO: move this to log_metrics
     for i, a in enumerate(self.env.agents):
-        L_2 = strategy_norm(a.strategy,
+        L_2 = norm_strategies(a.strategy,
                             global_bne_env.agents[i].strategy,
                             global_bne_env.agents[i].valuations, 2)
-        L_inf = strategy_norm(a.strategy,
+        L_inf = norm_strategies(a.strategy,
                               global_bne_env.agents[i].strategy,
                               global_bne_env.agents[i].valuations, float('inf'))
         writer.add_scalar('eval_players/p{}_L2'.format(i), L_2, e)
