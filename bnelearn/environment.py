@@ -250,6 +250,36 @@ class AuctionEnvironment(Environment):
 
         return utility
 
+
+    def get_regret(self, agent: Bidder, bid_profile):
+        player_position = agent.player_position if agent.player_position else 0
+        #TODO: Not working yet. Continue here!
+        # Calculate sampled bids' utilities
+        bid_profile[:, player_position, :] = agent.valuations
+        allocation, payments = self.mechanism.play(bid_profile)
+
+        v = agent.valuations
+        v.repeat(1,agent.batch_size)
+        a = allocation[:,player_position,:]
+        a.view(agent.batch_size).repeat(agent.batch_size,1)
+        p=payments[:,player_position]
+        payoff = (v * a) - p
+
+        # Calculate actual bids' utilies
+        bid_profile[:, player_position, :] = agent.get_action()
+        allocation, payments = self.mechanism.play(bid_profile)
+        utility = agent.get_utility(allocation[:,player_position,:],
+                                        payments[:,player_position])
+
+        
+        gain_max,_ = torch.max(payoff - utility,1)
+        gain_avg = torch.mean(gain_max)
+
+        print("agent {} can improve by: {}".format(player_position, gain_avg))
+
+        return gain_avg
+        
+
     def prepare_iteration(self):
         self.draw_valuations_()
 

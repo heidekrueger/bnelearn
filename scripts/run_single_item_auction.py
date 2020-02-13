@@ -38,15 +38,15 @@ epochs = 2000
 logging_options = dict(
     log_root = os.path.join(root_path, 'experiments'),
     save_figure_to_disc_png = True,
-    save_figure_to_disc_svg = True, #for publishing. better quality but a pain to work with
+    save_figure_to_disc_svg = False, #for publishing. better quality but a pain to work with
     plot_epoch = 100,
     show_plot_inline = False
 )
 
 # Experiment setting parameters
-n_players = 2
+n_players = 3
 auction_mechanism = 'first_price' # one of 'first_price', 'second_price'
-valuation_prior = 'normal' # for now, one of 'uniform' / 'normal', specific params defined in script
+valuation_prior = 'uniform' # for now, one of 'uniform' / 'normal', specific params defined in script
 risk = 1.0
 
 if risk == 1.0:
@@ -59,7 +59,7 @@ else:
 # Learning
 model_sharing = True
 pretrain_iters = 500
-batch_size = 2**18
+batch_size = 2**12
 ## ES
 learner_hyperparams = {
     'population_size': 64,
@@ -88,7 +88,7 @@ hidden_nodes = [5, 5, 5]
 hidden_activations = [nn.SELU(), nn.SELU(), nn.SELU()]
 
 # Evaluation
-eval_batch_size = 2**22 #22
+eval_batch_size = 2**12 #22
 cache_eval_actions = True
 n_processes_optimal_strategy = 44 if valuation_prior != 'uniform' and auction_mechanism != 'second_price' else 0
 
@@ -348,6 +348,17 @@ def training_loop(self, writer, e):
     self.log_metrics(writer, e)
 
     if e % self._logging_options['plot_epoch'] == 0:
+        #TODO: Testing the regret here:
+        player_position = 0
+        agent_bid = self.env.agents[player_position].get_action()
+        action_length = agent_bid.shape[1]
+        bid_profile = torch.zeros(self.env.batch_size, self.env.n_players, action_length,
+                                      dtype=agent_bid.dtype, device = self.env.mechanism.device)
+        bid_profile[:, player_position, :] = agent_bid
+
+        self.env.get_regret(self.env.agents[player_position], bid_profile)
+        
+
         # plot current function output
         #bidder = strat_to_bidder(model, batch_size)
         #bidder.draw_valuations_()
