@@ -44,7 +44,7 @@ logging_options = dict(
 )
 
 # Experiment setting parameters
-n_players = 3
+n_players = 2
 auction_mechanism = 'first_price' # one of 'first_price', 'second_price'
 valuation_prior = 'uniform' # for now, one of 'uniform' / 'normal', specific params defined in script
 risk = 1.0
@@ -59,7 +59,9 @@ else:
 # Learning
 model_sharing = True
 pretrain_iters = 500
-batch_size = 2**12
+batch_size = 2**10
+
+regret_bid_size = 2**8
 ## ES
 learner_hyperparams = {
     'population_size': 64,
@@ -349,14 +351,23 @@ def training_loop(self, writer, e):
 
     if e % self._logging_options['plot_epoch'] == 0:
         #TODO: Testing the regret here:
+        bid_i = u_lo + torch.rand(regret_bid_size, input_length, device = device) * u_hi
         player_position = 0
+
         agent_bid = self.env.agents[player_position].get_action()
         action_length = agent_bid.shape[1]
         bid_profile = torch.zeros(self.env.batch_size, self.env.n_players, action_length,
                                       dtype=agent_bid.dtype, device = self.env.mechanism.device)
-        bid_profile[:, player_position, :] = agent_bid
+        
+        counter = 1
+        for opponent_pos, opponent_bid in self.env._generate_agent_actions(exclude = set([player_position])):
+                # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
+                if opponent_pos is None:
+                    opponent_pos = counter
+                bid_profile[:, opponent_pos, :] = opponent_bid
+                counter = counter + 1
 
-        self.env.get_regret(self.env.agents[player_position], bid_profile)
+        self.env.get_regret(self.env.agents[player_position], bid_profile, bid_i)
         
 
         # plot current function output

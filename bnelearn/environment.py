@@ -251,30 +251,30 @@ class AuctionEnvironment(Environment):
         return utility
 
 
-    def get_regret(self, agent: Bidder, bid_profile):
+    def get_regret(self, agent: Bidder, bid_profile, bid_i):
         player_position = agent.player_position if agent.player_position else 0
-        #TODO: Not working yet. Continue here! Problem: it's only against current players single drawn valuation
+        #TODO: Not working yet. Continue here! Problem: it's only against current players single drawn valuation -> done
         # Calculate sampled bids' utilities
         #TODO: Add considering number of items
         bid_profile_origin = bid_profile
-        batch_size, n_player, _ = bid_profile.shape
+        batch_size, n_player, n_items = bid_profile.shape
+        bid_size, _ = bid_i.shape
 
         # bids_i
-        v = agent.valuations
+
         # bids_(-i)
-        bp = bid_profile[:, [i for i in range(n_player) if i!=player_position], :]
-        # bids_i x batch
-        v = v.repeat(1,batch_size).view(batch_size**2,1,1)
-        # batch x bids_(-i)
-        bp = bp.repeat(batch_size, 1, 1)
+        bid_no_i = bid_profile[:, [i for i in range(n_player) if i!=player_position], :]
+        # bids_i x batch_size
+        bid_i = bid_i.repeat(1,batch_size).view(bid_size*batch_size,1,1)
+        # bid_size x bids_(-i)
+        bid_no_i = bid_no_i.repeat(bid_size, 1, 1)
         # to calculate average valuation for a bid
-        # bids_i x batch(bids_(-i))
-        bid_profile = torch.cat([v,bp],1)
+        # bids_i , bids_(-i)
+        bid_profile = torch.cat([bid_i,bid_no_i],1)
         allocation, payments = self.mechanism.play(bid_profile)
 
 
-        v = agent.valuations.repeat(1,batch_size**2)  #repeat(batch_size,1,1).view(batch_size,batch_size,batch_size,1,1)
-        vb = agent.valuations
+        v = agent.valuations.repeat(1,bid_size * batch_size)  #repeat(batch_size,1,1).view(batch_size,batch_size,batch_size,1,1)
         #v = v.repeat(1,agent.batch_size)
         a = allocation[:,player_position,:]
         #a = a.view(agent.batch_size).repeat(agent.batch_size,1)
@@ -282,10 +282,8 @@ class AuctionEnvironment(Environment):
         # dim(payoff): batch(bid(i)), batch(bid(-i)), items(?), 1
         payoff = torch.einsum('ij,jk->ijk', v, a).sum(2) - p.repeat(batch_size,1)
 
-        
-
         # avg payoff for a bid(i) #TODO: Instead of using view here, can we directly compute it correctly in payoff!?
-        payoff_avg = torch.mean(payoff.view(batch_size,batch_size,batch_size), 2)
+        payoff_avg = torch.mean(payoff.view(batch_size,bid_size,batch_size), 2)
         payoff_max_avg, _ = torch.max(payoff_avg,1)
         # Calculate actual bids' utilies
         bid_profile_origin[:, player_position, :] = agent.get_action()
@@ -295,12 +293,14 @@ class AuctionEnvironment(Environment):
                                         payments[:,player_position])
 
         
-        gain_max = payoff_max_avg - utility
-        gain_avg = torch.mean(gain_max)
+        gain = payoff_max_avg - utility
+        gain_avg = torch.mean(gain)
+        gain_max = torch.max(gain)
 
-        print("agent {} can improve by: {}".format(player_position, gain_avg))
+        print("agent {} can improve by, avg: {}, max: {}".format(player_position, gain_avg, gain_max))
+        
 
-        return gain_avg
+        return gain_avg, gain_max
         
 
     def prepare_iteration(self):
