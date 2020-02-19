@@ -251,9 +251,21 @@ class AuctionEnvironment(Environment):
         return utility
 
 
-    def get_regret(self, agent: Bidder, bid_profile, bid_i):
+    def get_regret(self, agent: Bidder, bid_profile: torch.Tensor, bid_i: torch.Tensor):
+        """
+        Estimates the potential benefit of deviating from the current energy, as:
+            regret(v_i) = Max_(b_i)[ E_(b_(-i))[u(v_i,b_i,b_(-i))] ]
+            regret_max = Max_(v_i)[ regret(v_i) ]
+            regret_expected = E_(v_i)[ regret(v_i) ]
+        Input:
+            bid_profile: (batch_size x n_player x n_items)
+            bid_i: (bid_size x n_items)
+        Output:
+            regret_max
+            regret_expected
+            TODO: Only applicable to independent valuations. Add check.
+        """
         player_position = agent.player_position if agent.player_position else 0
-        #TODO: Not working yet. Continue here! Problem: it's only against current players single drawn valuation -> done
         # Calculate sampled bids' utilities
         #TODO: Add considering number of items
         bid_profile_origin = bid_profile
@@ -272,7 +284,6 @@ class AuctionEnvironment(Environment):
         # bids_i , bids_(-i)
         bid_profile = torch.cat([bid_i,bid_no_i],1)
         allocation, payments = self.mechanism.play(bid_profile)
-
 
         v = agent.valuations.repeat(1,bid_size * batch_size)  #repeat(batch_size,1,1).view(batch_size,batch_size,batch_size,1,1)
         #v = v.repeat(1,agent.batch_size)
@@ -293,14 +304,14 @@ class AuctionEnvironment(Environment):
                                         payments[:,player_position])
 
         
-        gain = payoff_max_avg - utility
-        gain_avg = torch.mean(gain)
-        gain_max = torch.max(gain)
+        regret = payoff_max_avg - utility
+        regret_avg = torch.mean(regret)
+        regret_max = torch.max(regret)
 
-        print("agent {} can improve by, avg: {}, max: {}".format(player_position, gain_avg, gain_max))
+        print("agent {} can improve by, avg: {}, max: {}".format(player_position, regret_avg, regret_max))
         
 
-        return gain_avg, gain_max
+        return regret_avg, regret_max
         
 
     def prepare_iteration(self):
