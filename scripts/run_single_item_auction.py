@@ -28,11 +28,11 @@ from bnelearn.util.metrics import norm_strategy_and_actions
 ##%%%%%%%%%%%%%%%%%%%%%%%%%%    Settings
 # device and seed
 cuda = True
-specific_gpu = 3
+specific_gpu = 1
 
 n_runs = 10
 seeds = list(range(n_runs))
-epochs = 2000
+epochs = 5000
 
 # Logging and plotting
 logging_options = dict(
@@ -367,7 +367,10 @@ def training_loop(self, writer, e):
                 bid_profile[:, opponent_pos, :] = opponent_bid
                 counter = counter + 1
 
-        self.env.get_regret(self.env.agents[player_position], bid_profile, bid_i)
+        regret = self.env.get_regret(self.env.agents[player_position], bid_profile, bid_i)
+        print("agent {} can improve by, avg: {}, max: {}".format(player_position, 
+                                                                 regret[0],
+                                                                 regret[1]))
         
 
         # plot current function output

@@ -274,16 +274,8 @@ class AuctionEnvironment(Environment):
         bid_size, _ = bid_i.shape
 
         ## Merge bid_i into opponnents bids (bid_no_i)
-        # bids_(-i)
-        bid_no_i_left = bid_profile[:, [i for i in range(n_player) if i<player_position], :]
-        bid_no_i_right = bid_profile[:, [i for i in range(n_player) if i>player_position], :]
-        # bids_i x batch_size
-        bid_i = bid_i.repeat(1,batch_size).view(bid_size*batch_size,1,n_items)
-        # bid_size x bids_(-i)
-        bid_no_i_left = bid_no_i_left.repeat(bid_size, 1, 1)
-        bid_no_i_right = bid_no_i_right.repeat(bid_size, 1, 1)
-        bid_profile = torch.cat([bid_no_i_left,bid_i,bid_no_i_right],1)
-
+        bid_profile = self._create_bid_profile(player_position, bid_i, bid_profile)
+    
         ## Calculate allocation and payments for bid_i given opponents bids
         allocation, payments = self.mechanism.play(bid_profile)
         allocation_i = allocation[:,player_position,:].view(bid_size, batch_size, n_items)
@@ -301,12 +293,25 @@ class AuctionEnvironment(Environment):
         payoff_i, _ = torch.max(payoff_i,1)
 
         ## Calculate actual bids' utilities. TODO: Do this differently. Use similar procedure to above!
-        bid_profile_origin[:, player_position, :] = agent.get_action()
-        allocation, payments = self.mechanism.play(bid_profile_origin)
-        utility = agent.get_utility(allocation[:,player_position,:],
-                                        payments[:,player_position])
+        #bid_profile_origin[:, player_position, :] = agent.get_action()
+        #allocation, payments = self.mechanism.play(bid_profile_origin)
+        #utility = agent.get_utility(allocation[:,player_position,:],
+        #                                payments[:,player_position])
 
+        ## TODO: Doing it differently
+        bid_profile = self._create_bid_profile(player_position, agent.get_action(), bid_profile_origin)
+        allocation, payments = self.mechanism.play(bid_profile)
 
+        allocation_i = allocation[:,player_position,:].view(batch_size, batch_size, n_items)
+        payments_i = payments[:,player_position].view(batch_size, batch_size, 1).sum(2)
+
+        v = agent.valuations.view(batch_size,1,n_items).repeat(1,batch_size, 1)
+
+        valuations_i = torch.einsum('ijk,ijk->ijk', v, allocation_i).sum(2)
+        utility = valuations_i - payments_i
+
+        # avg per bid and valuation
+        utility = torch.mean(utility,1)
 
         ## average and max regret over all valuations
         regret = payoff_i - utility
@@ -315,8 +320,9 @@ class AuctionEnvironment(Environment):
 
         return regret_avg, regret_max
         
-    def _create_bid_profile(self, player_position: int, player_bids: torch.tensor, original_bid_profile: torch.tensor, repetitions: int):
+    def _create_bid_profile(self, player_position: int, player_bids: torch.tensor, original_bid_profile: torch.tensor):
         batch_size, n_player, n_items = original_bid_profile.shape
+        repetitions, _ = player_bids.shape
         ## Merge bid_i into opponnents bids (bid_no_i)
         # bids_(-i)
         bid_no_i_left = original_bid_profile[:, [i for i in range(n_player) if i<player_position], :]
