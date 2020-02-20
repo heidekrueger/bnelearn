@@ -79,7 +79,7 @@ pricing_rule =  'first_price'#'first_price'#nearest-vcg'
 model_sharing = True
 #training batch size (2**17 - 2**18 for vcg)
 batch_size = 2**8
-regret_bid_size = 2**6
+regret_bid_size = 2**7
 eval_batch_size = 2**25
 epoch = 10000
 
@@ -113,7 +113,7 @@ optimizer_hyperparams ={
 }
 
 # plot and log training options
-plot_epoch = 1000
+plot_epoch = 10
 write_epoch = 1000
 plot_points = 100 #min(100, batch_size)
 # For verification writing
@@ -473,8 +473,6 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
             plot_bid_function_3d(writer=writer,e=e,save_figure_to_disc = save_figure_to_disc)
 
             bid_i = torch.linspace(u_lo, u0_hi, regret_bid_size)
-            bid_i = torch.combinations(bid_i, with_replacement=True)
-            bid_i = bid_i.to(device)
 
             player_position = 0
 
@@ -491,7 +489,8 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
                     bid_profile[:, opponent_pos, :] = opponent_bid
                     counter = counter + 1
 
-            regret = env.get_regret(env.agents[player_position], bid_profile, bid_i)
+            regret = env.get_regret(bid_profile, player_position, env.agents[player_position].valuations, 
+                                    agent_bid, bid_i)
             print("agent {} can improve by, avg: {}, max: {}".format(player_position, 
                                                                  regret[0],
                                                                  regret[1]))

@@ -20,37 +20,14 @@ from bnelearn.bidder import Bidder
     bid_i always used as val_i and only using truthful bidding
 """
 eps = 0.0001
-bids_i = torch.tensor([
-        [0 + eps],
-        [1/6 + eps],
-        [2/6 + eps],
-        [3/6 + eps],
-        [4/6 + eps],
-        [5/6 + eps],
-        [1 + eps]
-], dtype = torch.float)
+bids_i = torch.tensor([[0/6 + eps, 1/6 + eps, 
+                       2/6 + eps,3/6 + eps, 
+                       4/6 + eps, 5/6 + eps, 
+                       6/6 + eps]] , dtype = torch.float)
 
 bids_i_comb = torch.tensor([
-    [0/3 + eps, 0/3 + eps],
-    [0/3 + eps, 1/3 + eps],
-    [0/3 + eps, 2/3 + eps],
-    [0/3 + eps, 3/3 + eps],
-
-    [1/3 + eps, 0/3 + eps],
-    [1/3 + eps, 1/3 + eps],
-    [1/3 + eps, 2/3 + eps],
-    [1/3 + eps, 3/3 + eps],
-
-    [2/3 + eps, 0/3 + eps],
-    [2/3 + eps, 1/3 + eps],
-    [2/3 + eps, 2/3 + eps],
-    [2/3 + eps, 3/3 + eps],
-
-    [3/3 + eps, 0/3 + eps],
-    [3/3 + eps, 1/3 + eps],
-    [3/3 + eps, 2/3 + eps],
-    [3/3 + eps, 3/3 + eps]
-])
+        [0/3 + eps, 1/3 + eps, 2/3 + eps,
+         3/3 + eps]], dtype = torch.float)
 
 # 1 Batch, 2 bidders, 1 item
 bid_profile_1_2_1 = torch.tensor([
@@ -123,11 +100,7 @@ def test_regret_estimator(rule, mechanism, bids_profile, bids_i, expected_regret
     """Run correctness test for a given LLLLGG rule"""
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    
-
     batch_size, n_bidders, n_items = bids_profile.shape
-    
-    mechanism = mechanism
 
     agents = [None] * n_bidders
     for i in range(n_bidders):
@@ -140,7 +113,8 @@ def test_regret_estimator(rule, mechanism, bids_profile, bids_i, expected_regret
     for i in range(n_bidders):
         player_position = i
 
-        regret = env.get_regret(env.agents[player_position], bids_profile.to(device), bids_i.to(device))
+        regret = env.get_regret(bids_profile.to(device), player_position, agents[i].valuations,
+                                bids_profile.to(device)[:,i,:], bids_i.squeeze().to(device))
         assert torch.allclose(regret[0],expected_regret[i,0], atol = 0.001), "Wrong avg regret calculation"
         assert torch.allclose(regret[1],expected_regret[i,1], atol = 0.001), "Wrong max regret calculation"
 

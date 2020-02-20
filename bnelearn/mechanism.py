@@ -1425,14 +1425,23 @@ class LLLLGGAuction(Mechanism):
         welfare: torch.Tensor(batch_size), values = [0, Inf]
         """
         solutions = self.solutions_non_sparse.to(self.device)
+        solutions = solutions.type(bids.dtype)
 
         n_batch, n_players, n_bundles = bids.shape
-        bids_flat = bids.view(n_batch, n_players*n_bundles)
-        solutions_welfare = torch.mm(bids_flat, torch.transpose(solutions,0,1))
+        bids = bids.view(n_batch, n_players*n_bundles)
+        solutions_welfare = torch.mm(bids, torch.transpose(solutions,0,1))
         welfare, solution = torch.max(solutions_welfare,dim=1)  # maximizes over all possible allocations
+        # Clear RAM
+        if solutions_welfare.nelement() > 2**20:
+            del solutions_welfare
+            torch.cuda.empty_cache()
         winning_bundles = solutions.index_select(0,solution)
+        # Clear RAM
+        if solution.nelement() > 2**20:
+            del solution
+            torch.cuda.empty_cache()
         if dont_allocate_to_zero_bid:
-            winning_bundles = winning_bundles * (bids_flat > 0)
+            winning_bundles = winning_bundles * (bids > 0)
 
         return winning_bundles, welfare
 

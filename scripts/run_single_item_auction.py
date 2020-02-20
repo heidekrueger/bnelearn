@@ -61,7 +61,7 @@ model_sharing = True
 pretrain_iters = 500
 batch_size = 2**10
 
-regret_bid_size = 2**8
+regret_bid_size = 2**9
 ## ES
 learner_hyperparams = {
     'population_size': 64,
@@ -349,9 +349,11 @@ def training_loop(self, writer, e):
                                            self.bne_env.agents[0].valuations, float('inf'))
     self.log_metrics(writer, e)
 
+    print(e)
+
     if e % self._logging_options['plot_epoch'] == 0:
         #TODO: Testing the regret here:
-        bid_i = u_lo + torch.rand(regret_bid_size, input_length, device = device) * u_hi
+        bid_i = torch.linspace(u_lo, u_hi, regret_bid_size)
         player_position = 0
 
         agent_bid = self.env.agents[player_position].get_action()
@@ -367,7 +369,8 @@ def training_loop(self, writer, e):
                 bid_profile[:, opponent_pos, :] = opponent_bid
                 counter = counter + 1
 
-        regret = self.env.get_regret(self.env.agents[player_position], bid_profile, bid_i)
+        regret = self.env.get_regret(bid_profile, player_position, self.env.agents[player_position].valuations,
+                                     agent_bid, bid_i)
         print("agent {} can improve by, avg: {}, max: {}".format(player_position, 
                                                                  regret[0],
                                                                  regret[1]))
