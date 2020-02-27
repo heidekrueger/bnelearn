@@ -1,0 +1,17 @@
+## Note: on your development machine, you must run the following once
+## to apply these filters to you .git/config file:
+# git config --local include.path ../.gitconfig
+
+[core]
+attributesfile = .gitattributes
+
+# automatically cleans jupyter output in .ipynb json files
+[filter "nbstrip_full"]
+clean = "jq --indent 1 \
+        '(.cells[] | select(has(\"outputs\")) | .outputs) = []  \
+        | (.cells[] | select(has(\"execution_count\")) | .execution_count) = null  \
+        | .metadata = {\"language_info\": {\"name\": \"python\", \"pygments_lexer\": \"ipython3\"}} \
+        | .cells[].metadata = {} \
+        '"
+smudge = cat
+required = true

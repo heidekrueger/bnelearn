@@ -79,6 +79,7 @@ class Bidder(Player):
                  cache_actions: bool = False,
                  descending_valuations = False,
                  item_interest_limit = None,
+                 risk: float = 1.0
                  ):
         super().__init__(strategy, player_position, batch_size, cuda)
 
@@ -86,6 +87,7 @@ class Bidder(Player):
         self.n_items = n_items
         self.descending_valuations = descending_valuations
         self.item_interest_limit = item_interest_limit
+        self.risk = risk
         self._cache_actions = cache_actions
         self._valuations_changed = False # true if new valuation drawn since actions calculated
         self.valuations = torch.zeros(batch_size, n_items, device=self.device)
@@ -151,8 +153,13 @@ class Bidder(Player):
         assert allocations.dim() == 2 # batch_size x items
         assert payments.dim() == 1 # batch_size
 
-        #self.utility = (self.valuations * allocations).sum(dim=1) - payments
-        return (self.valuations * allocations).sum(dim=1) - payments
+        payoff = (self.valuations * allocations).sum(dim=1) - payments
+
+        if self.risk == 1.0:
+            return payoff
+        else:
+            # payoff^alpha not well defined in negative domain for risk averse agents
+            return payoff.relu()**self.risk - (-payoff).relu()**self.risk
 
     def get_action(self):
         """Calculate action from current valuations, or retrieve from cache"""

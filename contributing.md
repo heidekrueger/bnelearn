@@ -28,7 +28,8 @@ All contributions of source code should fit the following pattern.
     * Try to keep your user code modular and readable, think about whether you can turn parts of it into core package functionality later on.
 
 # Taking Snapshots of the Repository
-When submitting a paper, releasing code etc, we need to create a persistent snapshot of the repo. This should be done in the following way:
+When submitting a paper, releasing code etc, we need to create a persistent snapshot of the repo. 
+This should be done in the following way:
 
 1. At the state of the project, create a branch named for the snapthot from master, i.e. `WITS-submission-2019`.
 1. In this branch, add any artefacts that are not checked into master, but should be in the snapshot such as
@@ -36,7 +37,23 @@ When submitting a paper, releasing code etc, we need to create a persistent snap
     * Experiment Data
     * Figures
     * Documents
-    Make sure to use Git Large File Storage or external links for large files.
+
+    If your total data is larger than single-digit megabytes, use Git Large File Storage. To do so, first install `git-lfs` on your machine (Ubuntu: `apt-get install git-lfs`, Windows: https://git-lfs.github.com/).
+    You should put all your artefact files into a single archive to save space and bandwith, e.g.
+
+    ```tar -czvf experiments/SNAPSHOT_NAME_EXPERIMENTS.tar.gz experiments/directory-or-file```
+    **For safety, do so in your experiments folder, which is by default ignored by git.**
+
+    Once you have created the archive and installed git-lfs on your *system*, you need to also activate it in the repository and tell it to track your archive files.
+
+    ```
+    git lfs install                       # initialize the Git LFS project
+    git lfs track "*.tar.gz"              # select the file extensions that you want to treat as large files
+    git add .gitattributes                # modified by git lfs track. must be added to make sure git handles lfs files correctly!
+    git add -f experiments/SNAPSHOT_archive.tar.gz # add your archive. -f because experiments directory is usually ignored.
+    ```
+
 1. To make the snapshot reproducible, we need the full status of the conda env includign package version numbers. Export the current conda env using `conda env export` and add the results to a file `conda-env-export.yml` in the root of the repository.
 1. Add a description of the snapshot including the current date in the top of readme.md.
 1. Create a "Tag" on the branch in gitlab.
+1. Go to gitlab Settings -> repository -> protected tags and protect the tag (can edit: no one)

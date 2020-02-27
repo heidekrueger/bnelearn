@@ -1,5 +1,6 @@
 
 import math
+import pytest
 
 import torch
 
@@ -61,8 +62,8 @@ def train(epochs, players, strats, tau_update = 1, tau = 0.99, tau_minimum = 0.0
         for i,playr in enumerate(players):
             actions[i] = playr.get_action()
 
-        if e%(epochs/10) == 0:
-            print(actions)
+        # if e%(epochs/10) == 0:
+        #     print(actions)
 
         for _,strategy in enumerate(strats):
             strategy.update_observations(actions)
@@ -177,6 +178,10 @@ def test_FictitiousPlaySmoothStrategy_BoS():
     strats, players, env = init_setup(BattleOfTheSexes(), FictitiousPlaySmoothStrategy, initial_beliefs)
     strats, players = train(5000, players, strats, tau_update = tau_update, tau = tau, tau_minimum = tau_minimum)
     # Testing convergence
+
+    #TODO: fix this
+    pytest.skip("something is wrong with this test -- it 'passes' when the difference is LARGE")
+
     assert abs(strats[0].probs[0][0] - 0.6) > 0.1, \
         "Strategy 0's probs: {} is not more than 0.1 different than equilibrium 0.6".format(strats[0].probs[0])
 
