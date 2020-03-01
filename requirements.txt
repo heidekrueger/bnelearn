@@ -7,7 +7,6 @@ jupyterlab
 pytorch
 tb-nightly #pip (replace by tensorboard from conda as soon as 1.15 available)
 matplotlib
-numpy
 pytest
 pytest-cov
 pytest-xdist #parallel tests
