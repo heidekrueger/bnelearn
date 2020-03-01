@@ -7,7 +7,6 @@ jupyterlab
 pytorch # conda -c pytorch
 tensorboard
 matplotlib
-numpy
 pytest
 pytest-cov
 pytest-xdist #parallel tests
