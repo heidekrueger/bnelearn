@@ -605,7 +605,7 @@ class FirstPriceSealedBidAuction(Mechanism):
 
         # allocate return variables
         payments_per_item = torch.zeros(batch_size, n_players, n_items, device = self.device)
-        allocations = torch.zeros(batch_size, n_players, n_items, device = self.device)
+        
 
         highest_bids, winning_bidders = bids.max(dim = player_dim, keepdim=True) # both shapes: [batch_size, 1, n_items]
 
@@ -619,11 +619,21 @@ class FirstPriceSealedBidAuction(Mechanism):
         ##        allocation[batch][ highest_bidders[batch, j] ][j] = 1
         # The above can be written as the following one-liner:
         payments_per_item.scatter_(player_dim, winning_bidders, highest_bids)
-        payments = payments_per_item.sum(item_dim)
+        
+        # Clear memory
+        del highest_bids, bids
+        torch.cuda.empty_cache()
+
+        allocations = torch.zeros(batch_size, n_players, n_items, device = self.device)
         allocations.scatter_(player_dim, winning_bidders, 1)
         # Don't allocate items that have a winnign bid of zero.
         allocations.masked_fill_(mask=payments_per_item == 0, value=0)
+        
+        # Clear memory
+        del winning_bidders
+        torch.cuda.empty_cache()
 
+        payments = payments_per_item.sum(item_dim)
         return (allocations, payments) # payments: batches x players, allocation: batch x players x items
 
 class StaticMechanism(Mechanism):
@@ -1441,7 +1451,9 @@ class LLLLGGAuction(Mechanism):
             del solution
             torch.cuda.empty_cache()
         if dont_allocate_to_zero_bid:
-            winning_bundles = winning_bundles * (bids > 0)
+            #TODO: In place combination? or splitting and sequential?
+            #winning_bundles.mul_((bids > 0)) <- didn't help
+            winning_bundles = torch.mul(winning_bundles, (bids > 0))
 
         return winning_bundles, welfare
 

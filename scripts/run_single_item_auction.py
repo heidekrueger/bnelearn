@@ -39,7 +39,7 @@ logging_options = dict(
     log_root = os.path.join(root_path, 'experiments'),
     save_figure_to_disc_png = True,
     save_figure_to_disc_svg = False, #for publishing. better quality but a pain to work with
-    plot_epoch = 100,
+    plot_epoch = 1000,
     show_plot_inline = False
 )
 
@@ -59,9 +59,9 @@ else:
 # Learning
 model_sharing = True
 pretrain_iters = 500
-batch_size = 2**10
+batch_size = 2**13
 
-regret_bid_size = 2**9
+regret_bid_size = 2**10
 ## ES
 learner_hyperparams = {
     'population_size': 64,
@@ -349,10 +349,12 @@ def training_loop(self, writer, e):
                                            self.bne_env.agents[0].valuations, float('inf'))
     self.log_metrics(writer, e)
 
-    print(e)
+    if e % 100 == 0:
+        print(e)
 
     if e % self._logging_options['plot_epoch'] == 0:
-        #TODO: Testing the regret here:
+        #TODO: Testing the regret here: Calculating for each bidder
+        #bid_i = torch.linspace(u_lo, u_hi, regret_bid_size)
         bid_i = torch.linspace(u_lo, u_hi, regret_bid_size)
         player_position = 0
 
@@ -369,11 +371,12 @@ def training_loop(self, writer, e):
                 bid_profile[:, opponent_pos, :] = opponent_bid
                 counter = counter + 1
 
+        print("Calculating regret...")
         regret = self.env.get_regret(bid_profile, player_position, self.env.agents[player_position].valuations,
                                      agent_bid, bid_i)
         print("agent {} can improve by, avg: {}, max: {}".format(player_position, 
-                                                                 regret[0],
-                                                                 regret[1]))
+                                                                 torch.mean(regret),
+                                                                 torch.max(regret)))
         
 
         # plot current function output

@@ -78,10 +78,10 @@ core_solver = 'no_core' #no_core #gurobi
 pricing_rule =  'first_price'#'first_price'#nearest-vcg'
 model_sharing = True
 #training batch size (2**17 - 2**18 for vcg)
-batch_size = 2**8
+batch_size = 2**11
 regret_bid_size = 2**7
 eval_batch_size = 2**25
-epoch = 10000
+epoch = 100000
 
 
 # strategy model architecture
@@ -91,7 +91,7 @@ hidden_activations = [nn.SELU(),nn.SELU()]#,nn.SELU()]#, nn.SELU(),nn.SELU(), nn
 
 
 learner_hyperparams = {
-    'population_size':64,
+    'population_size':128,
     'sigma': 1.,
     'scale_sigma_by_model_size': True
 }
@@ -108,7 +108,7 @@ learner_hyperparams = {
     # 'amsgrad': False #whether to use amsgrad-variant
 optimizer_type = torch.optim.Adam
 optimizer_hyperparams ={    
-    'lr': 3e-3,
+    'lr': 1e-2,
     #'momentum': 0.6
 }
 
@@ -436,7 +436,8 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
         #try:
         #    if expect_counter>5:
         #        sys.exit()
-        print(e)
+        if e % 100 == 0:
+            print(e)    
         # always: do optimizer step
         utilities = [None] * len(learners)
         for k,v in enumerate(learners):
@@ -468,14 +469,15 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
                 b[k] = bidder.get_action()#.squeeze(0)
             fig = plt.figure()
             print(('Epoch: {}: Model utility in learning env:'+'\t{:.5f}'*len(models)).format(e, *utilities))            
-            plot_bid_function(fig, v, b, writer,e,plot_points = plot_points,
-                                  save_png_to_disc=save_figure_to_disc)  
-            plot_bid_function_3d(writer=writer,e=e,save_figure_to_disc = save_figure_to_disc)
+            #plot_bid_function(fig, v, b, writer,e,plot_points = plot_points,
+            #                      save_png_to_disc=save_figure_to_disc)  
+            #plot_bid_function_3d(writer=writer,e=e,save_figure_to_disc = save_figure_to_disc)
 
-            bid_i = torch.linspace(u_lo, u0_hi, regret_bid_size)
+            bid_i = torch.linspace(u_lo, u1_hi, regret_bid_size)
 
-            player_position = 0
+            player_position = 4
 
+            val = env.agents[player_position].valuations
             agent_bid = env.agents[player_position].get_action()
             action_length = agent_bid.shape[1]
             bid_profile = torch.zeros(env.batch_size, env.n_players, action_length,
@@ -488,12 +490,21 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
                         opponent_pos = counter
                     bid_profile[:, opponent_pos, :] = opponent_bid
                     counter = counter + 1
-
-            regret = env.get_regret(bid_profile, player_position, env.agents[player_position].valuations, 
+            print("Calculating regret...")
+            torch.cuda.empty_cache()
+            regret = env.get_regret(bid_profile, player_position, val,
                                     agent_bid, bid_i)
-            print("agent {} can improve by, avg: {}, max: {}".format(player_position, 
-                                                                 regret[0],
-                                                                 regret[1]))
+            
+            print("agent {} can improve by, avg: {}, max: {}".format(player_position,
+                                                                 torch.mean(regret),
+                                                                 torch.max(regret)))
+
+
+
+            out = torch.cat((val, regret.view(batch_size,1)),1)
+            np.savetxt(os.path.join(logdir, 'regret.txt'), out.detach().cpu().numpy(), delimiter=',')
+            
+
         if e%write_epoch == 0:
             write_bid_function_3d()
         elapsed = timer() - start_time
