@@ -177,7 +177,8 @@ class AuctionEnvironment(Environment):
     """
 
     def __init__(self, mechanism: Mechanism, agents: Iterable,
-                 batch_size=100, n_players=None, strategy_to_player_closure: Callable[[Strategy], Bidder]=None):
+                 batch_size=100, n_players=None, strategy_to_player_closure: Callable[[Strategy], Bidder]=None,
+                 eval_bid_size = None, eval_batch_size = None):
 
         if not n_players:
             n_players = len(agents)
@@ -190,6 +191,8 @@ class AuctionEnvironment(Environment):
             )
 
         self.mechanism = mechanism
+        self.eval_bid_size = eval_bid_size
+        self.eval_batch_size = eval_batch_size
 
     def get_reward(self, agent: Bidder, draw_valuations=False, aggregate = True) -> torch.Tensor: #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment.
@@ -251,8 +254,8 @@ class AuctionEnvironment(Environment):
         return utility
 
 
-    def get_regret(self, bid_profile: torch.Tensor, agent_position: int, agent_valuation: torch.Tensor, 
-                   agent_bid: torch.Tensor, bid_eval_i: torch.Tensor, batch_calculating = True, compress_dtypes = False):
+    def get_regret(self, agent_position: int, bid_profile: torch.Tensor = None, agent_valuation: torch.Tensor = None, 
+                   agent_bid_actual: torch.Tensor = None, agent_bid_eval: torch.Tensor = None, compress_dtypes = False):
         """
         Estimates the potential benefit of deviating from the current energy, as:
             regret(v_i) = Max_(b_i)[ E_(b_(-i))[u(v_i,b_i,b_(-i))] ]
@@ -268,36 +271,42 @@ class AuctionEnvironment(Environment):
             TODO: Only applicable to independent valuations. Add check.
         Useful: To get the memory used by a tensor (in MB): (tensor.element_size() * tensor.nelement())/(1024*1024)
         """
-        # TODO: Implement sequential
+        
 
+
+
+
+        # TODO: Generalize these dimensions
         batch_size, n_player, n_items = bid_profile.shape
         # Create multidimensional bid tensor if required
         if n_items == 1:
-            bid_eval_i = bid_eval_i.view(bid_eval_i.shape[0], 1).to(bid_profile.device)
+            agent_bid_eval = agent_bid_eval.view(agent_bid_eval.shape[0], 1).to(bid_profile.device)
         elif n_items == 2:
-            bid_eval_i = torch.combinations(bid_eval_i, with_replacement=True).to(bid_profile.device)
+            agent_bid_eval = torch.combinations(agent_bid_eval, with_replacement=True).to(bid_profile.device)
         elif n_items > 2:
             sys.exit("not implemented yet!")
-        bid_eval_size, _ = bid_eval_i.shape
+        bid_eval_size, _ = agent_bid_eval.shape
 
         ## Use smaller dtypes to save memory
         if compress_dtypes:
             bid_profile = bid_profile.type(torch.float16)
             agent_valuation = agent_valuation.type(torch.float16)
-            agent_bid = agent_bid.type(torch.float16)
-            bid_eval_i = bid_eval_i.type(torch.float16)
+            agent_bid_actual = agent_bid_actual.type(torch.float16)
+            agent_bid_eval = agent_bid_eval.type(torch.float16)
         bid_profile_origin = bid_profile
         ### Evaluate alternative bids
         ## Merge alternative bids into opponnents bids (bid_no_i)
-        bid_profile = self._create_bid_profile(agent_position, bid_eval_i, bid_profile_origin)
+        bid_profile = self._create_bid_profile(agent_position, agent_bid_eval, bid_profile_origin)
     
         ## Calculate allocation and payments for alternative bids given opponents bids
         allocation, payments = self.mechanism.play(bid_profile)
         a_i = allocation[:,agent_position,:].view(bid_eval_size, batch_size, n_items).type(torch.bool)
         p_i = payments[:,agent_position].view(bid_eval_size, batch_size, 1).sum(2)
-
-        ## Calculate realized valuations given allocation
-        if batch_calculating:
+        
+        del allocation, payments, bid_profile
+        torch.cuda.empty_cache()
+        # Calculate realized valuations given allocation
+        try:
             v_i = agent_valuation.repeat(1,bid_eval_size * batch_size).view(batch_size, bid_eval_size, batch_size, n_items)
             v_i = torch.einsum('hijk,ijk->hijk', v_i, a_i).sum(3)
             ## Calculate utilities
@@ -306,27 +315,53 @@ class AuctionEnvironment(Environment):
             u_i_alternative = torch.mean(u_i_alternative,2)
             # max per valuations
             u_i_alternative, _ = torch.max(u_i_alternative,1)
-        else:
-            u_i_alternative = torch.zeros(batch_size, device = p_i.device)
-            ct = 0
-            for v in range(batch_size):
-                v_i = agent_valuation.repeat(1,bid_eval_size).view(bid_eval_size, batch_size, n_items)
-                #for bid in bid_
-                v_i = torch.einsum('ijk,ijk->ijk', v_i, a_i).sum(2)
-                ## Calculate utilities
-                u_i_alternative_v = v_i - p_i
-                # avg per bid
-                u_i_alternative_v = torch.mean(u_i_alternative_v,1)
-                # max per valuations
-                u_i_alternative[ct], _ = torch.max(u_i_alternative_v,0)
-                ct += 1
-                
-
+        #TODO: Fix calculation, currently wrong!
+        except RuntimeError as err:
+            print("Failed computing regret as batch. Trying sequential valuations computation. Decrease dimensions to fix. Error:\n {0}".format(err))
+            try:
+                # valuations sequential
+                u_i_alternative = torch.zeros(batch_size, device = p_i.device)
+                for v in range(batch_size):
+                    v_i = agent_valuation[v].repeat(1,bid_eval_size * batch_size).view(bid_eval_size, batch_size, n_items)
+                    #for bid in agent bid
+                    v_i = torch.einsum('ijk,ijk->ijk', v_i, a_i).sum(2)
+                    ## Calculate utilities
+                    u_i_alternative_v = v_i - p_i
+                    # avg per bid
+                    u_i_alternative_v = torch.mean(u_i_alternative_v,1)
+                    # max per valuations
+                    u_i_alternative[v], _ = torch.max(u_i_alternative_v,0)
+                    tmp = int(batch_size/100)
+                    if v % tmp == 0:
+                        print('{} %'.format(v*100/batch_size))
+            except RuntimeError as err:
+                print("Failed computing regret as batch with sequential valuations. Trying sequential bids computation. Decrease dimensions to fix. Error:\n {0}".format(err))
+                # valuations and bids sequential
+                try:
+                    u_i_alternative = torch.zeros(batch_size, device = p_i.device)
+                    ct = 0
+                    for v in range(batch_size):
+                        u_i_alternative_max = 0
+                        for b in range(bid_eval_size):
+                            # Expected utility for a bid given valuation
+                            tmp = torch.mean(torch.einsum('ij,ij->ij', agent_valuation.view(batch_size, n_items), a_i[b]).sum(1) - p_i[b])
+                            if tmp > u_i_alternative_max:
+                                u_i_alternative_max = tmp
+                        # max per valuations
+                        u_i_alternative[ct] = u_i_alternative_max
+                        ct += 1
+                        print('{} %'.format(v*100/batch_size))
+                except RuntimeError as err:
+                    print("Failed computing regret sequentially. You can try to use compress_dtypes = True or decrease dimensions to fix. Error:\n {0}".format(err))
+                    u_i_alternative = torch.ones(batch_size, device = p_i.device) * -9999999
         
-
+        # Clean up storage
+        del v_i, u_i_alternative_v
+        torch.cuda.empty_cache()
+        
         ### Evaluate actual bids
         ## Merge actual bids into opponnents bids (bid_no_i)
-        bid_profile = self._create_bid_profile(agent_position, agent_bid, bid_profile_origin)
+        bid_profile = self._create_bid_profile(agent_position, agent_bid_actual, bid_profile_origin)
         
         ## Calculate allocation and payments for actual bids given opponents bids
         allocation, payments = self.mechanism.play(bid_profile)
@@ -344,10 +379,11 @@ class AuctionEnvironment(Environment):
 
         ## average and max regret over all valuations
         regret = u_i_alternative - u_i_actual
-        regret_avg = torch.mean(regret)
-        regret_max = torch.max(regret)
 
-        return regret_avg, regret_max
+        # Explicitaly cleanup TODO:?
+
+
+        return regret
         
     def _create_bid_profile(self, agent_position: int, player_bids: torch.tensor, original_bid_profile: torch.tensor):
         batch_size, n_player, n_items = original_bid_profile.shape
@@ -361,8 +397,8 @@ class AuctionEnvironment(Environment):
         # bid_size x bids_(-i)
         bid_no_i_left = bid_no_i_left.repeat(repetitions, 1, 1)
         bid_no_i_right = bid_no_i_right.repeat(repetitions, 1, 1)
-        bid_profile = torch.cat([bid_no_i_left,bid_i,bid_no_i_right],1)
-        return bid_profile
+        #TODO: In place combination or splitting and sequential
+        return torch.cat([bid_no_i_left,bid_i,bid_no_i_right],1)
 
     def prepare_iteration(self):
         self.draw_valuations_()
