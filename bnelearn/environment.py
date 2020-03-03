@@ -260,8 +260,8 @@ class AuctionEnvironment(Environment):
         #TODO: 2. Implement logging for evaluations ins tensor and for printing
         #TODO: 3. Implement printing plotting of evaluation
         """
-        Estimates the potential benefit of deviating from the current energy, as:
-            regret(v_i) = Max_(b_i)[ E_(b_(-i))[u(v_i,b_i,b_(-i))] ]
+        Estimates the potential benefit of deviating from the current strategy, as:
+            regret(v_i) = Max_(b_i)[ E_(b_(-i))[u(v_i,b_i,b_(-i))] ] #TODO Stefan: shouldn't there be a  - u(v_i, b) here?
             regret_max = Max_(v_i)[ regret(v_i) ]
             regret_expected = E_(v_i)[ regret(v_i) ]
         The current bidder is always considered with index = 0
@@ -335,12 +335,15 @@ class AuctionEnvironment(Environment):
                     tmp = int(batch_size/100)
                     if v % tmp == 0:
                         print('{} %'.format(v*100/batch_size))
+                    
+                    # clean up
+                    del u_i_alternative_v
             except RuntimeError as err:
                 print("Failed computing regret as batch with sequential valuations. Decrease dimensions to fix. Error:\n {0}".format(err))
                 u_i_alternative = torch.ones(batch_size, device = p_i.device) * -9999999
         
         # Clean up storage
-        del v_i, u_i_alternative_v
+        del v_i
         torch.cuda.empty_cache()
         
         ### Evaluate actual bids

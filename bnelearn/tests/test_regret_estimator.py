@@ -1,10 +1,3 @@
-import pytest
-import torch
-from bnelearn.mechanism import LLLLGGAuction, FirstPriceSealedBidAuction
-from bnelearn.strategy import TruthfulStrategy
-from bnelearn.environment import AuctionEnvironment
-from bnelearn.bidder import Bidder
-
 """Testing correctness of regret estimator for a number of settings.
         Estimates the potential benefit of deviating from the current energy, as:
             regret(v_i) = Max_(b_i)[ E_(b_(-i))[u(v_i,b_i,b_(-i))] ]
@@ -19,10 +12,19 @@ from bnelearn.bidder import Bidder
             regret_expected
     bid_i always used as val_i and only using truthful bidding
 """
+
+import pytest
+import torch
+from bnelearn.mechanism import LLLLGGAuction, FirstPriceSealedBidAuction
+from bnelearn.strategy import TruthfulStrategy
+from bnelearn.environment import AuctionEnvironment
+from bnelearn.bidder import Bidder
+
+
 eps = 0.0001
-bids_i = torch.tensor([[0/6 + eps, 1/6 + eps, 
-                       2/6 + eps,3/6 + eps, 
-                       4/6 + eps, 5/6 + eps, 
+bids_i = torch.tensor([[0/6 + eps, 1/6 + eps,
+                       2/6 + eps,3/6 + eps,
+                       4/6 + eps, 5/6 + eps,
                        6/6 + eps]] , dtype = torch.float)
 
 bids_i_comb = torch.tensor([
@@ -115,6 +117,6 @@ def test_regret_estimator(rule, mechanism, bids_profile, bids_i, expected_regret
 
         regret = env.get_regret(bids_profile.to(device), player_position, agents[i].valuations,
                                 bids_profile.to(device)[:,i,:], bids_i.squeeze().to(device))
-        assert torch.allclose(regret[0],expected_regret[i,0], atol = 0.001), "Wrong avg regret calculation"
-        assert torch.allclose(regret[1],expected_regret[i,1], atol = 0.001), "Wrong max regret calculation"
+        assert torch.allclose(regret.mean(),expected_regret[i,0], atol = 0.001), "Wrong avg regret calculation"
+        assert torch.allclose(regret.max(),expected_regret[i,1], atol = 0.001), "Wrong max regret calculation"
 
