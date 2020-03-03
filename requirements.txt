@@ -15,3 +15,7 @@ pylint-exit #pip
 pylint2codeclimate #pip
 scipy # for numeric integration
 tqdm #for progress bars
+
+
+# non-python requirements (for package development only)
+# jq # installable via apt-get; used to automatically clean up ipynb files on commit via git filters.
