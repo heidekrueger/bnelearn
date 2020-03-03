@@ -177,8 +177,7 @@ class AuctionEnvironment(Environment):
     """
 
     def __init__(self, mechanism: Mechanism, agents: Iterable,
-                 batch_size=100, n_players=None, strategy_to_player_closure: Callable[[Strategy], Bidder]=None,
-                 eval_bid_size = None, eval_batch_size = None):
+                 batch_size=100, n_players=None, strategy_to_player_closure: Callable[[Strategy], Bidder]=None):
 
         if not n_players:
             n_players = len(agents)
@@ -191,8 +190,6 @@ class AuctionEnvironment(Environment):
             )
 
         self.mechanism = mechanism
-        self.eval_bid_size = eval_bid_size
-        self.eval_batch_size = eval_batch_size
 
     def get_reward(self, agent: Bidder, draw_valuations=False, aggregate = True) -> torch.Tensor: #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment.
