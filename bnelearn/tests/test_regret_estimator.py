@@ -18,9 +18,7 @@ import torch
 from bnelearn.mechanism import LLLLGGAuction, FirstPriceSealedBidAuction
 from bnelearn.strategy import TruthfulStrategy
 import bnelearn.util.metrics as metrics
-from bnelearn.environment import AuctionEnvironment
 from bnelearn.bidder import Bidder
-
 
 eps = 0.0001
 bids_i = torch.tensor([[0/6 + eps, 1/6 + eps,
