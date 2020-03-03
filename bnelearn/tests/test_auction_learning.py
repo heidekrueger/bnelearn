@@ -100,3 +100,5 @@ def test_learning_in_fpsb_environment():
     ## warn if not
     if not 1 < utility < 3:
         warnings.warn('Utility {:.2f} is not in expected range [1,3]!'.format(utility))
+
+test_learning_in_fpsb_environment()
