@@ -3,13 +3,13 @@
 import pytest
 import torch
 
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, ThirdPriceAuction
+from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, ThirdPriceSealedBidAuction
 
 cuda = torch.cuda.is_available()
 
 fpsb = FirstPriceSealedBidAuction(cuda=cuda)
 vickrey = VickreyAuction(cuda=cuda)
-third = ThirdPriceAuction(cuda=cuda)
+third = ThirdPriceSealedBidAuction(cuda=cuda)
 
 device = fpsb.device
 
