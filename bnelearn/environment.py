@@ -4,7 +4,7 @@ This module contains environments - a collection of players and
 possibly state histories that is used to control game playing and
 implements reward allocation to agents.
 """
-import sys
+
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Callable, Set
@@ -286,7 +286,7 @@ class AuctionEnvironment(Environment):
         elif n_items == 2:
             agent_bid_eval = torch.combinations(agent_bid_eval, with_replacement=True).to(bid_profile.device)
         elif n_items > 2:
-            sys.exit("not implemented yet!")
+            raise NotImplementedError("Regret for >2 items not implemented yet!")
         bid_eval_size, _ = agent_bid_eval.shape
 
         ## Use smaller dtypes to save memory
