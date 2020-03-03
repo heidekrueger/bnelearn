@@ -23,7 +23,7 @@ from bnelearn.experiment import Experiment
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import ClosureStrategy, NeuralNetStrategy
-from bnelearn.util.metrics import norm_strategy_and_actions
+import bnelearn.util.metrics as metrics
 
 ##%%%%%%%%%%%%%%%%%%%%%%%%%%    Settings
 # device and seed
@@ -359,9 +359,9 @@ def training_loop(self, writer, e):
         draw_valuations=False)  # False because expensive for normal priors
     self.epsilon_relative = 1 - self.utility_vs_bne / self.bne_utility
     self.epsilon_absolute = self.bne_utility - self.utility_vs_bne
-    self.L_2 = norm_strategy_and_actions(self.model, self.bne_env.agents[0].actions,
+    self.L_2 = metrics.norm_strategy_and_actions(self.model, self.bne_env.agents[0].actions,
                                          self.bne_env.agents[0].valuations, 2)
-    self.L_inf = norm_strategy_and_actions(self.model, self.bne_env.agents[0].actions,
+    self.L_inf = metrics.norm_strategy_and_actions(self.model, self.bne_env.agents[0].actions,
                                            self.bne_env.agents[0].valuations, float('inf'))
     self.log_metrics(writer, e)
 
@@ -378,22 +378,22 @@ def training_loop(self, writer, e):
         action_length = agent_bid.shape[1]
         bid_profile = torch.zeros(self.env.batch_size, self.env.n_players, action_length,
                                       dtype=agent_bid.dtype, device = self.env.mechanism.device)
-        
+
         counter = 1
         for opponent_pos, opponent_bid in self.env._generate_agent_actions(exclude = set([player_position])):
-                # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
-                if opponent_pos is None:
-                    opponent_pos = counter
-                bid_profile[:, opponent_pos, :] = opponent_bid
-                counter = counter + 1
+            # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
+            if opponent_pos is None:
+                opponent_pos = counter
+            bid_profile[:, opponent_pos, :] = opponent_bid
+            counter = counter + 1
 
         print("Calculating regret...")
-        regret = self.env.get_regret(bid_profile, player_position, self.env.agents[player_position].valuations,
+        regret = metrics.regret(self.mechanism, bid_profile, player_position, self.env.agents[player_position].valuations,
                                      agent_bid, bid_i)
-        print("agent {} can improve by, avg: {}, max: {}".format(player_position, 
+        print("agent {} can improve by, avg: {}, max: {}".format(player_position,
                                                                  torch.mean(regret),
                                                                  torch.max(regret)))
-        
+
 
         # plot current function output
         # bidder = strat_to_bidder(model, batch_size)

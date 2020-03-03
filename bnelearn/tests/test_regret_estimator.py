@@ -17,6 +17,7 @@ import pytest
 import torch
 from bnelearn.mechanism import LLLLGGAuction, FirstPriceSealedBidAuction
 from bnelearn.strategy import TruthfulStrategy
+import bnelearn.util.metrics as metrics
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.bidder import Bidder
 
@@ -109,14 +110,10 @@ def test_regret_estimator(rule, mechanism, bids_profile, bids_i, expected_regret
         #TODO: Add player position
         agents[i] = Bidder.uniform(0,1,TruthfulStrategy(), player_position = i, batch_size = batch_size)
         agents[i].valuations = bids_profile[:,i,:].to(device)
-    env = AuctionEnvironment(mechanism, agents, batch_size, n_bidders)
-    #regret = torch.tensor(torch.zeros(n_bidders,2), dtype = torch.float, device = device)
 
     for i in range(n_bidders):
-        player_position = i
-
-        regret = env.get_regret(bids_profile.to(device), player_position, agents[i].valuations,
+        regret = metrics.regret(mechanism, bids_profile.to(device), i, agents[i].valuations,
                                 bids_profile.to(device)[:,i,:], bids_i.squeeze().to(device))
-        assert torch.allclose(regret.mean(),expected_regret[i,0], atol = 0.001), "Wrong avg regret calculation"
-        assert torch.allclose(regret.max(),expected_regret[i,1], atol = 0.001), "Wrong max regret calculation"
+        assert torch.allclose(regret.mean(), expected_regret[i,0], atol = 0.001), "Unexpected avg regret"
+        assert torch.allclose(regret.max(),  expected_regret[i,1], atol = 0.001), "Unexpected max regret"
 
