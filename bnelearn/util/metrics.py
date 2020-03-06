@@ -49,22 +49,29 @@ def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: fl
 
     return norm_actions(s_actions, actions, p)
 
-def _create_bid_profile(agent_position: int, player_bids: torch.tensor, original_bid_profile: torch.tensor):
-    """Creates a bid profile to be used in regret estimation below.
+def _create_grid_bid_profiles(bidder_position: int, grid: torch.tensor, bid_profile: torch.tensor):
+    """Given an original bid profile, creates a tensor of (grid_size * batch_size) batches of bid profiles,
+       where for each original batch, the player's bid is replaced by each possible bid in the grid.
+
+    Input:
+        bidder_position: int - the player who's bids will be replaced
+        grid: FloatTensor (grid_size x n_items): tensor of possible bids to be evaluated
+        bid_profile: FloatTensor (batch_size x n_players x n_items)
+    Returns:
+        bid_profile: FloatTensor (grid_size*batch_size x n_players x n_items)
     """
-    batch_size, n_players, n_items = original_bid_profile.shape
-    bid_eval_size, _ = player_bids.shape #Stefan: I assume second dim is also n_items? what exactly is the meaning of bid_eval_size?
-    ## Merge bid_i into opponnents bids (bid_no_i)
-    # bids_(-i)
-    bid_no_i_left = original_bid_profile[:, [i for i in range(n_players) if i<agent_position], :] # batch x (some_players) x items
-    bid_no_i_right = original_bid_profile[:, [i for i in range(n_players) if i>agent_position], :] # batch x (some_players) x items
-    # bids_i x batch_size
-    bid_i = player_bids.repeat(1,batch_size).view(bid_eval_size*batch_size,1,n_items)
-    # bid_size x bids_(-i)
-    bid_no_i_left = bid_no_i_left.repeat(bid_eval_size, 1, 1) # Stefan: why 1 when above its n_itmes?
-    bid_no_i_right = bid_no_i_right.repeat(bid_eval_size, 1, 1) #Stefan: same
-    #TODO: In place combination or splitting and sequential
-    return torch.cat([bid_no_i_left,bid_i,bid_no_i_right],1) #Stefan: total: bid_eval_size*batch, 1,n_items?
+    # version with size checks: (slower)
+    # batch_size, _, n_items = bid_profile.shape #batch x player x item
+    # n_candidates, n_items = candidate_bids.shape # candidates x item
+    #assert n_items == n_items2, "input tensors don't match" 
+
+    batch_size, _, _ = bid_profile.shape #batch x player x item
+    n_candidates, _ = grid.shape # candidates x item 
+
+    bid_profile = bid_profile.repeat(n_candidates, 1, 1)
+    bid_profile[:, bidder_position, :] = grid.repeat_interleave(repeats = batch_size, dim=0)
+
+    return bid_profile #bid_eval_size*batch, 1,n_items
 
 def regret(mechanism: Mechanism, bid_profile: torch.Tensor, agent_position: int, agent_valuation: torch.Tensor,
            agent_bid_actual: torch.Tensor, agent_bid_eval: torch.Tensor, half_precision = False):
@@ -116,7 +123,7 @@ def regret(mechanism: Mechanism, bid_profile: torch.Tensor, agent_position: int,
 
     ### Evaluate alternative bids
     ## Merge alternative bids into opponnents bids (bid_no_i)
-    bid_profile = _create_bid_profile(agent_position, agent_bid_eval, bid_profile_origin) # bid_eval_size x n_player x n_item 
+    bid_profile = _create_grid_bid_profiles(agent_position, agent_bid_eval, bid_profile_origin) # bid_eval_size x n_player x n_item 
 
     ## Calculate allocation and payments for alternative bids given opponents bids
     allocation, payments = mechanism.play(bid_profile)
@@ -166,7 +173,7 @@ def regret(mechanism: Mechanism, bid_profile: torch.Tensor, agent_position: int,
 
     ### Evaluate actual bids
     ## Merge actual bids into opponnents bids (bid_no_i)
-    bid_profile = _create_bid_profile(agent_position, agent_bid_actual, bid_profile_origin)
+    bid_profile = _create_grid_bid_profiles(agent_position, agent_bid_actual, bid_profile_origin)
 
     ## Calculate allocation and payments for actual bids given opponents bids
     allocation, payments = mechanism.play(bid_profile)
