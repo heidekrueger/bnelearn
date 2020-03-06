@@ -27,9 +27,8 @@ class Strategy(ABC):
         """Takes (private) information as input and decides on the actions an agent should play."""
         raise NotImplementedError()
 
-    def pretrain(self, input_tensor, iterations, transformation=None):
+    def pretrain(self, input_time, iterations, transformation=None):
         """If implemented by subclass, pretrains the strategy to yield desired initial outputs."""
-        # pylint: disable=unused-argument # this method is 'soft-abstract'
         warnings.warn('Strategy of type {} does not support pretraining'.format(str(type(self))))
 
 class ClosureStrategy(Strategy):
@@ -281,19 +280,12 @@ class NeuralNetStrategy(Strategy, nn.Module):
             When provided, will check whether the initialized model will return a
             positive bid anywhere at the given input tensor. Otherwise,
             the weights will be reinitialized.
-        output_length (optional): int
-            length of output/action vectorm defaults to 1
-            (currently given last for backwards-compatibility)
-        dropout (optional): float
-            If not, applies AlphaDropout (https://pytorch.org/docs/stable/nn.html#torch.nn.AlphaDropout)
-            to `dropout` share of nodes in each hidden layer during training.
     """
-    def __init__(self, input_length: int,
+    def __init__(self, input_length: int, 
                  hidden_nodes: Iterable[int],
                  hidden_activations: Iterable[nn.Module],
                  ensure_positive_output: torch.Tensor or None = None,
-                 output_length: int = 1, # currently last argument for backwards-compatibility
-                 dropout: float = 0.0
+                 output_length: int = 1 # currently last argument for backwards-compatibility
                  ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
@@ -305,36 +297,27 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.output_length = output_length
         self.hidden_nodes = copy(hidden_nodes)
         self.activations = copy(hidden_activations) # do not write to list outside!
-        self.dropout = dropout
 
         self.layers = nn.ModuleDict()
 
-        if len(hidden_nodes) > 0:
-            ## create hdiden layers
-            # first hidden layer (from input)
-            self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
-            self.layers['activation_0'] = self.activations[0]
-            if self.dropout:
-                self.layers['dropout_0'] = nn.AlphaDropout(p=self.dropout)
-            # hidden-to-hidden-layers
-            for i in range (1, len(hidden_nodes)):
-                self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
-                self.layers['activation_' + str(i)] = self.activations[i]
-                if self.dropout:
-                    self.layers['dropout_' + str(i)] = nn.AlphaDropout(p=self.dropout)
-        else:
-            # output layer directly from inputs
-            hidden_nodes = [input_length] #don't write to self.hidden nodes, just ensure correct creation
+        # first layer
+        self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
+        # torch.nn.init.normal_(self.layers['fc_0'].weight, mean=0, std=.1)
+        self.layers['activation_0'] = hidden_activations[0]
 
-        # create output layer
+        for i in range (1, len(hidden_nodes)):
+            self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
+            # torch.nn.init.normal_(self.layers['fc_' + str(i)].weight, mean=0, std=.1)
+            self.layers['activation_' + str(i)] = hidden_activations[i]
+
         self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
         # torch.nn.init.normal_(self.layers['fc_out'].weight, mean=0, std=.1)
         self.layers['activation_out'] = nn.ReLU()
-        self.activations.append(self.layers['activation_out'])
+        self.activations.append(nn.ReLU())
 
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization
-        if ensure_positive_output is not None:
+        if not ensure_positive_output is None:
             if not torch.all(self.forward(ensure_positive_output).gt(0)):
                 self.reset(ensure_positive_output)
 
@@ -353,9 +336,6 @@ class NeuralNetStrategy(Strategy, nn.Module):
         if transformation is not None:
             desired_output = transformation(input_tensor)
 
-        if desired_output.shape[-1] != self.output_length:
-            raise ValueError('Desired pretraining output does not match NN output dimension.')
-
         optimizer = torch.optim.Adam(self.parameters())
         for _ in range(iters):
             self.zero_grad()
@@ -366,25 +346,31 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
-        self.__init__(self.input_length, self.hidden_nodes,
-                      self.activations[:-1], ensure_positive_output, self.output_length)
+        self.__init__(
+            input_length = self.input_length,
+            hidden_nodes = self.hidden_nodes,
+            hidden_activations = self.activations[:-1],
+            ensure_positive_output = ensure_positive_output,
+            output_length = self.output_length
+        )
 
     def forward(self, x):
         for layer in self.layers.values():
             x = layer(x)
         return x
 
-    def play(self,inputs):
+    def play(self, inputs):
         return self.forward(inputs)
 
 class TruthfulStrategy(Strategy, nn.Module):
     """A strategy that plays truthful valuations."""
     def __init__(self):
         nn.Module.__init__(self)
-        self.register_parameter('dummy',nn.Parameter(torch.zeros(1)))
+        self.register_parameter('dummy', nn.Parameter(torch.zeros(1)))
 
     def forward(self, x):
         return x
 
     def play(self, inputs):
         return self.forward(inputs)
+ 

@@ -7,13 +7,15 @@ implements reward allocation to agents.
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from typing import Callable, Set
+from copy import deepcopy
+from typing import Tuple, Set, Type, Callable
 import torch
+import numpy as np
 
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism
 from bnelearn.strategy import Strategy
-
+from bnelearn.mechanism import FPSBSplitAwardAuction
 
 class Environment(ABC):
     """Environment
@@ -25,9 +27,9 @@ class Environment(ABC):
     """
     def __init__(self,
                  agents: Iterable,
-                 n_players=2,
-                 batch_size=1,
-                 strategy_to_player_closure: Callable or None=None,
+                 n_players = 2,
+                 batch_size = 1,
+                 strategy_to_player_closure: Callable or None = None,
                  **kwargs #pylint: disable=unused-argument
                  ):
         assert isinstance(agents, Iterable), "iterable of agents must be supplied"
@@ -55,7 +57,7 @@ class Environment(ABC):
         pass #pylint: disable=unnecessary-pass
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
-                            draw_valuations=False, aggregate_batch = True,
+                            draw_valuations=False, return_allocation=False, experience=None,
                             **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
@@ -65,23 +67,14 @@ class Environment(ABC):
         agent = self._strategy_to_player(strategy,
                                          batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
-        return self.get_reward(agent, draw_valuations = draw_valuations, aggregate=aggregate_batch)
+        return self.get_reward(agent, draw_valuations=draw_valuations,
+                               return_allocation=return_allocation, experience=experience)
 
-    def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
-                            draw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
-        """
-        Returns reward of a given strategy in given environment agent position.
-        """
-        if not self._strategy_to_player:
-            raise NotImplementedError('This environment has no strategy_to_player closure!')
-        agent = self._strategy_to_player(strategy,
-                                         batch_size=self.batch_size,
-                                         player_position=player_position, **strat_to_player_kwargs)
-        action = agent.get_action()
-        return action, self.get_reward(agent, draw_valuations = draw_valuations, aggregate = False)
-
-
-    def _generate_agent_actions(self, exclude: Set[int] or None = None):
+    def _generate_agent_actions(
+            self,
+            exclude: Set[int] or None = None,
+            experience = None
+        ):
         """
         Generator function yielding batches of bids for each environment agent
         that is not excluded.
@@ -99,7 +92,15 @@ class Environment(ABC):
             exclude = set()
 
         for agent in (a for a in self.agents if a.player_position not in exclude):
-            yield(agent.player_position, agent.get_action())
+            if experience is not None:
+                strat = experience.get_memory(player_position=agent.player_position)[1]
+                if strat is None: # no memory for requested player_position
+                    action = agent.get_action()
+                else:
+                    action = agent.get_alternative_action(strat)
+                yield(agent.player_position, action)
+            else:
+                yield(agent.player_position, agent.get_action())
 
     def prepare_iteration(self):
         """Prepares the interim-stage of a Bayesian game,
@@ -176,22 +177,40 @@ class AuctionEnvironment(Environment):
             transform strategies into a Bidder compatible with the environment
     """
 
-    def __init__(self, mechanism: Mechanism, agents: Iterable,
-                 batch_size=100, n_players=None, strategy_to_player_closure: Callable[[Strategy], Bidder]=None):
+    def __init__(
+            self,
+            mechanism: Mechanism,
+            agents: Iterable,
+            batch_size = 100,
+            n_players = None,
+            strategy_to_player_closure: Callable[[Strategy], Bidder] = None,
+            experience = None,
+            adversarial_weight: int = None
+        ):
 
         if not n_players:
             n_players = len(agents)
 
         super().__init__(
-            agents=agents,
-            n_players=n_players,
-            batch_size=batch_size,
-            strategy_to_player_closure=strategy_to_player_closure
-            )
+            agents = agents,
+            n_players = n_players,
+            batch_size = batch_size,
+            experience = experience,
+            strategy_to_player_closure = strategy_to_player_closure
+        )
 
         self.mechanism = mechanism
 
-    def get_reward(self, agent: Bidder, draw_valuations=False, aggregate = True) -> torch.Tensor: #pylint: disable=arguments-differ
+        if adversarial_weight is not None:
+            self.adversarial_weight = adversarial_weight
+
+    def get_reward(
+            self,
+            agent: Bidder,
+            draw_valuations = False,
+            return_allocation = False,
+            experience = None
+        ) -> torch.Tensor: #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment.
            Reward is calculated as average utility for each of the batch_size x env_size games
         """
@@ -217,38 +236,190 @@ class AuctionEnvironment(Environment):
             allocation, payments = self.mechanism.play(
                 agent_bid.view(agent.batch_size, 1, action_length)
             )
-            utility = agent.get_utility(allocation[:,0,:], payments[:,0])
+            utility = agent.get_utility(allocation[:,0,:], payments[:,0]).mean()
         else: # at least 2 environment agent --> build bid_profile, then play
             # get bid profile
             bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
                                       dtype=agent_bid.dtype, device = self.mechanism.device)
             bid_profile[:, player_position, :] = agent_bid
 
-            # Get actions for all players in the environment except the one at player_position
-            # which is overwritten by the active agent instead.
-
-            # the counter thing is an ugly af hack: if environment is dynamic, 
-            # all player positions will be none. so simply start at 1 for 
-            # the first opponent and count up
+            # ugly af hack: if environment is dynamic, all player positions will be
+            # none. simply start at 1 for the first opponent and count up
             # TODO: clean this up 🤷 ¯\_(ツ)_/¯
             counter = 1
-            for opponent_pos, opponent_bid in self._generate_agent_actions(exclude = set([player_position])):
+            for opponent_pos, opponent_bid in self._generate_agent_actions(exclude = set([player_position]),
+                                                                           experience = experience):
                 # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
                 if opponent_pos is None:
                     opponent_pos = counter
                 bid_profile[:, opponent_pos, :] = opponent_bid
                 counter = counter + 1
-
             allocation, payments = self.mechanism.play(bid_profile)
-
+            # print('valuations', agent.valuations)
+            # print('actions', agent.get_action())
+            # print('allocation', allocation)
+            # print('payments', payments)
             # average over batch against this opponent
-            utility = agent.get_utility(allocation[:,player_position,:],
-                                        payments[:,player_position])
+            utility = agent.get_utility(
+                allocation[:, player_position, :],
+                payments[:, player_position]
+            ).mean()
 
-        if aggregate:
-                utility = utility.mean()
+            if agent.adversarial:
+                utility *= (1.0 - self.adversarial_weight)
+                for opponent in (a for a in self.agents if a.player_position != agent.player_position):
+                    utility -= (self.adversarial_weight / (self.n_players - 1)) \
+                        * opponent.get_utility(
+                            allocation[:, opponent.player_position, :],
+                            payments[:, opponent.player_position]
+                        ).mean()
 
-        return utility
+        if return_allocation:
+            # transform allocation s.t. it can be logged as histogram in tensorboard
+            allocation = allocation.detach()
+            allocation = allocation[:,player_position,:]
+            welfare = agent.get_welfare(allocation).mean()
+
+            if isinstance(self.mechanism, FPSBSplitAwardAuction):
+                # transformation s.t. 1 item (100%) corresponds to 2 items (2*50%)
+                key = 1
+                for i in range(allocation.shape[1]-1, -1, -1):
+                    allocation[:,i] *= key
+                    key += 1
+
+            allocation = allocation.sum(dim=1, keepdim=True)
+        if not return_allocation:
+            return utility.detach()
+        else:
+            return (utility.detach(), allocation, welfare)
+
+    def get_regret(self, bid_profile: torch.Tensor, agent_position: int, agent_valuation: torch.Tensor, 
+                   agent_bid_actual: torch.Tensor, agent_bid_eval: torch.Tensor, compress_dtypes = False):
+        #TODO: 1. Implement individual evaluation batch und bid size -> large batch for training, smaller for eval
+        #TODO: 2. Implement logging for evaluations ins tensor and for printing
+        #TODO: 3. Implement printing plotting of evaluation
+        """
+        Estimates the potential benefit of deviating from the current energy, as:
+            regret(v_i) = Max_(b_i)[ E_(b_(-i))[u(v_i,b_i,b_(-i))] ]
+            regret_max = Max_(v_i)[ regret(v_i) ]
+            regret_expected = E_(v_i)[ regret(v_i) ]
+        The current bidder is always considered with index = 0
+        Input:
+            bid_profile: (batch_size x n_player x n_items)
+            agent_valuation: (batch_size x n_items)
+            agent_bid_actual: (batch_size x n_items)
+            agent_bid_eval: (bid_size x n_items)
+        Output:
+            regret_max
+            regret_expected
+            TODO: Only applicable to independent valuations. Add check. 
+            TODO: Only for risk neutral bidders. Add check.
+        Useful: To get the memory used by a tensor (in MB): (tensor.element_size() * tensor.nelement())/(1024*1024)
+        """
+
+        # TODO: Generalize these dimensions
+        batch_size, n_player, n_items = bid_profile.shape
+        # Create multidimensional bid tensor if required
+        if n_items == 1:
+            agent_bid_eval = agent_bid_eval.view(agent_bid_eval.shape[0], 1).to(bid_profile.device)
+        elif n_items == 2:
+            agent_bid_eval = torch.combinations(agent_bid_eval, with_replacement=True).to(bid_profile.device)
+        elif n_items > 2:
+            sys.exit("not implemented yet!")
+        bid_eval_size, _ = agent_bid_eval.shape
+
+        ## Use smaller dtypes to save memory
+        if compress_dtypes:
+            bid_profile = bid_profile.type(torch.float16)
+            agent_valuation = agent_valuation.type(torch.float16)
+            agent_bid_actual = agent_bid_actual.type(torch.float16)
+            agent_bid_eval = agent_bid_eval.type(torch.float16)
+        bid_profile_origin = bid_profile
+        ### Evaluate alternative bids
+        ## Merge alternative bids into opponnents bids (bid_no_i)
+        bid_profile = self._create_bid_profile(agent_position, agent_bid_eval, bid_profile_origin)
+
+        ## Calculate allocation and payments for alternative bids given opponents bids
+        allocation, payments = self.mechanism.play(bid_profile)
+        a_i = allocation[:,agent_position,:].view(bid_eval_size, batch_size, n_items).type(torch.bool)
+        p_i = payments[:,agent_position].view(bid_eval_size, batch_size, 1).sum(2)
+
+        del allocation, payments, bid_profile
+        torch.cuda.empty_cache()
+        # Calculate realized valuations given allocation
+        try:
+            v_i = agent_valuation.repeat(1,bid_eval_size * batch_size).view(batch_size, bid_eval_size, batch_size, n_items)
+            v_i = torch.einsum('hijk,ijk->hijk', v_i, a_i).sum(3)
+            ## Calculate utilities
+            u_i_alternative = v_i - p_i.repeat(batch_size,1,1)
+            # avg per bid
+            u_i_alternative = torch.mean(u_i_alternative,2)
+            # max per valuations
+            u_i_alternative, _ = torch.max(u_i_alternative,1)
+        except RuntimeError as err:
+            try:
+                # valuations sequential
+                u_i_alternative = torch.zeros(batch_size, device = p_i.device)
+                for v in range(batch_size):
+                    v_i = agent_valuation[v].repeat(1,bid_eval_size * batch_size).view(bid_eval_size, batch_size, n_items)
+                    #for bid in agent bid
+                    v_i = torch.einsum('ijk,ijk->ijk', v_i, a_i).sum(2)
+                    ## Calculate utilities
+                    u_i_alternative_v = v_i - p_i
+                    # avg per bid
+                    u_i_alternative_v = torch.mean(u_i_alternative_v,1)
+                    # max per valuations
+                    u_i_alternative[v], _ = torch.max(u_i_alternative_v,0)
+                    tmp = int(batch_size/100)
+                    # if v % tmp == 0:
+                    #     print('{} %'.format(v*100/batch_size))
+            except RuntimeError as err:
+                u_i_alternative = torch.ones(batch_size, device = p_i.device) * -9999999
+        
+        # Clean up storage
+        del v_i, u_i_alternative_v
+        torch.cuda.empty_cache()
+        
+        ### Evaluate actual bids
+        ## Merge actual bids into opponnents bids (bid_no_i)
+        bid_profile = self._create_bid_profile(agent_position, agent_bid_actual, bid_profile_origin)
+        
+        ## Calculate allocation and payments for actual bids given opponents bids
+        allocation, payments = self.mechanism.play(bid_profile)
+        a_i = allocation[:,agent_position,:].view(batch_size, batch_size, n_items)
+        p_i = payments[:,agent_position].view(batch_size, batch_size, 1).sum(2)
+
+        ## Calculate realized valuations given allocation
+        v_i = agent_valuation.view(batch_size,1,n_items).repeat(1, batch_size, 1)
+        v_i = torch.einsum('ijk,ijk->ijk', v_i, a_i).sum(2)
+
+        ## Calculate utilities
+        u_i_actual = v_i - p_i
+        # avg per bid and valuation
+        u_i_actual = torch.mean(u_i_actual,1)
+
+        ## average and max regret over all valuations
+        regret = u_i_alternative - u_i_actual
+
+        # Explicitaly cleanup TODO:?
+
+
+        return regret
+
+    def _create_bid_profile(self, agent_position: int, player_bids: torch.tensor, original_bid_profile: torch.tensor):
+        batch_size, n_player, n_items = original_bid_profile.shape
+        bid_eval_size, _ = player_bids.shape
+        ## Merge bid_i into opponnents bids (bid_no_i)
+        # bids_(-i)
+        bid_no_i_left = original_bid_profile[:, [i for i in range(n_player) if i<agent_position], :]
+        bid_no_i_right = original_bid_profile[:, [i for i in range(n_player) if i>agent_position], :]
+        # bids_i x batch_size
+        bid_i = player_bids.repeat(1,batch_size).view(bid_eval_size*batch_size,1,n_items)
+        # bid_size x bids_(-i)
+        bid_no_i_left = bid_no_i_left.repeat(bid_eval_size, 1, 1)
+        bid_no_i_right = bid_no_i_right.repeat(bid_eval_size, 1, 1)
+        #TODO: In place combination or splitting and sequential
+        return torch.cat([bid_no_i_left,bid_i,bid_no_i_right],1)
 
     def prepare_iteration(self):
         self.draw_valuations_()
