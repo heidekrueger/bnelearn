@@ -44,3 +44,6 @@ pylint.txt
 # gurobi log files
 /GurobiSol/*
 **/gurobi.log
+
+# PyCharm
+/.idea/*
