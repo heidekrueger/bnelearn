@@ -85,7 +85,7 @@ def regret(mechanism: Mechanism, bid_profile: torch.Tensor, agent_position: int,
         agent_bid_actual: (batch_size x n_items) #TODO Stefan: isn't this in bid_profile? which one?
         agent_bid_eval: (bid_size x n_items) #TODO Stefan: defines the grid of possible actions to be evaluated for the agent
     Output:
-        regret (bid_size) (?)
+        regret (bid_size) (?) #TODO Stefan: If bid is multidimensional, shouldn't this be bid_size ** n_items?
 
     TODO: Only applicable to independent valuations. Add check. #TODO Stefan: why? where is this required?
     TODO: Only for risk neutral bidders. Add check.
@@ -108,10 +108,10 @@ def regret(mechanism: Mechanism, bid_profile: torch.Tensor, agent_position: int,
 
     ## Use smaller dtypes to save memory
     if half_precision:
-        bid_profile = bid_profile.type(torch.float16)
-        agent_valuation = agent_valuation.type(torch.float16)
-        agent_bid_actual = agent_bid_actual.type(torch.float16)
-        agent_bid_eval = agent_bid_eval.type(torch.float16)
+        bid_profile = bid_profile.half()
+        agent_valuation = agent_valuation.half()
+        agent_bid_actual = agent_bid_actual.half()
+        agent_bid_eval = agent_bid_eval.half()
     bid_profile_origin = bid_profile
 
     ### Evaluate alternative bids
