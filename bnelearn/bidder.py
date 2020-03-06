@@ -78,14 +78,26 @@ class Bidder(Player):
                  cuda = True,
                  cache_actions: bool = False,
                  descending_valuations = False,
-                 risk: float = 1.0
+                 risk: float = 1.0,
+                 item_interest_limit = None,
+                 constant_marginal_values = False,
+                 split_award = False,
+                 efficiency_parameter = None,
                  ):
+
+        assert not descending_valuations or not split_award, \
+            'descending_valuations only for multi-unit auctions!'
+
         super().__init__(strategy, player_position, batch_size, cuda)
 
         self.value_distribution = value_distribution
         self.n_items = n_items
         self.descending_valuations = descending_valuations
+        self.item_interest_limit = item_interest_limit
+        self.constant_marginal_values = constant_marginal_values
         self.risk = risk
+        self.split_award = split_award
+        self.efficiency_parameter = efficiency_parameter
         self._cache_actions = cache_actions
         self._valuations_changed = False # true if new valuation drawn since actions calculated
         self.valuations = torch.zeros(batch_size, n_items, device=self.device)
@@ -98,7 +110,7 @@ class Bidder(Player):
     @classmethod
     def uniform(cls, lower, upper, strategy, **kwargs):
         """Constructs a bidder with uniform valuation prior."""
-        dist = torch.distributions.uniform.Uniform(low = lower, high=upper)
+        dist = torch.distributions.uniform.Uniform(low=lower, high=upper)
         return cls(dist, strategy, **kwargs)
 
     @classmethod
@@ -134,8 +146,21 @@ class Bidder(Player):
             # slow! (sampling on cpu then copying to GPU)
             self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device).relu()
 
-        if self.descending_valuations:
+        if isinstance(self.item_interest_limit, int):
+            self.valuations[:,self.item_interest_limit:] = 0
+
+        if self.constant_marginal_values:
+            self.valuations.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
+                                        self.valuations[:,0:1].repeat(1, self.n_items-1))
+
+        elif self.descending_valuations:
+            # for uniform vals and 2 items <=> F1(v)=v**2, F2(v)=2v-v**2
             self.valuations, _ = self.valuations.sort(dim=1, descending=True)
+
+        if self.efficiency_parameter is not None:
+            assert self.valuations.shape[1] == 2, \
+                'linear valuations are only defined for two items.'
+            self.valuations[:,1] = self.efficiency_parameter * self.valuations[:,0]
 
         self._valuations_changed = True
         return self.valuations
@@ -150,11 +175,25 @@ class Bidder(Player):
 
         payoff = (self.valuations * allocations).sum(dim=1) - payments
 
+        if self.split_award:
+            payoff *= -1
+
         if self.risk == 1.0:
             return payoff
         else:
             # payoff^alpha not well defined in negative domain for risk averse agents
             return payoff.relu()**self.risk - (-payoff).relu()**self.risk
+
+    def get_welfare(self, allocations):
+        """
+        For a batch of allocations and payments return the player's welfare.
+        """
+
+        assert allocations.dim() == 2 # batch_size x items
+
+        welfare = (self.valuations * allocations).sum(dim=1)
+
+        return welfare
 
     def get_action(self):
         """Calculate action from current valuations, or retrieve from cache"""
@@ -162,6 +201,13 @@ class Bidder(Player):
             return self.actions
 
         inputs = self.valuations.view(self.batch_size, -1)
+
+        if self.split_award:
+            # for cases when n_itmes != input_length
+            if hasattr(self.strategy, 'input_length'):
+                dim = self.strategy.input_length
+                inputs = inputs[:,:dim]
+
         actions = self.strategy.play(inputs)
         self._valuations_changed = False
 

@@ -10,6 +10,8 @@ import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from bnelearn.environment import Environment
 from bnelearn.strategy import Strategy, NeuralNetStrategy
+import numpy as np
+
 
 
 class Learner(ABC):
@@ -62,18 +64,20 @@ class GradientBasedLearner(Learner):
 
         Returns: None or loss evaluated by closure. (See above.)
         """
-
         self.optimizer.zero_grad()
         self._set_gradients()
         return self.optimizer.step(closure=closure)
 
-    def update_strategy_and_evaluate_utility(self, closure=None):
+    def update_strategy_and_evaluate_utility(self, closure = None):
         """updates model and returns utility after the update."""
+
         self.update_strategy(closure)
         return self.environment.get_strategy_reward(
             self.model,
             **self.strat_to_player_kwargs
-            ).detach()
+        ).detach()
+
+
 
 class ESPGLearner(GradientBasedLearner):
     """ Neural Self-Play with Evolutionary Strategy Pseudo-PG
@@ -129,6 +133,12 @@ class ESPGLearner(GradientBasedLearner):
                          optimizer_type, optimizer_hyperparams,
                          strat_to_player_kwargs)
 
+        # gradient from previous iteration
+        self.prev_gradient = torch.zeros_like(parameters_to_vector(self.params())) 
+
+        # noprm of the gradient
+        self.gradient_norm = 0
+
         # Validate ES hyperparams
         if not set(['population_size', 'sigma', 'scale_sigma_by_model_size']) <= set(hyperparams):
             raise ValueError(
@@ -158,7 +168,6 @@ class ESPGLearner(GradientBasedLearner):
                     and not self.baseline_method in ['current_reward', 'mean_reward']:
                 raise ValueError('Invalid baseline provided. Should be float or '\
                     + 'one of "mean_reward", "current_reward"')
-
 
     def _set_gradients(self):
         """Calculates ES-pseudogradients and applies them to the model parameter
@@ -201,7 +210,7 @@ class ESPGLearner(GradientBasedLearner):
         # See ES_Analysis notebook in repository for more information about where
         # these choices come from.
         baseline = \
-            self.environment.get_strategy_reward(self.model,**self.strat_to_player_kwargs).detach().view(1) \
+            self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach().view(1) \
                 if self.baseline == 'current_reward' \
             else rewards.mean(dim=0) if self.baseline == 'mean_reward' \
             else self.baseline # a float
@@ -246,6 +255,7 @@ class ESPGLearner(GradientBasedLearner):
         vector_to_parameters(params_flat + noise, perturbed.parameters())
 
         return perturbed, noise
+
 
 class PGLearner(GradientBasedLearner):
     """Neural Self-Play with directly computed Policy Gradients.
@@ -293,9 +303,9 @@ class PGLearner(GradientBasedLearner):
         else:
             pass # is already constant float
 
-        loss =  -self.environment.get_strategy_reward(
-                self.model,**self.strat_to_player_kwargs
-                )
+        loss = -self.environment.get_strategy_reward(
+            self.model,**self.strat_to_player_kwargs
+        )
 
         loss.backward()
 
@@ -451,8 +461,8 @@ class AESPGLearner(GradientBasedLearner):
         # for now, we'll assume model is a NeuralNetStrategy, i.e. has an attribute output_length
 
         noise = torch.zeros([self.environment.batch_size, model.output_length],
-                            device = next(model.parameters()).device
-            ).normal_(mean=0.0, std=self.sigma)
+            device = next(model.parameters()).device
+        ).normal_(mean=0.0, std=self.sigma)
 
         perturbed = _PerturbedActionModule(model, noise)
 

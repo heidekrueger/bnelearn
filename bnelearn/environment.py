@@ -8,12 +8,15 @@ implements reward allocation to agents.
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Callable, Set
+from copy import deepcopy
+from typing import Tuple, Set, Type, Callable
 import torch
+import numpy as np
 
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism
 from bnelearn.strategy import Strategy
-
+from bnelearn.mechanism import FPSBSplitAwardAuction
 
 class Environment(ABC):
     """Environment
@@ -25,9 +28,9 @@ class Environment(ABC):
     """
     def __init__(self,
                  agents: Iterable,
-                 n_players=2,
-                 batch_size=1,
-                 strategy_to_player_closure: Callable or None=None,
+                 n_players = 2,
+                 batch_size = 1,
+                 strategy_to_player_closure: Callable or None = None,
                  **kwargs #pylint: disable=unused-argument
                  ):
         assert isinstance(agents, Iterable), "iterable of agents must be supplied"
@@ -62,26 +65,27 @@ class Environment(ABC):
         """
         if not self._strategy_to_player:
             raise NotImplementedError('This environment has no strategy_to_player closure!')
-        agent = self._strategy_to_player(strategy,
-                                         batch_size=self.batch_size,
+        agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
-        return self.get_reward(agent, draw_valuations = draw_valuations, aggregate=aggregate_batch)
+        return self.get_reward(agent, draw_valuations=draw_valuations, aggregate=aggregate_batch)
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
-                            draw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
+                                       draw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
         """
         if not self._strategy_to_player:
             raise NotImplementedError('This environment has no strategy_to_player closure!')
-        agent = self._strategy_to_player(strategy,
-                                         batch_size=self.batch_size,
+        agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
         action = agent.get_action()
         return action, self.get_reward(agent, draw_valuations = draw_valuations, aggregate = False)
 
-
-    def _generate_agent_actions(self, exclude: Set[int] or None = None):
+    def _generate_agent_actions(
+            self,
+            exclude: Set[int] or None = None,
+            experience = None
+        ):
         """
         Generator function yielding batches of bids for each environment agent
         that is not excluded.
@@ -176,22 +180,33 @@ class AuctionEnvironment(Environment):
             transform strategies into a Bidder compatible with the environment
     """
 
-    def __init__(self, mechanism: Mechanism, agents: Iterable,
-                 batch_size=100, n_players=None, strategy_to_player_closure: Callable[[Strategy], Bidder]=None):
+    def __init__(
+            self,
+            mechanism: Mechanism,
+            agents: Iterable,
+            batch_size = 100,
+            n_players = None,
+            strategy_to_player_closure: Callable[[Strategy], Bidder] = None
+        ):
 
         if not n_players:
             n_players = len(agents)
 
         super().__init__(
-            agents=agents,
-            n_players=n_players,
-            batch_size=batch_size,
-            strategy_to_player_closure=strategy_to_player_closure
-            )
+            agents = agents,
+            n_players = n_players,
+            batch_size = batch_size,
+            strategy_to_player_closure = strategy_to_player_closure
+        )
 
         self.mechanism = mechanism
 
-    def get_reward(self, agent: Bidder, draw_valuations=False, aggregate = True) -> torch.Tensor: #pylint: disable=arguments-differ
+    def get_reward(
+            self,
+            agent: Bidder,
+            draw_valuations = False,
+            aggregate = True
+        ) -> torch.Tensor: #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment.
            Reward is calculated as average utility for each of the batch_size x env_size games
         """
@@ -227,12 +242,15 @@ class AuctionEnvironment(Environment):
             # Get actions for all players in the environment except the one at player_position
             # which is overwritten by the active agent instead.
 
-            # the counter thing is an ugly af hack: if environment is dynamic, 
-            # all player positions will be none. so simply start at 1 for 
+            # the counter thing is an ugly af hack: if environment is dynamic,
+            # all player positions will be none. so simply start at 1 for
             # the first opponent and count up
+
+            # ugly af hack: if environment is dynamic, all player positions will be
+            # none. simply start at 1 for the first opponent and count up
             # TODO: clean this up 🤷 ¯\_(ツ)_/¯
             counter = 1
-            for opponent_pos, opponent_bid in self._generate_agent_actions(exclude = set([player_position])):
+            for opponent_pos, opponent_bid in self._generate_agent_actions(exclude=set([player_position])):
                 # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
                 if opponent_pos is None:
                     opponent_pos = counter
@@ -245,10 +263,10 @@ class AuctionEnvironment(Environment):
             utility = agent.get_utility(allocation[:,player_position,:],
                                         payments[:,player_position])
 
-        if aggregate:
+            if aggregate:
                 utility = utility.mean()
 
-        return utility
+            return utility
 
     def prepare_iteration(self):
         self.draw_valuations_()
