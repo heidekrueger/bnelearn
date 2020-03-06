@@ -9,120 +9,10 @@ from typing import Tuple, Type, Callable
 import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from bnelearn.environment import Environment
-from scripts.utils_nils import stopping_criterion
+from bnelearn.strategy import Strategy, NeuralNetStrategy
 import numpy as np
 
-class ExperienceReplay():
-    """
-    Helper class for ´Learner´ which memorizes past opponent´s policies.
-    Inspired partly by ´Prioritized Experience Replay´ by Tom Schaul et al. [1].
 
-        TODO:
-            - might be closer ro other method not experience replay!
-            - faster access to memory with binary heap data structure
-
-        Args:
-            n_memory_size: int, max capacity of meorized policies
-            replay_prob: float, probabilty of playing against remembered environment
-                compared to playing against current environment. 
-            prioritization: float, >= 0, alpha in [1], 0 corresponding to the uniform case.
-            forgetting: str, rule to override memories.
-            eps: float, as in [1] value for remembering of any memory with prpbabilty
-                greater zero.
-    """
-    def __init__(
-            self,
-            n_memory_size: int = 16,
-            replay_prob: float = 0.5,
-            prioritization: float = 1.0,
-            forgetting: str = 'prioritized',
-            eps: float = 1e-13,
-        ):
-        assert n_memory_size > 0, '´n_memory_size´ must be positive ineteger.'
-        assert replay_prob >= 0 and replay_prob <= 1, '´replay_prob´ must be within [0, 1].'
-        assert prioritization >= 0, 'prioritization must be within [0, 1].'
-
-        self.n_memory_size = n_memory_size
-        self.replay_prob = replay_prob
-        self.forgetting = forgetting
-        self.prioritization = prioritization
-        self.eps = eps
-        self.n_memories = 0
-
-        self.current_memory_index = -1
-        self.experienced_strategies = []
-
-        if self.forgetting == 'fifo':
-            self.memory_position = 0
-
-    def _create_memory_entry(self, priority, agent):
-        return [
-            agent.player_position,
-            priority + self.eps,
-            deepcopy(agent.strategy),
-            self.n_memories
-        ]
-
-    def append_memory(self, environment, priority, player_position):
-        """
-        Add new memory
-
-        Parameters:
-            environment: environment, in which we are in.
-            priority: float, how much we learned based on this experience. 
-            player_position: int, position of this player. All other players will be
-                momorized.
-        """
-        for agent in (a for a in environment.agents if a.player_position != player_position):
-            if self.n_memories < self.n_memory_size:
-                self.experienced_strategies.append(self._create_memory_entry(priority, agent))
-                self.n_memories += 1
-            else: # have to forget a memory
-                if self.forgetting == 'prioritized':
-                    memory_position = np.argmin([i[1] for i in self.experienced_strategies])
-                    if priority < self.experienced_strategies[memory_position][1]:
-                        # new memory is discarded due to low priority
-                        return
-                elif self.forgetting == 'random':
-                    memory_position = np.random.randint(self.n_memory_size)
-                elif self.forgetting == 'fifo':
-                    memory_position = self.memory_position
-                    self.memory_position = (self.memory_position + 1) % self.n_memory_size
-                elif self.forgetting == 'ignore':
-                    return
-                else:
-                    raise NotImplementedError
-                self.experienced_strategies[memory_position] = self._create_memory_entry(priority, agent)
-
-    def get_memory(
-            self,
-            player_position
-        ) -> Tuple[int, torch.nn.Module]:
-        """Access memory"""
-        pos = [i for i, p in enumerate(self.experienced_strategies)
-               if p[0] == player_position]
-
-        if len(pos) == 0:
-            return -1, None
-
-        # choose memory based on priorities
-        denominator = sum(mem[1] ** self.prioritization for mem in (self.experienced_strategies[i] for i in pos))
-        drawn_choice = np.random.rand()
-        choice_level = 0
-        i = 0
-        while i < len(pos) and choice_level < drawn_choice:
-            choice_level += (self.experienced_strategies[pos[i]][1] ** self.prioritization) / denominator
-            i += 1
-        i -= 1
-
-        strategy = self.experienced_strategies[pos[i]][2]
-
-        self.current_memory_index = pos[i]
-        return player_position, strategy
-
-    def set_priority(self, memory_position, priority):
-        """Update priority of latly accessed memory"""
-        self.experienced_strategies[memory_position][1] = priority + self.eps
 
 class Learner(ABC):
     """A learning rule used to update a player's policy in self-play"""
@@ -139,15 +29,12 @@ class GradientBasedLearner(Learner):
     def __init__(self,
                  model: torch.nn.Module, environment: Environment,
                  optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 lr_scheduler = None, strat_to_player_kwargs: dict = None,
-                 experience: ExperienceReplay = None):
+                 strat_to_player_kwargs: dict = None):
         self.model = model
         self.params = model.parameters
         self.n_parameters = sum([p.numel() for p in self.params()])
 
         self.environment = environment
-        self.experience = experience
-        self.gradient_vector = torch.zeros_like(parameters_to_vector(self.params()))
 
         self.strat_to_player_kwargs = strat_to_player_kwargs if strat_to_player_kwargs else {}
             # warn if weird initialization
@@ -159,10 +46,6 @@ class GradientBasedLearner(Learner):
             raise ValueError('Optimizer hyperparams must be a dict (even if empty).')
         self.optimizer_hyperparams = optimizer_hyperparams
         self.optimizer: torch.optim.Optimizer = optimizer_type(self.params(), **self.optimizer_hyperparams)
-        if lr_scheduler is not None:
-            self.lr_scheduler = lr_scheduler['type'](self.optimizer, 'max', **lr_scheduler['params'])
-        else:
-            self.lr_scheduler = None
 
     @abstractmethod
     def _set_gradients(self):
@@ -181,36 +64,20 @@ class GradientBasedLearner(Learner):
 
         Returns: None or loss evaluated by closure. (See above.)
         """
-
+        self.optimizer.zero_grad()
+        self._set_gradients()
         return self.optimizer.step(closure=closure)
 
-    def update_strategy_and_evaluate_utility(
-            self,
-            closure = None,
-            return_allocation = False,
-            learning: bool = True
-        ):
+    def update_strategy_and_evaluate_utility(self, closure = None):
         """updates model and returns utility after the update."""
 
-        if learning:
-            # self.update_strategy(closure)
-            self.prev_gradient = self.gradient_vector
-            self.gradient_norm = 0
-            self.optimizer.zero_grad()
-            rewards, stopping = self._set_gradients()
-        else:
-            rewards, stopping = 0, 0
+        self.update_strategy(closure)
+        return self.environment.get_strategy_reward(
+            self.model,
+            **self.strat_to_player_kwargs
+        ).detach()
 
-        reward = self.environment.get_strategy_reward(
-                self.model,
-                return_allocation = return_allocation,
-                **self.strat_to_player_kwargs
-            )
 
-        if learning and self.lr_scheduler is not None:
-            self.lr_scheduler.step(reward if not return_allocation else reward[0])
-
-        return (rewards,) + reward + (stopping,)
 
 class ESPGLearner(GradientBasedLearner):
     """ Neural Self-Play with Evolutionary Strategy Pseudo-PG
@@ -260,12 +127,11 @@ class ESPGLearner(GradientBasedLearner):
     def __init__(self,
                  model: torch.nn.Module, environment: Environment, hyperparams: dict,
                  optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 lr_scheduler = None, strat_to_player_kwargs: dict = None,
-                 experience: ExperienceReplay = None):
+                 strat_to_player_kwargs: dict = None):
         # Create and validate optimizer
         super().__init__(model, environment,
-                         optimizer_type, optimizer_hyperparams, lr_scheduler,
-                         strat_to_player_kwargs, experience)
+                         optimizer_type, optimizer_hyperparams,
+                         strat_to_player_kwargs)
 
         # gradient from previous iteration
         self.prev_gradient = torch.zeros_like(parameters_to_vector(self.params())) 
@@ -329,17 +195,12 @@ class ESPGLearner(GradientBasedLearner):
         # rewards: population_size x 1
         # epsilons: population_size x parameter_length
 
-        replay = self.experience if (self.experience is not None
-            and np.random.rand() < self.experience.replay_prob
-            and self.experience.n_memories > 0) else None
-
         rewards, epsilons = (
             torch.cat(tensors).view(self.population_size, -1)
             for tensors in zip(*(
                 (
                     self.environment.get_strategy_reward(
-                        model, experience=replay,
-                        **self.strat_to_player_kwargs).detach().view(1),
+                        model, **self.strat_to_player_kwargs).detach().view(1),
                     epsilon
                 )
                 for (model, epsilon) in population
@@ -358,18 +219,13 @@ class ESPGLearner(GradientBasedLearner):
 
         if denominator == 0:
             # all candidates returned same reward and normalize is true --> stationary
-            self.gradient_vector = torch.zeros_like(parameters_to_vector(self.params()))
-            stopping = 0
+            gradient_vector = torch.zeros_like(parameters_to_vector(self.params()))
         else:
-            gradient_vectors = ((rewards - baseline)*epsilons) / denominator
-            self.gradient_vector = gradient_vectors.mean(dim=0)
-            stopping = stopping_criterion(gradient_vectors)
+            gradient_vector = ((rewards - baseline)*epsilons).mean(dim=0) / denominator
 
         # put gradient vector into same format as model parameters
         gradient_params = deepcopy(list(self.params()))
-        vector_to_parameters(self.gradient_vector, gradient_params)
-
-        self.gradient_norm = (sum(self.gradient_vector ** 2) ** 1/2).detach().cpu().numpy()
+        vector_to_parameters(gradient_vector, gradient_params)
 
         ### 5. assign gradients to model gradient ####
         # We actually _add_ to existing gradient (as common in pytorch), to make it
@@ -380,26 +236,11 @@ class ESPGLearner(GradientBasedLearner):
         # NOTE: torch.otpimizers minimize but we use a maximization formulation
         # in the rewards, thus we need to use the negative gradient here.
 
-        if self.experience is not None:
-            if replay is None: # add observation to memories
-                self.experience.append_memory(
-                    self.environment,
-                    priority = self.gradient_norm,
-                    player_position = self.strat_to_player_kwargs['player_position']
-                )
-            else: # update priority of replayed memory
-                self.experience.set_priority(
-                    self.experience.current_memory_index,
-                    priority = self.gradient_norm
-                )
-
         for p, d_p in zip(self.params(), gradient_params):
             if p.grad is not None:
                 p.grad.add_(-d_p)
             else:
                 p.grad = -d_p
-
-        return rewards, stopping
 
     def _perturb_model(self, model: torch.nn.Module) -> Tuple[torch.nn.Module, torch.Tensor]:
         """
@@ -415,14 +256,239 @@ class ESPGLearner(GradientBasedLearner):
 
         return perturbed, noise
 
-    def copy(self):
-        return super.copy()
 
-class DPGLearner(GradientBasedLearner):
-    """Neural Self-Play with Deterministic Policy Gradients."""
-    def __init__(self):
-        super().__init__()
-        raise NotImplementedError()
+class PGLearner(GradientBasedLearner):
+    """Neural Self-Play with directly computed Policy Gradients.
+
+    """
+    def __init__(self,
+                 model: torch.nn.Module, environment: Environment, hyperparams: dict,
+                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
+                 strat_to_player_kwargs: dict = None):
+        # Create and validate optimizer
+        super().__init__(model, environment,
+                         optimizer_type, optimizer_hyperparams,
+                         strat_to_player_kwargs)
+
+        if 'normalize_gradient' in hyperparams and hyperparams['normalize_gradient']:
+            self.normalize_gradient = True
+        else:
+            self.normalize_gradients = False
+
+        if 'baseline' in hyperparams:
+            self.baseline_method = hyperparams['baseline']
+            if not isinstance(self.baseline_method, float) \
+                    and not self.baseline_method in ['current_reward']:
+                raise ValueError('Invalid baseline provided. Should be float or '\
+                    + '"current_reward"')
+
+            if isinstance(self.baseline_method, float):
+                self.baseline = self.baseline_method
+                self.baseline_method = 'manual'
+            else:
+                 self.baseline = 0 # initial baseline
+
+        else:
+            # standard baseline
+            self.baseline_method = 'current_reward'
+            self.baseline = 0 # init
 
     def _set_gradients(self):
+        self.environment.prepare_iteration()
+
+        if self.baseline_method == 'current_reward':
+            self.baseline = self.environment.get_strategy_reward(
+                self.model,**self.strat_to_player_kwargs
+                ).detach().view(1)
+        else:
+            pass # is already constant float
+
+        loss = -self.environment.get_strategy_reward(
+            self.model,**self.strat_to_player_kwargs
+        )
+
+        loss.backward()
+
+class DPGLearner(GradientBasedLearner):
+    """Implements Deterministic Policy Gradients
+
+    http://proceedings.mlr.press/v32/silver14.pdf
+
+    via directly calculating `dQ/da and da/d\\theta`
+
+
+    """
+    def __init__(self):
         raise NotImplementedError()
+
+
+class _PerturbedActionModule(Strategy, torch.nn.Module):
+    def __init__(self, module, epsilon):
+        super().__init__()
+        self.module = module
+        self.epsilon = epsilon
+
+    def forward(self, x):
+        return (self.module(x) + self.epsilon).relu()
+
+    def play(self, x):
+        return self.forward(x)
+
+
+class AESPGLearner(GradientBasedLearner):
+    """ Implements Deterministic Policy Gradients http://proceedings.mlr.press/v32/silver14.pdf
+    with ES-pseudogradients of dQ/da
+    """
+    def __init__(self,
+                 model: NeuralNetStrategy, environment: Environment, hyperparams: dict,
+                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
+                 strat_to_player_kwargs: dict = None):
+        # Create and validate optimizer
+        super().__init__(model, environment,
+                         optimizer_type, optimizer_hyperparams,
+                         strat_to_player_kwargs)
+
+        # Validate ES hyperparams
+        if not set(['population_size', 'sigma']) <= set(hyperparams):
+            raise ValueError(
+                'Missing hyperparams for ES. Provide at least, population size, sigma.')
+        if not isinstance(hyperparams['population_size'], int) or hyperparams['population_size'] < 2:
+            # one is invalid because there will be zero variance, leading to div by 0 errors
+            raise ValueError('Please provide a valid `population_size` parameter >=2')
+
+        # set hyperparams
+        self.population_size = hyperparams['population_size']
+        self.sigma = float(hyperparams['sigma'])
+
+        if 'normalize_gradients' in hyperparams and hyperparams['normalize_gradients']:
+            self.normalize_gradients = True
+            self.baseline = 'mean_reward'
+        else:
+            self.normalize_gradients = False
+            self.baseline = 'current_reward'
+
+        # overwrite baseline method if provided
+        if 'baseline' in hyperparams:
+            self.baseline_method = hyperparams['baseline']
+            if not isinstance(self.baseline_method, float) \
+                    and not self.baseline_method in ['current_reward', 'mean_reward']:
+                raise ValueError('Invalid baseline provided. Should be float or '\
+                    + 'one of "mean_reward", "current_reward"')
+
+
+    def _set_gradients(self):
+        """Calculates ES-pseudogradients and applies them to the model parameter
+           gradient data.
+
+            ES gradient is calculated as:
+            mean( rewards - baseline) * epsilons / sigma²
+            and approximates the true gradient.
+
+            In case of gradient normalization, we do not calculate a baseline
+            and instead use the following pseudogradient:
+            mean(rewards - rewards.mean()) / sigma / rewards.std()
+            For small sigma, this will yield a vector that points in the same
+            direction as the gradient and has length (slightly smaller than) 1.
+            Furthermore, the gradient samples will have low variance
+            Note that for large sigma, this grad becomes smaller tha
+        """
+
+        n_pop = self.population_size
+        n_actions =  self.model.output_length
+        n_batch = self.environment.batch_size
+
+        ### 1. if required redraw valuations / perform random moves (determined by env)
+        self.environment.prepare_iteration()
+        ### 2. Create a population of perturbations of the original model outputs
+        population = (self._perturb_model(self.model) for _ in range(n_pop))
+        ### 3. let each candidate against the environment and get their utils ###
+
+        # rewards: population_size x n_batch x 1, epsilons: n_pop x n_batch x n_action
+        rewards, epsilons = (
+            torch.cat(tensors)#.view(n_pop, -1)
+            for tensors in zip(*(
+                (
+                    self.environment.get_strategy_reward(
+                        model, aggregate_batch=False, **self.strat_to_player_kwargs).detach().view(1,n_batch, 1),
+                    epsilon.unsqueeze(0)
+                )
+                for (model, epsilon) in population
+                ))
+            )
+        ### 4. calculate the ES-pseuogradients   ####
+        ## base case: current reward
+        # action: batch x 1, baseline: batch
+        action, baseline = self.environment.get_strategy_action_and_reward(self.model,**self.strat_to_player_kwargs)
+
+        if self.baseline == 'mean_reward':
+            baseline = rewards.mean(dim=0)
+        elif isinstance(self.baseline, float):
+            baseline = self.baseline
+
+        if torch.is_tensor(baseline):
+            baseline = baseline.view(n_batch, 1)
+
+        denominator = self.sigma * rewards.std() if self.normalize_gradients else self.sigma**2
+
+        if denominator == 0:
+            # all candidates returned same reward and normalize is true --> stationary
+            es_dudb = torch.zeros(n_batch, n_actions, 1)
+        else:
+            # mean over pop --> result is (batch), we want batch x n_actions x 1
+            # this should be # batch x n_actions (TODO: test for n_actions >1)
+
+            # pop_size x batch x 1
+            scaled_rewards = (rewards - baseline)/denominator
+
+            es_dudb = (scaled_rewards*epsilons).mean(dim=0)
+            #es_dudb.unsqueeze_(-1) # batch x n_actions x 1
+
+
+        ### 5. assign gradients to model gradient ####
+        # should be ∇_θ π *  ∇^ES_b u
+        # assuming all current `param.grad`s are zero, we set  db/da by
+        #for action_loss in -torch.einsum('ba,ba->b', action, es_dudb):
+        #    action_loss.div(n_batch).backward(retain_graph=True)
+        loss = -torch.einsum('ba,ba->b', action, es_dudb).mean()
+        loss.backward()
+
+    def _perturb_model(self, model: NeuralNetStrategy) -> Tuple[torch.nn.Module, torch.Tensor]:
+        """
+        Returns a model [torch.nn.Module] perturbed via adding random noise to
+        its outputs,
+        as well as the noise vector used to generate the perturbation.
+        """
+        # for now, we'll assume model is a NeuralNetStrategy, i.e. has an attribute output_length
+
+        noise = torch.zeros([self.environment.batch_size, model.output_length],
+            device = next(model.parameters()).device
+        ).normal_(mean=0.0, std=self.sigma)
+
+        perturbed = _PerturbedActionModule(model, noise)
+
+        return perturbed, noise
+
+
+class DDPGLearner(GradientBasedLearner):
+    """Implements Deep Deterministic Policy Gradients (Lilicrap et al 2016)
+
+       http://arxiv.org/abs/1509.02971
+    """
+    def __init__(self):
+        raise NotImplementedError()
+
+
+class DummyNonLearner(GradientBasedLearner):
+    """A learner that does nothing."""
+
+    def __init__(self,
+                 model: torch.nn.Module, environment: Environment, hyperparams: dict, #pylint:disable=unused-argument
+                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
+                 strat_to_player_kwargs: dict = None):
+        # Create and validate optimizer
+        super().__init__(model, environment,
+                         optimizer_type, optimizer_hyperparams,
+                         strat_to_player_kwargs)
+
+    def _set_gradients(self):
+        pass

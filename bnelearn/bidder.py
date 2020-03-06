@@ -76,9 +76,9 @@ class Bidder(Player):
                  batch_size = 1,
                  n_items = 1,
                  cuda = True,
-                 adversarial = False,
                  cache_actions: bool = False,
                  descending_valuations = False,
+                 risk: float = 1.0,
                  item_interest_limit = None,
                  constant_marginal_values = False,
                  split_award = False,
@@ -95,7 +95,7 @@ class Bidder(Player):
         self.descending_valuations = descending_valuations
         self.item_interest_limit = item_interest_limit
         self.constant_marginal_values = constant_marginal_values
-        self.adversarial = adversarial
+        self.risk = risk
         self.split_award = split_award
         self.efficiency_parameter = efficiency_parameter
         self._cache_actions = cache_actions
@@ -105,9 +105,6 @@ class Bidder(Player):
             self.actions = torch.zeros(batch_size, n_items, device=self.device)
         self.draw_valuations_()
         #self.utility = torch.zeros(batch_size, device=self.device)
-
-        if self.adversarial and self.player_position != 1:
-            raise Exception
 
     ### Alternative Constructors #############
     @classmethod
@@ -176,18 +173,20 @@ class Bidder(Player):
         assert allocations.dim() == 2 # batch_size x items
         assert payments.dim() == 1 # batch_size
 
-        #self.utility = (self.valuations * allocations).sum(dim=1) - payments
-
-        utility = (self.valuations * allocations).sum(dim=1) - payments
+        payoff = (self.valuations * allocations).sum(dim=1) - payments
 
         if self.split_award:
-            utility *= -1
+            payoff *= -1
 
-        return utility
+        if self.risk == 1.0:
+            return payoff
+        else:
+            # payoff^alpha not well defined in negative domain for risk averse agents
+            return payoff.relu()**self.risk - (-payoff).relu()**self.risk
 
     def get_welfare(self, allocations):
         """
-        For a batch of allocations and payments return the player's utilities.
+        For a batch of allocations and payments return the player's welfare.
         """
 
         assert allocations.dim() == 2 # batch_size x items
@@ -204,32 +203,15 @@ class Bidder(Player):
         inputs = self.valuations.view(self.batch_size, -1)
 
         if self.split_award:
+            # for cases when n_itmes != input_length
             if hasattr(self.strategy, 'input_length'):
                 dim = self.strategy.input_length
                 inputs = inputs[:,:dim]
 
-        # inputs += torch.zeros_like(inputs, device=inputs.device).normal_(0, 0.05)
-
         actions = self.strategy.play(inputs)
         self._valuations_changed = False
 
-        # # random agent
-        # if self.adversarial:
-        #     actions.uniform_(self.value_distribution.low, self.value_distribution.high)
-
         if self._cache_actions:
             self.actions = actions
-
-        return actions
-
-    def get_alternative_action(self, alt_strategy):
-        """Calculate action from current valuations, but with an alternative strategy ´alt_strategy´"""
-
-        inputs = self.valuations.view(self.batch_size, -1)
-
-        if self.split_award:
-            inputs = inputs[:,0].unsqueeze_(1)
-
-        actions = alt_strategy.play(inputs)
 
         return actions
