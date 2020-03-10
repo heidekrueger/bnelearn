@@ -33,7 +33,7 @@ bid_profile_1_2_1 = torch.tensor(
     dtype = torch.float)
 # n_bidders x 2 (avg, max)
 expected_regret_1_2_1 = torch.tensor(
-    [
+    [   #mean                                   max
         [bid_profile_1_2_1[0,0,0] - bids_i[0,0], bid_profile_1_2_1[0,0,0] - bids_i[0,0] ],
         [0                                     , 0                                      ]
     ], dtype = torch.float)
@@ -45,11 +45,19 @@ bid_profile_2_3_1 = torch.tensor(
      ],[
         [0.6], [0.3], [0.5]
     ]], dtype = torch.float)
-expected_regret_2_3_1 = torch.tensor(
-    [
+expected_regret_2_3_1_sixths = torch.tensor(
+    [   # mean    #max
         [0.04995, 0.0999],
         [0      , 0     ],
-        [0.0833 , 0.0833]
+        [0.0833 , 0.1666]#[0.0833 , 0.0833]
+    ], dtype = torch.float)
+
+b_i_tenths = torch.linspace(0, 1, steps=11).unsqueeze(0) + eps
+expected_regret_2_3_1_tenths = torch.tensor(
+    [   # mean    #max
+        [0.04995, 0.0999],
+        [0      , 0     ],
+        [0.09995 , 0.1999]#[0.0833 , 0.0833]
     ], dtype = torch.float)
 
 # LLLLGG: 1 Batch, 6 bidders,2 items (bid on each, 8 in total)
@@ -78,8 +86,10 @@ expected_regret_1_6_2 = torch.tensor([
 ids, testdata = zip(*[
     ['fpsb - 1 batch, 2 bidders, 1 item',
         ('fpsb', FirstPriceSealedBidAuction(), bid_profile_1_2_1, bids_i, expected_regret_1_2_1)],
-    ['fpsb - 2 batches, 3 bidders, 1 item',
-        ('fpsb', FirstPriceSealedBidAuction(), bid_profile_2_3_1, bids_i, expected_regret_2_3_1)],
+    ['fpsb - 2 batches, 3 bidders, 1 item, steps of sixths',
+        ('fpsb', FirstPriceSealedBidAuction(), bid_profile_2_3_1, bids_i, expected_regret_2_3_1_sixths)],
+    ['fpsb - 2 batches, 3 bidders, 1 item, steps of tenths',
+        ('fpsb', FirstPriceSealedBidAuction(), bid_profile_2_3_1, b_i_tenths, expected_regret_2_3_1_tenths)],
     ['fpsb - 1 batch, 6 bidders, 2 item',
         ('fpsb', LLLLGGAuction(bid_profile_1_6_2.shape[0]), bid_profile_1_6_2, bids_i_comb, expected_regret_1_6_2)]
     ])
