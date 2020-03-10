@@ -113,8 +113,7 @@ def test_regret_estimator(rule, mechanism, bid_profile, bids_i, expected_regret)
         agents[i].valuations = bid_profile[:,i,:].to(device)
 
     for i in range(n_bidders):
-        regret = metrics.regret(mechanism, bid_profile.to(device), i, agents[i].valuations,
-                                bid_profile.to(device)[:,i,:], bids_i.squeeze().to(device))
+        regret = metrics.regret(mechanism, bid_profile.to(device), agents[i], bids_i.squeeze().to(device))
         assert torch.allclose(regret.mean(), expected_regret[i,0], atol = 0.001), "Unexpected avg regret"
         assert torch.allclose(regret.max(),  expected_regret[i,1], atol = 0.001), "Unexpected max regret"
 
