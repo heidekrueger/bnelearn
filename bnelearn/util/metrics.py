@@ -73,13 +73,13 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.tensor, bid_prof
 
     return bid_profile #bid_eval_size*batch, 1,n_items
 
-def regret(mechanism: Mechanism, bid_profile: torch.Tensor, agent_position: int, agent_valuation: torch.Tensor,
-           agent_bid_actual: torch.Tensor, agent_bid_eval: torch.Tensor, half_precision = False):
+def regret(mechanism: Mechanism, bid_profile: torch.Tensor, player_position: int, agent_valuation: torch.Tensor,
+           agent_bid_actual: torch.Tensor, grid: torch.Tensor, half_precision = False):
     #TODO: 1. Implement individual evaluation batch und bid size -> large batch for training, smaller for eval
     #TODO: 2. Implement logging for evaluations ins tensor and for printing
     #TODO: 3. Implement printing plotting of evaluation
     """
-    Estimates the potential benefit of deviating from the current strategy, as:
+    Estimates a bidder's regret in the current bid_profile, i.e. the potential benefit of deviating from the current strategy, as:
         regret(v_i) = Max_(b_i)[ E_(b_(-i))[u(v_i,b_i,b_(-i))] ] #TODO Stefan: shouldn't there be a  - u(v_i, b) here?
         regret_max = Max_(v_i)[ regret(v_i) ]
         regret_expected = E_(v_i)[ regret(v_i) ]
@@ -87,68 +87,77 @@ def regret(mechanism: Mechanism, bid_profile: torch.Tensor, agent_position: int,
     Input:
         mechanism
         bid_profile: (batch_size x n_player x n_items)
-        agent_position: specifies the agent for whom the regret is to be evaluated
+        player_position: specifies the agent for whom the regret is to be evaluated
         agent_valuation: (batch_size x n_items)
-        agent_bid_actual: (batch_size x n_items) #TODO Stefan: isn't this in bid_profile? which one?
-        agent_bid_eval: (bid_size x n_items) #TODO Stefan: defines the grid of possible actions to be evaluated for the agent
+        agent_bid_actual: (batch_size x n_items) #TODO Stefan: isn't this in bid_profile already?
+        grid: #TODO: currently (1d with length grid_size #Currently, for n_items == 2, all grid_size**2 combination will be used. Should be replaced by e.g. torch.meshgrid
     Output:
-        regret (bid_size) (?) #TODO Stefan: If bid is multidimensional, shouldn't this be bid_size ** n_items?
+        regret (grid_size) (?) #TODO Stefan: If bid is multidimensional, shouldn't this be bid_size ** n_items? 
+    #TODO: move grid_creation out of regret
 
     TODO: Only applicable to independent valuations. Add check. #TODO Stefan: why? where is this required?
     TODO: Only for risk neutral bidders. Add check.
     Useful: To get the memory used by a tensor (in MB): (tensor.element_size() * tensor.nelement())/(1024*1024)
     """
 
-    # TODO: Generalize these dimensions
-    batch_size, n_players, n_items = bid_profile.shape # pylint: disable=unused-variable
-    # Create multidimensional bid tensor if required
-    if n_items == 1:
-        agent_bid_eval = agent_bid_eval.view(agent_bid_eval.shape[0], 1).to(bid_profile.device)
-    elif n_items == 2:
-        agent_bid_eval = torch.combinations(agent_bid_eval, with_replacement=True).to(bid_profile.device) #bid_size**2 x 2 (?)
-            #TODO Stefan: this only works if both bids are over the same action space right? (what if one of these is the bid for a bundle?)
-    elif n_items > 2:
-        raise NotImplementedError("Regret for >2 items not implemented yet!")
-    bid_eval_size, _ = agent_bid_eval.shape
-
-    # TODO: Stefan: Why not keep bid_size and batch_size as separate dims? I assume because mechanism won't allow it?
-
     ## Use smaller dtypes to save memory
     if half_precision:
         bid_profile = bid_profile.half()
         agent_valuation = agent_valuation.half()
         agent_bid_actual = agent_bid_actual.half()
-        agent_bid_eval = agent_bid_eval.half()
+        grid = grid.half()
     bid_profile_origin = bid_profile
 
-    ### Evaluate alternative bids
-    ## Merge alternative bids into opponnents bids (bid_no_i)
-    bid_profile = _create_grid_bid_profiles(agent_position, agent_bid_eval, bid_profile_origin) # bid_eval_size x n_player x n_item 
+    # TODO: Generalize these dimensions
+    batch_size, n_players, n_items = bid_profile.shape # pylint: disable=unused-variable
+    grid_size = grid.shape[0] #TODO: update this
+    # Create multidimensional bid tensor if required
+    if n_items == 1:
+        grid = grid.view(grid_size, 1).to(bid_profile.device)
+    elif n_items == 2:
+        grid = torch.combinations(grid, with_replacement=True).to(bid_profile.device) #grid_size**2 x 2
+            #TODO Stefan: this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
+    elif n_items > 2:
+        raise NotImplementedError("Regret for >2 items not implemented yet!")
+    grid_size, _ = grid.shape #TODO this _new_ grid size refers to all combinations, whereas the previous one was 1D only
+
+
+    ### Evaluate alternative bids on grid
+    bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile_origin) # grid_size x n_players x n_items 
 
     ## Calculate allocation and payments for alternative bids given opponents bids
     allocation, payments = mechanism.play(bid_profile)
-    a_i = allocation[:,agent_position,:].view(bid_eval_size, batch_size, n_items).type(torch.bool)
-    p_i = payments[:,agent_position].view(bid_eval_size, batch_size, 1).sum(2)
+
+    # we only need the specific player's allocation and can get rid of the rest.
+
+    a_i = allocation[:,player_position,:].view(grid_size, batch_size, n_items).type(torch.bool) #TODO Stefan: bool will not work for multi-unit auctions, there we need int!
+    p_i = payments[:,player_position].view(grid_size, batch_size) #grid * batch
+
+    #return ((a_i * agent_valuation).sum(2) - p_i).max(0)[0]
 
     del allocation, payments, bid_profile
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache() #TODO: find out if this actually does anything here.
     # Calculate realized valuations given allocation
     try:
-        v_i = agent_valuation.repeat(1,bid_eval_size * batch_size).view(batch_size, bid_eval_size, batch_size, n_items)
-        v_i = torch.einsum('hijk,ijk->hijk', v_i, a_i).sum(3) # allocated value. batch x bid_eval x batch (why 2 batch_sizes?)
+        # valuation is batch x items
+        v_i = agent_valuation.repeat(1,grid_size * batch_size).view(batch_size, grid_size, batch_size, n_items)
+        # Semantic of the next line: (calculated directly, less readible but faster and robust to different types (e.g. bools/int))
+        #v_i = torch.einsum('hijk,ijk->hij', v_i, a_i) 
+        v_i = v_i.mul_(a_i).sum(3) # allocated value. batch x bid_eval x batch (why 2 batch_sizes?)
         ## Calculate utilities
-        u_i_alternative = v_i - p_i.repeat(batch_size,1,1)
+        u_i_alternative = v_i - p_i.repeat(batch_size,1,1) #(batch x grid x batch)
         # avg per bid
-        u_i_alternative = torch.mean(u_i_alternative,2)
+        u_i_alternative = torch.mean(u_i_alternative,2) #batch x grid
         # max per valuations
-        u_i_alternative, _ = torch.max(u_i_alternative,1)
+        u_i_alternative, _ = torch.max(u_i_alternative,1) #batch
     except RuntimeError as err:
         print("Failed computing regret as batch. Trying sequential valuations computation. Decrease dimensions to fix. Error:\n {0}".format(err))
         try:
             # valuations sequential
             u_i_alternative = torch.zeros(batch_size, device = p_i.device)
             for v in range(batch_size):
-                v_i = agent_valuation[v].repeat(1,bid_eval_size * batch_size).view(bid_eval_size, batch_size, n_items)
+                v_i = agent_valuation[v].repeat(1,grid_size * batch_size).view(grid_size, batch_size, n_items)
                 #for bid in agent bid
                 v_i = torch.einsum('ijk,ijk->ijk', v_i, a_i).sum(2)
                 ## Calculate utilities
@@ -173,12 +182,12 @@ def regret(mechanism: Mechanism, bid_profile: torch.Tensor, agent_position: int,
 
     ### Evaluate actual bids
     ## Merge actual bids into opponnents bids (bid_no_i)
-    bid_profile = _create_grid_bid_profiles(agent_position, agent_bid_actual, bid_profile_origin)
+    bid_profile = _create_grid_bid_profiles(player_position, agent_bid_actual, bid_profile_origin)
 
     ## Calculate allocation and payments for actual bids given opponents bids
     allocation, payments = mechanism.play(bid_profile)
-    a_i = allocation[:,agent_position,:].view(batch_size, batch_size, n_items)
-    p_i = payments[:,agent_position].view(batch_size, batch_size, 1).sum(2)
+    a_i = allocation[:,player_position,:].view(batch_size, batch_size, n_items)
+    p_i = payments[:,player_position].view(batch_size, batch_size, 1).sum(2)
 
     ## Calculate realized valuations given allocation
     v_i = agent_valuation.view(batch_size,1,n_items).repeat(1, batch_size, 1)
