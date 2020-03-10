@@ -16,7 +16,7 @@
 import pytest
 import torch
 from bnelearn.mechanism import LLLLGGAuction, FirstPriceSealedBidAuction
-from bnelearn.strategy import TruthfulStrategy
+from bnelearn.strategy import TruthfulStrategy, ClosureStrategy
 import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder
 
@@ -80,6 +80,9 @@ expected_regret_1_6_2 = torch.tensor([
     ], dtype = torch.float)
 #TODO: Add one test with other pricing rule (-> and positive utility in agent)
 
+
+
+
 # each test input takes form rule: string, bids:torch.tensor,
 #                            expected_allocation: torch.tensor, expected_payments: torch.tensor
 # Each tuple specified here will then be tested for all implemented solvers.
@@ -100,7 +103,7 @@ ids, testdata = zip(*[
 #                               player_position=player_position, cache_actions=cache_actions, risk=risk)
 
 @pytest.mark.parametrize("rule, mechanism, bid_profile, bids_i, expected_regret", testdata, ids=ids)
-def test_regret_estimator(rule, mechanism, bid_profile, bids_i, expected_regret):
+def test_ex_post_regret_estimator_truthful(rule, mechanism, bid_profile, bids_i, expected_regret):
     """Run correctness test for a given LLLLGG rule"""
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -113,7 +116,49 @@ def test_regret_estimator(rule, mechanism, bid_profile, bids_i, expected_regret)
         agents[i].valuations = bid_profile[:,i,:].to(device)
 
     for i in range(n_bidders):
-        regret = metrics.regret(mechanism, bid_profile.to(device), agents[i], bids_i.squeeze().to(device))
+        regret = metrics.ex_post_regret(mechanism, bid_profile.to(device), agents[i], bids_i.squeeze().to(device))
         assert torch.allclose(regret.mean(), expected_regret[i,0], atol = 0.001), "Unexpected avg regret"
         assert torch.allclose(regret.max(),  expected_regret[i,1], atol = 0.001), "Unexpected max regret"
 
+def test_ex_interim_regret_estimator_fpsb_bne():
+    """Test the regret in BNE of fpsb. - ex interim regret should be close to zero"""
+    # TODO: currently broken because using ex_post regret.
+    n_players = 3
+    grid_size = 2**5
+    batch_size = 2**12
+    n_items = 1
+    risk = 1
+    if risk != 1:
+        raise NotImplementedError("ex-interim regret can't handle this yet!")
+
+    u_lo = 0.0
+    u_hi = 1.0
+
+    mechanism = FirstPriceSealedBidAuction()
+
+    def optimal_bid(valuation):
+            return u_lo + (valuation - u_lo) * (n_players - 1) / (n_players - 1.0 + risk)
+
+    strat = ClosureStrategy(optimal_bid)
+
+    agents = [
+        Bidder.uniform(u_lo, u_hi, strat, player_position=i, batch_size=batch_size)
+        for i in range(n_players)
+    ]
+
+    grid = torch.linspace(0,1, steps = grid_size).unsqueeze(-1)
+
+    bid_profile = torch.empty(batch_size, n_players, n_items, device = agents[0].valuations.device)
+    for i,a in enumerate(agents):
+        bid_profile[:,i,:] = a.get_action()
+    # assert first player has (near) zero regret
+    regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position = 0,
+                                       agent_valuation = agents[0].valuations,
+                                       agent_bid_actual = agents[0].get_action(),
+                                       grid = grid
+                                       )
+    mean_regret = regret.mean()
+    max_regret = regret.max()
+
+    # TODO: mean regret should be close to 0
+    assert 1 == 0
