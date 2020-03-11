@@ -621,12 +621,12 @@ def MIUP2x2_utility(
     eps = 1e-4
     def H1(xx):
         return torch.tensor([
-                integrate.quad(h1, 0, x, epsabs=eps)[0]
-            for x in xx])
+            integrate.quad(h1, 0, x, epsabs=eps)[0]
+        for x in xx])
     def H2(xx):
         return torch.tensor([
-                integrate.quad(h2, 0, x, epsabs=eps)[0]
-            for x in xx])
+            integrate.quad(h2, 0, x, epsabs=eps)[0]
+        for x in xx])
     price_2items = torch.tensor(
         [integrate.quad(lambda c1: c1*h1(c1), 0, b, epsabs=eps)[0]
          for b in bid[:,1]]

@@ -27,7 +27,7 @@ from bnelearn.mechanism import (MultiItemDiscriminatoryAuction,
                                 MultiItemUniformPriceAuction,
                                 MultiItemVickreyAuction,
                                 FPSBSplitAwardAuction)
-from bnelearn.learner import ESPGLearner, ExperienceReplay
+from bnelearn.learner import ESPGLearner
 from bnelearn.environment import AuctionEnvironment
 
 from torch.utils.tensorboard import SummaryWriter
@@ -130,13 +130,14 @@ auction_type_str = str(auction_type_str[len(auction_type_str) \
 log_name = auction_type_str + '_' + str(param_dict["n_players"]) \
         + 'players_' + str(param_dict["n_items"]) + 'items'
 
-def strat_to_bidder(strategy, batch_size, player_position, adversarial=False):
-    return Bidder.uniform(#normal(
-        # mean=.5, stddev=.2,
+def strat_to_bidder(strategy, batch_size, player_position):
+    """
+    Standard strat_to_bidder method.
+    """
+    return Bidder.uniform(
         lower = param_dict["u_lo"], upper = param_dict["u_hi"],
         strategy = strategy,
         n_items = param_dict["n_items"],
-        adversarial = adversarial,
         item_interest_limit = param_dict["item_interest_limit"]\
             if "item_interest_limit" in param_dict.keys() else None,
         descending_valuations = param_dict["exp_no"] != 6,
@@ -152,16 +153,13 @@ def strat_to_bidder(strategy, batch_size, player_position, adversarial=False):
 
 ## Environment settings
 batch_size = 2**19
-regret_batch_size = 2**6
+# regret_batch_size = 2**6
 epoch = 15000
 model_sharing = True
 epo_n = 2 # for ensure positive output of initialization
 plot_epoch = 10
-experience = False
-adversarial = False
-adversarial_weight = 0.5
 specific_gpu = 6
-logging = True
+logging = False
 
 
 # Use specific cuda gpu if desired (i.e. for running multiple experiments in parallel)
@@ -230,20 +228,6 @@ for vals in product(*hyperparams.values()):
         # 'momentum': momentum,
         # 'amsgrad': True # for Adam
     }
-    lr_scheduler = None #{
-    #     'type': ReduceLROnPlateau,
-    #     'params': {'factor': 0.99, 'patience': 32}
-    # }
-
-    # Setting up experience replay
-    if experience:
-        experience_kwargs = {
-            'n_memory_size': 8,
-            'replay_prob': 0.25,
-            'prioritization': 0.75,
-            'forgetting': 'prioritized',
-        }
-
 
     # ## Setting up the Environment
 
@@ -280,10 +264,7 @@ for vals in product(*hyperparams.values()):
 
 
     bidders = [
-        strat_to_bidder(
-            models[0 if model_sharing else i], batch_size, i,
-            adversarial = adversarial if i==len(models)-1 else False
-        )
+        strat_to_bidder(models[0 if model_sharing else i], batch_size, i)
         for i in range(param_dict["n_players"])
     ]
     # print('warning: BNE initialization')
@@ -296,24 +277,17 @@ for vals in product(*hyperparams.values()):
         agents = bidders,
         n_players = param_dict["n_players"],
         batch_size = batch_size,
-        strategy_to_player_closure = strat_to_bidder,
-        adversarial_weight = adversarial_weight if adversarial else None
+        strategy_to_player_closure = strat_to_bidder
     )
 
     learners = [
         ESPGLearner(
             model = model,
-            experience = ExperienceReplay(**experience_kwargs) \
-                if experience else None,
             environment = env,
             hyperparams = learner_hyperparams,
             optimizer_type = optimizer_type,
             optimizer_hyperparams = optimizer_hyperparams,
-            lr_scheduler = lr_scheduler,
-            strat_to_player_kwargs = {
-                "player_position": i,
-                "adversarial": adversarial if i == len(models)-1 else False
-            }
+            strat_to_player_kwargs = {"player_position": i}
         )
         for i, model in enumerate(models)
     ]
@@ -336,22 +310,17 @@ for vals in product(*hyperparams.values()):
     bne_env = AuctionEnvironment(
         mechanism,
         agents = [
-            strat_to_bidder(
-                bne_strategy, batch_size, i,
-                adversarial = adversarial if i==len(models)-1 else False
-            )
+            strat_to_bidder(bne_strategy, batch_size, i)
             for i, bne_strategy in enumerate(bne_strategies)
         ],
         n_players = param_dict["n_players"],
         batch_size = batch_size,
-        strategy_to_player_closure = strat_to_bidder,
-        adversarial_weight = adversarial_weight if adversarial else None
+        strategy_to_player_closure = strat_to_bidder
     )
 
 
     # ## Training
-    run_name = str(time.strftime('%Y%m%d_%H%M%S', time.localtime())) \
-        + (" (opp: adversarial)" if adversarial else "")
+    run_name = str(time.strftime('%Y%m%d_%H%M%S', time.localtime()))
 
     if logging:
         logdir = os.path.join(
@@ -369,15 +338,10 @@ for vals in product(*hyperparams.values()):
         logdir = None
 
     # calculate utility vs BNE
-    bne_utilities, bne_welfares = list(), list()
+    bne_utilities = list()
     for agent in bne_env.agents:
-        u, _, w = bne_env.get_reward(
-            agent,
-            draw_valuations = True,
-            return_allocation = True,
-        )
+        u  = bne_env.get_reward(agent, draw_valuations=True)
         bne_utilities.append(u)
-        bne_welfares.append(w)
 
 
     with SummaryWriter(logdir, flush_secs=60) as writer:
@@ -395,7 +359,7 @@ for vals in product(*hyperparams.values()):
             torch.cuda.empty_cache()
 
             # plotting
-            if e % plot_epoch == 0:
+            if e % plot_epoch == 0 and logging:
                 plot_bid_function(
                     bidders,
                     optimal_bid(mechanism, param_dict),
@@ -427,66 +391,14 @@ for vals in product(*hyperparams.values()):
 
             env.prepare_iteration()
 
-            # record utilities
-            rewards, utilities, allocations, welfares, stoppings = \
-                list(), list(), list(), list(), list()
-            # active_learner = 0 #int(e / 50) % param_dict["n_players"]
+            # record utilities and do optimizer step
+            utilities = list()
             for i, learner in enumerate(learners):
-                r, u, a, w, s = learner.update_strategy_and_evaluate_utility(
-                    return_allocation = True,
-                    # learning = active_learner == i
-                )
-                rewards.append(r)
+                u = learner.update_strategy_and_evaluate_utility()
                 utilities.append(u)
-                allocations.append(a)
-                welfares.append(w)
-                stoppings.append(s)
+            print('util:', np.round(u.detach().cpu().numpy(), 4), end='\t')
 
-            elapsed_minus = time.time()
-            old_strategies = [deepcopy(model.forward) for model in models]
-            elapsed_minus = time.time() - elapsed_minus
-
-            # do optimizer step
-            for i, learner in enumerate(learners):
-                # if active_learner == i:
-                learner.update_strategy()
-
-            elapsed = time.time() - start_time - elapsed_minus
-
-            # log the diefference in output space of policies
-            changes_in_output = list()
-            for cur, pre in zip(models, old_strategies):
-                changes_in_output.append(policy_metric(
-                    cur.forward,
-                    pre,
-                    param_dict["n_items"],
-                    selection = split_award_dict \
-                        if param_dict["exp_no"] == 6 else 'random',
-                    bounds = [param_dict["u_lo"], param_dict["u_hi"]],
-                    device = device
-                ))
-
-            # calculate regret
-            bid_i = torch.linspace(0, param_dict["u_hi"], regret_batch_size) # bidding grid
-            for player_position in range(len(models)):
-                agent_val = env.agents[player_position].valuations
-                agent_bid = env.agents[player_position].get_action()
-                bid_profile = torch.zeros(batch_size, param_dict["n_players"], param_dict["n_items"],
-                                          dtype=agent_bid.dtype, device=env.mechanism.device)
-
-                counter = 1
-                for opponent_pos, opponent_bid in env._generate_agent_actions([player_position]):
-                    if opponent_pos is None:
-                        opponent_pos = counter
-                    bid_profile[:,opponent_pos,:] = opponent_bid
-                    counter = counter + 1
-
-                regret = env.get_regret(bid_profile, player_position, agent_val,
-                                        agent_bid, bid_i)
-
-                print("agent {} can improve by, avg: {}, max: {}".format(player_position,
-                                                                         torch.mean(regret),
-                                                                         torch.max(regret)))
+            elapsed = time.time() - start_time
 
             # memory = torch.cuda.max_memory_allocated(device=device) * (2**-17)
 
@@ -495,6 +407,7 @@ for vals in product(*hyperparams.values()):
             for i, model in enumerate(models):
                 u = bne_env.get_strategy_reward(model, player_position=i, draw_valuations=True)
                 against_bne_utilities.append(u)
+            print(' util_vs_bne:', np.round(u.detach().cpu().numpy(), 4), end='\t')
 
             # logging
             if logging:
@@ -537,9 +450,3 @@ for vals in product(*hyperparams.values()):
     if logging:
         [torch.save(model.state_dict(), os.path.join(logdir, 'saved_model_' + str(i) + '.pt'))
          for i, model in enumerate(models)] # save policy output
-
-# print(compare_models(os.path.join(
-#             log_root, 'expiriments_nils', auction_type_str,
-#             str(param_dict["n_players"]) + 'players_' \
-#             + str(param_dict["n_items"]) + 'items'),
-#         model_dict, param_dict, split_award_dict, device=device))
