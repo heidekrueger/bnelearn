@@ -246,7 +246,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
             u_i_alternative = torch.ones(batch_size, device = p_i.device) * -9999999
 
     # Clean up storage
-    del v_i
+    del v_i, a_i, p_i
     torch.cuda.empty_cache()
 
     ### Evaluate actual bids
