@@ -263,10 +263,10 @@ class AuctionEnvironment(Environment):
             utility = agent.get_utility(allocation[:,player_position,:],
                                         payments[:,player_position])
 
-            if aggregate:
-                utility = utility.mean()
+        if aggregate:
+            utility = utility.mean()
 
-            return utility
+        return utility
 
     def prepare_iteration(self):
         self.draw_valuations_()
