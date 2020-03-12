@@ -365,9 +365,6 @@ def training_loop(self, writer, e):
                                            self.bne_env.agents[0].valuations, float('inf'))
     self.log_metrics(writer, e)
 
-    if e % 100 == 0:
-        print(e)
-
     if e % self._logging_options['plot_epoch'] == 0:
         # plot current function output
         # bidder = strat_to_bidder(model, batch_size)
