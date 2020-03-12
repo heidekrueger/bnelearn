@@ -369,32 +369,6 @@ def training_loop(self, writer, e):
         print(e)
 
     if e % self._logging_options['plot_epoch'] == 0:
-        #TODO: Testing the regret here: Calculating for each bidder
-        #bid_i = torch.linspace(u_lo, u_hi, regret_bid_size)
-        bid_i = torch.linspace(u_lo, u_hi, regret_bid_size)
-        player_position = 0
-
-        agent_bid = self.env.agents[player_position].get_action()
-        action_length = agent_bid.shape[1]
-        bid_profile = torch.zeros(self.env.batch_size, self.env.n_players, action_length,
-                                      dtype=agent_bid.dtype, device = self.env.mechanism.device)
-
-        counter = 1
-        for opponent_pos, opponent_bid in self.env._generate_agent_actions(exclude = set([player_position])):
-            # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
-            if opponent_pos is None:
-                opponent_pos = counter
-            bid_profile[:, opponent_pos, :] = opponent_bid
-            counter = counter + 1
-
-        print("Calculating regret...")
-        regret = metrics.regret(self.mechanism, bid_profile, player_position, self.env.agents[player_position].valuations,
-                                     agent_bid, bid_i)
-        print("agent {} can improve by, avg: {}, max: {}".format(player_position,
-                                                                 torch.mean(regret),
-                                                                 torch.max(regret)))
-
-
         # plot current function output
         # bidder = strat_to_bidder(model, batch_size)
         # bidder.draw_valuations_()

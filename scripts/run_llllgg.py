@@ -19,6 +19,7 @@ from bnelearn.bidder import Bidder
 from bnelearn.mechanism import LLLLGGAuction, CombinatorialAuction
 from bnelearn.learner import ESPGLearner
 from bnelearn.environment import AuctionEnvironment
+import bnelearn.util.metrics as metrics
 
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
@@ -492,7 +493,7 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
                     counter = counter + 1
             print("Calculating regret...")
             torch.cuda.empty_cache()
-            regret = env.get_regret(bid_profile, player_position, val,
+            regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position, val,
                                     agent_bid, bid_i)
             
             print("agent {} can improve by, avg: {}, max: {}".format(player_position,
