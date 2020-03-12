@@ -138,7 +138,7 @@ def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidd
 
     actual_utility = bidder.get_utility(a_i, p_i)
 
-    return (best_response_utility - actual_utility) # 0 if actual bid is best
+    return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
 
 
 def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
@@ -164,7 +164,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
         regret (grid_size) (?) #TODO Stefan: If bid is multidimensional, shouldn't this be bid_size ** n_items? 
     #TODO: move grid_creation out of regret
 
-    TODO: Only applicable to independent valuations. Add check. #TODO Stefan: why? where is this required?
+    TODO: Only applicable to independent valuations. (Stefan: because we take the cross product over valuations)
     TODO: Only for risk neutral bidders. Add check.
     Useful: To get the memory used by a tensor (in MB): (tensor.element_size() * tensor.nelement())/(1024*1024)
     """
@@ -267,7 +267,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     # avg per bid and valuation
     u_i_actual = torch.mean(u_i_actual,1)
     ## average and max regret over all valuations
-    regret = u_i_alternative - u_i_actual
+    regret = (u_i_alternative - u_i_actual).relu()
 
     # Explicitaly cleanup TODO:?
     return regret
