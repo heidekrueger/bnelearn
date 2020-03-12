@@ -87,7 +87,7 @@ def value_cdf(u_lo, u_hi):
 def optimal_bid(
         mechanism,
         param_dict,
-        return_payoff_dominant = False
+        return_payoff_dominant = True
     ) -> torch.Tensor:
     """
     BNE bidding
@@ -1185,23 +1185,23 @@ def log_once(writer, e, max_epochs, n_players, log_name, n_parameters,
         writer.add_scalar('hyperparameters/' + str(key), value, e)
     # writer.add_graph(models[0], env.agents[0].valuations)
 
-def log_metrics(writer, utilities, allocations, welfares, bne_utilities,
-                against_bne_utilities, bne_welfare, overhead,
-                lr, change_in_direction, e, log_name, n_players, models,
-                policy_metrics, gradient_norm, rewards, stoppings, changes_in_output):
+def log_metrics(writer, utilities, bne_utilities,
+                against_bne_utilities, overhead,
+                e, log_name, n_players, models,
+                policy_metrics):
     """Log scalar for each player"""
 
     agent_name_list = ['agent_{}'.format(i) for i in range(n_players)]
 
     # log agents´ change in learning direction
-    writer.add_scalars('eval/learning_rate', dict(zip(agent_name_list, lr)), e)
+    # writer.add_scalars('eval/learning_rate', dict(zip(agent_name_list, lr)), e)
 
-    # log agents´ learning rates
-    writer.add_scalars('eval/direction_change', dict(zip(agent_name_list, change_in_direction)), e)
+    # # log agents´ learning rates
+    # writer.add_scalars('eval/direction_change', dict(zip(agent_name_list, change_in_direction)), e)
 
     # log agents´ utilities
     writer.add_scalars('eval/utility', dict(zip(agent_name_list, utilities)), e)
-    writer.add_scalars('eval/utility_in_bne', dict(zip(agent_name_list, bne_utilities)), e)
+    # writer.add_scalars('eval/utility_in_bne', dict(zip(agent_name_list, bne_utilities)), e)
     writer.add_scalars(
         'eval/utility_selfplay_vs_bne',
         dict(zip(
@@ -1217,41 +1217,43 @@ def log_metrics(writer, utilities, allocations, welfares, bne_utilities,
         )), e
     )
     # log agents´ welfare
-    writer.add_scalars('eval/welfare', dict(zip(agent_name_list, welfares)), e)
-    writer.add_scalars('eval/welfare_in_bne', dict(zip(agent_name_list, bne_welfare)), e)
-    writer.add_scalars(
-        'eval/welfare_vs_bne',
-        dict(zip(
-            agent_name_list,
-            [1 - w/bne_w for w, bne_w in zip(utilities, bne_welfare)]
-        )), e
-    )
+    # writer.add_scalars('eval/welfare', dict(zip(agent_name_list, welfares)), e)
+    # writer.add_scalars('eval/welfare_in_bne', dict(zip(agent_name_list, bne_welfare)), e)
+    # writer.add_scalars(
+    #     'eval/welfare_vs_bne',
+    #     dict(zip(
+    #         agent_name_list,
+    #         [1 - w/bne_w for w, bne_w in zip(utilities, bne_welfare)]
+    #     )), e
+    # )
 
     # log models´ learning directions
     for name, policy_metric in policy_metrics.items():
-        writer.add_scalars('eval/distance_to_' + name,
-            dict(zip(agent_name_list, policy_metric)), e
+        writer.add_scalars(
+            'eval/distance_to_' + name,
+            dict(zip(agent_name_list, policy_metric)),
+            e
         )
 
-    # log agents´ allocations
-    for i in range(len(models)):
-        writer.add_histogram('hist/allocations_' + agent_name_list[i], allocations[i], e)
+    # # log agents´ allocations
+    # for i in range(len(models)):
+    #     writer.add_histogram('hist/allocations_' + agent_name_list[i], allocations[i], e)
 
     # log model parameters
     model_paras = [torch.norm(torch.nn.utils.parameters_to_vector(model.parameters()), p=2)
                    for model in models]
     writer.add_scalars('eval/weight_norm', dict(zip(agent_name_list, model_paras)), e)
-    writer.add_scalars('eval/gradient_norm', dict(zip(agent_name_list, gradient_norm)), e)
+    # writer.add_scalars('eval/gradient_norm', dict(zip(agent_name_list, gradient_norm)), e)
 
-    # log population rewards
-    for i in range(len(models)):
-        writer.add_histogram('hist/rewards_' + agent_name_list[i], rewards[i], e)
+    # # log population rewards
+    # for i in range(len(models)):
+    #     writer.add_histogram('hist/rewards_' + agent_name_list[i], rewards[i], e)
 
-    # log stopping criterion
-    writer.add_scalars('eval/stopping', dict(zip(agent_name_list, stoppings)), e)
+    # # log stopping criterion
+    # writer.add_scalars('eval/stopping', dict(zip(agent_name_list, stoppings)), e)
 
-    # log changes in output
-    writer.add_scalars('eval/changes_in_output', dict(zip(agent_name_list, changes_in_output)), e)
+    # # log changes in output
+    # writer.add_scalars('eval/changes_in_output', dict(zip(agent_name_list, changes_in_output)), e)
 
     # log time
     writer.add_scalar('eval/overhead_mins', overhead, e)

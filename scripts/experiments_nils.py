@@ -45,7 +45,7 @@ Notes & Todo
 
 ## Experiment setup
 param_dict = dict()
-param_dict["exp_no"] = 6
+param_dict["exp_no"] = 4
 
 if param_dict["exp_no"] == 0:
     mechanism = MultiItemVickreyAuction(cuda=True)
@@ -122,7 +122,7 @@ elif param_dict["exp_no"] == 6:
 # Log in folder
 log_root = os.path.abspath('/home/kohring/bnelearn/experiments')
 save_figure_data_to_disc = False
-save_figure_to_disc = True
+save_figure_to_disc = False
 
 auction_type_str = str(type(mechanism))
 auction_type_str = str(auction_type_str[len(auction_type_str) \
@@ -152,14 +152,14 @@ def strat_to_bidder(strategy, batch_size, player_position):
 
 
 ## Environment settings
-batch_size = 2**19
+batch_size = 2**18
 # regret_batch_size = 2**6
 epoch = 15000
 model_sharing = True
 epo_n = 2 # for ensure positive output of initialization
-plot_epoch = 10
-specific_gpu = 6
-logging = False
+plot_epoch = 200
+specific_gpu = 7
+logging = True
 
 
 # Use specific cuda gpu if desired (i.e. for running multiple experiments in parallel)
@@ -190,7 +190,7 @@ hyperparams = {
     'lr':                        [0.003],
     'weight_decay':              [0.00], # (float, optional) – weight decay (L2 penalty) (default: 0)
     'momentum':                  [0.8],
-    'pretrain_epoch':            [128],
+    'pretrain_epoch':            [500],
     'pretrain_transform':        [(lambda x: x) if param_dict["exp_no"] != 6 else exp_no_6_transform]
 }                                       # lambda x: x,
                                         # exp_no_1_transform
@@ -269,7 +269,7 @@ for vals in product(*hyperparams.values()):
     ]
     # print('warning: BNE initialization')
     # models[1].pretrain(pretrain_valuations, 2*pretrain_epoch,
-    #     optimal_bid(mechanism, param_dict, return_payoff_dominant=True)
+    #     optimal_bid(mechanism, param_dict)
     # )
 
     env = AuctionEnvironment(
@@ -297,10 +297,7 @@ for vals in product(*hyperparams.values()):
     bne_strategies = [
         ClosureStrategy(
             partial(
-                optimal_bid(
-                    mechanism, param_dict,
-                    return_payoff_dominant = True
-                ),
+                optimal_bid(mechanism, param_dict),
                 player_position = i
             )
         )
@@ -351,8 +348,7 @@ for vals in product(*hyperparams.values()):
         if logging:
             log_once(writer, 0, epoch, param_dict["n_players"], log_name,
                      n_parameters, seed, models, batch_size, learner_hyperparams,
-                     optimizer_type, optimizer_hyperparams, pretrain_epoch, env,
-                     experience_kwargs if experience else None)
+                     optimizer_type, optimizer_hyperparams, pretrain_epoch, env)
 
         for e in range(epoch + 1):
 
@@ -362,7 +358,7 @@ for vals in product(*hyperparams.values()):
             if e % plot_epoch == 0 and logging:
                 plot_bid_function(
                     bidders,
-                    optimal_bid(mechanism, param_dict),
+                    optimal_bid(mechanism, param_dict, return_payoff_dominant=False),
                     optimal_bid_2(mechanism, param_dict),
                     log_name, logdir, writer, e=e,
                     bounds = [param_dict["u_lo"], param_dict["u_hi"]],
@@ -374,17 +370,17 @@ for vals in product(*hyperparams.values()):
                     save_fig_to_disc = save_figure_to_disc,
                     device = device
                 )
-                if param_dict["n_items"] == 2 \
-                and param_dict["n_players"] < 4 \
-                and param_dict["exp_no"] != 6 \
-                or param_dict["exp_no"] == 2:
-                    plot_bid_function_3d(
-                        writer, e, param_dict["exp_no"],
-                        param_dict["n_items"], log_name, logdir, bidders,
-                        batch_size, device, #bounds=[param_dict["u_lo"], param_dict["u_hi"]],
-                        split_award = param_dict["exp_no"]==6,
-                        save_fig_to_disc = save_figure_to_disc
-                    )
+                # if param_dict["n_items"] == 2 \
+                # and param_dict["n_players"] < 4 \
+                # and param_dict["exp_no"] != 6 \
+                # or param_dict["exp_no"] == 2:
+                #     plot_bid_function_3d(
+                #         writer, e, param_dict["exp_no"],
+                #         param_dict["n_items"], log_name, logdir, bidders,
+                #         batch_size, device, #bounds=[param_dict["u_lo"], param_dict["u_hi"]],
+                #         split_award = param_dict["exp_no"]==6,
+                #         save_fig_to_disc = save_figure_to_disc
+                #     )
 
             start_time = time.time()
             # torch.cuda.reset_max_memory_allocated(device=device)
@@ -411,38 +407,42 @@ for vals in product(*hyperparams.values()):
 
             # logging
             if logging:
-                lr = (learner.optimizer.param_groups[0]['lr'] for learner in learners)
-                change_in_direction = (angle(l.prev_gradient, l.gradient_vector) for l in learners)
                 log_metrics(
-                    writer, utilities, allocations, welfares, bne_utilities, against_bne_utilities,
-                    bne_welfares, elapsed, lr,
-                    change_in_direction, e, log_name, param_dict["n_players"], models,
-                    {param_dict["BNE1"]: [policy_metric(
-                            model.forward,
-                            optimal_bid(mechanism, param_dict, return_payoff_dominant=True),
-                            param_dict["n_items"],
-                            selection = split_award_dict \
-                                if param_dict["exp_no"] == 6 else 'random',
-                            bounds = [param_dict["u_lo"], param_dict["u_hi"]],
-                            eval_points_max = 2 ** 18,
-                            device = device
-                        )
-                        for model in models],
-                     param_dict["BNE2"]: [policy_metric(
-                            model.forward,
-                            optimal_bid_2(mechanism, param_dict),
-                            param_dict["n_items"],
-                            selection = split_award_dict \
-                                if param_dict["exp_no"] == 6 else 'random',
-                            bounds = [param_dict["u_lo"], param_dict["u_hi"]],
-                            eval_points_max = 2 ** 18,
-                            device = device
-                        )
-                        for model in models]
-                    },
-                    [learner.gradient_norm for learner in learners],
-                    rewards, stoppings,
-                    changes_in_output
+                    writer = writer,
+                    utilities = utilities,
+                    bne_utilities = bne_utilities,
+                    against_bne_utilities = against_bne_utilities,
+                    overhead = elapsed,
+                    e = e,
+                    log_name = log_name,
+                    n_players = param_dict["n_players"],
+                    models = models,
+                    policy_metrics = {
+                        param_dict["BNE1"]: [
+                            policy_metric(
+                                model.forward,
+                                optimal_bid(mechanism, param_dict),
+                                param_dict["n_items"],
+                                selection = split_award_dict \
+                                    if param_dict["exp_no"] == 6 else 'random',
+                                bounds = [param_dict["u_lo"], param_dict["u_hi"]],
+                                eval_points_max = 2 ** 18,
+                                device = device
+                            )
+                            for model in models],
+                        param_dict["BNE2"]: [
+                            policy_metric(
+                                model.forward,
+                                optimal_bid_2(mechanism, param_dict),
+                                param_dict["n_items"],
+                                selection = split_award_dict \
+                                    if param_dict["exp_no"] == 6 else 'random',
+                                bounds = [param_dict["u_lo"], param_dict["u_hi"]],
+                                eval_points_max = 2 ** 18,
+                                device = device
+                            )
+                            for model in models]
+                    }
                 )
 
             print('epoch {}:\t{}s'.format(e, round(elapsed, 2)))
