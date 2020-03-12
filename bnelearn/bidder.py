@@ -167,13 +167,19 @@ class Bidder(Player):
 
     def get_utility(self, allocations, payments): #pylint: disable=arguments-differ
         """
-        For a batch of allocations and payments return the player's utilities.
+        For a batch of allocations and payments return the player's utilities at
+        current valuations.
         """
+        return self.get_counterfactual_utility(allocations, payments, self.valuations)
 
+    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
+        """For a batch of allocations, payments and counterfactual valuations
+            return the player's utilities
+        """
         assert allocations.dim() == 2 # batch_size x items
         assert payments.dim() == 1 # batch_size
 
-        payoff = (self.valuations * allocations).sum(dim=1) - payments
+        payoff = (counterfactual_valuations * allocations).sum(dim=1) - payments
 
         if self.split_award:
             payoff *= -1

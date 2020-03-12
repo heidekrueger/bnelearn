@@ -19,6 +19,7 @@ from bnelearn.bidder import Bidder
 from bnelearn.mechanism import LLLLGGAuction, CombinatorialAuction
 from bnelearn.learner import ESPGLearner
 from bnelearn.environment import AuctionEnvironment
+import bnelearn.util.metrics as metrics
 
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
@@ -74,13 +75,14 @@ def strat_to_bidder(strategy, batch_size, player_position):
 
 ## Environment settings
 n_threads = 1
-core_solver = 'cvxpy' #no_core #gurobi
-pricing_rule =  'nearest-vcg'#'first_price'#nearest-vcg'
+core_solver = 'no_core' #no_core #gurobi
+pricing_rule =  'first_price'#'first_price'#nearest-vcg'
 model_sharing = True
 #training batch size (2**17 - 2**18 for vcg)
-batch_size = 2**8
+batch_size = 2**11
+regret_bid_size = 2**7
 eval_batch_size = 2**25
-epoch = 4
+epoch = 100000
 
 
 # strategy model architecture
@@ -90,7 +92,7 @@ hidden_activations = [nn.SELU(),nn.SELU()]#,nn.SELU()]#, nn.SELU(),nn.SELU(), nn
 
 
 learner_hyperparams = {
-    'population_size':4,
+    'population_size':128,
     'sigma': 1.,
     'scale_sigma_by_model_size': True
 }
@@ -107,12 +109,12 @@ learner_hyperparams = {
     # 'amsgrad': False #whether to use amsgrad-variant
 optimizer_type = torch.optim.Adam
 optimizer_hyperparams ={    
-    #'lr': 1e-2,
+    'lr': 1e-2,
     #'momentum': 0.6
 }
 
 # plot and log training options
-plot_epoch = 1000
+plot_epoch = 10
 write_epoch = 1000
 plot_points = 100 #min(100, batch_size)
 # For verification writing
@@ -435,7 +437,8 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
         #try:
         #    if expect_counter>5:
         #        sys.exit()
-        print(e)
+        if e % 100 == 0:
+            print(e)    
         # always: do optimizer step
         utilities = [None] * len(learners)
         for k,v in enumerate(learners):
@@ -467,9 +470,42 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
                 b[k] = bidder.get_action()#.squeeze(0)
             fig = plt.figure()
             print(('Epoch: {}: Model utility in learning env:'+'\t{:.5f}'*len(models)).format(e, *utilities))            
-            plot_bid_function(fig, v, b, writer,e,plot_points = plot_points,
-                                  save_png_to_disc=save_figure_to_disc)  
-            plot_bid_function_3d(writer=writer,e=e,save_figure_to_disc = save_figure_to_disc)
+            #plot_bid_function(fig, v, b, writer,e,plot_points = plot_points,
+            #                      save_png_to_disc=save_figure_to_disc)  
+            #plot_bid_function_3d(writer=writer,e=e,save_figure_to_disc = save_figure_to_disc)
+
+            bid_i = torch.linspace(u_lo, u1_hi, regret_bid_size)
+
+            player_position = 4
+
+            val = env.agents[player_position].valuations
+            agent_bid = env.agents[player_position].get_action()
+            action_length = agent_bid.shape[1]
+            bid_profile = torch.zeros(env.batch_size, env.n_players, action_length,
+                                          dtype=agent_bid.dtype, device = env.mechanism.device)
+
+            counter = 1
+            for opponent_pos, opponent_bid in env._generate_agent_actions(exclude = set([player_position])):
+                    # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
+                    if opponent_pos is None:
+                        opponent_pos = counter
+                    bid_profile[:, opponent_pos, :] = opponent_bid
+                    counter = counter + 1
+            print("Calculating regret...")
+            torch.cuda.empty_cache()
+            regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position, val,
+                                    agent_bid, bid_i)
+            
+            print("agent {} can improve by, avg: {}, max: {}".format(player_position,
+                                                                 torch.mean(regret),
+                                                                 torch.max(regret)))
+
+
+
+            out = torch.cat((val, regret.view(batch_size,1)),1)
+            np.savetxt(os.path.join(logdir, 'regret.txt'), out.detach().cpu().numpy(), delimiter=',')
+            
+
         if e%write_epoch == 0:
             write_bid_function_3d()
         elapsed = timer() - start_time

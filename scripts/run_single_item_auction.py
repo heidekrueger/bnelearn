@@ -23,7 +23,7 @@ from bnelearn.experiment import Experiment
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import ClosureStrategy, NeuralNetStrategy
-from bnelearn.util.metrics import norm_strategy_and_actions
+import bnelearn.util.metrics as metrics
 
 ##%%%%%%%%%%%%%%%%%%%%%%%%%%    Settings
 # device and seed
@@ -32,7 +32,7 @@ specific_gpu = 0
 
 n_runs = 10
 seeds = list(range(n_runs))
-epochs = 2000
+epochs = 5000
 
 # Logging and plotting
 logging_options = dict(
@@ -45,8 +45,8 @@ logging_options = dict(
 
 # Experiment setting parameters
 n_players = 2
-auction_mechanism = 'first_price'  # one of 'first_price', 'second_price'
-valuation_prior = 'normal'  # for now, one of 'uniform' / 'normal', specific params defined in script
+auction_mechanism = 'first_price' # one of 'first_price', 'second_price'
+valuation_prior = 'uniform' # for now, one of 'uniform' / 'normal', specific params defined in script
 risk = 1.0
 
 if risk == 1.0:
@@ -59,7 +59,9 @@ else:
 # Learning
 model_sharing = True
 pretrain_iters = 500
-batch_size = 2 ** 18
+batch_size = 2**13
+
+regret_bid_size = 2**10
 ## ES
 learner_hyperparams = {
     'population_size': 64,
@@ -88,7 +90,7 @@ hidden_nodes = [5, 5, 5]
 hidden_activations = [nn.SELU(), nn.SELU(), nn.SELU()]
 
 # Evaluation
-eval_batch_size = 2 ** 22  # 22
+eval_batch_size = 2**12 #22
 cache_eval_actions = True
 n_processes_optimal_strategy = 44 if valuation_prior != 'uniform' and auction_mechanism != 'second_price' else 0
 
@@ -357,9 +359,9 @@ def training_loop(self, writer, e):
         draw_valuations=False)  # False because expensive for normal priors
     self.epsilon_relative = 1 - self.utility_vs_bne / self.bne_utility
     self.epsilon_absolute = self.bne_utility - self.utility_vs_bne
-    self.L_2 = norm_strategy_and_actions(self.model, self.bne_env.agents[0].actions,
+    self.L_2 = metrics.norm_strategy_and_actions(self.model, self.bne_env.agents[0].actions,
                                          self.bne_env.agents[0].valuations, 2)
-    self.L_inf = norm_strategy_and_actions(self.model, self.bne_env.agents[0].actions,
+    self.L_inf = metrics.norm_strategy_and_actions(self.model, self.bne_env.agents[0].actions,
                                            self.bne_env.agents[0].valuations, float('inf'))
     self.log_metrics(writer, e)
 
