@@ -6,7 +6,7 @@ Desc   Helper file for testing of learning in multi unit auction formats
 
 import sys
 import os
-sys.path.append(os.path.realpath('../scripts'))
+sys.path.append(os.path.realpath('.'))
 
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -1956,7 +1956,7 @@ def summary_stats_discirminatory(
 
 if __name__ == '__main__':
 
-    torch.cuda.set_device(7)
+    torch.cuda.set_device(0)
     device = 'cuda'
 
     # log_evaulation()
