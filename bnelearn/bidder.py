@@ -153,11 +153,6 @@ class Bidder(Player):
             # for uniform vals and 2 items <=> F1(v)=v**2, F2(v)=2v-v**2
             self.valuations, _ = self.valuations.sort(dim=1, descending=True)
 
-        if self.efficiency_parameter is not None:
-            assert self.valuations.shape[1] == 2, \
-                'linear valuations are only defined for two items.'
-            self.valuations[:,1] = self.efficiency_parameter * self.valuations[:,0]
-
         self._valuations_changed = True
         return self.valuations
 
@@ -243,6 +238,48 @@ class ReverseBidder(Bidder):
         )
         self.split_award = split_award
         self.efficiency_parameter = efficiency_parameter
+
+    def draw_valuations_(self):
+        """ Sample a new batch of valuations from the Bidder's prior. Negative
+            draws will be clipped at 0.0!
+
+            If ´descending_valuations´ is true, the valuations will be returned
+            in decreasing order.
+        """
+        # If in place sampling is available for our distribution, use it!
+        # This will save time for memory allocation and/or copying between devices
+        # As sampling from general torch.distribution is only available on CPU.
+        # (might mean adding more boilerplate code here if specific distributions are desired
+
+        # uniform
+        if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
+            self.valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
+        # gaussian
+        elif isinstance(self.value_distribution, torch.distributions.normal.Normal):
+            self.valuations.normal_(mean = self.value_distribution.loc, std = self.value_distribution.scale).relu_()
+        # add additional internal in-place samplers as needed!
+        else:
+            # slow! (sampling on cpu then copying to GPU)
+            self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device).relu()
+
+        if isinstance(self.item_interest_limit, int):
+            self.valuations[:,self.item_interest_limit:] = 0
+
+        if self.constant_marginal_values:
+            self.valuations.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
+                                        self.valuations[:,0:1].repeat(1, self.n_items-1))
+
+        elif self.descending_valuations:
+            # for uniform vals and 2 items <=> F1(v)=v**2, F2(v)=2v-v**2
+            self.valuations, _ = self.valuations.sort(dim=1, descending=True)
+
+        if self.efficiency_parameter is not None:
+            assert self.valuations.shape[1] == 2, \
+                'linear valuations are only defined for two items.'
+            self.valuations[:,1] = self.efficiency_parameter * self.valuations[:,0]
+
+        self._valuations_changed = True
+        return self.valuations
 
         def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
             """For a batch of allocations, payments and counterfactual valuations
