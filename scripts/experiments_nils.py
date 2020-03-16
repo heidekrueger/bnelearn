@@ -221,7 +221,7 @@ batch_size = 2**18
 epoch = 20000
 model_sharing = False
 epo_n = 2 # for ensure positive output of initialization
-plot_epoch = 1000
+plot_epoch = 100
 specific_gpu = 4
 logging = True
 
@@ -285,7 +285,7 @@ for vals in product(*hyperparams.values()):
     np.random.seed(seed)
 
     # Setting up optimizer
-    optimizer_type = torch.optim.SGD
+    optimizer_type = torch.optim.Adam
     optimizer_hyperparams = {
         'lr': lr,
         'weight_decay': weight_decay,
@@ -456,7 +456,7 @@ for vals in product(*hyperparams.values()):
             for i, learner in enumerate(learners):
                 u = learner.update_strategy_and_evaluate_utility()
                 utilities.append(u)
-            print('util:', np.round(u.detach().cpu().numpy(), 4), end='\t')
+            # print('util:', np.round(u.detach().cpu().numpy(), 4), end='\t')
 
             elapsed = time.time() - start_time
 
@@ -467,7 +467,7 @@ for vals in product(*hyperparams.values()):
             for i, model in enumerate(models):
                 u = bne_env.get_strategy_reward(model, player_position=i, draw_valuations=True)
                 against_bne_utilities.append(u)
-            print(' util_vs_bne:', np.round(u.detach().cpu().numpy(), 4), end='\t')
+            # print(' util_vs_bne:', np.round(u.detach().cpu().numpy(), 4), end='\t')
 
             # logging
             if logging:
@@ -512,5 +512,5 @@ for vals in product(*hyperparams.values()):
             print('epoch {}:\t{}s'.format(e, round(elapsed, 2)))
 
     if logging:
-        [torch.save(model.state_dict(), os.path.join(logdir, 'saved_model_' + str(i) + '.pt'))
-         for i, model in enumerate(models)] # save policy output
+        for i, model in enumerate(models):
+            torch.save(model.state_dict(), os.path.join(logdir, 'saved_model_' + str(i) + '.pt'))
