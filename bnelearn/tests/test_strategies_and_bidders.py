@@ -45,7 +45,7 @@ def test_bidder_with_cached_actions():
 
     strat = s.ClosureStrategy(closure)
     bidder = bnelearn.bidder.Bidder.uniform(
-        0,10,strat,
+        u_lo,u_hi,strat,
         batch_size=2**3, cache_actions=True)
 
     actions = bidder.get_action()
@@ -68,6 +68,28 @@ def test_bidder_with_cached_actions():
     assert toc - tic > 0.5, "Call was too fast, closure can't have been reevaluated."
     assert torch.equal(bidder.valuations, new_actions), "invalid results of re-evaluation."
 
+
+def test_action_caching_with_manual_valuation_change():
+    """Manually changing bidder valuations should not break action cachin logic."""
+    def closure(x):
+        return x
+
+    strat = s.ClosureStrategy(closure)
+    bidder = bnelearn.bidder.Bidder.uniform(
+        u_lo, u_hi, strat, batch_size=2**3, cache_actions = True
+    )
+    _ = bidder.get_action()
+
+    zeros = torch.zeros_like(bidder.valuations)
+    
+    bidder.valuations = zeros
+    assert torch.allclose(bidder.get_action(), zeros), "Bidder returned incorrect actions!"
+
+
+
 def test_parallel_closure_evaluation():
     """Parallelism of closure evaluation should work as expected."""
     pytest.skip("Test not implemented.")
+
+
+
