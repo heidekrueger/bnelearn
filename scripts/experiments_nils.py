@@ -22,7 +22,7 @@ from utils_nils import *
 
 sys.path.append(os.path.realpath('.'))
 from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
-from bnelearn.bidder import Bidder
+from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.mechanism import (MultiItemDiscriminatoryAuction,
                                 MultiItemUniformPriceAuction,
                                 MultiItemVickreyAuction,
@@ -55,6 +55,19 @@ if param_dict["exp_no"] == 0:
     param_dict["u_hi"] = 1
     param_dict["BNE1"] = "Truthful"
     param_dict["BNE2"] = "Truthful"
+    def strat_to_bidder(strategy, batch_size, player_position):
+        """
+        Standard strat_to_bidder method.
+        """
+        return Bidder.uniform(
+            lower = param_dict["u_lo"], upper = param_dict["u_hi"],
+            strategy = strategy,
+            n_items = param_dict["n_items"],
+            descending_valuations = True,
+            constant_marginal_values = True,
+            player_position = player_position,
+            batch_size = batch_size
+        )
 
 elif param_dict["exp_no"] == 1:
     mechanism = MultiItemUniformPriceAuction(cuda=True)
@@ -69,6 +82,19 @@ elif param_dict["exp_no"] == 1:
         return output_tensor
     param_dict["BNE1"] = "BNE1"
     param_dict["BNE2"] = "Truthful"
+    def strat_to_bidder(strategy, batch_size, player_position):
+        """
+        Standard strat_to_bidder method.
+        """
+        return Bidder.uniform(
+            lower = param_dict["u_lo"], upper = param_dict["u_hi"],
+            strategy = strategy,
+            n_items = param_dict["n_items"],
+            descending_valuations = True,
+            constant_marginal_values = True,
+            player_position = player_position,
+            batch_size = batch_size
+        )
 
 elif param_dict["exp_no"] == 2:
     mechanism = MultiItemUniformPriceAuction(cuda=True)
@@ -79,6 +105,20 @@ elif param_dict["exp_no"] == 2:
     param_dict["item_interest_limit"] = 2
     param_dict["BNE1"] = "BNE1"
     param_dict["BNE2"] = "Truthful"
+    def strat_to_bidder(strategy, batch_size, player_position):
+        """
+        Standard strat_to_bidder method.
+        """
+        return Bidder.uniform(
+            lower = param_dict["u_lo"], upper = param_dict["u_hi"],
+            strategy = strategy,
+            n_items = param_dict["n_items"],
+            item_interest_limit = param_dict["item_interest_limit"],
+            descending_valuations = True,
+            constant_marginal_values = True,
+            player_position = player_position,
+            batch_size = batch_size
+        )
 
 elif param_dict["exp_no"] == 3:
     """ ´See Large Multi-Unit Auctions with a Large Bidder´ by Brian Baisa
@@ -94,6 +134,19 @@ elif param_dict["exp_no"] == 4:
     param_dict["u_hi"] = 1
     param_dict["BNE1"] = "BNE1"
     param_dict["BNE2"] = "Truthful"
+    def strat_to_bidder(strategy, batch_size, player_position):
+        """
+        Standard strat_to_bidder method.
+        """
+        return Bidder.uniform(
+            lower = param_dict["u_lo"], upper = param_dict["u_hi"],
+            strategy = strategy,
+            n_items = param_dict["n_items"],
+            descending_valuations = True,
+            constant_marginal_values = True,
+            player_position = player_position,
+            batch_size = batch_size
+        )
 
 elif param_dict["exp_no"] == 5:
     mechanism = MultiItemDiscriminatoryAuction(cuda=True)
@@ -104,6 +157,19 @@ elif param_dict["exp_no"] == 5:
     param_dict["constant_marginal_values"] = True
     param_dict["BNE1"] = "BNE1"
     param_dict["BNE2"] = "Truthful"
+    def strat_to_bidder(strategy, batch_size, player_position):
+        """
+        Standard strat_to_bidder method.
+        """
+        return Bidder.uniform(
+            lower = param_dict["u_lo"], upper = param_dict["u_hi"],
+            strategy = strategy,
+            n_items = param_dict["n_items"],
+            descending_valuations = True,
+            constant_marginal_values = True,
+            player_position = player_position,
+            batch_size = batch_size
+        )
 
 elif param_dict["exp_no"] == 6:
     mechanism, param_dict, split_award_dict = create_splitaward_setting()
@@ -117,7 +183,24 @@ elif param_dict["exp_no"] == 6:
         else:
             output_tensor = temp
         return output_tensor
-
+    def strat_to_bidder(strategy, batch_size, player_position):
+        """
+        Standard strat_to_bidder method.
+        """
+        return ReverseBidder.uniform(
+            lower = param_dict["u_lo"], upper = param_dict["u_hi"],
+            strategy = strategy,
+            n_items = param_dict["n_items"],
+            item_interest_limit = param_dict["item_interest_limit"]\
+                if "item_interest_limit" in param_dict.keys() else None,
+            descending_valuations = param_dict["exp_no"] != 6,
+            constant_marginal_values = param_dict["constant_marginal_values"] \
+                if "constant_marginal_values" in param_dict.keys() else None,
+            player_position = player_position,
+            efficiency_parameter = param_dict["efficiency_parameter"] \
+                if "efficiency_parameter" in param_dict.keys() else None,
+            batch_size = batch_size
+        )
 
 # Log in folder
 log_root = os.path.abspath('/home/kohring/bnelearn/experiments')
@@ -130,25 +213,6 @@ auction_type_str = str(auction_type_str[len(auction_type_str) \
 log_name = auction_type_str + '_' + str(param_dict["n_players"]) \
         + 'players_' + str(param_dict["n_items"]) + 'items'
 
-def strat_to_bidder(strategy, batch_size, player_position):
-    """
-    Standard strat_to_bidder method.
-    """
-    return Bidder.uniform(
-        lower = param_dict["u_lo"], upper = param_dict["u_hi"],
-        strategy = strategy,
-        n_items = param_dict["n_items"],
-        item_interest_limit = param_dict["item_interest_limit"]\
-            if "item_interest_limit" in param_dict.keys() else None,
-        descending_valuations = param_dict["exp_no"] != 6,
-        constant_marginal_values = param_dict["constant_marginal_values"] \
-            if "constant_marginal_values" in param_dict.keys() else None,
-        player_position = player_position,
-        split_award = isinstance(mechanism, FPSBSplitAwardAuction),
-        efficiency_parameter = param_dict["efficiency_parameter"] \
-            if "efficiency_parameter" in param_dict.keys() else None,
-        batch_size = batch_size
-    )
 
 
 ## Environment settings
@@ -183,7 +247,7 @@ model_dict = {
 
 hyperparams = {
     'seed':                      [np.random.randint(1e4) for _ in range(1)],
-    'population_size':           [64],
+    'population_size':           [128],
     'sigma':                     [1.],
     'scale_sigma_by_model_size': [True],
     'normalize_gradients':       [False],
@@ -221,7 +285,7 @@ for vals in product(*hyperparams.values()):
     np.random.seed(seed)
 
     # Setting up optimizer
-    optimizer_type = torch.optim.Adam
+    optimizer_type = torch.optim.SGD
     optimizer_hyperparams = {
         'lr': lr,
         'weight_decay': weight_decay,

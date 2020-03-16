@@ -203,6 +203,10 @@ class Bidder(Player):
 
 
 class ReverseBidder(Bidder):
+    """
+    Bidder that has reversed utility (*(-1)) as valuations correspond to
+    their costs and payments to what they get payed.
+    """
     def __init__(self,
                  value_distribution: Distribution,
                  strategy,
@@ -215,12 +219,8 @@ class ReverseBidder(Bidder):
                  risk: float = 1.0,
                  item_interest_limit = None,
                  constant_marginal_values = False,
-                 split_award = False,
                  efficiency_parameter = None,
                  ):
-
-        assert not descending_valuations or not split_award, \
-            'descending_valuations only for multi-unit auctions!'
 
         super().__init__(
             self,
@@ -236,7 +236,6 @@ class ReverseBidder(Bidder):
             item_interest_limit,
             constant_marginal_values
         )
-        self.split_award = split_award
         self.efficiency_parameter = efficiency_parameter
 
     def draw_valuations_(self):
