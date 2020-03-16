@@ -7,6 +7,7 @@ from bnelearn.mechanism import FPSBSplitAwardAuction
 
 cuda = torch.cuda.is_available()
 fpsbsaa = FPSBSplitAwardAuction(cuda=cuda)
+device = fpsbsaa.device
 
 fpsbsaa_bids = torch.tensor([
     [[3.00, 1.00],
