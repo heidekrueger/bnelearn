@@ -5,7 +5,7 @@ import time
 import pytest
 import torch
 
-from bnelearn.strategy import NeuralNetStrategy
+from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
 
 batch_size = 8
 
@@ -40,7 +40,7 @@ def assert_nn_initialization(input_length, output_length,
         "NN initialization failed!"
 
 @pytest.mark.parametrize("input_length,output_length,hidden_nodes", testdata, ids=ids)
-def test_nn(input_length, output_length, hidden_nodes):
+def test_nn_initialization(input_length, output_length, hidden_nodes):
     """Tests whether nn init works."""
 
     assert_nn_initialization(input_length, output_length, hidden_nodes, 'cpu')

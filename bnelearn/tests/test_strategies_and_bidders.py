@@ -5,7 +5,7 @@ import time
 import pytest
 import torch
 
-import bnelearn.bidder
+import bnelearn.bidder as b
 import bnelearn.strategy as s
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -16,7 +16,7 @@ mu = u_lo + (u_hi - u_lo)/2
 def test_truthful_strategy():
     """Truthful strategy should bid truthfully"""
     strat = s.TruthfulStrategy()
-    bidder = bnelearn.bidder.Bidder.uniform(0,10,strat, batch_size = 2**10)
+    bidder = b.Bidder.uniform(0,10,strat, batch_size = 2**10)
 
     assert torch.equal(bidder.valuations, bidder.get_action())
 
@@ -25,7 +25,7 @@ def test_closure_strategy_basic():
     closure = lambda x: x+1.
 
     strat = s.ClosureStrategy(closure)
-    bidder = bnelearn.bidder.Bidder.uniform(0,10,strat, batch_size = 2**3)
+    bidder = b.Bidder.uniform(0,10,strat, batch_size = 2**3)
 
     assert torch.equal(bidder.get_action(), bidder.valuations+1), \
         "Closure strategy returned invalid results."
@@ -44,8 +44,8 @@ def test_bidder_with_cached_actions():
         return x
 
     strat = s.ClosureStrategy(closure)
-    bidder = bnelearn.bidder.Bidder.uniform(
-        0,10,strat,
+    bidder = b.Bidder.uniform(
+        u_lo,u_hi,strat,
         batch_size=2**3, cache_actions=True)
 
     actions = bidder.get_action()
@@ -67,6 +67,25 @@ def test_bidder_with_cached_actions():
 
     assert toc - tic > 0.5, "Call was too fast, closure can't have been reevaluated."
     assert torch.equal(bidder.valuations, new_actions), "invalid results of re-evaluation."
+
+
+def test_action_caching_with_manual_valuation_change():
+    """Manually changing bidder valuations should not break action cachin logic."""
+    def closure(x):
+        return x
+
+    strat = s.ClosureStrategy(closure)
+    bidder = b.Bidder.uniform(
+        u_lo, u_hi, strat, batch_size=2**3, cache_actions = True
+    )
+    _ = bidder.get_action()
+
+    zeros = torch.zeros_like(bidder.valuations)
+    
+    bidder.valuations = zeros
+    assert torch.allclose(bidder.get_action(), zeros), "Bidder returned incorrect actions!"
+
+
 
 def test_parallel_closure_evaluation():
     """Parallelism of closure evaluation should work as expected."""
