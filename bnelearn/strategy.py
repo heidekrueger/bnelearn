@@ -287,6 +287,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         dropout (optional): float
             If not, applies AlphaDropout (https://pytorch.org/docs/stable/nn.html#torch.nn.AlphaDropout)
             to `dropout` share of nodes in each hidden layer during training.
+
     """
     def __init__(self, input_length: int,
                  hidden_nodes: Iterable[int],
@@ -373,17 +374,18 @@ class NeuralNetStrategy(Strategy, nn.Module):
             x = layer(x)
         return x
 
-    def play(self,inputs):
+    def play(self, inputs):
         return self.forward(inputs)
 
 class TruthfulStrategy(Strategy, nn.Module):
     """A strategy that plays truthful valuations."""
     def __init__(self):
         nn.Module.__init__(self)
-        self.register_parameter('dummy',nn.Parameter(torch.zeros(1)))
+        self.register_parameter('dummy', nn.Parameter(torch.zeros(1)))
 
     def forward(self, x):
         return x
 
     def play(self, inputs):
         return self.forward(inputs)
+ 
