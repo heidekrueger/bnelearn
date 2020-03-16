@@ -10,7 +10,6 @@ import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from bnelearn.environment import Environment
 from bnelearn.strategy import Strategy, NeuralNetStrategy
-import numpy as np
 
 
 
@@ -132,12 +131,6 @@ class ESPGLearner(GradientBasedLearner):
         super().__init__(model, environment,
                          optimizer_type, optimizer_hyperparams,
                          strat_to_player_kwargs)
-
-        # gradient from previous iteration
-        self.prev_gradient = torch.zeros_like(parameters_to_vector(self.params())) 
-
-        # noprm of the gradient
-        self.gradient_norm = 0
 
         # Validate ES hyperparams
         if not set(['population_size', 'sigma', 'scale_sigma_by_model_size']) <= set(hyperparams):
@@ -461,8 +454,8 @@ class AESPGLearner(GradientBasedLearner):
         # for now, we'll assume model is a NeuralNetStrategy, i.e. has an attribute output_length
 
         noise = torch.zeros([self.environment.batch_size, model.output_length],
-            device = next(model.parameters()).device
-        ).normal_(mean=0.0, std=self.sigma)
+                             device = next(model.parameters()).device
+            ).normal_(mean=0.0, std=self.sigma)
 
         perturbed = _PerturbedActionModule(model, noise)
 

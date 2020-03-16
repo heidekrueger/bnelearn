@@ -80,9 +80,7 @@ class Bidder(Player):
                  descending_valuations = False,
                  risk: float = 1.0,
                  item_interest_limit = None,
-                 constant_marginal_values = False,
-                 split_award = False,
-                 efficiency_parameter = None,
+                 constant_marginal_values = False
                  ):
 
         assert not descending_valuations or not split_award, \
@@ -181,9 +179,6 @@ class Bidder(Player):
 
         payoff = (counterfactual_valuations * allocations).sum(dim=1) - payments
 
-        if self.split_award:
-            payoff *= -1
-
         if self.risk == 1.0:
             return payoff
         else:
@@ -208,12 +203,6 @@ class Bidder(Player):
 
         inputs = self.valuations.view(self.batch_size, -1)
 
-        if self.split_award:
-            # for cases when n_itmes != input_length
-            if hasattr(self.strategy, 'input_length'):
-                dim = self.strategy.input_length
-                inputs = inputs[:,:dim]
-
         actions = self.strategy.play(inputs)
         self._valuations_changed = False
 
@@ -221,3 +210,73 @@ class Bidder(Player):
             self.actions = actions
 
         return actions
+
+
+class ReverseBidder(Bidder):
+    def __init__(self,
+                 value_distribution: Distribution,
+                 strategy,
+                 player_position = None,
+                 batch_size = 1,
+                 n_items = 1,
+                 cuda = True,
+                 cache_actions: bool = False,
+                 descending_valuations = False,
+                 risk: float = 1.0,
+                 item_interest_limit = None,
+                 constant_marginal_values = False,
+                 split_award = False,
+                 efficiency_parameter = None,
+                 ):
+
+        super().__init__(
+            self,
+            value_distribution,
+            strategy,
+            player_position,
+            batch_size,
+            n_items,
+            cuda,
+            cache_actions,
+            descending_valuations,
+            risk,
+            item_interest_limit,
+            constant_marginal_values
+        )
+        self.split_award = split_award
+        self.efficiency_parameter = efficiency_parameter
+
+        def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
+            """For a batch of allocations, payments and counterfactual valuations
+                return the player's utilities
+            """
+            assert allocations.dim() == 2 # batch_size x items
+            assert payments.dim() == 1 # batch_size
+
+            payoff = - (counterfactual_valuations * allocations).sum(dim=1) + payments
+
+            if self.risk == 1.0:
+                return payoff
+            else:
+                # payoff^alpha not well defined in negative domain for risk averse agents
+                return payoff.relu()**self.risk - (-payoff).relu()**self.risk
+
+        def get_action(self):
+        """Calculate action from current valuations, or retrieve from cache"""
+            if self._cache_actions and not self._valuations_changed:
+                return self.actions
+
+            inputs = self.valuations.view(self.batch_size, -1)
+
+            # for cases when n_itmes != input_length
+            if hasattr(self.strategy, 'input_length'):
+                dim = self.strategy.input_length
+                inputs = inputs[:,:dim]
+
+            actions = self.strategy.play(inputs)
+            self._valuations_changed = False
+
+            if self._cache_actions:
+                self.actions = actions
+
+            return actions

@@ -83,8 +83,7 @@ class Environment(ABC):
 
     def _generate_agent_actions(
             self,
-            exclude: Set[int] or None = None,
-            experience = None
+            exclude: Set[int] or None = None
         ):
         """
         Generator function yielding batches of bids for each environment agent

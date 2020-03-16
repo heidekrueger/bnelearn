@@ -45,7 +45,7 @@ Notes & Todo
 
 ## Experiment setup
 param_dict = dict()
-param_dict["exp_no"] = 4
+param_dict["exp_no"] = 2
 
 if param_dict["exp_no"] == 0:
     mechanism = MultiItemVickreyAuction(cuda=True)
@@ -122,7 +122,7 @@ elif param_dict["exp_no"] == 6:
 # Log in folder
 log_root = os.path.abspath('/home/kohring/bnelearn/experiments')
 save_figure_data_to_disc = False
-save_figure_to_disc = False
+save_figure_to_disc = True
 
 auction_type_str = str(type(mechanism))
 auction_type_str = str(auction_type_str[len(auction_type_str) \
@@ -154,11 +154,11 @@ def strat_to_bidder(strategy, batch_size, player_position):
 ## Environment settings
 batch_size = 2**18
 # regret_batch_size = 2**6
-epoch = 15000
-model_sharing = True
+epoch = 20000
+model_sharing = False
 epo_n = 2 # for ensure positive output of initialization
-plot_epoch = 200
-specific_gpu = 7
+plot_epoch = 1000
+specific_gpu = 4
 logging = True
 
 
@@ -176,7 +176,7 @@ param_dict["input_length"] = param_dict["n_items"] - 1 \
     if param_dict["exp_no"] == 6 else param_dict["n_items"]
 
 model_dict = {
-    "hidden_nodes": [5, 5, 5],
+    "hidden_nodes": [15, 15, 15],
     "hidden_activations": [nn.SELU(), nn.SELU(), nn.SELU()]
 }
 
@@ -337,9 +337,9 @@ for vals in product(*hyperparams.values()):
     # calculate utility vs BNE
     bne_utilities = list()
     for agent in bne_env.agents:
-        u  = bne_env.get_reward(agent, draw_valuations=True)
+        u = bne_env.get_reward(agent, draw_valuations=True)
         bne_utilities.append(u)
-
+    print('bne_utilities', bne_utilities)
 
     with SummaryWriter(logdir, flush_secs=60) as writer:
 

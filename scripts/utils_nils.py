@@ -62,6 +62,17 @@ def create_splitaward_setting():
     }
     return mechanism, param_dict, split_award_dict
 
+def create_discriminatory_setting():
+    param_dict = dict()
+    param_dict["exp_no"] = 4
+    mechanism = MultiItemDiscriminatoryAuction(cuda=True)
+    param_dict["n_players"] = 2
+    param_dict["n_items"] = 2
+    param_dict["u_lo"] = 0.0
+    param_dict["u_hi"] = 1.0
+    param_dict["input_length"] = param_dict["n_items"]
+    return mechanism, param_dict
+
 
 
 # ## Optimal Policies
@@ -127,12 +138,13 @@ def optimal_bid(
                     b[v >= t] = x[0]*b[v >= t]**2 + x[1]*b[v >= t] + x[2]
                     return b
 
-                b1 = lambda v: b_approx(v, s=0.33, t=0.90)
-                b2 = lambda v: b_approx(v, s=0.40, t=0.60)
+                b1 = lambda v: b_approx(v, s=0.42, t=0.90)
+                b2 = lambda v: b_approx(v, s=0.35, t=0.55)
 
                 opt_bid = valuation
                 opt_bid[:,0] = b1(opt_bid[:,0])
                 opt_bid[:,1] = b2(opt_bid[:,1])
+                opt_bid = opt_bid.sort(dim=1, descending=True)[0]
                 return opt_bid
 
             elif param_dict["exp_no"] == 5:
@@ -606,7 +618,7 @@ def multi_unit_valuations(
         valuations = valuations[mask]
 
     if sort:
-        valuations = valuations.sort(dim=0)[0]
+        valuations = valuations.sort(dim=1)[0]
 
     return valuations
 
@@ -671,6 +683,7 @@ def plot_bid_function(
         split_award['linspace'] = True
     valuations = multi_unit_valuations(device, bounds, n_items, plot_points,
         'random' if split_award is None else split_award, sort=split_award is not None)
+    # valuations = bidders[0].draw_valuations_()
 
     b_opt = optimal_bid(valuations)
     b_opt_2 = optimal_bid_2(valuations).cpu().numpy()
@@ -810,7 +823,7 @@ def plot_bid_function(
 
     print(os.path.join(logdir, f'_{e:05}.' + format))
     if save_fig_to_disc and logdir is not None:
-        plt.savefig(os.path.join(logdir, f'_{e:05}.' + format))
+        plt.savefig(os.path.join(logdir, 'plots', f'_{e:05}.' + format))
     if writer and log_name is not None:
         writer.add_figure('plot/plot', fig, e)
 
@@ -1368,7 +1381,7 @@ def read_logs(path: str):
 
 def log_evaulation(
         path: str = '/home/kohring/bnelearn/experiments/expiriments_nils/' \
-                    + 'FPSBSplitAwardAuction/2players_2items/',
+                    + 'MultiItemDiscriminatoryAuction/2players_2items/',
         save = True
     ):
     """
@@ -1810,6 +1823,135 @@ def summary_stats_splitaward(
 
     summary.to_csv(path + '_summary_analysis_.csv')
 
+def summary_stats_discirminatory(
+        path: str = '/home/kohring/bnelearn/experiments/expiriments_nils/' \
+            + 'MultiItemDiscriminatoryAuction/2players_2items/',
+        file_path: str = '/home/kohring/bnelearn/experiments/expiriments_nils/' \
+            + 'MultiItemDiscriminatoryAuction/2players_2items/20200316_082911_analysis.csv',
+        model_dict = {
+            "input_length": 2,
+            "hidden_nodes": [5, 5, 5],
+            "hidden_activations": [nn.SELU(), nn.SELU(), nn.SELU()]
+        },
+        batch_size = 2**19
+    ):
+    df = pd.read_csv(file_path)
+
+    # set up env and load models
+    mechanism, param_dict = create_discriminatory_setting()
+    names, models = list(), list()
+    for run_dir in os.listdir(path):
+        i = 0 # model idx in that path
+        while True:
+            model = load_model(os.path.join(path, run_dir), i, model_dict, param_dict['n_items'])
+            if model is not None:
+                names.append(run_dir)
+                models.append(model)
+            else:
+                break
+            i += 1
+
+    def strat_to_bidder(strategy, batch_size, player_position):
+        return Bidder.uniform(
+            lower = param_dict["u_lo"], upper = param_dict["u_hi"],
+            strategy = strategy,
+            descending_valuations = True,
+            n_items = param_dict["n_items"],
+            player_position = player_position,
+            batch_size = batch_size
+        )
+
+    bne_strategies = [
+        ClosureStrategy(
+            partial(
+                optimal_bid(mechanism, param_dict),
+                player_position = i
+            )
+        )
+        for i in range(param_dict["n_players"])
+    ]
+    bne_env = AuctionEnvironment(
+        mechanism,
+        agents = [
+            strat_to_bidder(bne_strategy, batch_size, i)
+            for i, bne_strategy in enumerate(bne_strategies)
+        ],
+        n_players = param_dict["n_players"],
+        batch_size = batch_size,
+        strategy_to_player_closure = strat_to_bidder,
+    )
+
+    utility_in_bne = bne_env.get_reward(
+        bne_env.agents[0], draw_valuations=True
+    ).cpu().numpy()
+
+    print('utility_in_bne', utility_in_bne)
+
+    metrics = ['utility_in_selfplay', 'utility_vs_bne', 'relative_loss', 'rmse']
+    def utility_in_selfplay(row):
+        model_name = row['run_id']
+        try:
+            model = models[names.index(model_name)]
+            return AuctionEnvironment(
+                mechanism,
+                agents = [
+                    strat_to_bidder(model, batch_size, i)
+                    for _ in range(param_dict["n_players"])
+                ],
+                n_players = param_dict["n_players"],
+                batch_size = batch_size,
+                strategy_to_player_closure = strat_to_bidder,
+            ).get_strategy_reward(
+                model, player_position=0, draw_valuations=True
+            ).detach().cpu().numpy()
+        except Exception as e:
+            print(e)
+            return
+    def utility_vs_bne(row):
+        model_name = row['run_id']
+        try:
+            model = models[names.index(model_name)]
+            return bne_env.get_strategy_reward(
+                model, player_position=0, draw_valuations=True
+            ).detach().cpu().numpy()
+        except Exception as e:
+            print(e)
+            return
+    def relative_loss(row):
+        try:
+            return 1 - float(row['utility_vs_bne']) / utility_in_bne
+        except Exception as e:
+            print(e)
+            return
+    def rmse(row):
+        model_name = row['run_id']
+        try:
+            model = models[names.index(model_name)]
+            return policy_metric(
+                model, bne_strategies[0].play,
+                param_dict["n_items"],
+                selection = 'random',
+                bounds = [param_dict["u_lo"], param_dict["u_hi"]],
+                eval_points_max = batch_size,
+                device = device
+            )
+        except Exception as e:
+            print(e)
+            return
+
+    for metric in metrics:
+        df[metric] = df.apply(eval(metric), axis=1)
+    # df.to_csv(path + '_analysis_.csv')
+    df.apply(pd.to_numeric, errors='ignore')
+
+    summary = pd.DataFrame(index=['mean', 'std'])
+    for metric in metrics:
+        m = df[metric].mean()
+        s = df[metric].std()
+        summary[metric] = [m, s]
+
+    summary.to_csv(path + '_summary_analysis_.csv')
+
 
 
 if __name__ == '__main__':
@@ -1817,9 +1959,9 @@ if __name__ == '__main__':
     torch.cuda.set_device(7)
     device = 'cuda'
 
-
     # log_evaulation()
-    summary_stats_splitaward()
+    summary_stats_discirminatory()
+    # summary_stats_splitaward()
     # compare_models(device=device)
     # plot_gradients()
 
