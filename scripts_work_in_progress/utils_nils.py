@@ -6,7 +6,7 @@ Desc   Helper file for testing of learning in multi unit auction formats
 
 import sys
 import os
-sys.path.append(os.path.realpath('.'))
+sys.path.append(os.path.realpath('../scripts'))
 
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
