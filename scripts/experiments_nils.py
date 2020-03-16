@@ -115,7 +115,6 @@ elif param_dict["exp_no"] == 2:
             n_items = param_dict["n_items"],
             item_interest_limit = param_dict["item_interest_limit"],
             descending_valuations = True,
-            constant_marginal_values = True,
             player_position = player_position,
             batch_size = batch_size
         )
@@ -143,7 +142,6 @@ elif param_dict["exp_no"] == 4:
             strategy = strategy,
             n_items = param_dict["n_items"],
             descending_valuations = True,
-            constant_marginal_values = True,
             player_position = player_position,
             batch_size = batch_size
         )
@@ -191,11 +189,7 @@ elif param_dict["exp_no"] == 6:
             lower = param_dict["u_lo"], upper = param_dict["u_hi"],
             strategy = strategy,
             n_items = param_dict["n_items"],
-            item_interest_limit = param_dict["item_interest_limit"]\
-                if "item_interest_limit" in param_dict.keys() else None,
             descending_valuations = param_dict["exp_no"] != 6,
-            constant_marginal_values = param_dict["constant_marginal_values"] \
-                if "constant_marginal_values" in param_dict.keys() else None,
             player_position = player_position,
             efficiency_parameter = param_dict["efficiency_parameter"] \
                 if "efficiency_parameter" in param_dict.keys() else None,
@@ -219,10 +213,10 @@ log_name = auction_type_str + '_' + str(param_dict["n_players"]) \
 batch_size = 2**18
 # regret_batch_size = 2**6
 epoch = 20000
-model_sharing = False
+model_sharing = True
 epo_n = 2 # for ensure positive output of initialization
 plot_epoch = 100
-specific_gpu = 4
+specific_gpu = 5
 logging = True
 
 
@@ -240,7 +234,7 @@ param_dict["input_length"] = param_dict["n_items"] - 1 \
     if param_dict["exp_no"] == 6 else param_dict["n_items"]
 
 model_dict = {
-    "hidden_nodes": [15, 15, 15],
+    "hidden_nodes": [5, 5, 5],
     "hidden_activations": [nn.SELU(), nn.SELU(), nn.SELU()]
 }
 
@@ -313,13 +307,14 @@ for vals in product(*hyperparams.values()):
 
     # Pretrain
     pretrain_points = round(100 ** (1 / param_dict["input_length"]))
-    pretrain_valuations = multi_unit_valuations(
-        device = device,
-        bounds = [param_dict["u_lo"], param_dict["u_hi"]],
-        dim = param_dict["n_items"],
-        batch_size = pretrain_points,
-        selection = 'random' if param_dict["exp_no"] != 6 else split_award_dict
-    )
+    # pretrain_valuations = multi_unit_valuations(
+    #     device = device,
+    #     bounds = [param_dict["u_lo"], param_dict["u_hi"]],
+    #     dim = param_dict["n_items"],
+    #     batch_size = pretrain_points,
+    #     selection = 'random' if param_dict["exp_no"] != 6 else split_award_dict
+    # )
+    pretrain_valuations = strat_to_bidder(lambda x: x, batch_size, 0).draw_valuations_()[:pretrain_points,:]
 
     n_parameters = list()
     for model in models:
@@ -490,6 +485,8 @@ for vals in product(*hyperparams.values()):
                                 selection = split_award_dict \
                                     if param_dict["exp_no"] == 6 else 'random',
                                 bounds = [param_dict["u_lo"], param_dict["u_hi"]],
+                                item_interest_limit = param_dict["item_interest_limit"] if \
+                                    "item_interest_limit" in param_dict.keys() else None,
                                 eval_points_max = 2 ** 18,
                                 device = device
                             )
@@ -502,6 +499,8 @@ for vals in product(*hyperparams.values()):
                                 selection = split_award_dict \
                                     if param_dict["exp_no"] == 6 else 'random',
                                 bounds = [param_dict["u_lo"], param_dict["u_hi"]],
+                                item_interest_limit = param_dict["item_interest_limit"] if \
+                                    "item_interest_limit" in param_dict.keys() else None,
                                 eval_points_max = 2 ** 18,
                                 device = device
                             )

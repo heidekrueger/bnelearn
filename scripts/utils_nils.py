@@ -7,6 +7,7 @@ Desc   Helper file for testing of learning in multi unit auction formats
 import sys
 import os
 sys.path.append(os.path.realpath('.'))
+from copy import deepcopy
 
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -375,6 +376,7 @@ def policy_metric(
         bounds = [0, 1],
         eval_points_max: int = 2**7,
         selection = 'random',
+        item_interest_limit = None,
         dim_of_interest = None,
         device = None,
     ):
@@ -384,7 +386,7 @@ def policy_metric(
     TODO: Consider sampleing according to underlying distribution instead of
         the uniform grid sampleing!
     """
-    valuations = multi_unit_valuations(device, bounds, dim, eval_points_max, selection)
+    valuations = multi_unit_valuations(device, bounds, dim, eval_points_max, selection, item_interest_limit)
 
     policy_1_bidding = policy_1(valuations).detach()
     policy_2_bidding = policy_2(valuations).detach()
@@ -585,6 +587,7 @@ def multi_unit_valuations(
         dim = 2,
         batch_size = 100,
         selection = 'random',
+        item_interest_limit = False,
         sort = False,
     ):
     """Returns uniformly sampled valuations for multi unit auctions."""
@@ -617,6 +620,8 @@ def multi_unit_valuations(
         mask = (mask == valuations).all(dim=1)
         valuations = valuations[mask]
 
+    if isinstance(item_interest_limit, int):
+        valuations[:,item_interest_limit:] = 0
     if sort:
         valuations = valuations.sort(dim=1)[0]
 
@@ -681,9 +686,9 @@ def plot_bid_function(
 
     if split_award is not None:
         split_award['linspace'] = True
-    valuations = multi_unit_valuations(device, bounds, n_items, plot_points,
-        'random' if split_award is None else split_award, sort=split_award is not None)
-    # valuations = bidders[0].draw_valuations_()
+    # valuations = multi_unit_valuations(device, bounds, n_items, plot_points,
+    #     'random' if split_award is None else split_award, item_interest_limit=, sort=split_award is not None)
+    valuations = deepcopy(bidders[0]).draw_valuations_()[:plot_points,:]
 
     b_opt = optimal_bid(valuations)
     b_opt_2 = optimal_bid_2(valuations).cpu().numpy()
@@ -1381,7 +1386,7 @@ def read_logs(path: str):
 
 def log_evaulation(
         path: str = '/home/kohring/bnelearn/experiments/expiriments_nils/' \
-                    + 'MultiItemDiscriminatoryAuction/2players_2items/',
+                    + 'MultiItemVickreyAuction/2players_2items/',
         save = True
     ):
     """
@@ -1959,8 +1964,8 @@ if __name__ == '__main__':
     torch.cuda.set_device(7)
     device = 'cuda'
 
-    # log_evaulation()
-    summary_stats_discirminatory()
+    log_evaulation()
+    # summary_stats_discirminatory()
     # summary_stats_splitaward()
     # compare_models(device=device)
     # plot_gradients()

@@ -38,36 +38,44 @@ def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
     return cleaned_bids
 
 
-def _get_multiunit_allocation(bids: torch.Tensor) -> torch.Tensor:
+def _get_multiunit_allocation(
+        bids: torch.Tensor,
+        random_tie_break: bool = True,
+        accept_zero_bids: bool = False,
+    ) -> torch.Tensor:
     """For bids (batch x player x item) in descending order for each batch/player,
        returns efficient allocation (0/1, batch x player x item)
 
        This function assumes that validity checks have already been performed.
     """
     # for readability
-    batch_dim, player_dim, item_dim = 0, 1, 2  # pylint: disable=unused-variable
+    batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
     batch_size, n_players, n_items = bids.shape
 
-    allocations = torch.zeros(batch_size, n_players * n_items, device=bids.device)
-    bids_flat = bids.reshape(batch_size, n_players * n_items)
-    _, sorted_idx = torch.sort(bids_flat, descending=True)
-    allocations.scatter_(player_dim, sorted_idx[:, :n_items], 1)
-    allocations = allocations.reshape_as(bids)
-    allocations.masked_fill_(mask=bids == 0, value=0)
+    allocations = torch.zeros(batch_size, n_players*n_items, device=bids.device)
 
-    # Equivalent but slow: for loops
-    # # add fictitious negative bids (for case in which one bidder wins all items -> IndexError)
-    # allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
-    # bids_extend = -1 * torch.ones(batch_size, n_players, n_items+1, device=self.device)
-    # bids_extend[:,:,:-1] = bids
-    # for batch in range(batch_size):
-    #     current_bids = bids_extend.clone().detach()[batch,:,0]
-    #     current_bids_indices = [0] * n_players
-    #     for _ in range(n_items):
-    #         winner = current_bids.argmax()
-    #         allocations[batch,winner,current_bids_indices[winner]] = 1
-    #         current_bids_indices[winner] += 1
-    #         current_bids[winner] = bids_extend.clone().detach()[batch,winner,current_bids_indices[winner]]
+    if random_tie_break: # randomly change order of bidders
+        idx = torch.randn((batch_size, n_players*n_items), device=bids.device) \
+              .sort()[1] + (n_players*n_items) \
+              * torch.arange(batch_size, device=bids.device).reshape(-1, 1)
+        bids_flat = bids.view(-1)[idx]
+    else:
+        bids_flat = bids.reshape(batch_size, n_players*n_items)
+
+    _, sorted_idx = torch.sort(bids_flat, descending=True)
+    allocations.scatter_(player_dim, sorted_idx[:,:n_items], 1)
+
+    if random_tie_break: # restore bidder order
+        idx_rev = idx.sort()[1] + (n_players*n_items) \
+                  * torch.arange(batch_size, device=bids.device).reshape(-1, 1)
+        allocations = allocations.view(-1)[idx_rev.view(-1)]
+
+    # sorting is needed, since tie break could end up in favour of lower valued item
+    allocations = allocations.reshape_as(bids).sort(descending=True, dim=item_dim)[0]
+
+    if not accept_zero_bids:
+        allocations.masked_fill_(mask=bids==0, value=0)
+
     return allocations
 
 

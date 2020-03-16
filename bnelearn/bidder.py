@@ -159,14 +159,14 @@ class Bidder(Player):
             # slow! (sampling on cpu then copying to GPU)
             self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device).relu()
 
-        if isinstance(self.item_interest_limit, int):
-            self.valuations[:,self.item_interest_limit:] = 0
-
         if self.constant_marginal_values:
             self.valuations.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
                                         self.valuations[:,0:1].repeat(1, self.n_items-1))
 
-        elif self.descending_valuations:
+        if isinstance(self.item_interest_limit, int):
+            self.valuations[:,self.item_interest_limit:] = 0
+
+        if self.descending_valuations:
             # for uniform vals and 2 items <=> F1(v)=v**2, F2(v)=2v-v**2
             self.valuations, _ = self.valuations.sort(dim=1, descending=True)
 
