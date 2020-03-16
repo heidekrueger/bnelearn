@@ -30,9 +30,9 @@ import bnelearn.util.metrics as metrics
 cuda = True
 specific_gpu = 0
 
-n_runs = 10
+n_runs = 1
 seeds = list(range(n_runs))
-epochs = 5000
+epochs = 50
 
 # Logging and plotting
 logging_options = dict(
