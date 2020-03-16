@@ -262,7 +262,7 @@ class ReverseBidder(Bidder):
                 return payoff.relu()**self.risk - (-payoff).relu()**self.risk
 
         def get_action(self):
-        """Calculate action from current valuations, or retrieve from cache"""
+            """Calculate action from current valuations, or retrieve from cache"""
             if self._cache_actions and not self._valuations_changed:
                 return self.actions
 
