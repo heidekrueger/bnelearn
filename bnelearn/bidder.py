@@ -123,7 +123,8 @@ class Bidder(Player):
     @valuations.setter
     def valuations(self, new_value: torch.Tensor):
         """When manually setting valuations, make sure that the _valuations_changed flag is set correctly."""
-        assert new_value.shape == self._valuations.shape, "New valuations have invalid shape"
+        if new_value.shape != self._valuations.shape:
+            warnings.warn("New valuations have different shape than specified in Bidder object!")
         if (new_value.dtype, new_value.device) != (self._valuations.dtype, self._valuations.device):
             warnings.warn(
                 "New valuations have different dtype and/or device than bidder. Converting to {},{}".format(
