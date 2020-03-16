@@ -83,9 +83,6 @@ class Bidder(Player):
                  constant_marginal_values = False
                  ):
 
-        assert not descending_valuations or not split_award, \
-            'descending_valuations only for multi-unit auctions!'
-
         super().__init__(strategy, player_position, batch_size, cuda)
 
         self.value_distribution = value_distribution
@@ -221,6 +218,9 @@ class ReverseBidder(Bidder):
                  split_award = False,
                  efficiency_parameter = None,
                  ):
+
+        assert not descending_valuations or not split_award, \
+            'descending_valuations only for multi-unit auctions!'
 
         super().__init__(
             self,
