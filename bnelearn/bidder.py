@@ -94,8 +94,6 @@ class Bidder(Player):
         self.item_interest_limit = item_interest_limit
         self.constant_marginal_values = constant_marginal_values
         self.risk = risk
-        self.split_award = split_award
-        self.efficiency_parameter = efficiency_parameter
         self._cache_actions = cache_actions
         self._valuations_changed = False # true if new valuation drawn since actions calculated
         self.valuations = torch.zeros(batch_size, n_items, device=self.device)
