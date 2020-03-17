@@ -10,49 +10,28 @@ from pandas import np
 from torch.utils.tensorboard import SummaryWriter
 
 # pylint: disable=unnecessary-pass,unused-argument
-from bnelearn.environment import Environment
+
 from bnelearn.experiment.gpu_controller import GPUController
+from bnelearn.experiment.learning_configuration import LearningConfiguration
 from bnelearn.experiment.logger import Logger
-from bnelearn.experiment.plotter import Plotter
-from bnelearn.learner import Learner
-from bnelearn.strategy import Strategy
 
 
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
 
-    def __init__(self, mechanism_type, n_players, gpu_config: GPUController, logger: Logger, plotter: Plotter,
-                 learner_hyperparams: dict, optimizer_type: torch.optim, optimizer_hyperparams: dict,
-                 input_length: int, hidden_nodes: list, hidden_activations: list, pretrain_iters: int = 500,
-                 batch_size: int = 2**13, eval_batch_size: int = 2**12, cache_eval_actions: bool = True,
-                 risk: float = 1.0, n_runs: int = 1):
+    def __init__(self, mechanism_type, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+                 risk: float = 1.0):
 
-        self.n_players = n_players
+        self.l_config = l_config
         self.mechanism_type = mechanism_type
         self.gpu_config = gpu_config
-        self.n_runs = n_runs
         self.risk = risk
         self.risk_profile = Experiment.get_risk_profile(risk)
         self.logger = logger
-        self.plotter = plotter
-        self.learner_hyperparams = learner_hyperparams
-        self.optimizer_type = optimizer_type
-        self.optimizer_hyperparams = optimizer_hyperparams
-        self.input_length = input_length
-        self.hidden_nodes = hidden_nodes
-        self.hidden_activations = hidden_activations
-        self.pretrain_iters = pretrain_iters
-        self.batch_size = batch_size
-        self.eval_batch_size = eval_batch_size
-        self.cache_eval_actions = cache_eval_actions
+        self.base_dir = None
 
-        self.valuation_prior = None
-        self.log_dir = None  # is set dynamically in each run
-        self.fig = None  # is set dynamically in each run
-        self.seeds = list(range(n_runs))
 
         # Setup the experiment
-        self.setup_experiment_domain()
         self.setup_bidders()
         self.setup_learning_environment()
         self.setup_learners()
@@ -64,12 +43,6 @@ class Experiment(ABC):
     @abstractmethod
     def setup_name(self):
         """"""
-        pass
-
-    @abstractmethod
-    def setup_experiment_domain(self):
-        """This method should set up the set of Players/Bidders
-        """
         pass
 
     @abstractmethod
@@ -155,34 +128,50 @@ class Experiment(ABC):
         pass
 
     # ToDO Move logging to logger
-    def run(self, epochs, run_comment=None):
+    def run(self, epochs, n_runs: int = 1, run_comment=None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
 
-        if os.name == 'nt':
-            raise ValueError('The run_name may not contain : on Windows!')
-        run_name = time.strftime('%Y-%m-%d %a %H:%M:%S')
-        if run_comment:
-            run_name = run_name + ' - ' + str(run_comment)
 
-        self.log_dir = os.path.join(self.logger.logging_options['log_root'], self.base_dir, run_name)
-        os.makedirs(self.log_dir, exist_ok=False)
-        if self.logger.logging_options['save_figure_to_disc_png']:
-            os.mkdir(os.path.join(self.log_dir, 'png'))
-        if self.logger.logging_options['save_figure_to_disc_svg']:
-            os.mkdir(os.path.join(self.log_dir, 'svg'))
+        seeds = list(range(n_runs))
+        for seed in seeds:
+            print('Running experiment {}'.format(seed))
+            if seed is not None:
+                torch.random.manual_seed(seed)
+                torch.cuda.manual_seed_all(seed)
 
-        # disable this to continue training?
-        e = 0
-        self.overhead_mins = 0.0
+            if os.name == 'nt':
+                raise ValueError('The run_name may not contain : on Windows!')
+            run_name = time.strftime('%Y-%m-%d %a %H:%M:%S')
+            if run_comment:
+                run_name = run_name + ' - ' + str(run_comment)
 
-        print('Started run. Logging to {}'.format(self.log_dir))
-        self.fig = plt.figure()
+            self.log_dir = os.path.join(self.logger.logging_options['log_root'], self.base_dir, run_name)
+            os.makedirs(self.log_dir, exist_ok=False)
+            if self.logger.logging_options['save_figure_to_disc_png']:
+                os.mkdir(os.path.join(self.log_dir, 'png'))
+            if self.logger.logging_options['save_figure_to_disc_svg']:
+                os.mkdir(os.path.join(self.log_dir, 'svg'))
 
-        torch.cuda.empty_cache()
+            # disable this to continue training?
+            e = 0
+            self.overhead_mins = 0.0
 
-        with SummaryWriter(self.log_dir, flush_secs=30) as writer:
-            self.log_once(writer, 0)
-            self.log_hyperparams(writer, 0)
+            print('Started run. Logging to {}'.format(self.log_dir))
+            self.fig = plt.figure()
 
-            for e in range(e, e + epochs + 1):
-                self.training_loop(writer, e)
+            torch.cuda.empty_cache()
+
+            with SummaryWriter(self.log_dir, flush_secs=30) as writer:
+                self.log_once(writer, 0)
+                self.log_hyperparams(writer, 0)
+
+                for e in range(e, e + epochs + 1):
+                    self.training_loop(writer, e)
+
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+            if torch.cuda.memory_allocated() > 0:
+                warnings.warn('Theres a memory leak')
+
+
+

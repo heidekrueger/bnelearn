@@ -10,7 +10,7 @@ import bnelearn.util.metrics as metrics
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import Environment, AuctionEnvironment
-from bnelearn.experiment import Experiment, GPUController, Logger, Plotter, Learner, os
+from bnelearn.experiment import Experiment, GPUController, Logger, os, LearningConfiguration
 
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
@@ -19,51 +19,36 @@ from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
 
 # general logic and setup, plot
 class SingleItemExperiment(Experiment, ABC):
-    def __init__(self, mechanism_type, n_players, gpu_config: GPUController, logger: Logger, plotter: Plotter,
-                 learner_hyperparams: dict, optimizer_type: torch.optim, optimizer_hyperparams: dict, input_length: int,
-                 hidden_nodes: list, hidden_activations: list, pretrain_iters: int = 500, batch_size: int = 2 ** 13,
-                 eval_batch_size: int = 2 ** 12, cache_eval_actions: bool = True, risk: int = 1.0, n_runs: int = 1):
-        super().__init__(mechanism_type, n_players, gpu_config, logger, plotter, learner_hyperparams, optimizer_type,
-                         optimizer_hyperparams, input_length, hidden_nodes, hidden_activations, pretrain_iters,
-                         batch_size, eval_batch_size, cache_eval_actions, risk, n_runs)
+    def __init__(self, mechanism_type, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+                 risk: float = 1.0):
+        super().__init__(mechanism_type, gpu_config, logger, l_config, risk)
 
 
 # implementation logic, e.g. model sharing. Model sharing should also override plotting function, etc.
 class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
-    def __init__(self, mechanism_type, n_players, gpu_config: GPUController, logger: Logger, plotter: Plotter,
-                 learner_hyperparams: dict, optimizer_type: torch.optim, optimizer_hyperparams: dict, input_length: int,
-                 hidden_nodes: list, hidden_activations: list, pretrain_iters: int = 500, batch_size: int = 2 ** 13,
-                 eval_batch_size: int = 2 ** 12, cache_eval_actions: bool = True, risk: int = 1.0, n_runs: int = 1):
-        super().__init__(mechanism_type, n_players, gpu_config, logger, plotter, learner_hyperparams, optimizer_type,
-                         optimizer_hyperparams, input_length, hidden_nodes, hidden_activations, pretrain_iters,
-                         batch_size, eval_batch_size, cache_eval_actions, risk, n_runs)
+    def __init__(self, mechanism_type, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+                 risk: float = 1.0):
+        super().__init__(mechanism_type, gpu_config, logger, l_config, risk)
 
 
 # implementation differences to symmetric case?
 class AsymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
-    def __init__(self, mechanism_type, n_players, gpu_config: GPUController, logger: Logger, plotter: Plotter,
-                 learner_hyperparams: dict, optimizer_type: torch.optim, optimizer_hyperparams: dict, input_length: int,
-                 hidden_nodes: list, hidden_activations: list, pretrain_iters: int = 500, batch_size: int = 2 ** 13,
-                 eval_batch_size: int = 2 ** 12, cache_eval_actions: bool = True, risk: int = 1.0, n_runs: int = 1):
-        super().__init__(mechanism_type, n_players, gpu_config, logger, plotter, learner_hyperparams, optimizer_type,
-                         optimizer_hyperparams, input_length, hidden_nodes, hidden_activations, pretrain_iters,
-                         batch_size, eval_batch_size, cache_eval_actions, risk, n_runs)
+    def __init__(self, mechanism_type, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+                 risk: float = 1.0):
+        super().__init__(mechanism_type, gpu_config, logger, l_config, risk)
 
 
 # known BNE
 class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
 
-    def __init__(self, mechanism_type, n_players, gpu_config: GPUController, logger: Logger, plotter: Plotter,
-                 learner_hyperparams: dict, optimizer_type: torch.optim, optimizer_hyperparams: dict, input_length: int,
-                 hidden_nodes: list, hidden_activations: list, pretrain_iters: int = 500, batch_size: int = 2 ** 13,
-                 eval_batch_size: int = 2 ** 12, cache_eval_actions: bool = True, risk: int = 1.0, n_runs: int = 1):
+    def __init__(self, mechanism_type, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+                 risk: float = 1.0):
 
-        super().__init__(mechanism_type, n_players, gpu_config, logger, plotter, learner_hyperparams, optimizer_type,
-                         optimizer_hyperparams, input_length, hidden_nodes, hidden_activations, pretrain_iters,
-                         batch_size, eval_batch_size, cache_eval_actions, risk, n_runs)
+        self.n_players = 2
+        super().__init__(mechanism_type, gpu_config, logger, l_config, risk)
 
         # plotting
-        self.plot_points = min(150, self.batch_size)
+        self.plot_points = min(150, self.l_config.batch_size)
         self.v_opt = np.linspace(self.plot_xmin, self.plot_xmax, 100)
         self.b_opt = self.optimal_bid(self.v_opt)
 
@@ -72,15 +57,9 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
             from IPython import display
         plt.rcParams['figure.figsize'] = [8, 5]
 
-
-
-
     def strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
         return Bidder.uniform(self.u_lo, self.u_hi, strategy, batch_size=batch_size,
                               player_position=player_position, cache_actions=cache_actions, risk=self.risk)
-
-    def setup_experiment_domain(self):
-        pass
 
     def setup_bidders(self):
         # setup_experiment_domain
@@ -88,7 +67,7 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         self.u_hi = 10
         self.common_prior = torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
 
-        self.positive_output_point = self.u_hi # is required  to set up bidders
+        self.positive_output_point = self.u_hi  # is required  to set up bidders
 
         self.plot_xmin = self.u_lo
         self.plot_xmax = self.u_hi
@@ -98,19 +77,20 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         self.valuation_prior = 'uniform'  # for now, one of 'uniform' / 'normal', specific params defined in script
         self.model_sharing = True
 
-        #symmetric and thus with model sharing
+        # symmetric and thus with model sharing
         print('Setting up bidders with model Sharing...')
         self.model = NeuralNetStrategy(
-            self.input_length, hidden_nodes=self.hidden_nodes, hidden_activations=self.hidden_activations,
+            self.l_config.input_length, hidden_nodes=self.l_config.hidden_nodes,
+            hidden_activations=self.l_config.hidden_activations,
             ensure_positive_output=torch.tensor([float(self.positive_output_point)])
         ).to(self.gpu_config.device)
 
         self.bidders = [
-            self.strat_to_bidder(self.model, self.batch_size, player_position)
+            self.strat_to_bidder(self.model, self.l_config.batch_size, player_position)
             for player_position in range(self.n_players)]
-        if self.pretrain_iters > 0:
+        if self.l_config.pretrain_iters > 0:
             print('\tpretraining...')
-            self.model.pretrain(self.bidders[0].valuations, self.pretrain_iters)
+            self.model.pretrain(self.bidders[0].valuations, self.l_config.pretrain_iters)
 
     def setup_learning_environment(self):
         if self.mechanism_type == 'first_price':
@@ -119,13 +99,13 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
             self.mechanism = VickreyAuction(cuda=self.gpu_config.cuda)
 
         self.env = AuctionEnvironment(self.mechanism, agents=self.bidders,
-                                      batch_size=self.batch_size, n_players=self.n_players,
+                                      batch_size=self.l_config.batch_size, n_players=self.n_players,
                                       strategy_to_player_closure=self.strat_to_bidder)
 
     def setup_learners(self):
         self.learner = ESPGLearner(
-            model=self.model, environment=self.env, hyperparams=self.learner_hyperparams,
-            optimizer_type=self.optimizer_type, optimizer_hyperparams=self.optimizer_hyperparams)
+            model=self.model, environment=self.env, hyperparams=self.l_config.learner_hyperparams,
+            optimizer_type=self.l_config.optimizer_type, optimizer_hyperparams=self.l_config.optimizer_hyperparams)
 
     def optimal_bid(self, valuation):
         if self.mechanism_type == 'second_price':
@@ -145,10 +125,10 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
             self.mechanism,
             agents=[self.strat_to_bidder(bneStrategy,
                                          player_position=i,
-                                         batch_size=self.eval_batch_size,
-                                         cache_actions=self.cache_eval_actions)
+                                         batch_size=self.l_config.eval_batch_size,
+                                         cache_actions=self.l_config.cache_eval_actions)
                     for i in range(self.n_players)],
-            batch_size=self.eval_batch_size,
+            batch_size=self.l_config.eval_batch_size,
             n_players=self.n_players,
             strategy_to_player_closure=self.strat_to_bidder
         )
@@ -207,7 +187,7 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         self.update_norm = (new_params - prev_params).norm(float('inf'))
         # calculate utility vs bne
         self.utility_vs_bne = self.bne_env.get_reward(
-            self.strat_to_bidder(self.model, batch_size=self.eval_batch_size),
+            self.strat_to_bidder(self.model, batch_size=self.l_config.eval_batch_size),
             draw_valuations=False)  # False because expensive for normal priors
         self.epsilon_relative = 1 - self.utility_vs_bne / self.bne_utility
         self.epsilon_absolute = self.bne_utility - self.utility_vs_bne
@@ -263,11 +243,9 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
 # known BNE + shared setup logic across runs (calculate and cache BNE
 class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
-    def __init__(self, name, mechanism_type, n_players, logging_options, gpu_config: GPUController, n_runs: int,
-                 logger: Logger, plotter: Plotter, learner: Learner, strategy: Strategy, environment: Environment):
-        super().__init__(name, mechanism_type, n_players, logging_options, gpu_config, n_runs, logger, plotter, learner,
-                         strategy, environment)
-        self.self.model_sharing = True
+    def __init__(self, mechanism_type, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+                 risk: float = 1.0):
+        super().__init__(mechanism_type, gpu_config, logger, l_config, risk)
 
     def setup_name(self):
         pass
@@ -293,7 +271,6 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
 
 # known BNE
 class TwoPlayerUniformPriorSingleItemExperiment(AsymmetricPriorSingleItemExperiment):
-    def __init__(self, name, mechanism_type, n_players, logging_options, gpu_config: GPUController, n_runs: int,
-                 logger: Logger, plotter: Plotter, learner: Learner, strategy: Strategy, environment: Environment):
-        super().__init__(name, mechanism_type, n_players, logging_options, gpu_config, n_runs, logger, plotter, learner,
-                         strategy, environment)
+    def __init__(self, mechanism_type, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+                 risk: float = 1.0):
+        super().__init__(mechanism_type, gpu_config, logger, l_config, risk)
