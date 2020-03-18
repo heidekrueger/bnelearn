@@ -1,16 +1,13 @@
+import os
 import warnings
 from abc import ABC
 import torch
-from pandas import np
+
 from scipy import integrate
-from torch.utils.tensorboard import SummaryWriter
-import matplotlib.pyplot as plt
-from timeit import default_timer as timer
-import bnelearn.util.metrics as metrics
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import Environment, AuctionEnvironment
-from bnelearn.experiment import Experiment, GPUController, Logger, os, LearningConfiguration
+from bnelearn.experiment import Experiment, GPUController, Logger, LearningConfiguration
 
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
@@ -46,16 +43,6 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
         self.n_players = 2
         super().__init__(mechanism_type, gpu_config, logger, l_config, risk)
-
-        # plotting
-        self.plot_points = min(150, self.l_config.batch_size)
-        self.v_opt = np.linspace(self.plot_xmin, self.plot_xmax, 100)
-        self.b_opt = self.optimal_bid(self.v_opt)
-
-        is_ipython = 'inline' in plt.get_backend()
-        if is_ipython:
-            from IPython import display
-        plt.rcParams['figure.figsize'] = [8, 5]
 
     def strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
         return Bidder.uniform(self.u_lo, self.u_hi, strategy, batch_size=batch_size,
@@ -105,7 +92,7 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
     def setup_learners(self):
         self.learner = ESPGLearner(
             model=self.model, environment=self.env, hyperparams=self.l_config.learner_hyperparams,
-            optimizer_type=self.l_config.optimizer_type, optimizer_hyperparams=self.l_config.optimizer_hyperparams)
+            optimizer_type=self.l_config.optimizer, optimizer_hyperparams=self.l_config.optimizer_hyperparams)
 
     def optimal_bid(self, valuation):
         if self.mechanism_type == 'second_price':
@@ -172,73 +159,24 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         self.bne_env = global_bne_env
         self.bne_utility = global_bne_utility
 
-    def training_loop(self, writer, e):
+    def training_loop(self, epoch):
         # do in every iteration
         # save current params to calculate update norm
         prev_params = torch.nn.utils.parameters_to_vector(self.model.parameters())
         # update model
-        self.utility = self.learner.update_strategy_and_evaluate_utility()
+        utility = self.learner.update_strategy_and_evaluate_utility()
 
         # everything after this is logging --> measure overhead
-        start_time = timer()
-
-        # calculate infinity-norm of update step
-        new_params = torch.nn.utils.parameters_to_vector(self.model.parameters())
-        self.update_norm = (new_params - prev_params).norm(float('inf'))
-        # calculate utility vs bne
-        self.utility_vs_bne = self.bne_env.get_reward(
-            self.strat_to_bidder(self.model, batch_size=self.l_config.eval_batch_size),
-            draw_valuations=False)  # False because expensive for normal priors
-        self.epsilon_relative = 1 - self.utility_vs_bne / self.bne_utility
-        self.epsilon_absolute = self.bne_utility - self.utility_vs_bne
-        self.L_2 = metrics.norm_strategy_and_actions(self.model, self.bne_env.agents[0].actions,
-                                                     self.bne_env.agents[0].valuations, 2)
-        self.L_inf = metrics.norm_strategy_and_actions(self.model, self.bne_env.agents[0].actions,
-                                                       self.bne_env.agents[0].valuations, float('inf'))
-        self.log_metrics(writer, e)
-
-        if e % self.logger.logging_options['plot_epoch'] == 0:
-            # plot current function output
-            # bidder = strat_to_bidder(model, batch_size)
-            # bidder.draw_valuations_()
-            v = self.bidders[0].valuations
-            b = self.bidders[0].get_action()
-            plot_data = (v, b)
-
-            print(
-                "Epoch {}: \tcurrent utility: {:.3f},\t utility vs BNE: {:.3f}, \tepsilon (abs/rel): ({:.5f}, {:.5f})".format(
-                    e, self.utility, self.utility_vs_bne, self.epsilon_absolute, self.epsilon_relative))
-            self.plot(self.fig, plot_data, writer, e)
-
-        elapsed = timer() - start_time
-        self.overhead_mins = self.overhead_mins + elapsed / 60
-        writer.add_scalar('debug/overhead_mins', self.overhead_mins, e)
-
-    def plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
-        """This method should implement a vizualization of the experiment at the current state"""
-        v, b = plot_data
-        v = v.detach().cpu().numpy()[:self.plot_points]
-        b = b.detach().cpu().numpy()[:self.plot_points]
-
-        # create the plot
-        fig = plt.gcf()
-        plt.cla()
-        plt.xlim(self.plot_xmin, self.plot_xmax)
-        plt.ylim(self.plot_ymin, self.plot_ymax)
-        plt.xlabel('valuation')
-        plt.ylabel('bid')
-        plt.text(self.plot_xmin + 0.05 * (self.plot_xmax - self.plot_xmin),
-                 self.plot_ymax - 0.05 * (self.plot_ymax - self.plot_ymin),
-                 'iteration {}'.format(e))
-        plt.plot(v, b, 'o', self.v_opt, self.b_opt, 'r--')
-
-        # show and/or log
-        self._process_figure(fig, writer, e)
+        self.logger.log_training_iteration(prev_params=prev_params, epoch=epoch, bne_env=self.bne_env,
+                                           strat_to_bidder=self.strat_to_bidder,
+                                           eval_batch_size=self.l_config.eval_batch_size, bne_utility=self.bne_utility,
+                                           bidders=self.bidders, utility=utility)
 
     def setup_name(self):
         name = ['single_item', self.mechanism_type, self.valuation_prior,
                 'symmetric', self.risk_profile, str(self.n_players) + 'p']
-        self.base_dir = os.path.join(*name)
+        self.base_dir = os.path.join(*name)  # ToDo Redundant?
+        self.logger.base_dir = os.path.join(*name)
 
 
 # known BNE + shared setup logic across runs (calculate and cache BNE
@@ -265,7 +203,7 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
     def setup_eval_environment(self):
         pass
 
-    def training_loop(self, writer, e):
+    def training_loop(self, epoch):
         pass
 
 

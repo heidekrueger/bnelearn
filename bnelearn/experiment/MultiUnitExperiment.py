@@ -25,7 +25,7 @@ class MultiItemVickreyAuction(MultiUnitExperiment):
     def setup_eval_environment(self):
         pass
 
-    def training_loop(self, writer, e):
+    def training_loop(self, epoch):
         pass
 
 
@@ -46,7 +46,7 @@ class MultiItemUniformPriceAuction2x2(MultiUnitExperiment):
     def setup_eval_environment(self):
         pass
 
-    def training_loop(self, writer, e):
+    def training_loop(self, epoch):
         pass
 
 
@@ -67,7 +67,7 @@ class MultiItemUniformPriceAuction2x3limit2(MultiUnitExperiment):
     def setup_eval_environment(self):
         pass
 
-    def training_loop(self, writer, e):
+    def training_loop(self,  epoch):
         pass
 
 
@@ -88,7 +88,7 @@ class MultiItemDiscriminatoryAuction2x2(MultiUnitExperiment):
     def setup_eval_environment(self):
         pass
 
-    def training_loop(self, writer, e):
+    def training_loop(self,  epoch):
         pass
 
 
@@ -109,7 +109,7 @@ class MultiItemDiscriminatoryAuction2x2CMV(MultiUnitExperiment):
     def setup_eval_environment(self):
         pass
 
-    def training_loop(self, writer, e):
+    def training_loop(self, epoch):
         pass
 
 
@@ -130,5 +130,5 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
     def setup_eval_environment(self):
         pass
 
-    def training_loop(self, writer, e):
+    def training_loop(self, epoch):
         pass

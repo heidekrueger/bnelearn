@@ -25,7 +25,7 @@ class LLGExperiment(CombinatorialExperiment):
     def setup_eval_environment(self):
         pass
 
-    def training_loop(self, writer, e):
+    def training_loop(self, epoch):
         pass
 
 
@@ -46,5 +46,5 @@ class LLLLGGExperiment(CombinatorialExperiment):
     def setup_eval_environment(self):
         pass
 
-    def training_loop(self, writer, e):
+    def training_loop(self, epoch):
         pass
