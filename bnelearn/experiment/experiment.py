@@ -29,8 +29,6 @@ class Experiment(ABC):
         self.model = None
 
         # setup bidders
-        self.u_lo = None
-        self.u_hi = None
         self.common_prior = None
         self.positive_output_point = None
         self.plot_xmin = None
@@ -52,7 +50,7 @@ class Experiment(ABC):
         self.bne_env = None
         self.bne_utility = None
 
-        # setup the experiment
+        # setup the experiment, don't mess with the order
         self.setup_bidders()
         self.setup_learning_environment()
         self.setup_learners()
@@ -63,6 +61,10 @@ class Experiment(ABC):
     @abstractmethod
     def setup_name(self):
         """"""
+        pass
+
+    @abstractmethod
+    def strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
         pass
 
     @abstractmethod
