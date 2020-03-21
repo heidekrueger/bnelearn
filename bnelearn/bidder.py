@@ -94,7 +94,7 @@ class Bidder(Player):
         self.risk = risk
         self._cache_actions = cache_actions
         self._valuations_changed = False # true if new valuation drawn since actions calculated
-        self.valuations = torch.zeros(batch_size, n_items, device=self.device)
+        self._valuations = torch.zeros(batch_size, n_items, device=self.device)
         if self._cache_actions:
             self.actions = torch.zeros(batch_size, n_items, device=self.device)
         self.draw_valuations_()
@@ -115,6 +115,26 @@ class Bidder(Player):
     ### Members ####################
     def prepare_iteration(self):
         self.draw_valuations_()
+
+    @property
+    def valuations(self):
+        return self._valuations
+
+    @valuations.setter
+    def valuations(self, new_value: torch.Tensor):
+        """When manually setting valuations, make sure that the _valuations_changed flag is set correctly."""
+        if new_value.shape != self._valuations.shape:
+            warnings.warn("New valuations have different shape than specified in Bidder object!")
+        if (new_value.dtype, new_value.device) != (self._valuations.dtype, self._valuations.device):
+            warnings.warn(
+                "New valuations have different dtype and/or device than bidder. Converting to {},{}".format(
+                self._valuations.device, self._valuations.dtype)
+                )
+
+        if not new_value.equal(self._valuations):
+            self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
+            self._valuations_changed =True
+
 
     def draw_valuations_(self):
         """ Sample a new batch of valuations from the Bidder's prior. Negative
