@@ -117,7 +117,7 @@ class Experiment(ABC):
                 torch.random.manual_seed(seed)
                 torch.cuda.manual_seed_all(seed)
 
-                #TODO:Change to log all models, not just one
+                # TODO:Change to log all models, not just one
                 # Changed models back to model for now cause it requires more changes in the logger
                 self.logger.log_experiment(model=self.model, env=self.env, run_comment=run_comment,
                                            plot_xmin=self.plot_xmin, plot_xmax=self.plot_xmax,
