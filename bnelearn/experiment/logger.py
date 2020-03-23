@@ -87,7 +87,7 @@ class SingleItemAuctionLogger(Logger):
         super().__init__()
 
     def log_experiment(self, model, env, run_comment, plot_xmin, plot_xmax, plot_ymin, plot_ymax, batch_size,
-                       optimal_bid):
+                       optimal_bid, player_position=0):
         # setting up plotting
         self.plot_xmin = plot_xmin
         self.plot_xmax = plot_xmax
@@ -95,7 +95,7 @@ class SingleItemAuctionLogger(Logger):
         self.plot_ymax = plot_ymax
         self.plot_points = min(150, batch_size)
         self.v_opt = np.linspace(plot_xmin, plot_xmax, 100)
-        self.b_opt = optimal_bid(self.v_opt)
+        self.b_opt = optimal_bid(self.v_opt, player_position=player_position)
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
@@ -103,6 +103,7 @@ class SingleItemAuctionLogger(Logger):
         plt.rcParams['figure.figsize'] = [8, 5]
 
         # TODO: This should rather be represented as a list and plotting all models in that list
+
         self.model = model
         self.env = env
 
@@ -143,6 +144,7 @@ class SingleItemAuctionLogger(Logger):
         L_2 = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].get_actions(),
                                                 bne_env.agents[0].valuations, 2)
         L_inf = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].get_actions(),
+
                                                   bne_env.agents[0].valuations, float('inf'))
         self._log_metrics(writer=self.writer, epoch=epoch, utility=utility, update_norm=update_norm,
                           utility_vs_bne=utility_vs_bne, epsilon_relative=epsilon_relative,
@@ -249,8 +251,7 @@ class MultiUnitAuctionLogger(Logger):
     def _log_once(self, writer, epoch):
         pass
 
-    @staticmethod
-    def _log_metrics(writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute, L_2,
+    def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute, L_2,
                      L_inf):
         pass
 
@@ -262,5 +263,29 @@ class MultiUnitAuctionLogger(Logger):
 
 
 class CombinatorialAuctionLogger(Logger):
+    def log_experiment(self, model, env, run_comment, plot_xmin, plot_xmax, plot_ymin, plot_ymax, batch_size,
+                       optimal_bid):
+        pass
+
+    def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,
+                               bidders, utility):
+        pass
+
+    def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
+        pass
+
+    def _process_figure(self, fig, writer=None, epoch=None):
+        pass
+
+    def _log_once(self, writer, epoch):
+        pass
+
+    def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute, L_2,
+                     L_inf):
+        pass
+
+    def _log_hyperparams(self, writer, epoch):
+        pass
+
     def __init__(self):
         super().__init__()
