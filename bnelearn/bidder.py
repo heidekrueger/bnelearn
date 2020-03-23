@@ -166,7 +166,7 @@ class Bidder(Player):
             self.valuations.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
                                         self.valuations[:,0:1].repeat(1, self.n_items-1))
 
-        elif self.descending_valuations:
+        if self.descending_valuations:
             # for uniform vals and 2 items <=> F1(v)=v**2, F2(v)=2v-v**2
             self.valuations, _ = self.valuations.sort(dim=1, descending=True)
 
@@ -252,8 +252,8 @@ class ReverseBidder(Bidder):
                  efficiency_parameter = None,
                  ):
 
+        self.efficiency_parameter = efficiency_parameter
         super().__init__(
-            self,
             value_distribution,
             strategy,
             player_position,
@@ -266,18 +266,27 @@ class ReverseBidder(Bidder):
             item_interest_limit,
             constant_marginal_values
         )
-        self.efficiency_parameter = efficiency_parameter
+
+    @classmethod
+    def uniform(cls, lower, upper, strategy, **kwargs):
+        """Constructs a bidder with uniform valuation prior."""
+        dist = torch.distributions.uniform.Uniform(low=lower, high=upper)
+        return cls(dist, strategy, **kwargs)
+
+    @classmethod
+    def normal(cls, mean, stddev, strategy, **kwargs):
+        """Constructs a bidder with Gaussian valuation prior."""
+        dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
+        return cls(dist, strategy, **kwargs)
 
     def draw_valuations_(self):
         """ Extends `Bidder.draw_valuations_` with efiiciency parameter
         """
-
         _ = super().draw_valuations_()
 
-        if self.efficiency_parameter is not None:
-            assert self.valuations.shape[1] == 2, \
-                'linear valuations are only defined for two items.'
-            self.valuations[:,1] = self.efficiency_parameter * self.valuations[:,0]
+        assert self.valuations.shape[1] == 2, \
+            'linear valuations are only defined for two items.'
+        self.valuations[:,1] = self.efficiency_parameter * self.valuations[:,0]
 
         return self.valuations
 
