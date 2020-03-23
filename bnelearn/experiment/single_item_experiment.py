@@ -25,7 +25,8 @@ class SingleItemExperiment(Experiment, ABC):
 
 # implementation logic, e.g. model sharing. Model sharing should also override plotting function, etc.
 class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
-    def __init__(self, n_players: int, mechanism_type, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+    def __init__(self, n_players: int, mechanism_type, gpu_config: GPUController, logger: Logger,
+                 l_config: LearningConfiguration,
                  risk: float = 1.0):
         self.model_sharing = True
         self.global_bne_env = None
@@ -92,7 +93,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
     def _setup_name(self):
         name = ['single_item', self.mechanism_type, self.valuation_prior,
                 'symmetric', self.risk_profile, str(self.n_players) + 'p']
-        self.base_dir = os.path.join(*name)  # ToDo Redundant?
+        # self.base_dir = os.path.join(*name)
         self.logger.base_dir = os.path.join(*name)
 
     def _training_loop(self, epoch):
@@ -111,7 +112,8 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
 
 # implementation differences to symmetric case?
 class AsymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
-    def __init__(self, n_players: int, mechanism_type, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+    def __init__(self, n_players: int, mechanism_type, gpu_config: GPUController, logger: Logger,
+                 l_config: LearningConfiguration,
                  risk: float = 1.0):
         super().__init__(n_players, mechanism_type, gpu_config, logger, l_config, risk)
 
@@ -119,7 +121,8 @@ class AsymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
 # known BNE
 class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
 
-    def __init__(self, n_players: int, mechanism_type, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+    def __init__(self, n_players: int, mechanism_type, gpu_config: GPUController, logger: Logger,
+                 l_config: LearningConfiguration,
                  risk: float = 1.0):
         self.u_lo = None
         self.u_hi = None
@@ -146,14 +149,8 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
         super()._setup_bidders()
 
-    def _setup_learning_environment(self):
-        super()._setup_learning_environment()
 
-    def _setup_learners(self):
-        super()._setup_learners()
-
-
-    def _optimal_bid(self, valuation):
+    def _optimal_bid(self, valuation, player_position=None):
         if self.mechanism_type == 'second_price':
             return valuation
         elif self.mechanism_type == 'first_price':
@@ -182,16 +179,12 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
         super()._setup_eval_environment()
 
-    def _setup_name(self):
-        super()._setup_name()
-
-    def _training_loop(self, epoch):
-        super()._training_loop(epoch)
 
 
 # known BNE + shared setup logic across runs (calculate and cache BNE
 class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
-    def __init__(self, n_players: int,  mechanism_type, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+    def __init__(self, n_players: int, mechanism_type, gpu_config: GPUController, logger: Logger,
+                 l_config: LearningConfiguration,
                  risk: float = 1.0):
         self.valuation_mean = None
         self.valuation_std = None
@@ -220,13 +213,7 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
 
         super()._setup_bidders()
 
-    def _setup_learning_environment(self):
-        super()._setup_learning_environment()
-
-    def _setup_learners(self):
-        super()._setup_learners()
-
-    def _optimal_bid(self, valuation: torch.Tensor or np.ndarray or float):
+    def _optimal_bid(self, valuation: torch.Tensor or np.ndarray or float, player_position=None):
         if self.mechanism_type == 'second_price':
             return valuation
         elif self.mechanism_type == 'first_price':
@@ -281,13 +268,6 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
 
         super()._setup_eval_environment()
 
-    def _setup_name(self):
-        super()._setup_name()
-
-    def _training_loop(self, epoch):
-        super()._training_loop(epoch)
-
-
 # known BNE
 class TwoPlayerUniformPriorSingleItemExperiment(AsymmetricPriorSingleItemExperiment):
     def _setup_name(self):
@@ -308,12 +288,13 @@ class TwoPlayerUniformPriorSingleItemExperiment(AsymmetricPriorSingleItemExperim
     def _setup_eval_environment(self):
         pass
 
-    def _optimal_bid(self, valuation):
+    def _optimal_bid(self, valuation, player_position=None):
         pass
 
     def _training_loop(self, epoch):
         pass
 
-    def __init__(self, n_players: int, mechanism_type, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+    def __init__(self, n_players: int, mechanism_type, gpu_config: GPUController, logger: Logger,
+                 l_config: LearningConfiguration,
                  risk: float = 1.0):
         super().__init__(n_players, mechanism_type, gpu_config, logger, l_config, risk)

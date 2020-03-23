@@ -4,7 +4,7 @@ import time
 from abc import ABC, abstractmethod
 from timeit import default_timer as timer
 import bnelearn.util.metrics as metrics
-from pandas import np
+import numpy as np
 import matplotlib.pyplot as plt
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 class Logger(ABC):
     def __init__(self, save_figure_to_disc_png: bool = True, save_figure_to_disc_svg: bool = True,
-                 plot_epoch: int = 100, show_plot_inline: bool = True, save_figure_data_to_dis: bool = False):
+                 plot_epoch: int = 10, show_plot_inline: bool = True, save_figure_data_to_dis: bool = False):
         root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
         if root_path not in sys.path:
             sys.path.append(root_path)
@@ -141,9 +141,9 @@ class SingleItemAuctionLogger(Logger):
             draw_valuations=False)  # False because expensive for normal priors
         epsilon_relative = 1 - utility_vs_bne / bne_utility
         epsilon_absolute = bne_utility - utility_vs_bne
-        L_2 = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].get_actions(),
+        L_2 = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].get_action(),
                                                 bne_env.agents[0].valuations, 2)
-        L_inf = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].get_actions(),
+        L_inf = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].get_action(),
 
                                                   bne_env.agents[0].valuations, float('inf'))
         self._log_metrics(writer=self.writer, epoch=epoch, utility=utility, update_norm=update_norm,

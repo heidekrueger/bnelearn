@@ -89,7 +89,7 @@ class Experiment(ABC):
         pass
 
     @abstractmethod
-    def _optimal_bid(self, valuation):
+    def _optimal_bid(self, valuation, player_position):
         """Defines optimal BNE strategy in this setting"""
         pass
 
