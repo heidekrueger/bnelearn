@@ -22,7 +22,7 @@ from utils_nils import *
 
 sys.path.append(os.path.realpath('.'))
 from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
-from bnelearn.bidder import Bidder #, ReverseBidder
+from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.mechanism import (MultiItemDiscriminatoryAuction,
                                 MultiItemUniformPriceAuction,
                                 MultiItemVickreyAuction,
@@ -45,7 +45,7 @@ Notes & Todo
 
 ## Experiment setup
 param_dict = dict()
-param_dict["exp_no"] = 1
+param_dict["exp_no"] = 6
 
 if param_dict["exp_no"] == 0:
     mechanism = MultiItemVickreyAuction(cuda=True)
@@ -170,6 +170,9 @@ elif param_dict["exp_no"] == 5:
 elif param_dict["exp_no"] == 6:
     mechanism, param_dict, split_award_dict = create_splitaward_setting()
     def exp_no_6_transform(input_tensor):
+        """
+        Transformation for Split-Award auciton.
+        """
         temp = input_tensor.clone().detach()
         if input_tensor.shape[1] == 1:
             output_tensor = torch.cat((
@@ -184,19 +187,19 @@ elif param_dict["exp_no"] == 6:
         Standard strat_to_bidder method.
         """
         return ReverseBidder.uniform(
+            efficiency_parameter = param_dict["efficiency_parameter"],
             lower = param_dict["u_lo"], upper = param_dict["u_hi"],
             strategy = strategy,
             n_items = param_dict["n_items"],
             descending_valuations = param_dict["exp_no"] != 6,
             player_position = player_position,
-            efficiency_parameter = param_dict["efficiency_parameter"],
             batch_size = batch_size
         )
 
 # Log in folder
 log_root = os.path.abspath('/home/kohring/bnelearn/experiments')
 save_figure_data_to_disc = False
-save_figure_to_disc = True
+save_figure_to_disc = False
 
 auction_type_str = str(type(mechanism))
 auction_type_str = str(auction_type_str[len(auction_type_str) \
@@ -212,7 +215,7 @@ batch_size = 2**18
 epoch = 2000
 model_sharing = True
 epo_n = 2 # for ensure positive output of initialization
-plot_epoch = 100
+plot_epoch = 10
 specific_gpu = 7
 logging = True
 
@@ -227,8 +230,7 @@ if cuda:
     print(torch.cuda.current_device())
 
 # strategy model architecture
-param_dict["input_length"] = param_dict["n_items"] - 1 \
-    if param_dict["exp_no"] == 6 else param_dict["n_items"]
+param_dict["input_length"] = param_dict["n_items"]
 
 model_dict = {
     "hidden_nodes": [5, 5, 5],

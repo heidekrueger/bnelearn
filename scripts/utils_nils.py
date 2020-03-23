@@ -607,8 +607,8 @@ def multi_unit_valuations(
         else:
             valuations.uniform_(bounds[0], bounds[1])
         valuations[:,1] = selection['efficiency_parameter'] * valuations[:,0]
-        if 'input_length' in selection.keys():
-            valuations = valuations[:,:selection['input_length']]
+        # if 'input_length' in selection.keys():
+        #     valuations = valuations[:,:selection['input_length']]
 
     else:
         lin = torch.linspace(bounds[0], bounds[1], eval_points_per_dim, device=device)
