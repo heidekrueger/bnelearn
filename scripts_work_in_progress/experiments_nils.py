@@ -19,6 +19,7 @@ import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 # from torch.optim.optimizer import Optimizer, required
 #from utils_nils import *
+from scripts_work_in_progress.utils_nils import *
 
 sys.path.append(os.path.realpath('.'))
 from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
