@@ -38,36 +38,44 @@ def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
     return cleaned_bids
 
 
-def _get_multiunit_allocation(bids: torch.Tensor) -> torch.Tensor:
+def _get_multiunit_allocation(
+        bids: torch.Tensor,
+        random_tie_break: bool = True,
+        accept_zero_bids: bool = False,
+    ) -> torch.Tensor:
     """For bids (batch x player x item) in descending order for each batch/player,
        returns efficient allocation (0/1, batch x player x item)
 
        This function assumes that validity checks have already been performed.
     """
     # for readability
-    batch_dim, player_dim, item_dim = 0, 1, 2  # pylint: disable=unused-variable
+    batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
     batch_size, n_players, n_items = bids.shape
 
-    allocations = torch.zeros(batch_size, n_players * n_items, device=bids.device)
-    bids_flat = bids.reshape(batch_size, n_players * n_items)
-    _, sorted_idx = torch.sort(bids_flat, descending=True)
-    allocations.scatter_(player_dim, sorted_idx[:, :n_items], 1)
-    allocations = allocations.reshape_as(bids)
-    allocations.masked_fill_(mask=bids == 0, value=0)
+    allocations = torch.zeros(batch_size, n_players*n_items, device=bids.device)
 
-    # Equivalent but slow: for loops
-    # # add fictitious negative bids (for case in which one bidder wins all items -> IndexError)
-    # allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
-    # bids_extend = -1 * torch.ones(batch_size, n_players, n_items+1, device=self.device)
-    # bids_extend[:,:,:-1] = bids
-    # for batch in range(batch_size):
-    #     current_bids = bids_extend.clone().detach()[batch,:,0]
-    #     current_bids_indices = [0] * n_players
-    #     for _ in range(n_items):
-    #         winner = current_bids.argmax()
-    #         allocations[batch,winner,current_bids_indices[winner]] = 1
-    #         current_bids_indices[winner] += 1
-    #         current_bids[winner] = bids_extend.clone().detach()[batch,winner,current_bids_indices[winner]]
+    if random_tie_break: # randomly change order of bidders
+        idx = torch.randn((batch_size, n_players*n_items), device=bids.device) \
+              .sort()[1] + (n_players*n_items) \
+              * torch.arange(batch_size, device=bids.device).reshape(-1, 1)
+        bids_flat = bids.view(-1)[idx]
+    else:
+        bids_flat = bids.reshape(batch_size, n_players*n_items)
+
+    _, sorted_idx = torch.sort(bids_flat, descending=True)
+    allocations.scatter_(player_dim, sorted_idx[:,:n_items], 1)
+
+    if random_tie_break: # restore bidder order
+        idx_rev = idx.sort()[1] + (n_players*n_items) \
+                  * torch.arange(batch_size, device=bids.device).reshape(-1, 1)
+        allocations = allocations.view(-1)[idx_rev.view(-1)]
+
+    # sorting is needed, since tie break could end up in favour of lower valued item
+    allocations = allocations.reshape_as(bids).sort(descending=True, dim=item_dim)[0]
+
+    if not accept_zero_bids:
+        allocations.masked_fill_(mask=bids==0, value=0)
+
     return allocations
 
 
@@ -172,24 +180,6 @@ class MultiItemUniformPriceAuction(Mechanism):
         payments = torch.t(bids_flat[payments.bool()].repeat(n_players, 1)) \
                    * torch.sum(allocations, dim=item_dim)
 
-        # Simple but slow: for loops
-        # # add fictitious negative bids (for case in which one bidder wins all items -> IndexError)
-        # bids_extend = -1 * torch.ones(batch_size, n_players, n_items+1, device=self.device)
-        # bids_extend[:,:,:-1] = bids
-        # # allocate return variables
-        # allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
-        # payments = torch.zeros(batch_size, n_players, device=self.device)
-        # for batch in range(batch_size):
-        #     current_bids = bids_extend.clone().detach()[batch,:,0]
-        #     current_bids_indices = [0] * n_players
-        #     for _ in range(n_items):
-        #         winner = current_bids.argmax()
-        #         allocations[batch,winner,current_bids_indices[winner]] = 1
-        #         current_bids_indices[winner] += 1
-        #         current_bids[winner] = bids_extend.clone().detach()[batch,winner,current_bids_indices[winner]]
-        #     market_clearing_price = current_bids.max()
-        #     payments[batch,:] = market_clearing_price * torch.sum(allocations[batch,::], dim=item_dim-1)
-
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
 
@@ -257,31 +247,6 @@ class MultiItemVickreyAuction(Mechanism):
             .reshape_as(bids).masked_fill_((highest_loosing_player == agent_ids) \
                                            .reshape_as(bids), 0).sort(descending=True)[0]
         payments = (allocations * highest_losing_prices).sum(item_dim)
-
-        # # add fictitious negative bids (for case in which one bidder wins all items -> IndexError)
-        # bids_extend = -1 * torch.ones(batch_size, n_players, n_items+1, device=self.device)
-        # bids_extend[:,:,:-1] = bids
-        # payments = torch.zeros(batch_size, n_players, device=self.device)
-        # for batch in range(batch_size):
-        #     current_bids = bids_extend.clone().detach()[batch,:,0]
-        #     current_bids_indices = torch.tensor([0] * n_players, device=self.device)
-        #     for _ in range(n_items):
-        #         winner = current_bids.argmax()
-        #         allocations[batch,winner,current_bids_indices[winner]] = 1
-        #         current_bids_indices[winner] += 1
-        #         current_bids[winner] = bids_extend.clone().detach()[batch,winner,current_bids_indices[winner]]
-        #     won_items_per_agent = torch.sum(allocations[batch,::], dim=item_dim-1)
-        #     for agent in range(n_players):
-        #         mask = [True] * n_players
-        #         mask[agent] = False
-        #         highest_losing_prices_indices = current_bids_indices.clone().detach()[mask]
-        #         highest_losing_prices = current_bids.clone().detach()[mask]
-        #         for _ in range(int(won_items_per_agent[agent])):
-        #             highest_losing_price_agent = int(highest_losing_prices.argmax())
-        #             payments[batch,agent] += highest_losing_prices[highest_losing_price_agent]
-        #             highest_losing_prices_indices[highest_losing_price_agent] += 1
-        #             highest_losing_prices = \
-        #                 bids_extend.clone().detach()[batch,mask,highest_losing_prices_indices]
 
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 

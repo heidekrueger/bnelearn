@@ -18,7 +18,7 @@ import torch.nn as nn
 # import torch.nn.utils as ut
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 # from torch.optim.optimizer import Optimizer, required
-from utils_nils import *
+#from utils_nils import *
 
 sys.path.append(os.path.realpath('.'))
 from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
@@ -45,7 +45,7 @@ Notes & Todo
 
 ## Experiment setup
 param_dict = dict()
-param_dict["exp_no"] = 2
+param_dict["exp_no"] = 6
 
 if param_dict["exp_no"] == 0:
     mechanism = MultiItemVickreyAuction(cuda=True)
@@ -75,7 +75,6 @@ elif param_dict["exp_no"] == 1:
     param_dict["n_items"] = 2
     param_dict["u_lo"] = 0
     param_dict["u_hi"] = 1
-    param_dict["efficiency_parameter"] = None # np.random.rand()
     def exp_no_1_transform(input_tensor):
         output_tensor = torch.clone(input_tensor)
         output_tensor[:,1] = 0
@@ -91,7 +90,6 @@ elif param_dict["exp_no"] == 1:
             strategy = strategy,
             n_items = param_dict["n_items"],
             descending_valuations = True,
-            constant_marginal_values = True,
             player_position = player_position,
             batch_size = batch_size
         )
@@ -115,7 +113,6 @@ elif param_dict["exp_no"] == 2:
             n_items = param_dict["n_items"],
             item_interest_limit = param_dict["item_interest_limit"],
             descending_valuations = True,
-            constant_marginal_values = True,
             player_position = player_position,
             batch_size = batch_size
         )
@@ -143,7 +140,6 @@ elif param_dict["exp_no"] == 4:
             strategy = strategy,
             n_items = param_dict["n_items"],
             descending_valuations = True,
-            constant_marginal_values = True,
             player_position = player_position,
             batch_size = batch_size
         )
@@ -174,6 +170,9 @@ elif param_dict["exp_no"] == 5:
 elif param_dict["exp_no"] == 6:
     mechanism, param_dict, split_award_dict = create_splitaward_setting()
     def exp_no_6_transform(input_tensor):
+        """
+        Transformation for Split-Award auciton.
+        """
         temp = input_tensor.clone().detach()
         if input_tensor.shape[1] == 1:
             output_tensor = torch.cat((
@@ -188,24 +187,19 @@ elif param_dict["exp_no"] == 6:
         Standard strat_to_bidder method.
         """
         return ReverseBidder.uniform(
+            efficiency_parameter = param_dict["efficiency_parameter"],
             lower = param_dict["u_lo"], upper = param_dict["u_hi"],
             strategy = strategy,
             n_items = param_dict["n_items"],
-            item_interest_limit = param_dict["item_interest_limit"]\
-                if "item_interest_limit" in param_dict.keys() else None,
             descending_valuations = param_dict["exp_no"] != 6,
-            constant_marginal_values = param_dict["constant_marginal_values"] \
-                if "constant_marginal_values" in param_dict.keys() else None,
             player_position = player_position,
-            efficiency_parameter = param_dict["efficiency_parameter"] \
-                if "efficiency_parameter" in param_dict.keys() else None,
             batch_size = batch_size
         )
 
 # Log in folder
 log_root = os.path.abspath('/home/kohring/bnelearn/experiments')
 save_figure_data_to_disc = False
-save_figure_to_disc = True
+save_figure_to_disc = False
 
 auction_type_str = str(type(mechanism))
 auction_type_str = str(auction_type_str[len(auction_type_str) \
@@ -218,11 +212,11 @@ log_name = auction_type_str + '_' + str(param_dict["n_players"]) \
 ## Environment settings
 batch_size = 2**18
 # regret_batch_size = 2**6
-epoch = 20000
-model_sharing = False
+epoch = 2000
+model_sharing = True
 epo_n = 2 # for ensure positive output of initialization
-plot_epoch = 100
-specific_gpu = 4
+plot_epoch = 10
+specific_gpu = 7
 logging = True
 
 
@@ -236,22 +230,21 @@ if cuda:
     print(torch.cuda.current_device())
 
 # strategy model architecture
-param_dict["input_length"] = param_dict["n_items"] - 1 \
-    if param_dict["exp_no"] == 6 else param_dict["n_items"]
+param_dict["input_length"] = param_dict["n_items"]
 
 model_dict = {
-    "hidden_nodes": [15, 15, 15],
+    "hidden_nodes": [5, 5, 5],
     "hidden_activations": [nn.SELU(), nn.SELU(), nn.SELU()]
 }
 
 
 hyperparams = {
-    'seed':                      [np.random.randint(1e4) for _ in range(1)],
-    'population_size':           [128],
+    'seed':                      [np.random.randint(1e4) for _ in range(10)],
+    'population_size':           [64],
     'sigma':                     [1.],
     'scale_sigma_by_model_size': [True],
     'normalize_gradients':       [False],
-    'lr':                        [0.003],
+    'lr':                        [0.01],
     'weight_decay':              [0.00], # (float, optional) – weight decay (L2 penalty) (default: 0)
     'momentum':                  [0.8],
     'pretrain_epoch':            [500],
@@ -313,13 +306,14 @@ for vals in product(*hyperparams.values()):
 
     # Pretrain
     pretrain_points = round(100 ** (1 / param_dict["input_length"]))
-    pretrain_valuations = multi_unit_valuations(
-        device = device,
-        bounds = [param_dict["u_lo"], param_dict["u_hi"]],
-        dim = param_dict["n_items"],
-        batch_size = pretrain_points,
-        selection = 'random' if param_dict["exp_no"] != 6 else split_award_dict
-    )
+    # pretrain_valuations = multi_unit_valuations(
+    #     device = device,
+    #     bounds = [param_dict["u_lo"], param_dict["u_hi"]],
+    #     dim = param_dict["n_items"],
+    #     batch_size = pretrain_points,
+    #     selection = 'random' if param_dict["exp_no"] != 6 else split_award_dict
+    # )
+    pretrain_valuations = strat_to_bidder(lambda x: x, batch_size, 0).draw_valuations_()[:pretrain_points,:]
 
     n_parameters = list()
     for model in models:
@@ -490,6 +484,8 @@ for vals in product(*hyperparams.values()):
                                 selection = split_award_dict \
                                     if param_dict["exp_no"] == 6 else 'random',
                                 bounds = [param_dict["u_lo"], param_dict["u_hi"]],
+                                item_interest_limit = param_dict["item_interest_limit"] if \
+                                    "item_interest_limit" in param_dict.keys() else None,
                                 eval_points_max = 2 ** 18,
                                 device = device
                             )
@@ -502,6 +498,8 @@ for vals in product(*hyperparams.values()):
                                 selection = split_award_dict \
                                     if param_dict["exp_no"] == 6 else 'random',
                                 bounds = [param_dict["u_lo"], param_dict["u_hi"]],
+                                item_interest_limit = param_dict["item_interest_limit"] if \
+                                    "item_interest_limit" in param_dict.keys() else None,
                                 eval_points_max = 2 ** 18,
                                 device = device
                             )
