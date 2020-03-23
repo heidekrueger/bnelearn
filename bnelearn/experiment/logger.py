@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from abc import ABC, abstractmethod
 from timeit import default_timer as timer
 import bnelearn.util.metrics as metrics
 from pandas import np
@@ -9,9 +10,9 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 
-class Logger:
+class Logger(ABC):
     def __init__(self, save_figure_to_disc_png: bool = True, save_figure_to_disc_svg: bool = True,
-                 plot_epoch: int = 100, show_plot_inline: bool = True):
+                 plot_epoch: int = 100, show_plot_inline: bool = True, save_figure_data_to_dis: bool = False):
         root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
         if root_path not in sys.path:
             sys.path.append(root_path)
@@ -46,6 +47,45 @@ class Logger:
     # def __del__(self):
     #    self.writer.close()
 
+    @abstractmethod
+    def log_experiment(self, model, env, run_comment, plot_xmin, plot_xmax, plot_ymin, plot_ymax, batch_size,
+                       optimal_bid):
+        pass
+
+    @abstractmethod
+    def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,
+                               bidders, utility):
+        pass
+
+    @abstractmethod
+    def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
+        """This method should implement a vizualization of the experiment at the current state"""
+        pass
+
+    @abstractmethod
+    def _process_figure(self, fig, writer=None, epoch=None):
+        """displays, logs and/or saves figure built in plot method"""
+        pass
+
+    @abstractmethod
+    def _log_once(self, writer, epoch):
+        """Everything that should be logged only once on initialization."""
+        pass
+
+    @abstractmethod
+    def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute,
+                     L_2, L_inf):
+        pass
+
+    @abstractmethod
+    def _log_hyperparams(self, writer, epoch):
+        pass
+
+
+class SingleItemAuctionLogger(Logger):
+    def __init__(self):
+        super().__init__()
+
     def log_experiment(self, model, env, run_comment, plot_xmin, plot_xmax, plot_ymin, plot_ymax, batch_size,
                        optimal_bid):
         # setting up plotting
@@ -62,6 +102,7 @@ class Logger:
             from IPython import display
         plt.rcParams['figure.figsize'] = [8, 5]
 
+        # TODO: This should rather be represented as a list and plotting all models in that list
         self.model = model
         self.env = env
 
@@ -99,9 +140,9 @@ class Logger:
             draw_valuations=False)  # False because expensive for normal priors
         epsilon_relative = 1 - utility_vs_bne / bne_utility
         epsilon_absolute = bne_utility - utility_vs_bne
-        L_2 = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].actions,
+        L_2 = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].get_actions(),
                                                 bne_env.agents[0].valuations, 2)
-        L_inf = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].actions,
+        L_inf = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].get_actions(),
                                                   bne_env.agents[0].valuations, float('inf'))
         self._log_metrics(writer=self.writer, epoch=epoch, utility=utility, update_norm=update_norm,
                           utility_vs_bne=utility_vs_bne, epsilon_relative=epsilon_relative,
@@ -169,8 +210,7 @@ class Logger:
         # writer.add_scalar('debug/eval_batch_size', eval_batch_size, epoch)
         writer.add_graph(self.model, self.env.agents[0].valuations)
 
-    @staticmethod
-    def _log_metrics(writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute,
+    def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute,
                      L_2, L_inf):
         writer.add_scalar('eval/utility', utility, epoch)
         writer.add_scalar('debug/norm_parameter_update', update_norm, epoch)
@@ -189,3 +229,38 @@ class Logger:
     #     writer.add_scalar('hyperparams/momentum', momentum, e)
     #     writer.add_scalar('hyperparams/sigma', sigma, e)
     #     writer.add_scalar('hyperparams/n_perturbations', n_perturbations, e)
+
+
+class MultiUnitAuctionLogger(Logger):
+    def log_experiment(self, model, env, run_comment, plot_xmin, plot_xmax, plot_ymin, plot_ymax, batch_size,
+                       optimal_bid):
+        pass
+
+    def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,
+                               bidders, utility):
+        pass
+
+    def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
+        pass
+
+    def _process_figure(self, fig, writer=None, epoch=None):
+        pass
+
+    def _log_once(self, writer, epoch):
+        pass
+
+    @staticmethod
+    def _log_metrics(writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute, L_2,
+                     L_inf):
+        pass
+
+    def _log_hyperparams(self, writer, epoch):
+        pass
+
+    def __init__(self):
+        super().__init__()
+
+
+class CombinatorialAuctionLogger(Logger):
+    def __init__(self):
+        super().__init__()

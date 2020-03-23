@@ -2,11 +2,12 @@ import torch
 import torch.nn as nn
 
 from bnelearn.experiment import GPUController, Logger, LearningConfiguration
+from bnelearn.experiment.logger import SingleItemAuctionLogger
 from bnelearn.experiment.single_item_experiment import UniformSymmetricPriorSingleItemExperiment, \
     GaussianSymmetricPriorSingleItemExperiment
 
 gpu_config = GPUController()
-logger = Logger()
+logger = SingleItemAuctionLogger()
 
 learner_hyperparams = {
     'population_size': 64,
@@ -29,13 +30,13 @@ l_config = LearningConfiguration(learner_hyperparams=learner_hyperparams,
                                  hidden_nodes=hidden_nodes,
                                  hidden_activations=hidden_activations,
                                  pretrain_iters=300, batch_size=2 ** 12,
-                                 eval_batch_size=2 * 11,
+                                 eval_batch_size=2 ** 11,
                                  cache_eval_actions=True)
 
-experiment1 = UniformSymmetricPriorSingleItemExperiment(gpu_config=gpu_config, logger=logger,
-                                                       mechanism_type='first_price', l_config=l_config, risk=1.0)
-#experiment2 = GaussianSymmetricPriorSingleItemExperiment(gpu_config=gpu_config, logger=logger,
+experiment1 = UniformSymmetricPriorSingleItemExperiment(n_players=2, gpu_config=gpu_config, logger=logger,
+                                                        mechanism_type='first_price', l_config=l_config, risk=1.0)
+# experiment2 = GaussianSymmetricPriorSingleItemExperiment(gpu_config=gpu_config, logger=logger,
 #                                                       mechanism_type='first_price', l_config=l_config, risk=1.0)
 
-experiment1.run(epochs=100, n_runs=1)
-#experiment2.run(epochs=100, n_runs=1)
+experiment1.run(epochs=10, n_runs=1)
+# experiment2.run(epochs=100, n_runs=1)

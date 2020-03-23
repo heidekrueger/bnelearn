@@ -16,16 +16,16 @@ class LLGExperiment(CombinatorialExperiment):
     def setup_experiment_domain(self):
         pass
 
-    def setup_learning_environment(self):
+    def _setup_learning_environment(self):
         pass
 
-    def setup_learners(self):
+    def _setup_learners(self):
         pass
 
-    def setup_eval_environment(self):
+    def _setup_eval_environment(self):
         pass
 
-    def training_loop(self, epoch):
+    def _training_loop(self, epoch):
         pass
 
 
@@ -37,14 +37,14 @@ class LLLLGGExperiment(CombinatorialExperiment):
     def setup_experiment_domain(self):
         pass
 
-    def setup_learning_environment(self):
+    def _setup_learning_environment(self):
         pass
 
-    def setup_learners(self):
+    def _setup_learners(self):
         pass
 
-    def setup_eval_environment(self):
+    def _setup_eval_environment(self):
         pass
 
-    def training_loop(self, epoch):
+    def _training_loop(self, epoch):
         pass

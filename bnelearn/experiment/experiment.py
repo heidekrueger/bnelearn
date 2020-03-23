@@ -15,15 +15,15 @@ from bnelearn.experiment.logger import Logger
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
 
-    def __init__(self, mechanism_type, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+    def __init__(self, n_players: int, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
                  risk: float = 1.0):
 
         self.l_config = l_config
-        self.mechanism_type = mechanism_type
         self.gpu_config = gpu_config
         self.risk = risk
         self.risk_profile = Experiment.get_risk_profile(risk)
         self.logger = logger
+        self.n_players = n_players
 
         self.base_dir = None
         self.model = None
@@ -51,45 +51,45 @@ class Experiment(ABC):
         self.bne_utility = None
 
         # setup the experiment, don't mess with the order
-        self.setup_bidders()
-        self.setup_learning_environment()
-        self.setup_learners()
-        self.setup_eval_environment()
-        self.setup_name()
+        self._setup_bidders()
+        self._setup_learning_environment()
+        self._setup_learners()
+        self._setup_eval_environment()
+        self._setup_name()
 
     # ToDO This is a temporary measure
     @abstractmethod
-    def setup_name(self):
+    def _setup_name(self):
         """"""
         pass
 
     @abstractmethod
-    def strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
         pass
 
     @abstractmethod
-    def setup_bidders(self):
+    def _setup_bidders(self):
         """
         """
         pass
 
     @abstractmethod
-    def setup_learning_environment(self):
+    def _setup_learning_environment(self):
         """This method should set up the environment that is used for learning. """
         pass
 
     @abstractmethod
-    def setup_learners(self):
+    def _setup_learners(self):
         """This method should set up learners for each of the models that are learnable."""
         pass
 
     @abstractmethod
-    def setup_eval_environment(self):
+    def _setup_eval_environment(self):
         """Sets up an environment used for evaluation of learning agents (e.g.) vs known BNE"""
         pass
 
     @abstractmethod
-    def optimal_bid(self, valuation):
+    def _optimal_bid(self, valuation):
         """Defines optimal BNE strategy in this setting"""
         pass
 
@@ -103,11 +103,10 @@ class Experiment(ABC):
             return 'other'
 
     @abstractmethod
-    def training_loop(self, epoch):
+    def _training_loop(self, epoch):
         """Main training loop to be executed in each iteration."""
         pass
 
-    # ToDO Move logging to logger
     def run(self, epochs, n_runs: int = 1, run_comment=None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
 
@@ -118,18 +117,19 @@ class Experiment(ABC):
                 torch.random.manual_seed(seed)
                 torch.cuda.manual_seed_all(seed)
 
+                #TODO:Change to log all models, not just one
                 self.logger.log_experiment(model=self.model, env=self.env, run_comment=run_comment,
                                            plot_xmin=self.plot_xmin, plot_xmax=self.plot_xmax,
                                            plot_ymin=self.plot_ymin, plot_ymax=self.plot_ymax,
-                                           batch_size=self.l_config.batch_size, optimal_bid=self.optimal_bid)
+                                           batch_size=self.l_config.batch_size, optimal_bid=self._optimal_bid)
 
                 # disable this to continue training?
                 epoch = 0
 
-                for epoch in range(epochs, epoch + epochs + 1):
-                    self.training_loop(epoch=epoch)
+                for epoch in range(epoch, epoch + epochs + 1):
+                    self._training_loop(epoch=epoch)
 
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
-            if torch.cuda.memory_allocated() > 0:
-                warnings.warn('Theres a memory leak')
+            #if torch.cuda.memory_allocated() > 0:
+            #    warnings.warn('Theres a memory leak')
