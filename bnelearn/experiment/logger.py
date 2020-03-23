@@ -47,7 +47,7 @@ class Logger:
     #    self.writer.close()
 
     def log_experiment(self, model, env, run_comment, plot_xmin, plot_xmax, plot_ymin, plot_ymax, batch_size,
-                       optimal_bid):
+                       optimal_bid, player_position = 0):
         # setting up plotting
         self.plot_xmin = plot_xmin
         self.plot_xmax = plot_xmax
@@ -55,13 +55,13 @@ class Logger:
         self.plot_ymax = plot_ymax
         self.plot_points = min(150, batch_size)
         self.v_opt = np.linspace(plot_xmin, plot_xmax, 100)
-        self.b_opt = optimal_bid(self.v_opt)
+        self.b_opt = optimal_bid(self.v_opt, player_position = player_position)
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
             from IPython import display
         plt.rcParams['figure.figsize'] = [8, 5]
-
+        #TODO: This should rather be represented as a list and plotting all models in that list
         self.model = model
         self.env = env
 
@@ -99,9 +99,9 @@ class Logger:
             draw_valuations=False)  # False because expensive for normal priors
         epsilon_relative = 1 - utility_vs_bne / bne_utility
         epsilon_absolute = bne_utility - utility_vs_bne
-        L_2 = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].actions,
+        L_2 = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].get_action(),
                                                 bne_env.agents[0].valuations, 2)
-        L_inf = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].actions,
+        L_inf = metrics.norm_strategy_and_actions(self.model, bne_env.agents[0].get_action(),
                                                   bne_env.agents[0].valuations, float('inf'))
         self._log_metrics(writer=self.writer, epoch=epoch, utility=utility, update_norm=update_norm,
                           utility_vs_bne=utility_vs_bne, epsilon_relative=epsilon_relative,

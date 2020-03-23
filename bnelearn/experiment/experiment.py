@@ -118,7 +118,8 @@ class Experiment(ABC):
                 torch.random.manual_seed(seed)
                 torch.cuda.manual_seed_all(seed)
 
-                self.logger.log_experiment(model=self.model, env=self.env, run_comment=run_comment,
+                #TODO:Change to log all models, not just one
+                self.logger.log_experiment(model=self.models[0], env=self.env, run_comment=run_comment,
                                            plot_xmin=self.plot_xmin, plot_xmax=self.plot_xmax,
                                            plot_ymin=self.plot_ymin, plot_ymax=self.plot_ymax,
                                            batch_size=self.l_config.batch_size, optimal_bid=self.optimal_bid)
@@ -126,10 +127,10 @@ class Experiment(ABC):
                 # disable this to continue training?
                 epoch = 0
 
-                for epoch in range(epochs, epoch + epochs + 1):
+                for epoch in range(epoch, epoch + epochs + 1):
                     self.training_loop(epoch=epoch)
 
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
-            if torch.cuda.memory_allocated() > 0:
-                warnings.warn('Theres a memory leak')
+            #if torch.cuda.memory_allocated() > 0:
+            #    warnings.warn('Theres a memory leak')
