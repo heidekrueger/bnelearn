@@ -22,7 +22,7 @@ from utils_nils import *
 
 sys.path.append(os.path.realpath('.'))
 from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
-from bnelearn.bidder import Bidder, ReverseBidder
+from bnelearn.bidder import Bidder #, ReverseBidder
 from bnelearn.mechanism import (MultiItemDiscriminatoryAuction,
                                 MultiItemUniformPriceAuction,
                                 MultiItemVickreyAuction,
@@ -45,7 +45,7 @@ Notes & Todo
 
 ## Experiment setup
 param_dict = dict()
-param_dict["exp_no"] = 2
+param_dict["exp_no"] = 1
 
 if param_dict["exp_no"] == 0:
     mechanism = MultiItemVickreyAuction(cuda=True)
@@ -75,7 +75,6 @@ elif param_dict["exp_no"] == 1:
     param_dict["n_items"] = 2
     param_dict["u_lo"] = 0
     param_dict["u_hi"] = 1
-    param_dict["efficiency_parameter"] = None # np.random.rand()
     def exp_no_1_transform(input_tensor):
         output_tensor = torch.clone(input_tensor)
         output_tensor[:,1] = 0
@@ -91,7 +90,6 @@ elif param_dict["exp_no"] == 1:
             strategy = strategy,
             n_items = param_dict["n_items"],
             descending_valuations = True,
-            constant_marginal_values = True,
             player_position = player_position,
             batch_size = batch_size
         )
@@ -191,8 +189,7 @@ elif param_dict["exp_no"] == 6:
             n_items = param_dict["n_items"],
             descending_valuations = param_dict["exp_no"] != 6,
             player_position = player_position,
-            efficiency_parameter = param_dict["efficiency_parameter"] \
-                if "efficiency_parameter" in param_dict.keys() else None,
+            efficiency_parameter = param_dict["efficiency_parameter"],
             batch_size = batch_size
         )
 
@@ -212,11 +209,11 @@ log_name = auction_type_str + '_' + str(param_dict["n_players"]) \
 ## Environment settings
 batch_size = 2**18
 # regret_batch_size = 2**6
-epoch = 20000
+epoch = 2000
 model_sharing = True
 epo_n = 2 # for ensure positive output of initialization
 plot_epoch = 100
-specific_gpu = 5
+specific_gpu = 7
 logging = True
 
 
@@ -240,12 +237,12 @@ model_dict = {
 
 
 hyperparams = {
-    'seed':                      [np.random.randint(1e4) for _ in range(1)],
-    'population_size':           [128],
+    'seed':                      [np.random.randint(1e4) for _ in range(10)],
+    'population_size':           [64],
     'sigma':                     [1.],
     'scale_sigma_by_model_size': [True],
     'normalize_gradients':       [False],
-    'lr':                        [0.003],
+    'lr':                        [0.01],
     'weight_decay':              [0.00], # (float, optional) – weight decay (L2 penalty) (default: 0)
     'momentum':                  [0.8],
     'pretrain_epoch':            [500],

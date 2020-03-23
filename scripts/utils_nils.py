@@ -687,8 +687,10 @@ def plot_bid_function(
     if split_award is not None:
         split_award['linspace'] = True
     # valuations = multi_unit_valuations(device, bounds, n_items, plot_points,
-    #     'random' if split_award is None else split_award, item_interest_limit=, sort=split_award is not None)
+    #     'random' if split_award is None else split_award, sort=split_award is not None)
     valuations = deepcopy(bidders[0]).draw_valuations_()[:plot_points,:]
+    if split_award is not None:
+        valuations, _ = valuations.sort(0)
 
     b_opt = optimal_bid(valuations)
     b_opt_2 = optimal_bid_2(valuations).cpu().numpy()
@@ -826,14 +828,18 @@ def plot_bid_function(
     axs[plot].locator_params(axis='x', nbins=5)
     fig.tight_layout()
 
-    print(os.path.join(logdir, f'_{e:05}.' + format))
     if save_fig_to_disc and logdir is not None:
+        try:
+            os.mkdir(os.path.join(logdir, 'plots'))
+        except FileExistsError:
+            pass
+        print(os.path.join(logdir, 'plots', f'_{e:05}.' + format))
         plt.savefig(os.path.join(logdir, 'plots', f'_{e:05}.' + format))
     if writer and log_name is not None:
         writer.add_figure('plot/plot', fig, e)
 
-    plt.show()
-
+    # plt.show()
+    
 def plot_bid_function_3d(
         writer,
         e,
@@ -1153,9 +1159,9 @@ def plot_saved_model(
 
     plot_bid_function(
         [strat_to_bidder(model_structure, batch_size, 0)],
-        optimal_bid(mechanism, param_dict),
+        optimal_bid(mechanism, param_dict, return_payoff_dominant=False),
         optimal_bid_2(mechanism, param_dict),
-        None, run_dir[:run_dir.rfind('/')], None, e=15000,
+        None, run_dir[:run_dir.rfind('/')], None, e=-1,
         bounds = [param_dict["u_lo"], param_dict["u_hi"]],
         split_award = {
             'split_award': True,
@@ -1359,7 +1365,7 @@ def tflog2pandas(
 
     return runlog_data, hyperparameters
 
-def read_logs(path: str):
+def read_logs(path: str, save=False):
     """ read in saved data
 
         returns
@@ -1382,11 +1388,15 @@ def read_logs(path: str):
             hyperparameters = {**hyperparameters, **new_hypers}
         except:
             pass
+
+    if save:
+        df.to_csv(path + '/_data.csv')
+
     return df, hyperparameters
 
 def log_evaulation(
         path: str = '/home/kohring/bnelearn/experiments/expiriments_nils/' \
-                    + 'MultiItemVickreyAuction/2players_2items/',
+                    + 'FPSBSplitAwardAuction/2players_2items/',
         save = True
     ):
     """
@@ -1467,7 +1477,7 @@ def log_evaulation(
 
     t = str(time.strftime('%Y%m%d_%H%M%S', time.gmtime()))
     if save:
-        df.to_csv(path + t + '_analysis.csv')
+        df.to_csv(path + '/' + t + '_analysis.csv')
     return df
 
 def read_eval(
@@ -1548,26 +1558,27 @@ def load_model(
         model_structure.load_state_dict(
             torch.load(os.path.join(path, 'saved_model_' + str(i) + '.pt'))
         )
-    except:
+    except Exception as e:
+        # print('\n', path ,'\n', e, '\n')
         model_structure = None
     return model_structure
 
 def compare_models(
         path: str = '/home/kohring/bnelearn/experiments/expiriments_nils/' \
-                    + 'FPSBSplitAwardAuction/2players_2items/',
+                    + 'MultiItemUniformPriceAuction/2players_2items/',
         batch_size = 2 ** 18,
         model_dict = {
-            "input_length": 1,
+            "input_length": 2,
             "hidden_nodes": [5, 5, 5],
             "hidden_activations": [nn.SELU(), nn.SELU(), nn.SELU()]
         },
-        param_dict = {
-            "n_items": 2, "exp_no": 6,
-            "u_lo": 1.0, "u_hi": 1.4
-        },
-        split_award_dict = {},
+        # param_dict = {
+        #     "n_items": 2, "exp_no": 6,
+        #     "u_lo": 1.0, "u_hi": 1.4
+        # },
+        # split_award_dict = {},
         device = None,
-        save = True,
+        save = False,
     ):
     """
     Crowls through all runs in ´path´ and returns a list of names and a matrix consisting
@@ -1576,6 +1587,7 @@ def compare_models(
 
     names, models = list(), list()
 
+    param_dict = dict()
     if path.find('FPSBSplitAwardAuction/2players_2items/') != -1:
         param_dict["exp_no"] = 6
         mechanism = FPSBSplitAwardAuction(cuda=True)
@@ -1594,21 +1606,84 @@ def compare_models(
             'input_length': param_dict["input_length"],
             'linspace': False
         }
+        def strat_to_bidder(strategy, batch_size, player_position):
+            return Bidder.uniform(
+                lower = param_dict["u_lo"], upper = param_dict["u_hi"],
+                strategy = strategy,
+                n_items = param_dict["n_items"],
+                player_position = player_position,
+                split_award = isinstance(mechanism, FPSBSplitAwardAuction),
+                efficiency_parameter = param_dict["efficiency_parameter"] \
+                    if "efficiency_parameter" in param_dict.keys() else None,
+                batch_size = batch_size
+            )
 
-        bne_pool = optimal_bid(mechanism, param_dict, return_payoff_dominant=True)
+        bne_pool = optimal_bid(mechanism, param_dict)
         bne_wta = optimal_bid_2(mechanism, param_dict)
+    elif path.find('MultiItemUniformPriceAuction/2players_2items/') != -1:
+        param_dict["exp_no"] = 1
+        mechanism = MultiItemUniformPriceAuction(cuda=True)
+        param_dict["n_players"] = 2
+        param_dict["n_items"] = 2
+        param_dict["u_lo"] = 0
+        param_dict["u_hi"] = 1
+        def exp_no_1_transform(input_tensor):
+            output_tensor = torch.clone(input_tensor)
+            output_tensor[:,1] = 0
+            return output_tensor
+        param_dict["BNE1"] = "BNE1"
+        param_dict["BNE2"] = "Truthful"
+        def strat_to_bidder(strategy, batch_size, player_position):
+            """
+            Standard strat_to_bidder method.
+            """
+            return Bidder.uniform(
+                lower = param_dict["u_lo"], upper = param_dict["u_hi"],
+                strategy = strategy,
+                n_items = param_dict["n_items"],
+                descending_valuations = True,
+                player_position = player_position,
+                batch_size = batch_size
+            )
 
+    # df = pd.read_csv('experiments/expiriments_nils/FPSBSplitAwardAuction' +\
+    #     '/2players_2items/final_splitaward.csv', index_col=0)
+    # wta_models = list()
+    # pool_models = list()
     for run_dir in os.listdir(path):
         i = 0 # model idx in that path
         while True:
             model = load_model(os.path.join(path, run_dir), i, model_dict, param_dict['n_items'])
             if model is not None:
+                print(os.path.join(path, run_dir))
                 names.append(run_dir + '_model_' + str(i))
-                models.append(model.forward)
+                models.append(model)
+
+                # if str(df[df['run_id'] == run_dir]['converged_bne'].values[0]) == 'pool':
+                #     pool_models.append(model)
+                # else:
+                #     wta_models.append(model)
             else:
                 break
             i += 1
-
+    # print(len(wta_models))
+    # print(len(pool_models))
+    # for i, model_list in enumerate([wta_models, pool_models]):
+    plot_bid_function(
+        [strat_to_bidder(model, batch_size, 0) for model in models],
+        optimal_bid(mechanism, param_dict, return_payoff_dominant=False),
+        optimal_bid_2(mechanism, param_dict),
+        None, path, None, e=-(i+1),
+        bounds = [param_dict["u_lo"], param_dict["u_hi"]],
+        split_award = {
+            'split_award': True,
+            "efficiency_parameter": param_dict["efficiency_parameter"],
+            "input_length": param_dict["input_length"] \
+        } if param_dict["exp_no"] == 6 else None,
+        save_fig_to_disc = True,
+        format = 'png',
+        device = device
+    )
     n_models = len(models)
     results = np.zeros((n_models, n_models))
 
@@ -1624,22 +1699,22 @@ def compare_models(
     #             device = device
     #         )
 
-    single_bid_diffs = np.zeros((param_dict["n_items"], n_models, n_models))
-    for dim in range(param_dict["n_items"]):
-        for i, m0 in enumerate(models[:2]):
-            print(names[i])
-            for j, m1 in enumerate(models):
-                print('   ', names[j])
-                single_bid_diffs[dim,i,j] = policy_metric(
-                    m0, m1,
-                    param_dict["n_items"],
-                    selection = split_award_dict \
-                        if param_dict["exp_no"] == 6 else 'random',
-                    bounds = [param_dict["u_lo"], param_dict["u_hi"]],
-                    eval_points_max = batch_size,
-                    dim_of_interest = dim,
-                    device = device
-                )
+    # single_bid_diffs = np.zeros((param_dict["n_items"], n_models, n_models))
+    # for dim in range(param_dict["n_items"]):
+    #     for i, m0 in enumerate(models[:2]):
+    #         print(names[i])
+    #         for j, m1 in enumerate(models):
+    #             print('   ', names[j])
+    #             single_bid_diffs[dim,i,j] = policy_metric(
+    #                 m0, m1,
+    #                 param_dict["n_items"],
+    #                 selection = split_award_dict \
+    #                     if param_dict["exp_no"] == 6 else 'random',
+    #                 bounds = [param_dict["u_lo"], param_dict["u_hi"]],
+    #                 eval_points_max = batch_size,
+    #                 dim_of_interest = dim,
+    #                 device = device
+    #             )
 
     if save:
         # df = pd.DataFrame(results, columns=names, index=names)
@@ -1655,7 +1730,7 @@ def summary_stats_splitaward(
         path: str = '/home/kohring/bnelearn/experiments/expiriments_nils/' \
             + 'FPSBSplitAwardAuction/2players_2items/',
         file_path: str = '/home/kohring/bnelearn/experiments/expiriments_nils/' \
-            + 'FPSBSplitAwardAuction/2players_2items/20200305_132414_analysis.csv',
+            + 'FPSBSplitAwardAuction/2players_2items/20200319_100209_analysis.csv',
         model_dict = {
             "input_length": 1,
             "hidden_nodes": [5, 5, 5],
@@ -1961,13 +2036,13 @@ def summary_stats_discirminatory(
 
 if __name__ == '__main__':
 
-    torch.cuda.set_device(7)
+    torch.cuda.set_device(4)
     device = 'cuda'
 
-    log_evaulation()
+    # log_evaulation()
     # summary_stats_discirminatory()
     # summary_stats_splitaward()
-    # compare_models(device=device)
+    compare_models(device=device)
     # plot_gradients()
 
     # ## MultiItemUniformPriceAuction
