@@ -15,28 +15,34 @@ from bnelearn.experiment.logger import Logger
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
 
-    def __init__(self, n_players: int, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
-                 risk: float = 1.0):
+    def __init__(self, gpu_config: GPUController, experiment_param, logger: Logger, l_config: LearningConfiguration):
 
+        # Configs
         self.l_config = l_config
         self.gpu_config = gpu_config
-        self.risk = risk
-        self.risk_profile = Experiment.get_risk_profile(risk)
         self.logger = logger
-        self.n_players = n_players
+        
+        # Experiment params
+        self.n_players = experiment_param['n_players']
+        self.common_prior = experiment_param['common_prior']
+        self.u_lo = experiment_param['u_lo']
+        self.u_hi = experiment_param['u_hi']
+        self.plot_xmin = min(experiment_param['u_lo'])
+        self.plot_xmax = max(experiment_param['u_hi']) * 1.2
+        self.plot_ymin = min(experiment_param['u_lo'])
+        self.plot_ymax = max(experiment_param['u_hi']) * 1.2
+        self.valuation_prior = experiment_param['valuation_prior']
+        self.model_sharing = experiment_param['model_sharing']
+        self.risk = experiment_param['risk']
+        self.risk_profile = Experiment.get_risk_profile(self.risk)
+        self.mechanism_type = experiment_param['payment_rule']
 
+        # Misc
         self.base_dir = None
         self.model = None
 
-        # setup bidders
-        self.common_prior = None
+        # setup bidders        
         self.positive_output_point = None
-        self.plot_xmin = None
-        self.plot_xmax = None
-        self.plot_ymin = None
-        self.plot_ymax = None
-        self.valuation_prior = None
-        self.model_sharing = None
         self.bidders = None
 
         # setup learner
@@ -50,12 +56,14 @@ class Experiment(ABC):
         self.bne_env = None
         self.bne_utility = None
 
+    def _run_setup(self):
         # setup the experiment, don't mess with the order
         self._setup_bidders()
         self._setup_learning_environment()
         self._setup_learners()
         self._setup_eval_environment()
         self._setup_name()
+        
 
     # ToDO This is a temporary measure
     @abstractmethod

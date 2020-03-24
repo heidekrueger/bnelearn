@@ -228,7 +228,7 @@ class LLLLGGAuction(Mechanism):
         parallel: number of processors for parallelization in gurobi (only)
     """
 
-    def __init__(self, batch_size, rule='first_price', core_solver='NoCore', parallel: int = 1, cuda: bool = True):
+    def __init__(self, rule='first_price', core_solver='NoCore', parallel: int = 1, cuda: bool = True):
         from bnelearn.util import large_lists_LLLLGG  # pylint:disable=import-outside-toplevel
         super().__init__(cuda)
 
@@ -241,7 +241,6 @@ class LLLLGGAuction(Mechanism):
         # 'nearest_zero' and 'proxy' are aliases
         if rule == 'proxy':
             rule = 'nearest_zero'
-        self.batch_size = batch_size
         self.rule = rule
         self.n_items = 8
         self.n_bidders = 6

@@ -79,7 +79,7 @@ core_solver = 'no_core' #no_core #gurobi
 pricing_rule =  'first_price'#'first_price'#nearest-vcg'
 model_sharing = True
 #training batch size (2**17 - 2**18 for vcg)
-batch_size = 2**11
+batch_size = 2**18
 regret_bid_size = 2**7
 eval_batch_size = 2**25
 epoch = 100000
@@ -342,7 +342,7 @@ for k,v in enumerate(bidders):
     else:
         bidders[k] = strat_to_bidder(models[k], batch_size, player_position=k)
 
-mechanism = LLLLGGAuction(batch_size = batch_size, rule = pricing_rule, 
+mechanism = LLLLGGAuction(rule = pricing_rule, 
                          cuda = cuda, core_solver = core_solver, parallel = n_threads)
 env = AuctionEnvironment(mechanism,
                   agents = bidders,

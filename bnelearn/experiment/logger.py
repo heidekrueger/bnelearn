@@ -283,7 +283,8 @@ class MultiUnitAuctionLogger(Logger):
 
 
 
-class CombinatorialAuctionLogger(Logger):
+class CombinatorialAuctionLogger(SingleItemAuctionLogger):
+    #TODO: Inherit from Logger
     def log_experiment(self, model, env, run_comment, plot_xmin, plot_xmax, plot_ymin, plot_ymax, batch_size,
                        optimal_bid):
         pass
