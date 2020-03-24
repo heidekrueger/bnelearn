@@ -1,3 +1,4 @@
+import os
 import warnings
 from abc import ABC
 from functools import partial
@@ -153,32 +154,12 @@ class MultiUnitExperiment(Experiment, ABC):
     def _setup_name(self):
         auction_type_str = str(type(self.mechanism))
         auction_type_str = str(auction_type_str[len(auction_type_str) - auction_type_str[::-1].find('.'):-2])
-        print(auction_type_str)
-        self.log_name = auction_type_str + '_' + str(self.n_players) + 'players_' + str(self.n_items) + 'items'
 
-        # Make logging uniform
-        # name = ['single_item', self.mechanism_type, self.valuation_prior,
-        #        'symmetric', self.risk_profile, str(self.n_players) + 'p']
-
-        # self.logger.base_dir = os.path.join(*name)
+        name = ['expiriments_nils', auction_type_str, str(self.n_players) + 'players_' + str(self.n_items) + 'items']
+        self.logger.base_dir = os.path.join(*name)
 
     def _training_loop(self, epoch):
-        run_name = str(time.strftime('%Y%m%d_%H%M%S', time.localtime()))
 
-        if logging:
-            logdir = os.path.join(
-                log_root, 'expiriments_nils', auction_type_str,
-                str(param_dict["n_players"]) + 'players_' \
-                + str(param_dict["n_items"]) + 'items',
-                run_name
-            )
-            print('logdir:', logdir)
-            os.makedirs(logdir, exist_ok=False)
-
-            if save_figure_to_disc:
-                os.mkdir(os.path.join(logdir, 'plots'))
-        else:
-            logdir = None
 
         # calculate utility vs BNE
         bne_utilities = list()

@@ -28,7 +28,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
     def __init__(self, n_players: int, mechanism_type, gpu_config: GPUController, logger: Logger,
                  l_config: LearningConfiguration,
                  risk: float = 1.0):
-        self.model_sharing = True
+        #self.model_sharing = True
         self.global_bne_env = None
         self.global_bne_utility = None
         super().__init__(n_players, mechanism_type, gpu_config, logger, l_config, risk)

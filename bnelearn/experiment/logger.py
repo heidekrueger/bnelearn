@@ -234,9 +234,31 @@ class SingleItemAuctionLogger(Logger):
 
 
 class MultiUnitAuctionLogger(Logger):
+    def __init__(self):
+        super().__init__()
+
     def log_experiment(self, model, env, run_comment, plot_xmin, plot_xmax, plot_ymin, plot_ymax, batch_size,
                        optimal_bid):
-        pass
+        if os.name == 'nt':
+            raise ValueError('The run_name may not contain : on Windows!')
+        run_name = time.strftime('%Y-%m-%d %a %H:%M:%S')
+        if run_comment:
+            run_name = run_name + ' - ' + str(run_comment)
+
+        self.log_dir = os.path.join(self.logging_options['log_root'], self.base_dir, run_name)
+        os.makedirs(self.log_dir, exist_ok=False)
+        if self.logging_options['save_figure_to_disc_png']:
+            os.mkdir(os.path.join(self.log_dir, 'png'))
+        if self.logging_options['save_figure_to_disc_svg']:
+            os.mkdir(os.path.join(self.log_dir, 'svg'))
+
+
+
+
+
+
+
+
 
     def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,
                                bidders, utility):
@@ -258,8 +280,7 @@ class MultiUnitAuctionLogger(Logger):
     def _log_hyperparams(self, writer, epoch):
         pass
 
-    def __init__(self):
-        super().__init__()
+
 
 
 class CombinatorialAuctionLogger(Logger):
