@@ -15,7 +15,7 @@ from bnelearn.experiment.logger import Logger
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
 
-    def __init__(self, n_players: int, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+    def __init__(self, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
                  risk: float = 1.0):
 
         self.l_config = l_config
@@ -23,8 +23,8 @@ class Experiment(ABC):
         self.risk = risk
         self.risk_profile = Experiment.get_risk_profile(risk)
         self.logger = logger
-        self.n_players = n_players
-
+        
+        self.n_players = None
         self.base_dir = None
         self.model = None
 
@@ -50,12 +50,14 @@ class Experiment(ABC):
         self.bne_env = None
         self.bne_utility = None
 
+    def _run_setup(self):
         # setup the experiment, don't mess with the order
         self._setup_bidders()
         self._setup_learning_environment()
         self._setup_learners()
         self._setup_eval_environment()
         self._setup_name()
+        
 
     # ToDO This is a temporary measure
     @abstractmethod

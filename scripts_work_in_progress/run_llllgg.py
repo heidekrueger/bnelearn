@@ -342,7 +342,7 @@ for k,v in enumerate(bidders):
     else:
         bidders[k] = strat_to_bidder(models[k], batch_size, player_position=k)
 
-mechanism = LLLLGGAuction(batch_size = batch_size, rule = pricing_rule, 
+mechanism = LLLLGGAuction(rule = pricing_rule, 
                          cuda = cuda, core_solver = core_solver, parallel = n_threads)
 env = AuctionEnvironment(mechanism,
                   agents = bidders,
