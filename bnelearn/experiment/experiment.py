@@ -15,31 +15,33 @@ from bnelearn.experiment.logger import Logger
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
 
-    def __init__(self, gpu_config: GPUController, experiment_param, logger: Logger, l_config: LearningConfiguration):
+    def __init__(self, gpu_config: GPUController, experiment_params: dict,
+                 logger: Logger, l_config: LearningConfiguration):
 
         # Configs
         self.l_config = l_config
         self.gpu_config = gpu_config
         self.logger = logger
-        
+
         # Experiment params
-        self.n_players = experiment_param['n_players']
-        self.common_prior = experiment_param['common_prior']
-        self.u_lo = experiment_param['u_lo']
-        self.u_hi = experiment_param['u_hi']
-        self.plot_xmin = min(experiment_param['u_lo'])
-        self.plot_xmax = max(experiment_param['u_hi']) * 1.2
-        self.plot_ymin = min(experiment_param['u_lo'])
-        self.plot_ymax = max(experiment_param['u_hi']) * 1.2
-        self.valuation_prior = experiment_param['valuation_prior']
-        self.model_sharing = experiment_param['model_sharing']
-        self.risk = experiment_param['risk']
+        self.experiment_params = experiment_params
+        self.n_players = experiment_params['n_players']
+        self.common_prior = experiment_params['common_prior']
+        self.u_lo = experiment_params['u_lo']
+        self.u_hi = experiment_params['u_hi']
+        self.plot_xmin = min(experiment_params['u_lo'])
+        self.plot_xmax = max(experiment_params['u_hi']) * 1.2
+        self.plot_ymin = min(experiment_params['u_lo'])
+        self.plot_ymax = max(experiment_params['u_hi']) * 1.2
+        self.valuation_prior = experiment_params['valuation_prior']
+        self.model_sharing = experiment_params['model_sharing']
+        self.risk = experiment_params['risk']
         self.risk_profile = Experiment.get_risk_profile(self.risk)
-        self.mechanism_type = experiment_param['payment_rule']
+        self.mechanism_type = experiment_params['payment_rule']
 
         # Misc
         self.base_dir = None
-        self.model = None
+        self.models = None
 
         # setup bidders        
         self.positive_output_point = None
@@ -63,7 +65,6 @@ class Experiment(ABC):
         self._setup_learners()
         self._setup_eval_environment()
         self._setup_name()
-        
 
     # ToDO This is a temporary measure
     @abstractmethod
@@ -125,10 +126,8 @@ class Experiment(ABC):
                 torch.random.manual_seed(seed)
                 torch.cuda.manual_seed_all(seed)
 
-                # TODO:Change to log all models, not just one
-                # Changed models back to model for now cause it requires more changes in the logger
-                self.logger.log_experiment(model=self.model, env=self.env, run_comment=run_comment,
-                                           plot_xmin=self.plot_xmin, plot_xmax=self.plot_xmax,
+                self.logger.log_experiment(experiment_params=self.experiment_params, models=self.models, env=self.env,
+                                           run_comment=run_comment, plot_xmin=self.plot_xmin, plot_xmax=self.plot_xmax,
                                            plot_ymin=self.plot_ymin, plot_ymax=self.plot_ymax,
                                            batch_size=self.l_config.batch_size, optimal_bid=self._optimal_bid)
 
@@ -138,8 +137,7 @@ class Experiment(ABC):
                 for epoch in range(epoch, epoch + epochs + 1):
                     self._training_loop(epoch=epoch)
 
-
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
-            #if torch.cuda.memory_allocated() > 0:
+            # if torch.cuda.memory_allocated() > 0:
             #    warnings.warn('Theres a memory leak')

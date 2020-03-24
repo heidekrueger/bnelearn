@@ -464,51 +464,8 @@ for vals in product(*hyperparams.values()):
                 against_bne_utilities.append(u)
             # print(' util_vs_bne:', np.round(u.detach().cpu().numpy(), 4), end='\t')
 
-            # logging
-            if logging:
-                log_metrics(
-                    writer = writer,
-                    utilities = utilities,
-                    bne_utilities = bne_utilities,
-                    against_bne_utilities = against_bne_utilities,
-                    overhead = elapsed,
-                    e = e,
-                    log_name = log_name,
-                    n_players = param_dict["n_players"],
-                    models = models,
-                    policy_metrics = {
-                        param_dict["BNE1"]: [
-                            policy_metric(
-                                model.forward,
-                                optimal_bid(mechanism, param_dict),
-                                param_dict["n_items"],
-                                selection = split_award_dict \
-                                    if param_dict["exp_no"] == 6 else 'random',
-                                bounds = [param_dict["u_lo"], param_dict["u_hi"]],
-                                item_interest_limit = param_dict["item_interest_limit"] if \
-                                    "item_interest_limit" in param_dict.keys() else None,
-                                eval_points_max = 2 ** 18,
-                                device = device
-                            )
-                            for model in models],
-                        param_dict["BNE2"]: [
-                            policy_metric(
-                                model.forward,
-                                optimal_bid_2(mechanism, param_dict),
-                                param_dict["n_items"],
-                                selection = split_award_dict \
-                                    if param_dict["exp_no"] == 6 else 'random',
-                                bounds = [param_dict["u_lo"], param_dict["u_hi"]],
-                                item_interest_limit = param_dict["item_interest_limit"] if \
-                                    "item_interest_limit" in param_dict.keys() else None,
-                                eval_points_max = 2 ** 18,
-                                device = device
-                            )
-                            for model in models]
-                    }
-                )
 
-            print('epoch {}:\t{}s'.format(e, round(elapsed, 2)))
+
 
     if logging:
         for i, model in enumerate(models):

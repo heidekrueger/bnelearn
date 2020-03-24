@@ -1,4 +1,5 @@
 import os
+import time
 import warnings
 from abc import ABC
 from functools import partial
@@ -6,7 +7,7 @@ from itertools import product
 
 import torch
 import numpy as np
-from scipy import integrate
+from scipy import integrate, interpolate
 
 from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
@@ -18,21 +19,24 @@ from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
 
 
 class MultiUnitExperiment(Experiment, ABC):
-    def __init__(self, n_players: int, mechanism: Mechanism, n_items: int, u_lo: float, u_hi: float, BNE1: str,
-                 BNE2: str, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
-                 item_interest_limit: int = None, efficiency_parameter=None):
+    def __init__(self, experiment_params: dict, mechanism: Mechanism, gpu_config: GPUController, logger: Logger,
+                 l_config: LearningConfiguration):
+        self.l_config = l_config
+
         self.mechanism = mechanism
-        self.n_players = n_players
-        self.n_items = n_items
-        self.u_lo = u_lo
-        self.u_hi = u_hi
-        self.BNE1 = BNE1
-        self.BNE2 = BNE2
-        self.item_interest_limit = item_interest_limit
-        self.model_sharing = False
+        self.n_players = experiment_params['n_players']
+        self.n_items = experiment_params['n_items']
+        self.u_lo = experiment_params['u_lo']
+        self.u_hi = experiment_params['u_hi']
+        self.BNE1 = experiment_params['BNE1']
+        self.BNE2 = experiment_params['BNE2']
+        self.item_interest_limit = experiment_params['item_interest_limit']
+        self.model_sharing = experiment_params['model_sharing']
+        self.efficiency_parameter = experiment_params['efficiency_parameter']
+
+        self.n_parameters = list()
         self.input_length = self.n_items
-        self.efficiency_parameter = efficiency_parameter
-        self.item_interest_limit = item_interest_limit
+        self.experiment_params['experience'] = None
 
         for vals in product(*l_config.learner_hyperparams.values()):
             self.seed, self.population_size, self.sigma, self.scale_sigma_by_model_size, self.normalize_gradients, \
@@ -43,14 +47,20 @@ class MultiUnitExperiment(Experiment, ABC):
             print('{}: {}'.format(k, eval(k)))
         print('-----------\n')
 
-        self.learner_hyperparams = {
-            'population_size': self.population_size,
-            'sigma': self.sigma,
-            'scale_sigma_by_model_size': self.scale_sigma_by_model_size,
-            'normalize_gradients': self.normalize_gradients
-        }
+        # self.learner_hyperparams = {
+        #    'seed': l_config.learner_hyperparams['seed'],
+        #    'population_size': l_config.learner_hyperparams['population_size'],
+        #    'sigma': l_config.learner_hyperparams['sigma'],
+        #    'scale_sigma_by_model_size': l_config.learner_hyperparams['scale_sigma_by_model_size'],
+        #    'normalize_gradients': l_config.learner_hyperparams['normalize_gradients'],
+        #    'lr': l_config.learner_hyperparams['lr'],
+        #    'weight_decay': l_config.learner_hyperparams['weight_decay'],
+        #    'momentum': l_config.learner_hyperparams['momentum'],
+        #    'pretrain_epoch': l_config.learner_hyperparams['pretrain_epoch'],
+        #    'pretrain_transform': l_config.learner_hyperparams['pretrain_transform']
+        # }
 
-        super().__init__(n_players, gpu_config, logger, l_config)
+        super().__init__(gpu_config, experiment_params, logger, l_config)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
         """
@@ -95,11 +105,14 @@ class MultiUnitExperiment(Experiment, ABC):
         pretrain_valuations = self._strat_to_bidder(
             lambda x: x, self.l_config.batch_size, 0).draw_valuations_()[:pretrain_points, :]
 
-        n_parameters = list()
+        self.n_parameters = list()
         for model in self.models:
-            n_parameters.append(sum([p.numel() for p in model.parameters()]))
-            model.pretrain(pretrain_valuations, self.pretrain_epoch, self.pretrain_transform)
+            self.n_parameters.append(sum([p.numel() for p in model.parameters()]))
+            model.pretrain(pretrain_valuations, self.l_config.learner_hyperparams['pretrain_epoch'],
+                           self.l_config.learner_hyperparams['pretrain_transform'])
 
+        # I see no other way to get this info to the logger
+        self.experiment_params['n_parameters'] = self.n_parameters
         self.bidders = [
             self._strat_to_bidder(self.models[0 if self.model_sharing else i], self.l_config.batch_size, i)
             for i in range(self.n_players)
@@ -117,10 +130,10 @@ class MultiUnitExperiment(Experiment, ABC):
     def _setup_learners(self):
         self.learners = [
             ESPGLearner(
-                model=self.model,
+                model=self.models[i],
                 environment=self.env,
-                hyperparams=self.learner_hyperparams,
-                optimizer_type=self.l_config.optimizer_type,
+                hyperparams=self.l_config.learner_hyperparams,
+                optimizer_type=self.l_config.optimizer,
                 optimizer_hyperparams=self.l_config.optimizer_hyperparams,
                 strat_to_player_kwargs={"player_position": i}
             )
@@ -159,131 +172,50 @@ class MultiUnitExperiment(Experiment, ABC):
         self.logger.base_dir = os.path.join(*name)
 
     def _training_loop(self, epoch):
-
+        start_time = time.time()
 
         # calculate utility vs BNE
         bne_utilities = list()
-        for agent in bne_env.agents:
-            u = bne_env.get_reward(agent, draw_valuations=True)
+        for agent in self.bne_env.agents:
+            u = self.bne_env.get_reward(agent, draw_valuations=True)
             bne_utilities.append(u)
         print('bne_utilities', bne_utilities)
 
-        with SummaryWriter(logdir, flush_secs=60) as writer:
+        torch.cuda.empty_cache()
 
-            # torch.cuda.empty_cache()
+        # torch.cuda.reset_max_memory_allocated(device=device)
 
-            if logging:
-                log_once(writer, 0, epoch, param_dict["n_players"], log_name,
-                         n_parameters, seed, models, batch_size, learner_hyperparams,
-                         optimizer_type, optimizer_hyperparams, pretrain_epoch, env)
+        self.env.prepare_iteration()
 
-            for e in range(epoch + 1):
+        # record utilities and do optimizer step
+        utilities = list()
+        for i, learner in enumerate(self.learners):
+            u = learner.update_strategy_and_evaluate_utility()
+            utilities.append(u)
+        # print('util:', np.round(u.detach().cpu().numpy(), 4), end='\t')
 
-                torch.cuda.empty_cache()
+        # memory = torch.cuda.max_memory_allocated(device=device) * (2**-17)
 
-                # plotting
-                if e % plot_epoch == 0 and logging:
-                    plot_bid_function(
-                        bidders,
-                        optimal_bid(mechanism, param_dict, return_payoff_dominant=False),
-                        optimal_bid_2(mechanism, param_dict),
-                        log_name, logdir, writer, e=e,
-                        bounds=[param_dict["u_lo"], param_dict["u_hi"]],
-                        split_award={
-                            'split_award': True,
-                            "efficiency_parameter": param_dict["efficiency_parameter"],
-                            "input_length": param_dict["input_length"] \
-                            } if param_dict["exp_no"] == 6 else None,
-                        save_fig_to_disc=save_figure_to_disc,
-                        device=device
-                    )
-                    # if param_dict["n_items"] == 2 \
-                    # and param_dict["n_players"] < 4 \
-                    # and param_dict["exp_no"] != 6 \
-                    # or param_dict["exp_no"] == 2:
-                    #     plot_bid_function_3d(
-                    #         writer, e, param_dict["exp_no"],
-                    #         param_dict["n_items"], log_name, logdir, bidders,
-                    #         batch_size, device, #bounds=[param_dict["u_lo"], param_dict["u_hi"]],
-                    #         split_award = param_dict["exp_no"]==6,
-                    #         save_fig_to_disc = save_figure_to_disc
-                    #     )
+        # log relative utility loss induced by not playing the BNE
+        against_bne_utilities = list()
+        for i, model in enumerate(self.models):
+            u = self.bne_env.get_strategy_reward(model, player_position=i, draw_valuations=True)
+            against_bne_utilities.append(u)
+        # print(' util_vs_bne:', np.round(u.detach().cpu().numpy(), 4), end='\t')
 
-                start_time = time.time()
-                # torch.cuda.reset_max_memory_allocated(device=device)
+        elapsed = time.time() - start_time
 
-                env.prepare_iteration()
+        log_params = {
+            'elapsed': elapsed,
+            'optima_bid': self._optimal_bid,
+            'optima_bid_2': self._optimal_bid_2,
+            'bne_utilities': bne_utilities,
+            'utilities': utilities,
+            'against_bne_utilities': against_bne_utilities
+        }
+        self.logger.log_training_iteration(log_params=log_params)
 
-                # record utilities and do optimizer step
-                utilities = list()
-                for i, learner in enumerate(learners):
-                    u = learner.update_strategy_and_evaluate_utility()
-                    utilities.append(u)
-                # print('util:', np.round(u.detach().cpu().numpy(), 4), end='\t')
-
-                elapsed = time.time() - start_time
-
-                # memory = torch.cuda.max_memory_allocated(device=device) * (2**-17)
-
-                # log relative utility loss induced by not playing the BNE
-                against_bne_utilities = list()
-                for i, model in enumerate(models):
-                    u = bne_env.get_strategy_reward(model, player_position=i, draw_valuations=True)
-                    against_bne_utilities.append(u)
-                # print(' util_vs_bne:', np.round(u.detach().cpu().numpy(), 4), end='\t')
-
-                # logging
-                if logging:
-                    log_metrics(
-                        writer=writer,
-                        utilities=utilities,
-                        bne_utilities=bne_utilities,
-                        against_bne_utilities=against_bne_utilities,
-                        overhead=elapsed,
-                        e=e,
-                        log_name=log_name,
-                        n_players=param_dict["n_players"],
-                        models=models,
-                        policy_metrics={
-                            param_dict["BNE1"]: [
-                                policy_metric(
-                                    model.forward,
-                                    optimal_bid(mechanism, param_dict),
-                                    param_dict["n_items"],
-                                    selection=split_award_dict \
-                                        if param_dict["exp_no"] == 6 else 'random',
-                                    bounds=[param_dict["u_lo"], param_dict["u_hi"]],
-                                    item_interest_limit=param_dict["item_interest_limit"] if \
-                                        "item_interest_limit" in param_dict.keys() else None,
-                                    eval_points_max=2 ** 18,
-                                    device=device
-                                )
-                                for model in models],
-                            param_dict["BNE2"]: [
-                                policy_metric(
-                                    model.forward,
-                                    optimal_bid_2(mechanism, param_dict),
-                                    param_dict["n_items"],
-                                    selection=split_award_dict \
-                                        if param_dict["exp_no"] == 6 else 'random',
-                                    bounds=[param_dict["u_lo"], param_dict["u_hi"]],
-                                    item_interest_limit=param_dict["item_interest_limit"] if \
-                                        "item_interest_limit" in param_dict.keys() else None,
-                                    eval_points_max=2 ** 18,
-                                    device=device
-                                )
-                                for model in models]
-                        }
-                    )
-
-                print('epoch {}:\t{}s'.format(e, round(elapsed, 2)))
-
-        #if logging:
-        #    for i, model in enumerate(models):
-        #        torch.save(model.state_dict(), os.path.join(logdir, 'saved_model_' + str(i) + '.pt'))
-
-
-def _optimal_bid(self, valuation, player_position=None):
+    def _optimal_bid(self, valuation, player_position=None):
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.tensor(valuation, dtype=torch.float, device=self.gpu_config.device)
         else:
@@ -298,17 +230,18 @@ def _optimal_bid(self, valuation, player_position=None):
 
         return valuation
 
+    def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
+        if not isinstance(valuation, torch.Tensor):
+            valuation = torch.tensor(valuation, dtype=torch.float, device=self.gpu_config.device)
+        else:
+            valuation = valuation.clone().detach()
+
+        return valuation
+
     # ToDo Selection should be a dictionary
     @staticmethod
-    def multi_unit_valuations(
-            device=None,
-            bounds=[0.0, 1.0],
-            dim=2,
-            batch_size=100,
-            selection='random',
-            item_interest_limit=False,
-            sort=False,
-    ):
+    def multi_unit_valuations(device=None, bounds=[0.0, 1.0], dim=2, batch_size=100, selection='random',
+                              item_interest_limit=False, sort=False):
         """Returns uniformly sampled valuations for multi unit auctions."""
         # for uniform vals and 2 items <=> F1(v)=v**2, F2(v)=2v-v**2
 
@@ -337,7 +270,7 @@ def _optimal_bid(self, valuation, player_position=None):
 
             mask = valuations.sort(dim=1, descending=True)[0]
             mask = (mask == valuations).all(dim=1)
-            valuations = valuations[mask]
+        valuations = valuations[mask]
 
         if isinstance(item_interest_limit, int):
             valuations[:, item_interest_limit:] = 0
@@ -349,10 +282,17 @@ def _optimal_bid(self, valuation, player_position=None):
 
 # exp_no==0
 class MultiItemVickreyAuction(MultiUnitExperiment):
-    def __init__(self, n_players: int, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration):
+    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+                 l_config: LearningConfiguration):
         mechanism = MultiItemUniformPriceAuction(cuda=gpu_config.cuda)
-        super().__init__(n_players=n_players, mechanism=mechanism, n_items=2, u_lo=0, u_hi=1,
-                         BNE1='Truthful', BNE2='Truthful', gpu_config=gpu_config, logger=logger, l_config=l_config)
+        experiment_params['n_items'] = 2
+        experiment_params['u_lo'] = 0
+        experiment_params['u_hi'] = 1
+        experiment_params['BNE1'] = 'Truthful'
+        experiment_params['BNE2'] = 'Truthful'
+        super().__init__(experiment_params, mechanism=mechanism, gpu_config=gpu_config, logger=logger,
+                         l_config=l_config)
+        self._run_setup()
 
     def _setup_bidders(self):
         pass
@@ -369,13 +309,24 @@ class MultiItemVickreyAuction(MultiUnitExperiment):
     def _training_loop(self, epoch):
         pass
 
+    def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
+        warnings.warn("No 2nd explicit BNE known.", Warning)
+        return super()._optimal_bid_2(valuation, player_position)
+
 
 # exp_no==1, BNE continua
 class MultiItemUniformPriceAuction2x2(MultiUnitExperiment):
-    def __init__(self, n_players: int, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration):
+    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+                 l_config: LearningConfiguration):
         mechanism = MultiItemUniformPriceAuction(cuda=gpu_config.cuda)
-        super().__init__(n_players=n_players, mechanism=mechanism, n_items=2, u_lo=0, u_hi=1,
-                         BNE1='BNE1', BNE2='Truthful', gpu_config=gpu_config, logger=logger, l_config=l_config)
+        experiment_params['n_items'] = 2
+        experiment_params['u_lo'] = 0
+        experiment_params['u_hi'] = 1
+        experiment_params['BNE1'] = 'BNE1'
+        experiment_params['BNE2'] = 'Truthful'
+        super().__init__(experiment_params, mechanism=mechanism, gpu_config=gpu_config, logger=logger,
+                         l_config=l_config)
+        self._run_setup()
 
     @staticmethod
     def exp_no_1_transform(input_tensor):
@@ -422,17 +373,36 @@ class MultiItemUniformPriceAuction2x2(MultiUnitExperiment):
             warnings.warn("No explict BNE for MultiItemUniformPriceAuction known.", Warning)
             return valuation
 
+    def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
+        super()._optimal_bid_2(valuation, player_position)
+
+        if self.experiment_params["n_players"] == 2 and self.experiment_params["n_items"] == 2:
+            opt_bid = torch.clone(valuation)
+            opt_bid[:, 0] = self.experiment_params["u_hi"]
+            opt_bid[:, 1] = 0
+            return opt_bid
+        else:
+            warnings.warn("No 2nd explicit BNE known.", Warning)
+            return valuation
+
     def _training_loop(self, epoch):
         pass
 
 
 # exp_no==2
 class MultiItemUniformPriceAuction2x3limit2(MultiUnitExperiment):
-    def __init__(self, n_players: int, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration):
+    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+                 l_config: LearningConfiguration):
         mechanism = MultiItemUniformPriceAuction(cuda=gpu_config.cuda)
-        super().__init__(n_players=n_players, mechanism=mechanism, n_items=3, u_lo=0, u_hi=1,
-                         BNE1='BNE1', BNE2='Truthful', item_interest_limit=2,
-                         gpu_config=gpu_config, logger=logger, l_config=l_config)
+        experiment_params['n_items'] = 3
+        experiment_params['u_lo'] = 0
+        experiment_params['u_hi'] = 1
+        experiment_params['BNE1'] = 'BNE1'
+        experiment_params['BNE2'] = 'Truthful'
+        experiment_params['item_interest_limit'] = 2
+        super().__init__(experiment_params, mechanism=mechanism, gpu_config=gpu_config, logger=logger,
+                         l_config=l_config)
+        self._run_setup()
 
     def _setup_bidders(self):
         pass
@@ -473,16 +443,27 @@ class MultiItemUniformPriceAuction2x3limit2(MultiUnitExperiment):
             warnings.warn("No explict BNE for MultiItemUniformPriceAuction known.", Warning)
             return valuation
 
+    def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
+        warnings.warn("No 2nd explicit BNE known.", Warning)
+        return super()._optimal_bid_2(valuation, player_position)
+
     def _training_loop(self, epoch):
         pass
 
 
 # exp_no==4
 class MultiItemDiscriminatoryAuction2x2(MultiUnitExperiment):
-    def __init__(self, n_players: int, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration):
+    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+                 l_config: LearningConfiguration):
         mechanism = MultiItemDiscriminatoryAuction(cuda=gpu_config.cuda)
-        super().__init__(n_players=n_players, mechanism=mechanism, n_items=2, u_lo=0, u_hi=1,
-                         BNE1='BNE1', BNE2='Truthful', gpu_config=gpu_config, logger=logger, l_config=l_config)
+        experiment_params['n_items'] = 2
+        experiment_params['u_lo'] = 0
+        experiment_params['u_hi'] = 1
+        experiment_params['BNE1'] = 'BNE1'
+        experiment_params['BNE2'] = 'Truthful'
+        super().__init__(experiment_params, mechanism=mechanism, gpu_config=gpu_config, logger=logger,
+                         l_config=l_config)
+        self._run_setup()
 
     def _setup_bidders(self):
         pass
@@ -517,16 +498,27 @@ class MultiItemDiscriminatoryAuction2x2(MultiUnitExperiment):
         opt_bid = opt_bid.sort(dim=1, descending=True)[0]
         return opt_bid
 
+    def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
+        warnings.warn("No 2nd explicit BNE known.", Warning)
+        return super()._optimal_bid_2(valuation, player_position)
+
     def _training_loop(self, epoch):
         pass
 
 
 # exp_no==5
 class MultiItemDiscriminatoryAuction2x2CMV(MultiUnitExperiment):
-    def __init__(self, n_players: int, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration):
+    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+                 l_config: LearningConfiguration):
         mechanism = MultiItemDiscriminatoryAuction(cuda=gpu_config.cuda)
-        super().__init__(n_players=n_players, mechanism=mechanism, n_items=2, u_lo=0, u_hi=1,
-                         BNE1='BNE1', BNE2='Truthful', gpu_config=gpu_config, logger=logger, l_config=l_config)
+        experiment_params['n_items'] = 2
+        experiment_params['u_lo'] = 0
+        experiment_params['u_hi'] = 1
+        experiment_params['BNE1'] = 'BNE1'
+        experiment_params['BNE2'] = 'Truthful'
+        super().__init__(experiment_params, mechanism=mechanism, gpu_config=gpu_config, logger=logger,
+                         l_config=l_config)
+        self._run_setup()
 
     def _setup_bidders(self):
         pass
@@ -589,16 +581,28 @@ class MultiItemDiscriminatoryAuction2x2CMV(MultiUnitExperiment):
                 opt_bid[agent] = bidding(valuation[agent, :])
             return torch.tensor(opt_bid)
 
+    def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
+        warnings.warn("No 2nd explicit BNE known.", Warning)
+        return super()._optimal_bid_2(valuation, player_position)
+
     def _training_loop(self, epoch):
         pass
 
 
 # exp_no==6, two BNE types, BNE continua
 class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
-    def __init__(self, n_players: int, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration):
+    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+                 l_config: LearningConfiguration):
         mechanism = FPSBSplitAwardAuction(cuda=gpu_config.cuda)
-        super().__init__(n_players=n_players, mechanism=mechanism, n_items=2, u_lo=1.0, u_hi=1.4,
-                         BNE1='PD_Sigma_BNE', BNE2='WTA_BNE', gpu_config=gpu_config, logger=logger, l_config=l_config)
+        experiment_params['n_items'] = 2
+        experiment_params['u_lo'] = 1.0
+        experiment_params['u_hi'] = 1.4
+        experiment_params['BNE1'] = 'PD_Sigma_BNE'
+        experiment_params['BNE2'] = 'WTA_BNE'
+        super().__init__(experiment_params, mechanism=mechanism, gpu_config=gpu_config, logger=logger,
+                         l_config=l_config)
+        self._run_setup()
+
         self.efficiency_parameter = 0.3
         self.input_length = self.n_items - 1
         self.constant_marginal_values = None
@@ -686,6 +690,73 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
             )
         else:
             return {'sigma_bounds': sigma_bounds, 'wta_bounds': wta_bounds}
+
+    def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
+        super()._optimal_bid_2(valuation, player_position)
+
+        # WTA equilibrium
+        # Anton and Yao, 1992: Proposition 4
+
+        if self.experiment_params['input_length'] == 1 and self.experiment_params['n_items'] == 2 \
+                and valuation.shape[1] == 1:
+            valuation = torch.cat((valuation, self.experiment_params['efficiency_parameter'] * valuation), axis=1)
+        opt_bid_batch_size = 2 ** 12
+        opt_bid = np.zeros(shape=(opt_bid_batch_size, valuation.shape[1]))
+
+        if 'opt_bid_function' not in globals():
+            # do one-time approximation via integration
+            eps = 1e-4
+            val_lin = np.linspace(self.experiment_params["u_lo"], self.experiment_params["u_hi"] - eps,
+                                  opt_bid_batch_size)
+
+            def integral(theta):
+                return np.array(
+                    [integrate.quad(
+                        lambda x: (1 - self.value_cdf(self.experiment_params["u_lo"],
+                                                      self.experiment_params["u_hi"])(x)) ** (
+                                          self.experiment_params["n_players"] - 1),
+                        v, self.experiment_params["u_hi"],
+                        epsabs=eps
+                    )[0]
+                     for v in theta]
+                )
+
+            def opt_bid_100(theta):
+                return theta + (integral(theta) /
+                                ((1 - self.value_cdf(self.experiment_params["u_lo"],
+                                                     self.experiment_params["u_hi"])(theta)) ** (
+                                         self.experiment_params["n_players"] - 1)))
+
+            opt_bid[:, 0] = opt_bid_100(val_lin)
+            opt_bid[:, 1] = opt_bid_100(val_lin) - \
+                            self.experiment_params["efficiency_parameter"] * self.experiment_params["u_lo"]
+            # or more
+
+            global opt_bid_function
+            opt_bid_function = [
+                interpolate.interp1d(
+                    val_lin, opt_bid[:, 0],
+                    fill_value='extrapolate'
+                ),
+                interpolate.interp1d(
+                    val_lin,
+                    opt_bid[:, 1], fill_value='extrapolate'
+                )
+            ]
+
+        # (re)use interpolation of opt_bid done on first batch
+        opt_bid = torch.tensor(
+            [
+                opt_bid_function[0](valuation[:, 0].cpu().numpy()),
+                opt_bid_function[1](valuation[:, 0].cpu().numpy())
+            ],
+            device=valuation.device
+        ).t_()
+
+        opt_bid[opt_bid < 0] = 0
+        opt_bid[torch.isnan(opt_bid)] = 0
+
+        return opt_bid
 
     def _training_loop(self, epoch):
         pass

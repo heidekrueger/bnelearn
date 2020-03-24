@@ -18,9 +18,9 @@ from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
 
 # TODO: Currently only implemented for uniform val
 class CombinatorialExperiment(Experiment, ABC):
-    def __init__(self, gpu_config: GPUController, experiment_param: dict, logger: Logger, l_config: LearningConfiguration,
+    def __init__(self, gpu_config: GPUController, experiment_params: dict, logger: Logger, l_config: LearningConfiguration,
                  model_sharing=True):
-        super().__init__(gpu_config, experiment_param, logger, l_config)
+        super().__init__(gpu_config, experiment_params, logger, l_config)
         self.model_sharing = model_sharing
         self.global_bne_env = None
         self.global_bne_utility = None
@@ -28,7 +28,7 @@ class CombinatorialExperiment(Experiment, ABC):
     def _strat_to_bidder(self, strategy, player_position=0, batch_size=None):
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
                               batch_size=batch_size, n_items = self.n_items)
-    
+
     # Currently only working for LLG and LLLLGG.
     def _setup_bidders(self):
         print('Setting up bidders...')
@@ -45,10 +45,10 @@ class CombinatorialExperiment(Experiment, ABC):
         self.bidders = []
         for i in range(self.n_players):
             if self.model_sharing:
-                self.bidders.append(self._strat_to_bidder(self.models[int(i/self.n_local)], player_position=i, 
+                self.bidders.append(self._strat_to_bidder(self.models[int(i/self.n_local)], player_position=i,
                                                      batch_size=self.l_config.batch_size))
             else:
-                self.bidders.append(self._strat_to_bidder(self.models[i], player_position=i, 
+                self.bidders.append(self._strat_to_bidder(self.models[i], player_position=i,
                                                      batch_size=self.l_config.batch_size))
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
@@ -102,19 +102,19 @@ class CombinatorialExperiment(Experiment, ABC):
                 print("{}: {:.5f}".format(i, utilities[i]))
 # mechanism/bidding implementation, plot, bnes
 class LLGExperiment(CombinatorialExperiment):
-    def __init__(self, experiment_param:dict, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+    def __init__(self, experiment_params:dict, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
                  model_sharing=True):
         # Experiment specific parameters
         self.n_local = 2
         self.gamma = 0.0
         assert self.gamma == 0, "Gamma > 0 implemented yet!?"
-        experiment_param['n_players'] = 3
+        experiment_params['n_players'] = 3
         self.n_items = 1
-        super().__init__(gpu_config, experiment_param, logger, l_config, model_sharing)
-        
+        super().__init__(gpu_config, experiment_params, logger, l_config, model_sharing)
+
         # Experiment general parameters
         self.n_players = 3
-        
+
         self._run_setup()
 
     def _setup_learning_environment(self):
@@ -188,16 +188,16 @@ class LLGExperiment(CombinatorialExperiment):
 
 # mechanism/bidding implementation, plot
 class LLLLGGExperiment(CombinatorialExperiment):
-    def __init__(self, experiment_param, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
+    def __init__(self, experiment_params, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
                  model_sharing=True):
         self.n_local = 4
         self.gamma = 0.0
-        experiment_param['n_players'] = 6
+        experiment_params['n_players'] = 6
         self.n_items = 2
-        super().__init__(gpu_config, experiment_param, logger, l_config, model_sharing)
-        self.bne_utility = [9999] * 2 if experiment_param['model_sharing'] else [9999] *6
+        super().__init__(gpu_config, experiment_params, logger, l_config, model_sharing)
+        self.bne_utility = [9999] * 2 if experiment_params['model_sharing'] else [9999] * 6
         self._run_setup()
-        
+
 
     def _setup_learning_environment(self):
         #TODO: We could handover self.mechanism in experiment and move _self_learning_environment up, since it is identical in most places
