@@ -79,7 +79,7 @@ core_solver = 'no_core' #no_core #gurobi
 pricing_rule =  'first_price'#'first_price'#nearest-vcg'
 model_sharing = True
 #training batch size (2**17 - 2**18 for vcg)
-batch_size = 2**11
+batch_size = 2**18
 regret_bid_size = 2**7
 eval_batch_size = 2**25
 epoch = 100000
