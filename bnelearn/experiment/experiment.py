@@ -126,7 +126,7 @@ class Experiment(ABC):
                 torch.random.manual_seed(seed)
                 torch.cuda.manual_seed_all(seed)
 
-                self.logger.log_experiment(experiment_params=self.experiment_params, models=self.models, env=self.env,
+                self.logger.log_experiment(experiment_params=self.experiment_params, models=self.models, max_epochs = epochs, env=self.env,
                                            run_comment=run_comment, plot_xmin=self.plot_xmin, plot_xmax=self.plot_xmax,
                                            plot_ymin=self.plot_ymin, plot_ymax=self.plot_ymax,
                                            batch_size=self.l_config.batch_size, optimal_bid=self._optimal_bid)

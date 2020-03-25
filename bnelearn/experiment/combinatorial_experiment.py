@@ -18,10 +18,10 @@ from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
 
 # TODO: Currently only implemented for uniform val
 class CombinatorialExperiment(Experiment, ABC):
-    def __init__(self, gpu_config: GPUController, experiment_params: dict, logger: Logger, l_config: LearningConfiguration,
-                 model_sharing=True):
+    def __init__(self, gpu_config: GPUController, experiment_params: dict, logger: Logger, l_config: LearningConfiguration):
+        self.gamma = 0.0
+        assert self.gamma == 0, "Gamma > 0 implemented yet!?"
         super().__init__(gpu_config, experiment_params, logger, l_config)
-        self.model_sharing = model_sharing
         self.global_bne_env = None
         self.global_bne_utility = None
 
@@ -70,7 +70,6 @@ class CombinatorialExperiment(Experiment, ABC):
                                  strat_to_player_kwargs={"player_position": i*self.n_local}
                                  ))
 
-
     def _training_loop(self, epoch):
         # do in every iteration
         # save current params to calculate update norm
@@ -106,15 +105,9 @@ class LLGExperiment(CombinatorialExperiment):
                  model_sharing=True):
         # Experiment specific parameters
         self.n_local = 2
-        self.gamma = 0.0
-        assert self.gamma == 0, "Gamma > 0 implemented yet!?"
         experiment_params['n_players'] = 3
         self.n_items = 1
         super().__init__(gpu_config, experiment_params, logger, l_config, model_sharing)
-
-        # Experiment general parameters
-        self.n_players = 3
-
         self._run_setup()
 
     def _setup_learning_environment(self):
@@ -124,8 +117,6 @@ class LLGExperiment(CombinatorialExperiment):
                                       batch_size=self.l_config.batch_size,
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
-
-
 
     def _optimal_bid(self, valuation, player_position):
         if not isinstance(valuation, torch.Tensor):
@@ -185,19 +176,16 @@ class LLGExperiment(CombinatorialExperiment):
         self.base_dir = os.path.join(*name)  # ToDo Redundant?
         self.logger.base_dir = os.path.join(*name)
 
-
 # mechanism/bidding implementation, plot
 class LLLLGGExperiment(CombinatorialExperiment):
     def __init__(self, experiment_params, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration,
                  model_sharing=True):
         self.n_local = 4
-        self.gamma = 0.0
         experiment_params['n_players'] = 6
         self.n_items = 2
         super().__init__(gpu_config, experiment_params, logger, l_config, model_sharing)
         self.bne_utility = [9999] * 2 if experiment_params['model_sharing'] else [9999] * 6
         self._run_setup()
-
 
     def _setup_learning_environment(self):
         #TODO: We could handover self.mechanism in experiment and move _self_learning_environment up, since it is identical in most places
@@ -207,7 +195,6 @@ class LLLLGGExperiment(CombinatorialExperiment):
                                       batch_size=self.l_config.batch_size,
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
-
 
     def _setup_eval_environment(self):
         # No bne eval known
