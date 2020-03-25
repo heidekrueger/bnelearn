@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-from bnelearn.experiment import LearningConfiguration
+from bnelearn.experiment.learning_configuration import LearningConfiguration
 from bnelearn.experiment.MultiUnitExperiment import FPSBSplitAwardAuction2x2
 
 
@@ -96,7 +96,7 @@ class Logger(ABC):
     def _log_hyperparams(self, writer, epoch):
         pass
 
-
+# TODO: Allow multiple utilities and params (for multiple learners)
 class SingleItemAuctionLogger(Logger):
     def __init__(self, l_config: LearningConfiguration):
         super().__init__(l_config)
@@ -142,26 +142,27 @@ class SingleItemAuctionLogger(Logger):
         self._log_once()
         self._log_hyperparams()
 
-    def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,
-                               bidders, utility, log_params: dict):
-        # ToDO It is by no means nice that there is so much specific logic in here
+    # TODO: Change bidders to models only, since we always want to plot a model instead of duplicates of one (bidders sharing a model)
+    #TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
+    def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utilities,
+                               bidders, utilities, log_params: dict):
+        # TODO It is by no means nice that there is so much specific logic in here
         start_time = timer()
-        for model in self.models:
+        for i, model in enumerate(self.models):
             # calculate infinity-norm of update step
             new_params = torch.nn.utils.parameters_to_vector(model.parameters())
-            update_norm = (new_params - prev_params).norm(float('inf'))
+            update_norm = (new_params - prev_params[i]).norm(float('inf'))
             # calculate utility vs bne
             utility_vs_bne = bne_env.get_reward(
                 strat_to_bidder(model, batch_size=eval_batch_size),
                 draw_valuations=False)  # False because expensive for normal priors
-            epsilon_relative = 1 - utility_vs_bne / bne_utility
-            epsilon_absolute = bne_utility - utility_vs_bne
-            L_2 = metrics.norm_strategy_and_actions(model, bne_env.agents[0].get_action(),
-                                                    bne_env.agents[0].valuations, 2)
-            L_inf = metrics.norm_strategy_and_actions(model, bne_env.agents[0].get_action(),
-
-                                                      bne_env.agents[0].valuations, float('inf'))
-            self._log_metrics(writer=self.writer, epoch=epoch, utility=utility, update_norm=update_norm,
+            epsilon_relative = 1 - utility_vs_bne / bne_utilities[i]
+            epsilon_absolute = bne_utilities[i] - utility_vs_bne
+            L_2 = metrics.norm_strategy_and_actions(model, bne_env.agents[i].get_action(),
+                                                    bne_env.agents[i].valuations, 2)
+            L_inf = metrics.norm_strategy_and_actions(model, bne_env.agents[i].get_action(),
+                                                      bne_env.agents[i].valuations, float('inf'))
+            self._log_metrics(writer=self.writer, epoch=epoch, utility=utilities[i], update_norm=update_norm,
                               utility_vs_bne=utility_vs_bne, epsilon_relative=epsilon_relative,
                               epsilon_absolute=epsilon_absolute, L_2=L_2, L_inf=L_inf)
 
@@ -169,13 +170,15 @@ class SingleItemAuctionLogger(Logger):
                 # plot current function output
                 # bidder = strat_to_bidder(model, batch_size)
                 # bidder.draw_valuations_()
-                v = bidders[0].valuations
-                b = bidders[0].get_action()
+                #TODO: or like this?:self.models[i].bidder.valuations
+                bidder = strat_to_bidder(model, self.batch_size)
+                v = bidder.valuations
+                b = bidder.get_action()
                 plot_data = (v, b)
 
                 print(
                     "Epoch {}: \tcurrent utility: {:.3f},\t utility vs BNE: {:.3f}, \tepsilon (abs/rel): ({:.5f}, {:.5f})".format(
-                        epoch, utility, utility_vs_bne, epsilon_absolute, epsilon_relative))
+                        epoch, utilities[i], utility_vs_bne, epsilon_absolute, epsilon_relative))
                 self._plot(self.fig, plot_data, self.writer, epoch)
 
             elapsed = timer() - start_time
@@ -708,32 +711,16 @@ class MultiUnitAuctionLogger(Logger):
         self.writer.add_figure('plot/plot', fig, epoch)
 
 
-class CombinatorialAuctionLogger(SingleItemAuctionLogger):
+class LLGAuctionLogger(SingleItemAuctionLogger):
     # TODO: Inherit from Logger
     def __init__(self, experiment_params):
         super().__init__(experiment_params)
 
-    def log_experiment(self, experiment_params, model, env, run_comment, plot_xmin, plot_xmax, plot_ymin, plot_ymax,
-                       batch_size,
-                       optimal_bid, max_epochs: int):
-        pass
+class LLLLGGAuctionLogger(SingleItemAuctionLogger):
+    # TODO: Inherit from Logger
+    def __init__(self, experiment_params):
+        super().__init__(experiment_params)
 
-    def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,
-                               bidders, utility):
-        pass
-
-    def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
-        pass
-
-    def _process_figure(self, fig, writer=None, epoch=None):
-        pass
-
-    def _log_once(self, writer, epoch):
-        pass
-
-    def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute, L_2,
-                     L_inf):
-        pass
-
-    def _log_hyperparams(self, writer, epoch):
+    def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utilities,
+                               bidders, utilities, log_params: dict):
         pass

@@ -14,7 +14,7 @@ from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
 
-
+# TODO: Change global_bne_utilitiy to global_bne_utilities (as list) and all it's dependencies. (Or is this never a list?!)
 # general logic and setup, plot
 class SingleItemExperiment(Experiment, ABC):
     def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
@@ -81,7 +81,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
                     hidden_activations=self.l_config.hidden_activations,
                     ensure_positive_output=torch.tensor([float(self.positive_output_point)])
                 ).to(self.gpu_config.device))
-                self.bidders.append(self._strat_to_bidder(self.models[0], self.l_config.batch_size, i))
+                self.bidders.append(self._strat_to_bidder(self.models[i], self.l_config.batch_size, i))
 
         if self.l_config.pretrain_iters > 0:
             print('\tpretraining...')
@@ -105,15 +105,17 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
             n_players=self.n_players,
             strategy_to_player_closure=self._strat_to_bidder
         )
-
+        #TODO: This is not very precise. Instead we should consider taking the mean over all agents
         global_bne_utility_sampled = self.global_bne_env.get_reward(self.global_bne_env.agents[0], draw_valuations=True)
+
         print("Utility in BNE (analytical): \t{:.5f}".format(self.global_bne_utility))
         print('Utility in BNE (sampled): \t{:.5f}'.format(global_bne_utility_sampled))
 
         # environment filled with optimal players for logging
         # use higher batch size for calculating optimum
         self.bne_env = self.global_bne_env
-        self.bne_utility = self.global_bne_utility
+        # Each bidder has the same bne utility
+        self.bne_utilities = [self.global_bne_utility] * self.n_players
 
     def _setup_name(self):
         name = ['single_item', self.mechanism_type, self.valuation_prior,
@@ -133,10 +135,10 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
 
         # everything after this is logging --> measure overhead
         log_params = {}
-        self.logger.log_training_iteration(prev_params=prev_params[0], epoch=epoch, bne_env=self.bne_env,
+        self.logger.log_training_iteration(prev_params=prev_params, epoch=epoch, bne_env=self.bne_env,
                                            strat_to_bidder=self._strat_to_bidder,
-                                           eval_batch_size=self.l_config.eval_batch_size, bne_utility=self.bne_utility,
-                                           bidders=self.bidders, utility=utilities[0], log_params=log_params)
+                                           eval_batch_size=self.l_config.eval_batch_size, bne_utilities=self.bne_utilities,
+                                           bidders=self.bidders, utilities=utilities, log_params=log_params)
 
 
 # implementation differences to symmetric case?
@@ -192,6 +194,8 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
 
 # known BNE + shared setup logic across runs (calculate and cache BNE
+#TODO: Adjust self.valuation_mean to lists like in Uniform?! 
+#TODO: Not working yet sind no actions generated in bne samping calculation. Check!
 class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
     def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
                  l_config: LearningConfiguration):
@@ -207,6 +211,7 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
                              risk=self.risk)
 
     def _setup_bidders(self):
+        #TODO: Probably move all this stuff to the init. ()
         self.valuation_mean = 10.0
         self.valuation_std = 5.0
         self.common_prior = torch.distributions.normal.Normal(loc=self.valuation_mean, scale=self.valuation_std)
