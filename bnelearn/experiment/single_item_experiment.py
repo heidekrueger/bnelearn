@@ -125,6 +125,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
     def _training_loop(self, epoch):
         # do in every iteration
         # save current params to calculate update norm
+        #TODO: Doesn't make sense to track for bidders instead of models but for consistency in logging for now. Change later
         prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
                        for model in self.models]
         # update model
@@ -154,6 +155,7 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         super().__init__(experiment_params, gpu_config, logger, l_config)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+        strategy.connected_bidders.append(player_position)
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, batch_size=batch_size,
                               player_position=player_position, cache_actions=cache_actions, risk=self.risk)
 
@@ -208,6 +210,7 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
         super().__init__(experiment_params, gpu_config, logger, l_config)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
+        strategy.connected_bidders.append(player_position)
         return Bidder.normal(self.valuation_mean, self.valuation_std, strategy,
                              batch_size=batch_size,
                              player_position=player_position,
