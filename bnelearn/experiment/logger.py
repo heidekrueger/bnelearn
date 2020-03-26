@@ -33,12 +33,12 @@ class Logger(ABC):
         self.l_config = l_config
         self.experiment_params = experiment_params
 
+
         self.base_dir = None
         self.log_dir = None
         self.fig = None
         self.models = None
         self.env = None
-        self.batch_size = None
         self.writer = None
 
         # plotting
@@ -62,8 +62,7 @@ class Logger(ABC):
 
     @abstractmethod
     def log_experiment(self, experiment_params, models: list, env, run_comment, plot_xmin, plot_xmax, plot_ymin,
-                       plot_ymax, batch_size,
-                       optimal_bid, max_epochs: int):
+                       plot_ymax, batch_size, optimal_bid, max_epochs: int, gpu_config):
         pass
 
     # ToDo Make a signature take a single dictionary parameter, as signatures would differ in each class
@@ -103,8 +102,7 @@ class SingleItemAuctionLogger(Logger):
         super().__init__(l_config, experiment_params)
 
     def log_experiment(self, experiment_params, models: list, env, run_comment, plot_xmin, plot_xmax, plot_ymin,
-                       plot_ymax, batch_size,
-                       optimal_bid, max_epochs: int, player_position=0):
+                       plot_ymax, batch_size, optimal_bid, max_epochs: int, gpu_config):
         # setting up plotting
         self.batch_size = batch_size
         self.plot_xmin = plot_xmin
@@ -330,6 +328,10 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
 
 
 class MultiUnitAuctionLogger(Logger):
+    def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,
+                               bidders, utility, log_params: dict):
+        pass
+
     def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute, L_2,
                      L_inf):
         pass
@@ -344,11 +346,11 @@ class MultiUnitAuctionLogger(Logger):
         super().__init__(experiment_params=experiment_params, l_config=l_config)
 
     def log_experiment(self, experiment_params, models, env, run_comment, plot_xmin, plot_xmax, plot_ymin, plot_ymax,
-                       batch_size,
-                       optimal_bid, max_epochs: int):
+                       batch_size, optimal_bid, max_epochs: int, gpu_config):
         self.models = models
         self.env = env
         self.experiment_params = experiment_params
+        self.gpu_config= gpu_config
 
         self.max_epochs = max_epochs
         if os.name == 'nt':
@@ -371,8 +373,7 @@ class MultiUnitAuctionLogger(Logger):
 
         self._log_once()
 
-    def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,
-                               bidders, utility, log_params: dict):
+    def _log_training_iteration(self, epoch, bidders, log_params: dict):
         optimal_bid = log_params['optima_bid']
         optimal_bid_2 = log_params['optima_bid_2']
         elapsed = log_params['elapsed']
@@ -387,6 +388,7 @@ class MultiUnitAuctionLogger(Logger):
         else:
             is_FPSBSplitAwardAuction2x2 = False
 
+        # ToDo Are bounds the same for all bidders? (used just [0] in all three cases below)
         # plotting
         if epoch % self.plot_epoch == 0:
             self.plot_bid_function(
@@ -394,7 +396,7 @@ class MultiUnitAuctionLogger(Logger):
                 optimal_bid,
                 optimal_bid_2,
                 epoch=epoch,
-                bounds=[self.experiment_params['u_lo'], self.experiment_params["u_hi"]],
+                bounds=[self.experiment_params['u_lo'][0], self.experiment_params["u_hi"][0]],
                 split_award={
                     'split_award': True,
                     "efficiency_parameter": self.experiment_params['efficiency_parameter'],
@@ -426,7 +428,7 @@ class MultiUnitAuctionLogger(Logger):
                         self.experiment_params["n_items"],
                         selection=self.split_award_dict \
                             if is_FPSBSplitAwardAuction2x2 else 'random',
-                        bounds=[self.experiment_params["u_lo"], self.experiment_params["u_hi"]],
+                        bounds=[self.experiment_params["u_lo"][0], self.experiment_params["u_hi"][0]],
                         item_interest_limit=self.experiment_params["item_interest_limit"] if \
                             "item_interest_limit" in self.experiment_params.keys() else None,
                         eval_points_max=2 ** 18,
@@ -440,7 +442,7 @@ class MultiUnitAuctionLogger(Logger):
                         self.experiment_params["n_items"],
                         selection=self.split_award_dict \
                             if is_FPSBSplitAwardAuction2x2 else 'random',
-                        bounds=[self.experiment_params["u_lo"], self.experiment_params["u_hi"]],
+                        bounds=[self.experiment_params["u_lo"][0], self.experiment_params["u_hi"][0]],
                         item_interest_limit=self.experiment_params["item_interest_limit"] if \
                             "item_interest_limit" in self.experiment_params.keys() else None,
                         eval_points_max=2 ** 18,
@@ -473,10 +475,11 @@ class MultiUnitAuctionLogger(Logger):
         for model in self.models:
             self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)
 
-        self.writer.add_scalar('hyperparameters/batch_size', self.batch_size, epoch)
+        self.writer.add_scalar('hyperparameters/batch_size', self.l_config.batch_size, epoch)
         self.writer.add_scalar('hyperparameters/epochs', self.max_epochs, epoch)
-        self.writer.add_scalar('hyperparameters/pretrain_epoch', self.experiment_params['pretrain_epoch'], epoch)
-        self.writer.add_scalar('hyperparameters/seed', self.experiment_params['seed'], epoch)
+        self.writer.add_scalar('hyperparameters/pretrain_epoch', self.l_config.learner_hyperparams['pretrain_epoch'], epoch)
+        # ToDo right now seeds are stored in a list and cannot be logged this way
+        # self.writer.add_scalar('hyperparameters/seed', self.l_config.learner_hyperparams['seed'], epoch)
 
         if self.experiment_params['experience'] is not None:
             for key, value in self.experiment_params['experience'].items():
@@ -485,8 +488,8 @@ class MultiUnitAuctionLogger(Logger):
                 except:
                     self.writer.add_text('hyperparameters/experience_' + str(key), value, epoch)
 
-        for key, value in self.l_config.learner_hyperparams.items():
-            self.writer.add_scalar('hyperparameters/' + str(key), value, epoch)
+        # for key, value in self.l_config.learner_hyperparams.items():
+        #     self.writer.add_scalar('hyperparameters/' + str(key), value, epoch)
 
         self.writer.add_text('hyperparameters/optimizer', str(self.l_config.optimizer), epoch)
         for key, value in self.l_config.optimizer_hyperparams.items():
