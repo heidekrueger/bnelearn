@@ -26,6 +26,8 @@ class CombinatorialExperiment(Experiment, ABC):
         self.global_bne_utility = None
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0):
+        # The model should know who is using it
+        strategy.connected_bidders.append(player_position)
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
                               batch_size=batch_size, n_items = self.n_items)
 
@@ -158,7 +160,6 @@ class LLGExperiment(CombinatorialExperiment):
             for learner in self.learners
         ])
         # everything after this is logging --> measure overhead
-        # TODO: Adjust this such that we log all models params, not just the first
         log_params = {}
         self.logger.log_training_iteration(prev_params=prev_params, epoch=epoch, bne_env=self.bne_env,
                                            strat_to_bidder=self._strat_to_bidder,
