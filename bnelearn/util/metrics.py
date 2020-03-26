@@ -143,8 +143,7 @@ def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidd
 
 def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
                       player_position: int, agent_valuation: torch.Tensor,
-                      agent_bid_actual: torch.Tensor, grid: torch.Tensor,
-                      half_precision = False):
+                      grid: torch.Tensor, half_precision = False):
     #TODO: 1. Implement individual evaluation batch und bid size -> large batch for training, smaller for eval
     #TODO: 2. Implement logging for evaluations ins tensor and for printing
     #TODO: 3. Implement printing plotting of evaluation
@@ -158,7 +157,6 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
         bid_profile: (batch_size x n_player x n_items)
         player_position: specifies the agent for whom the regret is to be evaluated
         agent_valuation: (batch_size x n_items)
-        agent_bid_actual: (batch_size x n_items) #TODO Stefan: isn't this in bid_profile already?
         grid: #TODO: currently (1d with length grid_size #Currently, for n_items == 2, all grid_size**2 combination will be used. Should be replaced by e.g. torch.meshgrid
     Output:
         regret (grid_size) (?) #TODO Stefan: If bid is multidimensional, shouldn't this be bid_size ** n_items? 
@@ -168,7 +166,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     TODO: Only for risk neutral bidders. Add check.
     Useful: To get the memory used by a tensor (in MB): (tensor.element_size() * tensor.nelement())/(1024*1024)
     """
-
+    agent_bid_actual = bid_profile[:,player_position,:]
     ## Use smaller dtypes to save memory
     if half_precision:
         bid_profile = bid_profile.half()

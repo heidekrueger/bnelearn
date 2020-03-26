@@ -135,6 +135,9 @@ class Bidder(Player):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
             self._valuations_changed =True
 
+    def draw_valuations_new_batch_(self, batch_size):
+        # Lets you sample valuations of a new batch size (e.g. for regret)
+        self.valuations = self.value_distribution.rsample(torch.Size([batch_size, self.valuations.size()[1]])).to(self.device).relu()
 
     def draw_valuations_(self):
         """ Sample a new batch of valuations from the Bidder's prior. Negative
@@ -213,7 +216,6 @@ class Bidder(Player):
         """Calculate action from current valuations, or retrieve from cache"""
         if self._cache_actions and not self._valuations_changed:
             return self.actions
-
         inputs = self.valuations.view(self.batch_size, -1)
 
         # for cases when n_itmes != input_length (e.g. Split-Award Auctions, combinatorial auctions with bid languages)

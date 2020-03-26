@@ -12,7 +12,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from bnelearn.experiment.learning_configuration import LearningConfiguration
-#from bnelearn.experiment.MultiUnitExperiment import FPSBSplitAwardAuction2x2
+from bnelearn.experiment.MultiUnitExperiment import FPSBSplitAwardAuction2x2
 
 
 class Logger(ABC):
