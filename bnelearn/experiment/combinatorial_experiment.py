@@ -70,28 +70,6 @@ class CombinatorialExperiment(Experiment, ABC):
                                  strat_to_player_kwargs={"player_position": i*self.n_local}
                                  ))
 
-    def _training_loop(self, epoch):
-        # do in every iteration
-        # save current params to calculate update norm
-        prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
-                       for model in self.models]
-        # update models
-        utilities = torch.tensor([
-            learner.update_strategy_and_evaluate_utility()
-            for learner in self.learners
-        ])
-        # everything after this is logging --> measure overhead
-        # TODO: Adjust this such that we log all models params, not just the first
-        log_params = {}
-        self.logger.log_training_iteration(prev_params=prev_params, epoch=epoch, bne_env=self.bne_env,
-                                           strat_to_bidder=self._strat_to_bidder,
-                                           eval_batch_size=self.l_config.eval_batch_size,
-                                           bne_utilities=self.bne_utilities,
-                                           bidders=self.bidders, utilities=utilities, log_params=log_params)
-        if epoch % 100 == 0:
-            print("epoch {}, utilities: ".format(epoch))
-            for i in range(len(utilities)):
-                print("{}: {:.5f}".format(i, utilities[i]))
 # mechanism/bidding implementation, plot, bnes
 class LLGExperiment(CombinatorialExperiment):
     def __init__(self, experiment_params:dict, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration):
@@ -169,6 +147,31 @@ class LLGExperiment(CombinatorialExperiment):
         self.base_dir = os.path.join(*name)  # ToDo Redundant?
         self.logger.base_dir = os.path.join(*name)
 
+    def _training_loop(self, epoch):
+        # do in every iteration
+        # save current params to calculate update norm
+        prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
+                       for model in self.models]
+        # update models
+        utilities = torch.tensor([
+            learner.update_strategy_and_evaluate_utility()
+            for learner in self.learners
+        ])
+        # everything after this is logging --> measure overhead
+        # TODO: Adjust this such that we log all models params, not just the first
+        log_params = {}
+        self.logger.log_training_iteration(prev_params=prev_params, epoch=epoch, bne_env=self.bne_env,
+                                           strat_to_bidder=self._strat_to_bidder,
+                                           eval_batch_size=self.l_config.eval_batch_size,
+                                           bne_utilities=self.bne_utilities,
+                                           bidders=self.bidders, utilities=utilities, log_params=log_params)
+        if epoch % 10 == 0:
+            print("epoch {}, utilities: ".format(epoch))
+            for i in range(len(utilities)):
+                print("{}: {:.5f}".format(i, utilities[i]))
+            self.logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
+                                          u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
+
 # mechanism/bidding implementation, plot
 class LLLLGGExperiment(CombinatorialExperiment):
     def __init__(self, experiment_params, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration):
@@ -204,3 +207,27 @@ class LLLLGGExperiment(CombinatorialExperiment):
         # No bne eval known
         #TODO: Return dummy value for now
         return valuation * 9999
+
+    def _training_loop(self, epoch):
+        # do in every iteration
+        # save current params to calculate update norm
+        prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
+                       for model in self.models]
+        # update models
+        utilities = torch.tensor([
+            learner.update_strategy_and_evaluate_utility()
+            for learner in self.learners
+        ])
+        # everything after this is logging --> measure overhead
+        # TODO: Adjust this such that we log all models params, not just the first
+        log_params = {}
+        self.logger.log_training_iteration(prev_params=prev_params, epoch=epoch,
+                                           strat_to_bidder=self._strat_to_bidder,
+                                           eval_batch_size=self.l_config.eval_batch_size,
+                                           bidders=self.bidders, utilities=utilities, log_params=log_params)
+        if epoch % 100 == 0:
+            print("epoch {}, utilities: ".format(epoch))
+            for i in range(len(utilities)):
+                print("{}: {:.5f}".format(i, utilities[i]))
+            self.logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
+                                          u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)

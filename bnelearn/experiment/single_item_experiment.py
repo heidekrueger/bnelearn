@@ -140,6 +140,10 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
                                            eval_batch_size=self.l_config.eval_batch_size, bne_utilities=self.bne_utilities,
                                            bidders=self.bidders, utilities=utilities, log_params=log_params)
 
+        if epoch%10 == 0:
+            self.logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
+                                          u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
+
 
 # implementation differences to symmetric case?
 # known BNE

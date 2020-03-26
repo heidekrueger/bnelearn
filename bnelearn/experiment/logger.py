@@ -12,7 +12,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from bnelearn.experiment.learning_configuration import LearningConfiguration
-from bnelearn.experiment.MultiUnitExperiment import FPSBSplitAwardAuction2x2
+#from bnelearn.experiment.MultiUnitExperiment import FPSBSplitAwardAuction2x2
 
 
 class Logger(ABC):
@@ -186,6 +186,43 @@ class SingleItemAuctionLogger(Logger):
             self.overhead_mins = self.overhead_mins + elapsed / 60
         self.writer.add_scalar('debug/overhead_mins', self.overhead_mins, epoch)
 
+    def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
+        
+        original_batch_size = env.agents[0].batch_size
+        bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
+                                          dtype=env.agents[0].valuations.dtype, device = env.mechanism.device)
+        for agent in env.agents:
+            agent.batch_size = regret_batch_size
+            agent.draw_valuations_new_batch_(regret_batch_size)
+            bid_profile[:, agent.player_position, :] = agent.get_action()
+
+        for learner in learners:
+            player_position = learner.strat_to_player_kwargs['player_position']
+
+            regret_grid = torch.linspace(u_lo[player_position], u_hi[player_position], regret_grid_size)
+
+            print("Calculating regret...")
+            torch.cuda.empty_cache()
+            regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position, env.agents[player_position].valuations, regret_grid)
+            
+            print("agent {} can improve by, avg: {}, max: {}".format(player_position,
+                                                                 torch.mean(regret),
+                                                                 torch.max(regret)))
+
+            self.writer.add_scalar('eval/max_ex_interim_regret', torch.max(regret), epoch)
+            self.writer.add_scalar('eval/ex_ante_regret', torch.mean(regret), epoch)
+
+        for agent in env.agents:
+            agent.batch_size = original_batch_size
+            agent.draw_valuations_new_batch_(original_batch_size)
+        
+
+            
+
+
+        
+
+
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
         """This method should implement a vizualization of the experiment at the current state"""
         v, b = plot_data
@@ -243,12 +280,56 @@ class SingleItemAuctionLogger(Logger):
     # TODO: deferred until writing logger
     def _log_hyperparams(self):
         """Everything that should be logged on every learning_rate updates"""
-
     #     writer.add_scalar('hyperparams/batch_size', batch_size, e)
     #     writer.add_scalar('hyperparams/learning_rate', learning_rate, e)
     #     writer.add_scalar('hyperparams/momentum', momentum, e)
     #     writer.add_scalar('hyperparams/sigma', sigma, e)
-    #     writer.add_scalar('hyperparams/n_perturbations', n_perturbations, e)
+    #     writer.add_scalar('hyperparams/n_perturbations', n_perturbations, e
+
+class LLGAuctionLogger(SingleItemAuctionLogger):
+    # TODO: Inherit from Logger
+    def __init__(self, experiment_params):
+        super().__init__(experiment_params)
+
+class LLLLGGAuctionLogger(SingleItemAuctionLogger):
+    # TODO: Inherit from Logger
+    def __init__(self, experiment_params):
+        super().__init__(experiment_params)
+
+    def log_training_iteration(self, prev_params, epoch, strat_to_bidder, eval_batch_size, bidders, utilities, log_params: dict):
+        # TODO It is by no means nice that there is so much specific logic in here
+        start_time = timer()
+        for i, model in enumerate(self.models):
+            # calculate infinity-norm of update step
+            new_params = torch.nn.utils.parameters_to_vector(model.parameters())
+            update_norm = (new_params - prev_params[i]).norm(float('inf'))
+                
+            self._log_metrics(writer=self.writer, epoch=epoch, utility=utilities[i], update_norm=update_norm)
+
+            if epoch % self.logging_options['plot_epoch'] == 0:
+                # plot current function output
+                # bidder = strat_to_bidder(model, batch_size)
+                # bidder.draw_valuations_()
+                #TODO: or like this?:self.models[i].bidder.valuations
+                bidder = strat_to_bidder(model, self.batch_size)
+                v = bidder.valuations
+                b = bidder.get_action()
+                plot_data = (v, b)
+
+                print(
+                    "Epoch {}: \tcurrent utility: {:.3f}".format(epoch, utilities[i]))
+                self._plot(self.fig, plot_data, self.writer, epoch)
+
+            elapsed = timer() - start_time
+
+            self.overhead_mins = self.overhead_mins + elapsed / 60
+        self.writer.add_scalar('debug/overhead_mins', self.overhead_mins, epoch)
+
+    def _log_metrics(self, writer, epoch, utility, update_norm):
+
+        writer.add_scalar('eval/utility', utility, epoch)
+        writer.add_scalar('debug/norm_parameter_update', update_norm, epoch)
+
 
 
 class MultiUnitAuctionLogger(Logger):
@@ -709,18 +790,3 @@ class MultiUnitAuctionLogger(Logger):
             plt.savefig(os.path.join(self.log_dir, 'plots', f'_{epoch:05}.' + format))
 
         self.writer.add_figure('plot/plot', fig, epoch)
-
-
-class LLGAuctionLogger(SingleItemAuctionLogger):
-    # TODO: Inherit from Logger
-    def __init__(self, experiment_params):
-        super().__init__(experiment_params)
-
-class LLLLGGAuctionLogger(SingleItemAuctionLogger):
-    # TODO: Inherit from Logger
-    def __init__(self, experiment_params):
-        super().__init__(experiment_params)
-
-    def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utilities,
-                               bidders, utilities, log_params: dict):
-        pass

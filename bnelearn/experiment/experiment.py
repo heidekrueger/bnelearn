@@ -38,6 +38,8 @@ class Experiment(ABC):
         self.risk = experiment_params['risk']
         self.risk_profile = Experiment.get_risk_profile(self.risk)
         self.mechanism_type = experiment_params['payment_rule']
+        self.regret_batch_size = experiment_params['regret_batch_size']
+        self.regret_grid_size = experiment_params['regret_grid_size']
 
         # Misc
         self.base_dir = None
