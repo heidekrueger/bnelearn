@@ -97,22 +97,22 @@ expected_regret_1_6_2 = torch.tensor([
 # Each tuple specified here will then be tested for all implemented solvers.
 ids_ex_post, testdata_ex_post = zip(*[
     ['fpsb - 1 batch, 2 bidders, 1 item',
-        ('fpsb', FirstPriceSealedBidAuction(), valuations_1_2_1, bids_i, expected_regret_1_2_1)],
+        ('first_price', FirstPriceSealedBidAuction(), valuations_1_2_1, bids_i, expected_regret_1_2_1)],
     ['fpsb - 2 batches, 3 bidders, 1 item, steps of sixths',
-        ('fpsb', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_post_regret_2_3_1_sixths)],
+        ('first_price', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_post_regret_2_3_1_sixths)],
     ['fpsb - 2 batches, 3 bidders, 1 item, steps of tenths',
-        ('fpsb', FirstPriceSealedBidAuction(), valuations_2_3_1, b_i_tenths, expected_ex_post_regret_2_3_1_tenths)],
+        ('first_price', FirstPriceSealedBidAuction(), valuations_2_3_1, b_i_tenths, expected_ex_post_regret_2_3_1_tenths)],
     ['fpsb - 1 batch, 6 bidders, 2 item',
-        ('fpsb', LLLLGGAuction(valuations_1_6_2.shape[0]), valuations_1_6_2, bids_i_comb, expected_regret_1_6_2)]
+        ('first_price', LLLLGGAuction(), valuations_1_6_2, bids_i_comb, expected_regret_1_6_2)]
     ])
 
 ids_ex_interim, testdata_ex_interim = zip(*[
     ['fpsb - 1 batch, 2 bidders, 1 item',
-        ('fpsb', FirstPriceSealedBidAuction(), valuations_1_2_1, bids_i, expected_regret_1_2_1)],
+        ('first_price', FirstPriceSealedBidAuction(), valuations_1_2_1, bids_i, expected_regret_1_2_1)],
     ['fpsb - 2 batches, 3 bidders, 1 item, steps of sixths',
-        ('fpsb', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_interim_regret_2_3_1_sixths)],
+        ('fpfirst_pricesb', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_interim_regret_2_3_1_sixths)],
     ['fpsb - 1 batch, 6 bidders, 2 item',
-        ('fpsb', LLLLGGAuction(valuations_1_6_2.shape[0]), valuations_1_6_2, bids_i_comb, expected_regret_1_6_2)]
+        ('first_price', LLLLGGAuction(), valuations_1_6_2, bids_i_comb, expected_regret_1_6_2)]
     ])
 
 @pytest.mark.parametrize("rule, mechanism, bid_profile, bids_i, expected_regret", testdata_ex_post, ids=ids_ex_post)

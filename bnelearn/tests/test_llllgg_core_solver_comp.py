@@ -23,9 +23,9 @@ def run_LLLLGG_test(parallel, rule, bids, device):
     if device == 'cuda' and not cuda:
         pytest.skip("This test needs CUDA, but it's not available.")
 
-    game_gurobi = LLLLGGAuction(batch_size = len(bids), rule=rule, cuda=cuda, core_solver='gurobi', parallel=parallel)
-    game_cvxpy = LLLLGGAuction(batch_size = len(bids),  rule=rule,cuda=cuda, core_solver='cvxpy')
-    game_qpth = LLLLGGAuction(batch_size = len(bids),  rule=rule,cuda=cuda, core_solver='qpth')
+    game_gurobi = LLLLGGAuction(rule=rule, cuda=cuda, core_solver='gurobi', parallel=parallel)
+    game_cvxpy = LLLLGGAuction(rule=rule,cuda=cuda, core_solver='cvxpy')
+    game_qpth = LLLLGGAuction(rule=rule,cuda=cuda, core_solver='qpth')
 
     allocation_gurobi, payments_gurobi = game_gurobi.run(bids.to(device))
     allocation_cvxpy, payments_cvxpy = game_cvxpy.run(bids.to(device))

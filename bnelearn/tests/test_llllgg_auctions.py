@@ -190,7 +190,7 @@ def run_LLLLGG_test(parallel, rule, device, bids, expected_allocation, expected_
     if device == 'cuda' and not cuda:
         pytest.skip("This test needs CUDA, but it's not available.")
 
-    game = LLLLGGAuction(batch_size = len(bids), rule = rule, cuda=cuda, core_solver=solver, parallel=parallel)
+    game = LLLLGGAuction(rule = rule, cuda=cuda, core_solver=solver, parallel=parallel)
     allocation, payments = game.run(bids.to(device))
 
     assert torch.equal(allocation, expected_allocation.to(device)), "Wrong allocation"
