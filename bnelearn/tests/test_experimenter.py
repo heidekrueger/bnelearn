@@ -1,17 +1,16 @@
-import sys
-sys.path.append('..')
-import torch
+# ToDo
+# The idea is to create a test which would run all the types of experiments in with very minimalistic settings to check
+# that nothing is broken. I am not sure which assertions to make, so strictly speaking this is not yet a test but
+# simply a script which should run without runtime errors
+
 import torch.nn as nn
+from bnelearn.experiment import GPUController, LearningConfiguration
+from bnelearn.experiment.logger import *
+from bnelearn.experiment.multi_unit_experiment import *
+from bnelearn.experiment.single_item_experiment import *
+from bnelearn.experiment.combinatorial_experiment import *
 
-from bnelearn.experiment.gpu_controller import GPUController
-from bnelearn.experiment.learning_configuration import LearningConfiguration
-from bnelearn.experiment.logger import LLGAuctionLogger, LLLLGGAuctionLogger, SingleItemAuctionLogger
-from bnelearn.experiment.single_item_experiment import UniformSymmetricPriorSingleItemExperiment, \
-    GaussianSymmetricPriorSingleItemExperiment
-
-from bnelearn.experiment.combinatorial_experiment import LLGExperiment, LLLLGGExperiment
-
-gpu_config = GPUController(specific_gpu=1)
+gpu_config = GPUController(specific_gpu=0)
 
 learner_hyperparams = {
     'population_size': 128,
@@ -49,11 +48,8 @@ l_config = LearningConfiguration(learner_hyperparams=learner_hyperparams,
                                  eval_batch_size=2 ** 10,
                                  cache_eval_actions=True)
 
-logger = SingleItemAuctionLogger(experiment_params)
+logger = SingleItemAuctionLogger(experiment_params=experiment_params, l_config=l_config)
 experiment1 = UniformSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
                                                        l_config=l_config)
-# experiment2 = UniformSymmetricPriorSingleItemExperiment(2, gpu_config=gpu_config, logger=logger,
-                                                    #    mechanism_type='first_price', l_config=l_config, risk=1.0)
 
-experiment1.run(epochs=10000, n_runs=2)
-#experiment2.run(epochs=100, n_runs=1)
+experiment1.run(epochs=10, n_runs=1)

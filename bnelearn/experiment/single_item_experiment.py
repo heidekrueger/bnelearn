@@ -7,12 +7,12 @@ import numpy as np
 from scipy import integrate
 
 from bnelearn.bidder import Bidder
-from bnelearn.environment import Environment, AuctionEnvironment
+from bnelearn.environment import  AuctionEnvironment
 from bnelearn.experiment import Experiment, GPUController, Logger, LearningConfiguration
 
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
-from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
+from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
 
 # TODO: Change global_bne_utilitiy to global_bne_utilities (as list) and all it's dependencies. (Or is this never a list?!)
 # general logic and setup, plot

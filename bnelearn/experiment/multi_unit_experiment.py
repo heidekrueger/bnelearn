@@ -2,7 +2,6 @@ import os
 import time
 import warnings
 from abc import ABC
-from functools import partial
 from itertools import product
 
 import torch
@@ -11,7 +10,7 @@ from scipy import integrate, interpolate
 
 from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.experiment import Experiment, LearningConfiguration, GPUController, Logger
+from bnelearn.experiment import LearningConfiguration, GPUController, Logger, Experiment
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import MultiItemUniformPriceAuction, MultiItemDiscriminatoryAuction, FPSBSplitAwardAuction, \
     Mechanism
@@ -599,6 +598,7 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
         experiment_params['u_hi'] = 1.4
         experiment_params['BNE1'] = 'PD_Sigma_BNE'
         experiment_params['BNE2'] = 'WTA_BNE'
+        experiment_params['is_FPSBSplitAwardAuction2x2'] = True
         super().__init__(experiment_params, mechanism=mechanism, gpu_config=gpu_config, logger=logger,
                          l_config=l_config)
         self._run_setup()

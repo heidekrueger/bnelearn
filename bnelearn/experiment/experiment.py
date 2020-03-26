@@ -1,6 +1,6 @@
 """Defines experiment class"""
 
-import warnings
+
 from abc import ABC, abstractmethod
 
 import torch
@@ -38,8 +38,10 @@ class Experiment(ABC):
         self.risk = experiment_params['risk']
         self.risk_profile = Experiment.get_risk_profile(self.risk)
         self.mechanism_type = experiment_params['payment_rule']
-        self.regret_batch_size = experiment_params['regret_batch_size']
-        self.regret_grid_size = experiment_params['regret_grid_size']
+        if 'regret_batch_size' in experiment_params.keys():
+            self.regret_batch_size = experiment_params['regret_batch_size']
+        if 'regret_grid_size' in experiment_params.keys():
+            self.regret_grid_size = experiment_params['regret_grid_size']
 
         # Misc
         self.base_dir = None

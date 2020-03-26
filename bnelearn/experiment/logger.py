@@ -12,11 +12,10 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from bnelearn.experiment.learning_configuration import LearningConfiguration
-from bnelearn.experiment.MultiUnitExperiment import FPSBSplitAwardAuction2x2
 
 
 class Logger(ABC):
-    def __init__(self, l_config: LearningConfiguration, save_figure_to_disc_png: bool = True,
+    def __init__(self, l_config: LearningConfiguration, experiment_params: dict, save_figure_to_disc_png: bool = True,
                  save_figure_to_disc_svg: bool = True,
                  plot_epoch: int = 10, show_plot_inline: bool = True, save_figure_data_to_dis: bool = False):
         root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
@@ -32,6 +31,7 @@ class Logger(ABC):
         )
 
         self.l_config = l_config
+        self.experiment_params = experiment_params
 
         self.base_dir = None
         self.log_dir = None
@@ -96,10 +96,11 @@ class Logger(ABC):
     def _log_hyperparams(self, writer, epoch):
         pass
 
+
 # TODO: Allow multiple utilities and params (for multiple learners)
 class SingleItemAuctionLogger(Logger):
-    def __init__(self, l_config: LearningConfiguration):
-        super().__init__(l_config)
+    def __init__(self, l_config: LearningConfiguration, experiment_params: dict):
+        super().__init__(l_config, experiment_params)
 
     def log_experiment(self, experiment_params, models: list, env, run_comment, plot_xmin, plot_xmax, plot_ymin,
                        plot_ymax, batch_size,
@@ -143,7 +144,7 @@ class SingleItemAuctionLogger(Logger):
         self._log_hyperparams()
 
     # TODO: Change bidders to models only, since we always want to plot a model instead of duplicates of one (bidders sharing a model)
-    #TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
+    # TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
     def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utilities,
                                bidders, utilities, log_params: dict):
         # TODO It is by no means nice that there is so much specific logic in here
@@ -170,7 +171,7 @@ class SingleItemAuctionLogger(Logger):
                 # plot current function output
                 # bidder = strat_to_bidder(model, batch_size)
                 # bidder.draw_valuations_()
-                #TODO: or like this?:self.models[i].bidder.valuations
+                # TODO: or like this?:self.models[i].bidder.valuations
                 bidder = strat_to_bidder(model, self.batch_size)
                 v = bidder.valuations
                 b = bidder.get_action()
@@ -187,10 +188,10 @@ class SingleItemAuctionLogger(Logger):
         self.writer.add_scalar('debug/overhead_mins', self.overhead_mins, epoch)
 
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
-        
+
         original_batch_size = env.agents[0].batch_size
         bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
-                                          dtype=env.agents[0].valuations.dtype, device = env.mechanism.device)
+                                  dtype=env.agents[0].valuations.dtype, device=env.mechanism.device)
         for agent in env.agents:
             agent.batch_size = regret_batch_size
             agent.draw_valuations_new_batch_(regret_batch_size)
@@ -203,11 +204,12 @@ class SingleItemAuctionLogger(Logger):
 
             print("Calculating regret...")
             torch.cuda.empty_cache()
-            regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position, env.agents[player_position].valuations, regret_grid)
-            
+            regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position,
+                                               env.agents[player_position].valuations, regret_grid)
+
             print("agent {} can improve by, avg: {}, max: {}".format(player_position,
-                                                                 torch.mean(regret),
-                                                                 torch.max(regret)))
+                                                                     torch.mean(regret),
+                                                                     torch.max(regret)))
 
             self.writer.add_scalar('eval/max_ex_interim_regret', torch.max(regret), epoch)
             self.writer.add_scalar('eval/ex_ante_regret', torch.mean(regret), epoch)
@@ -215,13 +217,6 @@ class SingleItemAuctionLogger(Logger):
         for agent in env.agents:
             agent.batch_size = original_batch_size
             agent.draw_valuations_new_batch_(original_batch_size)
-        
-
-            
-
-
-        
-
 
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
         """This method should implement a vizualization of the experiment at the current state"""
@@ -286,31 +281,34 @@ class SingleItemAuctionLogger(Logger):
     #     writer.add_scalar('hyperparams/sigma', sigma, e)
     #     writer.add_scalar('hyperparams/n_perturbations', n_perturbations, e
 
+
 class LLGAuctionLogger(SingleItemAuctionLogger):
     # TODO: Inherit from Logger
-    def __init__(self, experiment_params):
-        super().__init__(experiment_params)
+    def __init__(self, experiment_params: dict, l_config: LearningConfiguration):
+        super().__init__(experiment_params=experiment_params, l_config=l_config)
+
 
 class LLLLGGAuctionLogger(SingleItemAuctionLogger):
     # TODO: Inherit from Logger
-    def __init__(self, experiment_params):
-        super().__init__(experiment_params)
+    def __init__(self, l_config: LearningConfiguration, experiment_params: dict):
+        super().__init__(l_config=l_config, experiment_params=experiment_params)
 
-    def log_training_iteration(self, prev_params, epoch, strat_to_bidder, eval_batch_size, bidders, utilities, log_params: dict):
+    def log_training_iteration(self, prev_params, epoch, strat_to_bidder, eval_batch_size, bidders, utilities,
+                               log_params: dict):
         # TODO It is by no means nice that there is so much specific logic in here
         start_time = timer()
         for i, model in enumerate(self.models):
             # calculate infinity-norm of update step
             new_params = torch.nn.utils.parameters_to_vector(model.parameters())
             update_norm = (new_params - prev_params[i]).norm(float('inf'))
-                
+
             self._log_metrics(writer=self.writer, epoch=epoch, utility=utilities[i], update_norm=update_norm)
 
             if epoch % self.logging_options['plot_epoch'] == 0:
                 # plot current function output
                 # bidder = strat_to_bidder(model, batch_size)
                 # bidder.draw_valuations_()
-                #TODO: or like this?:self.models[i].bidder.valuations
+                # TODO: or like this?:self.models[i].bidder.valuations
                 bidder = strat_to_bidder(model, self.batch_size)
                 v = bidder.valuations
                 b = bidder.get_action()
@@ -331,20 +329,19 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
         writer.add_scalar('debug/norm_parameter_update', update_norm, epoch)
 
 
-
 class MultiUnitAuctionLogger(Logger):
     def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute, L_2,
                      L_inf):
         pass
 
-    def __init__(self, experiment_params):
+    def __init__(self, experiment_params: dict, l_config: LearningConfiguration):
         self.colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
                        '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
                        '#bcbd22', '#17becf']
         self.colors_warm = ['maroon', 'firebrick', 'red', 'salmon',
                             'coral', 'lightsalmon', 'mistyrose', 'lightgrey',
                             'white']
-        super().__init__(experiment_params)
+        super().__init__(experiment_params=experiment_params, l_config=l_config)
 
     def log_experiment(self, experiment_params, models, env, run_comment, plot_xmin, plot_xmax, plot_ymin, plot_ymax,
                        batch_size,
@@ -383,6 +380,13 @@ class MultiUnitAuctionLogger(Logger):
         bne_utilities = log_params['bne_utilities']
         against_bne_utilities = log_params['against_bne_utilities']
 
+        # ToDO I know it's ugly, this is to avoid importing the FPSBSplitAwardAuction2x2 class to use in isinstance
+        # and creating a circular dependency. For sure type checking needs to be dispensed with altogether.
+        if 'is_FPSBSplitAwardAuction2x2' in log_params.keys():
+            is_FPSBSplitAwardAuction2x2 = log_params['is_FPSBSplitAwardAuction2x2']
+        else:
+            is_FPSBSplitAwardAuction2x2 = False
+
         # plotting
         if epoch % self.plot_epoch == 0:
             self.plot_bid_function(
@@ -395,7 +399,7 @@ class MultiUnitAuctionLogger(Logger):
                     'split_award': True,
                     "efficiency_parameter": self.experiment_params['efficiency_parameter'],
                     "input_length": self.experiment_params["input_length"]
-                } if isinstance(self, FPSBSplitAwardAuction2x2) else None,
+                } if is_FPSBSplitAwardAuction2x2 else None,
             )
 
             # if param_dict["n_items"] == 2 \
@@ -421,7 +425,7 @@ class MultiUnitAuctionLogger(Logger):
                         optimal_bid,
                         self.experiment_params["n_items"],
                         selection=self.split_award_dict \
-                            if isinstance(self, FPSBSplitAwardAuction2x2) else 'random',
+                            if is_FPSBSplitAwardAuction2x2 else 'random',
                         bounds=[self.experiment_params["u_lo"], self.experiment_params["u_hi"]],
                         item_interest_limit=self.experiment_params["item_interest_limit"] if \
                             "item_interest_limit" in self.experiment_params.keys() else None,
@@ -435,7 +439,7 @@ class MultiUnitAuctionLogger(Logger):
                         optimal_bid_2,
                         self.experiment_params["n_items"],
                         selection=self.split_award_dict \
-                            if isinstance(self, FPSBSplitAwardAuction2x2) else 'random',
+                            if is_FPSBSplitAwardAuction2x2 else 'random',
                         bounds=[self.experiment_params["u_lo"], self.experiment_params["u_hi"]],
                         item_interest_limit=self.experiment_params["item_interest_limit"] if \
                             "item_interest_limit" in self.experiment_params.keys() else None,
