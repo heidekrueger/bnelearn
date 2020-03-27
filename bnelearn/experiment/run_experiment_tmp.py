@@ -26,16 +26,17 @@ optimizer_hyperparams = {
 experiment_params_ls = ['n_players', 'model_sharing', 'u_lo', 'u_hi', 'valuation_prior', 'common_prior','payment_rule']
 experiment_params = dict(zip(experiment_params_ls, [None]*len(experiment_params_ls)))
 
-experiment_params['n_players'] = 6
+experiment_params['n_players'] = 3
 experiment_params['model_sharing'] = True
 experiment_params['u_lo'] = [0] * experiment_params['n_players']
-experiment_params['u_hi'] = [1,1,1,1,2,2]
+experiment_params['u_hi'] = [1,1,1]
+#experiment_params['u_hi'] = [1,1,1,1,2,2]
 experiment_params['payment_rule'] = 'first_price'#'first_price'
 experiment_params['risk'] = 1.0
 experiment_params['regret_batch_size'] = 2**8
 experiment_params['regret_grid_size'] = 2**6
 
-input_length = 2
+input_length = 1
 hidden_nodes = [5, 5]
 hidden_activations = [nn.SELU(), nn.SELU()]
 
@@ -49,8 +50,8 @@ l_config = LearningConfiguration(learner_hyperparams=learner_hyperparams,
                                  eval_batch_size=2 ** 10,
                                  cache_eval_actions=True)
 
-logger = LLLLGGAuctionLogger(l_config)
-experiment1 = LLLLGGExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
+logger = SingleItemAuctionLogger(experiment_params, l_config)
+experiment1 = GaussianSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
                                                        l_config=l_config)
 # experiment2 = UniformSymmetricPriorSingleItemExperiment(2, gpu_config=gpu_config, logger=logger,
                                                     #    mechanism_type='first_price', l_config=l_config, risk=1.0)

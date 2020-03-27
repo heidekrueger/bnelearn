@@ -9,6 +9,8 @@ import bnelearn.util.metrics as metrics
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colors as mcolors
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.ticker import LinearLocator, FormatStrFormatter
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
@@ -170,11 +172,7 @@ class SingleItemAuctionLogger(Logger):
                               epsilon_absolute=epsilon_absolute, L_2=L_2, L_inf=L_inf)
 
         if epoch % self.logging_options['plot_epoch'] == 0:
-            # plot current function output
-            # bidder = strat_to_bidder(model, batch_size)
-            # bidder.draw_valuations_()
-            #TODO: or like this?:self.models[i].bidder.valuations
-            bidders = [strat_to_bidder(model, self.batch_size) for model in self.models]
+            bidders = [strat_to_bidder(model, self.batch_size, model.connected_bidders[0]) for model in self.models]
             v = [bidder.valuations for bidder in bidders]
             b = [bidder.get_action() for bidder in bidders]
             plot_data = ((v, b))
@@ -183,9 +181,8 @@ class SingleItemAuctionLogger(Logger):
                     epoch, utilities[i], utility_vs_bne, epsilon_absolute, epsilon_relative))
             self._plot(self.fig, plot_data, self.writer, epoch)
 
-            elapsed = timer() - start_time
-
-            self.overhead_mins = self.overhead_mins + elapsed / 60
+        elapsed = timer() - start_time
+        self.overhead_mins = self.overhead_mins + elapsed / 60
         self.writer.add_scalar('debug/overhead_mins', self.overhead_mins, epoch)
 
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
@@ -297,8 +294,9 @@ class SingleItemAuctionLogger(Logger):
 class LLGAuctionLogger(SingleItemAuctionLogger):
     # TODO: Inherit from Logger
     def __init__(self, l_config: LearningConfiguration):
-        super().__init__(l_config)
+        super().__init__(None, l_config)
 
+    #TODO: Delete!?
     def plot_bid_function(self, fig, v, b, writer=None, e=None):
         # subsample points and plot
         for i in range(len(v)):
@@ -323,12 +321,13 @@ class LLGAuctionLogger(SingleItemAuctionLogger):
 class LLLLGGAuctionLogger(SingleItemAuctionLogger):
     # TODO: Inherit from Logger
     def __init__(self, l_config: LearningConfiguration):
-        super().__init__(l_config)
+        super().__init__(None, l_config)
 
     def log_training_iteration(self, prev_params, epoch, strat_to_bidder, eval_batch_size, bidders, utilities, log_params: dict):
         # TODO It is by no means nice that there is so much specific logic in here
         #TODO: Change similar to single_item
         start_time = timer()
+        self.gpu_config = bidders[0].device
         for i, model in enumerate(self.models):
             # calculate infinity-norm of update step
             new_params = torch.nn.utils.parameters_to_vector(model.parameters())
@@ -336,33 +335,102 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
                 
             self._log_metrics(writer=self.writer, epoch=epoch, utility=utilities[i], update_norm=update_norm)
 
-            if epoch % self.logging_options['plot_epoch'] == 0:
-                # plot current function output
-                # bidder = strat_to_bidder(model, batch_size)
-                # bidder.draw_valuations_()
-                #TODO: or like this?:self.models[i].bidder.valuations
-                bidder = strat_to_bidder(model, self.batch_size)
-                v = bidder.valuations
-                b = bidder.get_action()
-                plot_data = (v, b)
-
-                print(
-                    "Epoch {}: \tcurrent utility: {:.3f}".format(epoch, utilities[i]))
-                self._plot(self.fig, plot_data, self.writer, epoch)
-
-            elapsed = timer() - start_time
-
-            self.overhead_mins = self.overhead_mins + elapsed / 60
+        if epoch % self.logging_options['plot_epoch'] == 0:
+            [print("Epoch {}: \tcurrent utility: {:.3f}".format(epoch, utilities[i])) 
+                for i in range(len(self.models))]
+            self._plot(self.fig, self.models, self.writer, epoch)
+        elapsed = timer() - start_time
+        self.overhead_mins = self.overhead_mins + elapsed / 60
         self.writer.add_scalar('debug/overhead_mins', self.overhead_mins, epoch)
 
     def _log_metrics(self, writer, epoch, utility, update_norm):
-
         writer.add_scalar('eval/utility', utility, epoch)
         writer.add_scalar('debug/norm_parameter_update', update_norm, epoch)
 
     #TODO: Implement
-    def _plot(self, fig, plot_data, epoch):
-        pass
+    def _plot(self, fig, models, writer: SummaryWriter or None, e=None):
+        input_length = 2
+        plot_xmin = self.plot_xmin
+        plot_ymin = self.plot_ymin
+        plot_zmin = plot_ymin
+        plot_xmax = self.plot_xmax
+        plot_ymax = self.plot_ymax
+        plot_zmax = plot_ymax
+        plot_points = self.plot_points
+
+        lin_local = torch.linspace(self.experiment_params['u_lo'][0], self.experiment_params['u_hi'][0], plot_points)
+        lin_global = torch.linspace(self.experiment_params['u_lo'][4], self.experiment_params['u_hi'][4], plot_points)
+        xv = [None] * 2
+        yv = [None] * 2
+        xv[0], yv[0] = torch.meshgrid([lin_local, lin_local])
+        xv[1], yv[1] = torch.meshgrid([lin_global, lin_global])
+        valuations = torch.zeros(plot_points**2, len(models), input_length, device=self.gpu_config)
+        models_print = [None] * len(models)
+        models_print_wf = [None] * len(models)
+
+        for model_idx in range(len(models)):
+            if len(models) > 2:
+                valuations[:,model_idx,0] = xv[0].reshape(plot_points**2)
+                valuations[:,model_idx,1] = yv[0].reshape(plot_points**2)
+                if model_idx>3:
+                    valuations[:,model_idx,0] = xv[1].reshape(plot_points**2)
+                    valuations[:,model_idx,1] = yv[1].reshape(plot_points**2)
+            else:
+                valuations[:,model_idx,0] = xv[model_idx].reshape(plot_points**2)
+                valuations[:,model_idx,1] = yv[model_idx].reshape(plot_points**2)
+            models_print[model_idx] = models[model_idx].play(valuations[:,model_idx,:])
+            models_print_wf[model_idx] = models_print[model_idx].view(plot_points,plot_points,input_length)
+
+        fig = plt.figure()
+        for model_idx in range(len(models)):
+            for input_idx in range(input_length):
+                ax = fig.add_subplot(len(models), input_length, model_idx*input_length+input_idx+1, projection='3d')
+                ax.plot_trisurf(
+                    
+                    valuations[:,model_idx,0].detach().cpu().numpy(),
+                    valuations[:,model_idx,1].detach().cpu().numpy(),
+                    models_print[model_idx][:,input_idx].reshape(plot_points**2).detach().cpu().numpy(),
+                    color = 'yellow',
+                    linewidth = 0.2,
+                    antialiased = True
+                )
+                # ax.plot_wireframe(
+                #     xv[model_idx].detach().cpu().numpy(),
+                #     yv[model_idx].detach().cpu().numpy(),
+                #     models_print_wf[model_idx][:,:,input_idx].detach().cpu().numpy(),
+                #     rstride=4, cstride=4
+                # )
+                # Axis labeling
+                if len(models)>2:
+                    if model_idx < 4:
+                        ax.set_xlim(plot_xmin, plot_xmax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
+                        ax.set_ylim(plot_ymin, plot_ymax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0])) 
+                        ax.set_zlim(plot_zmin, plot_zmax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
+                    else:
+                        ax.set_xlim(plot_xmin, plot_xmax); ax.set_ylim(plot_ymin, plot_ymax); ax.set_zlim(plot_zmin, plot_zmax)
+                else:
+                    if model_idx == 0:
+                        ax.set_xlim(plot_xmin, plot_xmax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
+                        ax.set_ylim(plot_ymin, plot_ymax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
+                        ax.set_zlim(plot_zmin, plot_zmax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
+                    else:
+                        ax.set_xlim(plot_xmin, plot_xmax); ax.set_ylim(plot_ymin, plot_ymax); ax.set_zlim(plot_zmin, plot_zmax)
+                ax.set_xlabel('bundle 0 value'); ax.set_ylabel('bundle 1 value')#; ax.set_zlabel('bid')
+                ax.zaxis.set_major_locator(LinearLocator(10))
+                ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
+                ax.set_title('model {} biddings for bundle {}'.format(model_idx, input_idx))
+                ax.view_init(20, -135)
+        fig.suptitle('iteration {}'.format(e), size=16)
+        fig.tight_layout()
+
+        # if save_figure_to_disc:
+        #     plt.savefig(os.path.join(logdir, 'png', f'_{e:05}_3d.png'))
+        # if writer:
+        #     writer.add_figure('eval/bid_function_3d', fig, e)
+
+        # plt.show()
+
+        self._process_figure(fig, writer, e)
 
 class MultiUnitAuctionLogger(Logger):
     def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,

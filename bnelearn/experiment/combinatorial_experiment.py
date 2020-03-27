@@ -17,6 +17,7 @@ from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
 
 
 # TODO: Currently only implemented for uniform val
+# TODO: Currently only implemented for LLG and LLLLGG
 class CombinatorialExperiment(Experiment, ABC):
     def __init__(self, gpu_config: GPUController, experiment_params: dict, logger: Logger, l_config: LearningConfiguration):
         self.gamma = 0.0
@@ -37,11 +38,16 @@ class CombinatorialExperiment(Experiment, ABC):
         self.models = [None] * 2 if self.model_sharing else [None] * self.n_players
 
         for i in range(len(self.models)):
+            if self.model_sharing:
+                positive_output_point = torch.tensor([self.u_hi[i*self.n_local]] * self.n_items, dtype=torch.float32)
+            else:
+                positive_output_point = torch.tensor([self.u_hi[i]] * self.n_items, dtype=torch.float32)
+
             self.models[i] = NeuralNetStrategy(
                 self.l_config.input_length, hidden_nodes=self.l_config.hidden_nodes,
                 hidden_activations=self.l_config.hidden_activations,
-                output_length = self.n_items,
-                ensure_positive_output=None
+                ensure_positive_output=positive_output_point,
+                output_length = self.n_items
             ).to(self.gpu_config.device)
 
         self.bidders = []

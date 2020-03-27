@@ -201,7 +201,7 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
 # known BNE + shared setup logic across runs (calculate and cache BNE
 #TODO: Adjust self.valuation_mean to lists like in Uniform?! 
-#TODO: Not working yet sind no actions generated in bne samping calculation. Check!
+#TODO: Not working yet. Optimal bid doesn't look right to me. Check!
 class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
     def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
                  l_config: LearningConfiguration):
