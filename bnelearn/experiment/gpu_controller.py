@@ -16,4 +16,3 @@ class GPUController:
 
         if cuda and specific_gpu is not None:
             torch.cuda.set_device(specific_gpu)
-
