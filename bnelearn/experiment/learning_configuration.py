@@ -21,7 +21,7 @@ class LearningConfiguration:
 
     @staticmethod
     def _set_optimizer(optimizer: str or Type[Optimizer]) -> Type[Optimizer]:
-
+        """Maps shortcut strings to torch.optim.Optimizer types, if required."""
         if isinstance(optimizer, type) and issubclass(optimizer, Optimizer):
             return optimizer
 
@@ -32,3 +32,4 @@ class LearningConfiguration:
                 return torch.optim.SGD
             # TODO: add more optimizers as needed
         raise ValueError('Optimizer type could not be inferred!')
+    
