@@ -195,6 +195,9 @@ class SingleItemAuctionLogger(Logger):
             agent.draw_valuations_new_batch_(regret_batch_size)
             bid_profile[:, agent.player_position, :] = agent.get_action()
 
+        regrets = []
+        valuations = []
+        max_regret = 0
         for learner in learners:
             player_position = learner.strat_to_player_kwargs['player_position']
 
@@ -210,6 +213,13 @@ class SingleItemAuctionLogger(Logger):
 
             self.writer.add_scalar('eval/max_ex_interim_regret', torch.max(regret), epoch)
             self.writer.add_scalar('eval/ex_ante_regret', torch.mean(regret), epoch)
+            regrets.append(regret)
+            valuations.append(env.agents[player_position].valuations.view(-1))
+            max_regret = max(max_regret, torch.max(regret))
+
+        fig, _ = self._plot_2d((valuations, regrets), epoch, [self.plot_xmin, self.plot_xmax], 
+                               [0, max_regret.detach().cpu().numpy()], x_label="valuation", y_label="regret")
+        self._process_figure(fig, self.writer, epoch, name="regret_epoch")
 
         for agent in env.agents:
             agent.batch_size = original_batch_size
@@ -218,6 +228,24 @@ class SingleItemAuctionLogger(Logger):
 
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
         """This method should implement a vizualization of the experiment at the current state"""
+        fig, plt = self._plot_2d(plot_data, e, [self.plot_xmin, self.plot_xmax], [self.plot_ymin,self.plot_ymax])
+        cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+        for i in range(len(plot_data[0])):
+            #TODO: Plottet noch scheiße!
+            #TODO: Not working yet for LLG
+            plt.plot(self.v_opt[i], self.b_opt[i], color=cycle[i], linestyle = '--')#linestyle = '--')
+        # show and/or log
+        self._process_figure(fig, writer, e)
+
+    #TODO: Do I need "fig" here?
+    def _plot_2d(self, plot_data, epoch, xlim: list, 
+                 ylim: list, x_label="valuation", y_label="bid"):
+        """This implements plotting simple 2d data"""
+        plot_xmin = xlim[0]
+        plot_xmax = xlim[1]
+        plot_ymin = ylim[0]
+        plot_ymax = ylim[1]
         v = [None] * len(plot_data[0])
         b = [None] * len(plot_data[0])
 
@@ -225,38 +253,30 @@ class SingleItemAuctionLogger(Logger):
             v[i] = plot_data[0][i].detach().cpu().numpy()[:self.plot_points]
             b[i] = plot_data[1][i].detach().cpu().numpy()[:self.plot_points]
 
-        # v = v.detach().cpu().numpy()[:self.plot_points]
-        # b = b.detach().cpu().numpy()[:self.plot_points]
-
         # create the plot
         fig = plt.gcf()
         plt.cla()
-        plt.xlim(self.plot_xmin, self.plot_xmax)
-        plt.ylim(self.plot_ymin, self.plot_ymax)
-        plt.xlabel('valuation')
-        plt.ylabel('bid')
-        plt.text(self.plot_xmin + 0.05 * (self.plot_xmax - self.plot_xmin),
-                 self.plot_ymax - 0.05 * (self.plot_ymax - self.plot_ymin),
-                 'iteration {}'.format(e))
-        
+        plt.xlim(plot_xmin, plot_xmax)
+        plt.ylim(plot_ymin, plot_ymax)
+        plt.xlabel(x_label)
+        plt.ylabel(y_label)
+        plt.text(plot_xmin + 0.05 * (plot_xmax - plot_xmin),
+                 plot_ymax - 0.05 * (plot_ymax - plot_ymin),
+                 'iteration {}'.format(epoch))
         cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-
         for i in range(len(v)):
-            #TODO: Plottet noch scheiße!
-            #TODO: Not working yet for LLG
-            plt.plot(v[i], b[i], color=cycle[i], linestyle = 'dashed')
-            plt.plot(self.v_opt[i], self.b_opt[i], color=cycle[i+1], linestyle = '--')
-        # show and/or log
-        self._process_figure(fig, writer, e)
+            plt.plot(v[i], b[i], color=cycle[i], marker='o', linestyle = 'None')
+        return fig, plt
 
-    def _process_figure(self, fig, writer=None, epoch=None):
+
+    def _process_figure(self, fig, writer=None, epoch=None, name='epoch_'):
         """displays, logs and/or saves figure built in plot method"""
 
         if self.logging_options['save_figure_to_disc_png']:
-            plt.savefig(os.path.join(self.log_dir, 'png', f'epoch_{epoch:05}.png'))
+            plt.savefig(os.path.join(self.log_dir, 'png', f'{name}{epoch:05}.png'))
 
         if self.logging_options['save_figure_to_disc_svg']:
-            plt.savefig(os.path.join(self.log_dir, 'svg', f'epoch_{epoch:05}.svg'),
+            plt.savefig(os.path.join(self.log_dir, 'svg', f'{name}{epoch:05}.svg'),
                         format='svg', dpi=1200)
         if writer:
             writer.add_figure('eval/bid_function', fig, epoch)
