@@ -49,4 +49,4 @@ pylint.txt
 /.idea/*
 
 # Running script
-bnelearn/experiment/run_experiment.py
+#bnelearn/experiment/run_experiment.py

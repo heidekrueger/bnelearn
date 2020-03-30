@@ -4,12 +4,14 @@
 from abc import ABC, abstractmethod
 
 import torch
+import numpy as np
 
 # pylint: disable=unnecessary-pass,unused-argument
 
 from bnelearn.experiment.gpu_controller import GPUController
 from bnelearn.experiment.learning_configuration import LearningConfiguration
 from bnelearn.experiment.logger import Logger
+
 
 
 class Experiment(ABC):
@@ -124,23 +126,21 @@ class Experiment(ABC):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
 
         seeds = list(range(n_runs))
-        for seed in seeds:
-            print('Running experiment {}'.format(seed))
-            if seed is not None:
-                torch.random.manual_seed(seed)
-                torch.cuda.manual_seed_all(seed)
-
-                self.logger.log_experiment(experiment_params=self.experiment_params, models=self.models, env=self.env,
-                                           run_comment=run_comment, plot_xmin=self.plot_xmin, plot_xmax=self.plot_xmax,
-                                           plot_ymin=self.plot_ymin, plot_ymax=self.plot_ymax,
-                                           batch_size=self.l_config.batch_size, optimal_bid=self._optimal_bid,
-                                           max_epochs=epochs, gpu_config=self.gpu_config)
-
-                # disable this to continue training?
-                epoch = 0
-
-                for epoch in range(epoch, epoch + epochs + 1):
-                    self._training_loop(epoch=epoch)
+        for run in range(n_runs):
+            seed = seeds[run]
+            print('Running experiment {} (using seed {})'.format(run, seed))
+            torch.random.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            np.random.seed(seed)
+            self.logger.log_experiment(experiment_params=self.experiment_params, models=self.models, env=self.env,
+                                       run_comment=run_comment, plot_xmin=self.plot_xmin, plot_xmax=self.plot_xmax,
+                                       plot_ymin=self.plot_ymin, plot_ymax=self.plot_ymax,
+                                       batch_size=self.l_config.batch_size, optimal_bid=self._optimal_bid,
+                                       max_epochs=epochs, gpu_config=self.gpu_config)
+            # disable this to continue training?
+            epoch = 0
+            for epoch in range(epoch, epoch + epochs + 1):
+                self._training_loop(epoch=epoch)
 
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()

@@ -10,7 +10,7 @@ from bnelearn.experiment.single_item_experiment import UniformSymmetricPriorSing
     GaussianSymmetricPriorSingleItemExperiment
 
 from bnelearn.experiment.combinatorial_experiment import LLGExperiment, LLLLGGExperiment
-
+import warnings
 gpu_config = GPUController(specific_gpu=1)
 
 learner_hyperparams = {
@@ -34,11 +34,11 @@ experiment_params['u_hi'] = [1,1,1]
 experiment_params['payment_rule'] = 'first_price'#'first_price'
 experiment_params['risk'] = 1.0
 experiment_params['regret_batch_size'] = 2**8
-experiment_params['regret_grid_size'] = 2**6
+experiment_params['regret_grid_size'] = 2**8
 
 input_length = 1
-hidden_nodes = [5, 5]
-hidden_activations = [nn.SELU(), nn.SELU()]
+hidden_nodes = [5, 5, 5]
+hidden_activations = [nn.SELU(), nn.SELU(), nn.SELU()]
 
 l_config = LearningConfiguration(learner_hyperparams=learner_hyperparams,
                                  optimizer_type='adam',
@@ -46,15 +46,26 @@ l_config = LearningConfiguration(learner_hyperparams=learner_hyperparams,
                                  input_length=input_length,
                                  hidden_nodes=hidden_nodes,
                                  hidden_activations=hidden_activations,
-                                 pretrain_iters=300, batch_size=2 ** 14,
-                                 eval_batch_size=2 ** 10,
+                                 pretrain_iters=300, batch_size=2 ** 18,
+                                 eval_batch_size=2 ** 22,
                                  cache_eval_actions=True)
 
-logger = SingleItemAuctionLogger(experiment_params, l_config)
-experiment1 = GaussianSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
+#logger = SingleItemAuctionLogger(experiment_params, l_config)
+#experiment1 = UniformSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
+ #                                                      l_config=l_config)
+warnings.simplefilter("ignore")
+for i in range(2,3):
+    experiment_params['n_players'] = i
+    experiment_params['u_lo'] = [0] * experiment_params['n_players']
+    experiment_params['u_hi'] = [1] * experiment_params['n_players']
+    logger = SingleItemAuctionLogger(experiment_params, l_config)
+    experiment = UniformSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
                                                        l_config=l_config)
+    experiment.run(epochs=20, n_runs=2)
+                            
+
 # experiment2 = UniformSymmetricPriorSingleItemExperiment(2, gpu_config=gpu_config, logger=logger,
                                                     #    mechanism_type='first_price', l_config=l_config, risk=1.0)
 
-experiment1.run(epochs=10000, n_runs=2)
+#experiment1.run(epochs=10000, n_runs=2)
 #experiment2.run(epochs=100, n_runs=1)

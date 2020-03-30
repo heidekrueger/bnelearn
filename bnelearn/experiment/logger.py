@@ -200,11 +200,11 @@ class SingleItemAuctionLogger(Logger):
 
             regret_grid = torch.linspace(u_lo[player_position], u_hi[player_position], regret_grid_size)
 
-            print("Calculating regret...")
+            #print("Calculating regret...")
             torch.cuda.empty_cache()
             regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position, env.agents[player_position].valuations, regret_grid)
             
-            print("agent {} can improve by, avg: {}, max: {}".format(player_position,
+            print("agent {} ex ante/ex interim regrat: avg: {:.3f}, max: {:.3f}".format(player_position,
                                                                  torch.mean(regret),
                                                                  torch.max(regret)))
 
