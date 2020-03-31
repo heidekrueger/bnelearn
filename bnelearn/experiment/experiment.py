@@ -32,9 +32,9 @@ class Experiment(ABC):
         self.u_lo = experiment_params['u_lo']
         self.u_hi = experiment_params['u_hi']
         self.plot_xmin = min(experiment_params['u_lo'])
-        self.plot_xmax = max(experiment_params['u_hi']) * 1.2
+        self.plot_xmax = max(experiment_params['u_hi']) * 1.05
         self.plot_ymin = min(experiment_params['u_lo'])
-        self.plot_ymax = max(experiment_params['u_hi']) * 1.2
+        self.plot_ymax = max(experiment_params['u_hi']) * 1.05
         self.valuation_prior = experiment_params['valuation_prior']
         self.model_sharing = experiment_params['model_sharing']
         self.risk = experiment_params['risk']

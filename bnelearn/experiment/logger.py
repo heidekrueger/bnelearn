@@ -21,7 +21,7 @@ from bnelearn.experiment.learning_configuration import LearningConfiguration
 class Logger(ABC):
     def __init__(self, l_config: LearningConfiguration, experiment_params: dict, save_figure_to_disk_png: bool = True,
                  save_figure_to_disk_svg: bool = True,
-                 plot_epoch: int = 10, show_plot_inline: bool = True, save_figure_data_to_disk: bool = False):
+                 plot_epoch: int = 100, show_plot_inline: bool = True, save_figure_data_to_disk: bool = False):
         root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
         if root_path not in sys.path:
             sys.path.append(root_path)
@@ -72,7 +72,7 @@ class Logger(ABC):
     # ToDo Make a signature take a single dictionary parameter, as signatures would differ in each class
     @abstractmethod
     def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,
-                               bidders, utility, log_params: dict):
+                               utility, log_params: dict):
         pass
 
     @abstractmethod
@@ -124,6 +124,7 @@ class SingleItemAuctionLogger(Logger):
         plt.rcParams['figure.figsize'] = [8, 5]
 
         self.models = models
+        self.gpu_config = env.agents[0].device
         self.env = env
         self.experiment_params = experiment_params
         if os.name == 'nt':
@@ -351,11 +352,10 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
     def __init__(self, l_config: LearningConfiguration):
         super().__init__(None, l_config)
 
-    def log_training_iteration(self, prev_params, epoch, strat_to_bidder, eval_batch_size, bidders, utilities, log_params: dict):
+    def log_training_iteration(self, prev_params, epoch, strat_to_bidder, eval_batch_size, utilities, log_params: dict):
         # TODO It is by no means nice that there is so much specific logic in here
         #TODO: Change similar to single_item
         start_time = timer()
-        self.gpu_config = bidders[0].device
         for i, model in enumerate(self.models):
             # calculate infinity-norm of update step
             new_params = torch.nn.utils.parameters_to_vector(model.parameters())
@@ -408,7 +408,7 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
         self._process_figure(fig, writer, e)
 
     #TODO: Fix output (currently overpallping)
-    def _plot_3d(self, plot_data, epoch, xlim: list, ylim: list, zlim:list,
+    def _plot_3d(self, plot_data, epoch, xlim: list, ylim: list, zlim:list=[None,None],
                  input_length=2, x_label="valuation_0", y_label="valuation_1", z_label="bid"):
         """This implements plotting simple 2d data"""
         batch_size, n_models, n_items = plot_data[0].shape
@@ -424,9 +424,7 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
         plot_zmax = zlim[1]
 
         # create the plot
-        fig = plt.gcf()
-        plt.cla()
-        
+        fig = plt.figure()
         for model_idx in range(n_models):
             for input_idx in range(input_length):
                 ax = fig.add_subplot(n_models, input_length, model_idx*input_length+input_idx+1, projection='3d')
@@ -448,21 +446,38 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
                 if n_models>2:
                     if model_idx < 4:
                         ax.set_xlim(plot_xmin, plot_xmax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
-                        ax.set_ylim(plot_ymin, plot_ymax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0])) 
-                        ax.set_zlim(plot_zmin, plot_zmax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
+                        ax.set_ylim(plot_ymin, plot_ymax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
+                        if plot_zmin==None:
+                            ax.set_zlim(plot_zmin, self.experiment_params['u_hi'][0])
+                        else:
+                            ax.set_zlim(plot_zmin, plot_zmax)
                     else:
-                        ax.set_xlim(plot_xmin, plot_xmax); ax.set_ylim(plot_ymin, plot_ymax); ax.set_zlim(plot_zmin, plot_zmax)
+                        ax.set_xlim(plot_xmin, plot_xmax)
+                        ax.set_ylim(plot_ymin, plot_ymax)
+                        if plot_zmin==None:
+                            ax.set_zlim(plot_zmin, self.experiment_params['u_hi'][4])
+                        else:
+                            ax.set_zlim(plot_zmin, plot_zmax)
                 else:
                     if model_idx == 0:
                         ax.set_xlim(plot_xmin, plot_xmax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
                         ax.set_ylim(plot_ymin, plot_ymax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
-                        ax.set_zlim(plot_zmin, plot_zmax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
+                        if plot_zmin==None:
+                            ax.set_zlim(plot_zmin, self.experiment_params['u_hi'][0])
+                        else:
+                            ax.set_zlim(plot_zmin, plot_zmax)
                     else:
-                        ax.set_xlim(plot_xmin, plot_xmax); ax.set_ylim(plot_ymin, plot_ymax); ax.set_zlim(plot_zmin, plot_zmax)
+                        ax.set_xlim(plot_xmin, plot_xmax)
+                        ax.set_ylim(plot_ymin, plot_ymax)
+                        if plot_zmin==None:
+                            ax.set_zlim(plot_zmin, self.experiment_params['u_hi'][4])
+                        else:
+                            ax.set_zlim(plot_zmin, plot_zmax)
+
                 ax.set_xlabel(x_label); ax.set_ylabel(y_label); ax.set_zlabel(z_label)
                 ax.zaxis.set_major_locator(LinearLocator(10))
                 ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
-                ax.set_title('model {} biddings for bundle {}'.format(model_idx, input_idx))
+                ax.set_title('model {}, bundle {}'.format(model_idx, input_idx))
                 ax.view_init(20, -135)
         fig.suptitle('iteration {}'.format(epoch), size=16)
         fig.tight_layout()
