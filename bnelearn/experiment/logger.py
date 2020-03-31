@@ -146,10 +146,9 @@ class SingleItemAuctionLogger(Logger):
         self._log_once()
         self._log_hyperparams()
 
-    # TODO: Change bidders to models only, since we always want to plot a model instead of duplicates of one (bidders sharing a model)
     #TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
     def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utilities,
-                               bidders, utilities, log_params: dict):
+                               utilities, log_params: dict):
         # TODO It is by no means nice that there is so much specific logic in here
         start_time = timer()
         plot_data = []

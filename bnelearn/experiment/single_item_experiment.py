@@ -139,7 +139,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
         self.logger.log_training_iteration(prev_params=prev_params, epoch=epoch, bne_env=self.bne_env,
                                            strat_to_bidder=self._strat_to_bidder,
                                            eval_batch_size=self.l_config.eval_batch_size, bne_utilities=self.bne_utilities,
-                                           bidders=self.bidders, utilities=utilities, log_params=log_params)
+                                           utilities=utilities, log_params=log_params)
 
         if epoch%10 == 0:
             self.logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 

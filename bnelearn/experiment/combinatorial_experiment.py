@@ -170,8 +170,7 @@ class LLGExperiment(CombinatorialExperiment):
         self.logger.log_training_iteration(prev_params=prev_params, epoch=epoch, bne_env=self.bne_env,
                                            strat_to_bidder=self._strat_to_bidder,
                                            eval_batch_size=self.l_config.eval_batch_size,
-                                           bne_utilities=self.bne_utilities,
-                                           bidders=self.bidders, utilities=utilities, log_params=log_params)
+                                           bne_utilities=self.bne_utilities, utilities=utilities, log_params=log_params)
         if epoch % 10 == 0:
             print("epoch {}, utilities: ".format(epoch))
             for i in range(len(utilities)):
@@ -231,7 +230,7 @@ class LLLLGGExperiment(CombinatorialExperiment):
         self.logger.log_training_iteration(prev_params=prev_params, epoch=epoch,
                                            strat_to_bidder=self._strat_to_bidder,
                                            eval_batch_size=self.l_config.eval_batch_size,
-                                           bidders=self.bidders, utilities=utilities, log_params=log_params)
+                                           utilities=utilities, log_params=log_params)
         if epoch % 100 == 0:
             print("epoch {}, utilities: ".format(epoch))
             for i in range(len(utilities)):
