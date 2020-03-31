@@ -241,24 +241,24 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
             if self.risk_profile != 'risk_neutral':
                 warnings.warn("Ignoring risk-aversion in optimal bid!")
 
-                # For float and numpy --> convert to tensor
-                if not isinstance(valuation, torch.Tensor):
-                    valuation = torch.tensor(valuation, dtype=torch.float)
-                # For float / 0d tensors --> unsqueeze to allow list comprehension below
-                if valuation.dim() == 0:
-                    valuation.unsqueeze_(0)
+            # For float and numpy --> convert to tensor
+            if not isinstance(valuation, torch.Tensor):
+                valuation = torch.tensor(valuation, dtype=torch.float)
+            # For float / 0d tensors --> unsqueeze to allow list comprehension below
+            if valuation.dim() == 0:
+                valuation.unsqueeze_(0)
 
-                # shorthand notation for F^(n-1)
-                Fpowered = lambda v: torch.pow(self.common_prior.cdf(v), self.n_players - 1)
+            # shorthand notation for F^(n-1)
+            Fpowered = lambda v: torch.pow(self.common_prior.cdf(v), self.n_players - 1)
 
-                # do the calculations
-                numerator = torch.tensor(
-                    [integrate.quad(Fpowered, 0, v)[0] for v in valuation],
-                    device=valuation.device
-                ).reshape(valuation.shape)
-                return valuation - numerator / Fpowered(valuation)
+            # do the calculations
+            numerator = torch.tensor(
+                [integrate.quad(Fpowered, 0, v)[0] for v in valuation],
+                 device=valuation.device
+            ).reshape(valuation.shape)
+            return valuation - numerator / Fpowered(valuation)
         else:
-            raise ValueError('Invalid Auction Mechanism')
+            raise ValueError('Optimal Bid not implemented for {}, {}'.format(self.mechanism_type, self.risk_profile))
 
     def _setup_eval_environment(self):
         if self.mechanism_type == 'first_price':
