@@ -52,8 +52,8 @@ if cuda: print(torch.cuda.current_device())
 #log_root = os.path.abspath('/srv/bnelearn/experiments')
 log_root = os.path.abspath('.')
 run_comment = 'espg'
-save_figure_data_to_disc = False
-save_figure_to_disc = True
+save_figure_data_to_disk = False
+save_figure_to_disk = True
 
 ## Experiment setup
 n_players = 3
@@ -159,8 +159,8 @@ def log_hyperparams(writer, e):
         
 def plot_bid_function(fig, valuations, bids, writer=None, e=None,
                       plot_points=plot_points,
-                      save_vectors_to_disc=save_figure_data_to_disc,
-                      save_png_to_disc = False):
+                      save_vectors_to_disk=save_figure_data_to_disk,
+                      save_png_to_disk = False):
     #$$$TODO: Removed [:plot_points] for now to get it running. Include (for batch!?) again.
     #plot_points = min(plot_points, len(v1), len(v2))
     # subsample points and plot    
@@ -198,7 +198,7 @@ def plot_bid_function(fig, valuations, bids, writer=None, e=None,
     #plt.plot(v_print[1], b_print[1], 'bo')
     #display.display(fig)
     #plt.show()
-    if save_png_to_disc:
+    if save_png_to_disk:
         plt.savefig(os.path.join(logdir, 'png', run_name + f'_{e:05}.png'))
     if writer:
         writer.add_figure('eval/bid_function', fig, e)  
@@ -277,7 +277,7 @@ if run_comment:
 logdir = os.path.join(log_root, 'LLLLGG', 'asymmetric', 'uniform', str(n_players) + 'p', run_name)
 print(logdir)
 os.makedirs(logdir, exist_ok=True)
-if save_figure_to_disc:
+if save_figure_to_disk:
     os.mkdir(os.path.join(logdir, 'png'))
 
 plt.rcParams['figure.figsize'] = [10, 7]
@@ -319,7 +319,7 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
             #print(('Epoch: {}: Model utility in learning env:'+'\t{:.5f}'*n_players).format(e, *utilities))            
             #print("Epoch {}: \tutilities: \t p0: {:.3f} \t p1: {:.3f}".format(e, utility_0, utility_1))
             plot_bid_function(fig, v, b, writer,e,
-                                save_png_to_disc=save_figure_to_disc)  
+                                save_png_to_disk=save_figure_to_disk)  
         
         elapsed = timer() - start_time
         overhead_mins = overhead_mins + elapsed/60

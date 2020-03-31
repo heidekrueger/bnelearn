@@ -199,8 +199,8 @@ elif param_dict["exp_no"] == 6:
 
 # Log in folder
 log_root = os.path.abspath('/home/kohring/bnelearn/experiments')
-save_figure_data_to_disc = False
-save_figure_to_disc = False
+save_figure_data_to_disk = False
+save_figure_to_disk = False
 
 auction_type_str = str(type(mechanism))
 auction_type_str = str(auction_type_str[len(auction_type_str) \
@@ -388,7 +388,7 @@ for vals in product(*hyperparams.values()):
         print('logdir:', logdir)
         os.makedirs(logdir, exist_ok=False)
 
-        if save_figure_to_disc:
+        if save_figure_to_disk:
             os.mkdir(os.path.join(logdir, 'plots'))
     else:
         logdir = None
@@ -426,7 +426,7 @@ for vals in product(*hyperparams.values()):
                         "efficiency_parameter": param_dict["efficiency_parameter"],
                         "input_length": param_dict["input_length"] \
                     } if param_dict["exp_no"] == 6 else None,
-                    save_fig_to_disc = save_figure_to_disc,
+                    save_fig_to_disk = save_figure_to_disk,
                     device = device
                 )
                 # if param_dict["n_items"] == 2 \
@@ -438,7 +438,7 @@ for vals in product(*hyperparams.values()):
                 #         param_dict["n_items"], log_name, logdir, bidders,
                 #         batch_size, device, #bounds=[param_dict["u_lo"], param_dict["u_hi"]],
                 #         split_award = param_dict["exp_no"]==6,
-                #         save_fig_to_disc = save_figure_to_disc
+                #         save_fig_to_disk = save_figure_to_disk
                 #     )
 
             start_time = time.time()

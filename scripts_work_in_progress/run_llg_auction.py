@@ -52,11 +52,11 @@ epochs = 1000
 # Logging and plotting
 logging_options = dict(
     log_root = os.path.join(root_path, 'experiments'),
-    save_figure_to_disc_png = True,
-    save_figure_to_disc_svg = True, #for publishing. better quality but a pain to work with
+    save_figure_to_disk_png = True,
+    save_figure_to_disk_svg = True, #for publishing. better quality but a pain to work with
     plot_epoch = 100,
     show_plot_inline = False,
-    save_figure_data_to_disc = True
+    save_figure_data_to_disk = True
 )
 
 # Experiment setting parameters

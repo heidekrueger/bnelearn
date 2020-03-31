@@ -57,8 +57,8 @@ if cuda: print(torch.cuda.current_device())
 #log_root = os.path.abspath('/srv/bnelearn/experiments')
 log_root = os.path.abspath('.')
 run_comment = 'espg'
-save_figure_data_to_disc = True
-save_figure_to_disc = True
+save_figure_data_to_disk = True
+save_figure_to_disk = True
 
 ## Experiment setup
 n_players = 6
@@ -135,8 +135,8 @@ c = 1 / (u0_hi - u_lo)**2 - 1 / (u1_hi - u_lo)**2
         
 def plot_bid_function(fig, valuations, bids, writer=None, e=None,
                       plot_points=plot_points,
-                      save_vectors_to_disc=save_figure_data_to_disc,
-                      save_png_to_disc = False):
+                      save_vectors_to_disk=save_figure_data_to_disk,
+                      save_png_to_disk = False):
                       
     # subsample points and plot    
     v_print = [None] * 2
@@ -162,7 +162,7 @@ def plot_bid_function(fig, valuations, bids, writer=None, e=None,
     #plt.plot(v_print[0][1], b_print[0][1], 'bo', v_print[1][1], b_print[1][1], 'go', v_print[2][1], b_print[2][1], 'ro', v_print[3][1], b_print[3][1], 'yo', v_print[4][1], b_print[4][1], 'g-', v_print[5][1], b_print[5][1], 'b-')
     if is_ipython:
         display.clear_output(wait=True)
-    if save_png_to_disc:
+    if save_png_to_disk:
         plt.savefig(os.path.join(logdir, 'png', f'_{e:05}_1.png'))
     #display.display(fig)
     plt.show()
@@ -171,7 +171,7 @@ def plot_bid_function(fig, valuations, bids, writer=None, e=None,
 
     plt.cla()
     plt.plot(v_print[1], b_print[1], 'bo')
-    if save_png_to_disc:
+    if save_png_to_disk:
         plt.savefig(os.path.join(logdir, 'png', f'_{e:05}_2.png'))
     #display.display(fig)
     plt.show()
@@ -180,7 +180,7 @@ def plot_bid_function(fig, valuations, bids, writer=None, e=None,
         
 
         
-def plot_bid_function_3d(writer, e, save_figure_to_disc=False):
+def plot_bid_function_3d(writer, e, save_figure_to_disk=False):
     assert input_length == 2, 'Only case of n_items equals 2 can be plotted.'
     #$$$differentiate local and global in model and valuation
 
@@ -252,7 +252,7 @@ def plot_bid_function_3d(writer, e, save_figure_to_disc=False):
     fig.suptitle('iteration {}'.format(e), size=16)
     fig.tight_layout()
 
-    if save_figure_to_disc:
+    if save_figure_to_disk:
         plt.savefig(os.path.join(logdir, 'png', f'_{e:05}_3d.png'))
     if writer:
         writer.add_figure('eval/bid_function_3d', fig, e)
@@ -374,7 +374,7 @@ if run_comment:
 logdir = os.path.join(log_root, 'experiments', 'LLLLGG', str(n_players) + 'p', run_name)
 print(logdir)
 os.makedirs(logdir, exist_ok=True)
-if save_figure_to_disc:
+if save_figure_to_disk:
     os.mkdir(os.path.join(logdir, 'png'))
 
 plt.rcParams['figure.figsize'] = [10, 7]
@@ -389,8 +389,8 @@ if True:
         b[k] = bidder.get_action().squeeze(0)
 
     fig = plt.figure()
-    plot_bid_function(fig, v, b, writer=None,e=0,plot_points = plot_points, save_png_to_disc = save_figure_to_disc) 
-    plot_bid_function_3d(writer=None,e=0,save_figure_to_disc = save_figure_to_disc) 
+    plot_bid_function(fig, v, b, writer=None,e=0,plot_points = plot_points, save_png_to_disk = save_figure_to_disk) 
+    plot_bid_function_3d(writer=None,e=0,save_figure_to_disk = save_figure_to_disk) 
 
 ###################################################Training####################################################
 expect_counter = 0
@@ -471,8 +471,8 @@ with SummaryWriter(logdir, flush_secs=60) as writer:
             fig = plt.figure()
             print(('Epoch: {}: Model utility in learning env:'+'\t{:.5f}'*len(models)).format(e, *utilities))            
             #plot_bid_function(fig, v, b, writer,e,plot_points = plot_points,
-            #                      save_png_to_disc=save_figure_to_disc)  
-            #plot_bid_function_3d(writer=writer,e=e,save_figure_to_disc = save_figure_to_disc)
+            #                      save_png_to_disk=save_figure_to_disk)  
+            #plot_bid_function_3d(writer=writer,e=e,save_figure_to_disk = save_figure_to_disk)
 
             bid_i = torch.linspace(u_lo, u1_hi, regret_bid_size)
 
