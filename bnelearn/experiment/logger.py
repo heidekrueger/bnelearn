@@ -113,7 +113,7 @@ class SingleItemAuctionLogger(Logger):
         self.plot_xmax = plot_xmax
         self.plot_ymin = plot_ymin
         self.plot_ymax = plot_ymax
-        self.plot_points = min(150, batch_size)
+        self.plot_points = min(10, batch_size)
         self.v_opt = [np.linspace(plot_xmin, plot_xmax, 100)] * len(models)
         self.b_opt = [optimal_bid(self.v_opt[i], player_position=model.connected_bidders[0])
                         for i,model in enumerate(models)]
@@ -188,6 +188,7 @@ class SingleItemAuctionLogger(Logger):
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
         
         original_batch_size = env.agents[0].batch_size
+
         bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
                                           dtype=env.agents[0].valuations.dtype, device = env.mechanism.device)
         for agent in env.agents:
@@ -214,11 +215,19 @@ class SingleItemAuctionLogger(Logger):
             self.writer.add_scalar('eval/max_ex_interim_regret', torch.max(regret), epoch)
             self.writer.add_scalar('eval/ex_ante_regret', torch.mean(regret), epoch)
             regrets.append(regret)
-            valuations.append(env.agents[player_position].valuations.view(-1))
+
+            valuations.append(env.agents[player_position].valuations)
+
             max_regret = max(max_regret, torch.max(regret))
 
-        fig, _ = self._plot_2d((valuations, regrets), epoch, [self.plot_xmin, self.plot_xmax], 
-                               [0, max_regret.detach().cpu().numpy()], x_label="valuation", y_label="regret")
+        if isinstance(self, LLLLGGAuctionLogger):
+            valuations_tensor = torch.tensor([t.cpu().numpy() for t in valuations]).permute(1,0,2)
+            regrets_tensor = torch.tensor([t.cpu().numpy() for t in regrets]).view(len(learners), regret_batch_size, 1)
+            fig, _ = self._plot_3d((valuations_tensor, regrets_tensor), epoch, [self.plot_xmin, self.plot_xmax], [self.plot_ymin, self.plot_ymax],
+                                [0, max_regret.detach().cpu().numpy()], input_length=1, x_label="valuation", y_label="regret")
+        else:
+            fig, _ = self._plot_2d((valuations, regrets), epoch, [self.plot_xmin, self.plot_xmax], 
+                                [0, max_regret.detach().cpu().numpy()], x_label="valuation", y_label="regret")
         self._process_figure(fig, self.writer, epoch, name="regret_epoch")
 
         for agent in env.agents:
@@ -246,12 +255,12 @@ class SingleItemAuctionLogger(Logger):
         plot_xmax = xlim[1]
         plot_ymin = ylim[0]
         plot_ymax = ylim[1]
-        v = [None] * len(plot_data[0])
-        b = [None] * len(plot_data[0])
+        x = [None] * len(plot_data[0])
+        y = [None] * len(plot_data[0])
 
-        for i in range(len(v)):
-            v[i] = plot_data[0][i].detach().cpu().numpy()[:self.plot_points]
-            b[i] = plot_data[1][i].detach().cpu().numpy()[:self.plot_points]
+        for i in range(len(x)):
+            x[i] = plot_data[0][i].detach().cpu().numpy()[:self.plot_points]
+            y[i] = plot_data[1][i].detach().cpu().numpy()[:self.plot_points]
 
         # create the plot
         fig = plt.gcf()
@@ -264,8 +273,8 @@ class SingleItemAuctionLogger(Logger):
                  plot_ymax - 0.05 * (plot_ymax - plot_ymin),
                  'iteration {}'.format(epoch))
         cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-        for i in range(len(v)):
-            plt.plot(v[i], b[i], color=cycle[i], marker='o', linestyle = 'None')
+        for i in range(len(x)):
+            plt.plot(x[i], y[i], color=cycle[i], marker='o', linestyle = 'None')
         return fig, plt
 
 
@@ -370,14 +379,7 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
     #TODO: Implement
     def _plot(self, fig, models, writer: SummaryWriter or None, e=None):
         input_length = 2
-        plot_xmin = self.plot_xmin
-        plot_ymin = self.plot_ymin
-        plot_zmin = plot_ymin
-        plot_xmax = self.plot_xmax
-        plot_ymax = self.plot_ymax
-        plot_zmax = plot_ymax
         plot_points = self.plot_points
-
         lin_local = torch.linspace(self.experiment_params['u_lo'][0], self.experiment_params['u_hi'][0], plot_points)
         lin_global = torch.linspace(self.experiment_params['u_lo'][4], self.experiment_params['u_hi'][4], plot_points)
         xv = [None] * 2
@@ -401,15 +403,38 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
             models_print[model_idx] = models[model_idx].play(valuations[:,model_idx,:])
             models_print_wf[model_idx] = models_print[model_idx].view(plot_points,plot_points,input_length)
 
-        fig = plt.figure()
-        for model_idx in range(len(models)):
+        fig, plt = self._plot_3d([valuations, models_print], e, [self.plot_xmin, self.plot_xmax],
+                                 [self.plot_ymin, self.plot_ymax], [self.plot_ymin, self.plot_ymax])
+
+        self._process_figure(fig, writer, e)
+
+    #TODO: Fix output (currently overpallping)
+    def _plot_3d(self, plot_data, epoch, xlim: list, ylim: list, zlim:list,
+                 input_length=2, x_label="valuation_0", y_label="valuation_1", z_label="bid"):
+        """This implements plotting simple 2d data"""
+        batch_size, n_models, n_items = plot_data[0].shape
+        valuations = plot_data[0]
+        bids = plot_data[1]
+
+
+        plot_xmin = xlim[0]
+        plot_xmax = xlim[1]
+        plot_ymin = ylim[0]
+        plot_ymax = ylim[1]
+        plot_zmin = zlim[0]
+        plot_zmax = zlim[1]
+
+        # create the plot
+        fig = plt.gcf()
+        plt.cla()
+        
+        for model_idx in range(n_models):
             for input_idx in range(input_length):
-                ax = fig.add_subplot(len(models), input_length, model_idx*input_length+input_idx+1, projection='3d')
+                ax = fig.add_subplot(n_models, input_length, model_idx*input_length+input_idx+1, projection='3d')
                 ax.plot_trisurf(
-                    
                     valuations[:,model_idx,0].detach().cpu().numpy(),
                     valuations[:,model_idx,1].detach().cpu().numpy(),
-                    models_print[model_idx][:,input_idx].reshape(plot_points**2).detach().cpu().numpy(),
+                    bids[model_idx][:,input_idx].reshape(batch_size).detach().cpu().numpy(),
                     color = 'yellow',
                     linewidth = 0.2,
                     antialiased = True
@@ -421,7 +446,7 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
                 #     rstride=4, cstride=4
                 # )
                 # Axis labeling
-                if len(models)>2:
+                if n_models>2:
                     if model_idx < 4:
                         ax.set_xlim(plot_xmin, plot_xmax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
                         ax.set_ylim(plot_ymin, plot_ymax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0])) 
@@ -435,23 +460,15 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
                         ax.set_zlim(plot_zmin, plot_zmax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
                     else:
                         ax.set_xlim(plot_xmin, plot_xmax); ax.set_ylim(plot_ymin, plot_ymax); ax.set_zlim(plot_zmin, plot_zmax)
-                ax.set_xlabel('bundle 0 value'); ax.set_ylabel('bundle 1 value')#; ax.set_zlabel('bid')
+                ax.set_xlabel(x_label); ax.set_ylabel(y_label); ax.set_zlabel(z_label)
                 ax.zaxis.set_major_locator(LinearLocator(10))
                 ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
                 ax.set_title('model {} biddings for bundle {}'.format(model_idx, input_idx))
                 ax.view_init(20, -135)
-        fig.suptitle('iteration {}'.format(e), size=16)
+        fig.suptitle('iteration {}'.format(epoch), size=16)
         fig.tight_layout()
 
-        # if save_figure_to_disk:
-        #     plt.savefig(os.path.join(logdir, 'png', f'_{e:05}_3d.png'))
-        # if writer:
-        #     writer.add_figure('eval/bid_function_3d', fig, e)
-
-        # plt.show()
-
-        self._process_figure(fig, writer, e)
-
+        return fig, plt
 class MultiUnitAuctionLogger(Logger):
     def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,
                                bidders, utility, log_params: dict):
