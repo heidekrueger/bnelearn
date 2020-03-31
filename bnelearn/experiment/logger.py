@@ -19,17 +19,17 @@ from bnelearn.experiment.learning_configuration import LearningConfiguration
 
 
 class Logger(ABC):
-    def __init__(self, l_config: LearningConfiguration, experiment_params: dict, save_figure_to_disc_png: bool = True,
-                 save_figure_to_disc_svg: bool = True,
-                 plot_epoch: int = 10, show_plot_inline: bool = True, save_figure_data_to_dis: bool = False):
+    def __init__(self, l_config: LearningConfiguration, experiment_params: dict, save_figure_to_disk_png: bool = True,
+                 save_figure_to_disk_svg: bool = True,
+                 plot_epoch: int = 10, show_plot_inline: bool = True, save_figure_data_to_disk: bool = False):
         root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
         if root_path not in sys.path:
             sys.path.append(root_path)
 
         self.logging_options = dict(
             log_root=os.path.join(root_path, 'experiments'),
-            save_figure_to_disc_png=save_figure_to_disc_png,
-            save_figure_to_disc_svg=save_figure_to_disc_svg,  # for publishing. better quality but a pain to work with
+            save_figure_to_disk_png=save_figure_to_disk_png,
+            save_figure_to_disk_svg=save_figure_to_disk_svg,  # for publishing. better quality but a pain to work with
             plot_epoch=plot_epoch,
             show_plot_inline=show_plot_inline
         )
@@ -47,8 +47,8 @@ class Logger(ABC):
 
         # plotting
         self.plot_epoch = plot_epoch
-        self.save_figure_to_disc_svg = save_figure_to_disc_svg
-        self.save_figure_to_disc_png = save_figure_to_disc_png
+        self.save_figure_to_disk_svg = save_figure_to_disk_svg
+        self.save_figure_to_disk_png = save_figure_to_disk_png
         self.plot_points = None
         self.v_opt = None
         self.b_opt = None
@@ -134,9 +134,9 @@ class SingleItemAuctionLogger(Logger):
 
         self.log_dir = os.path.join(self.logging_options['log_root'], self.base_dir, run_name)
         os.makedirs(self.log_dir, exist_ok=False)
-        if self.logging_options['save_figure_to_disc_png']:
+        if self.logging_options['save_figure_to_disk_png']:
             os.mkdir(os.path.join(self.log_dir, 'png'))
-        if self.logging_options['save_figure_to_disc_svg']:
+        if self.logging_options['save_figure_to_disk_svg']:
             os.mkdir(os.path.join(self.log_dir, 'svg'))
 
         print('Started run. Logging to {}'.format(self.log_dir))
@@ -272,10 +272,10 @@ class SingleItemAuctionLogger(Logger):
     def _process_figure(self, fig, writer=None, epoch=None, name='epoch_'):
         """displays, logs and/or saves figure built in plot method"""
 
-        if self.logging_options['save_figure_to_disc_png']:
+        if self.logging_options['save_figure_to_disk_png']:
             plt.savefig(os.path.join(self.log_dir, 'png', f'{name}{epoch:05}.png'))
 
-        if self.logging_options['save_figure_to_disc_svg']:
+        if self.logging_options['save_figure_to_disk_svg']:
             plt.savefig(os.path.join(self.log_dir, 'svg', f'{name}{epoch:05}.svg'),
                         format='svg', dpi=1200)
         if writer:
@@ -443,7 +443,7 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
         fig.suptitle('iteration {}'.format(e), size=16)
         fig.tight_layout()
 
-        # if save_figure_to_disc:
+        # if save_figure_to_disk:
         #     plt.savefig(os.path.join(logdir, 'png', f'_{e:05}_3d.png'))
         # if writer:
         #     writer.add_figure('eval/bid_function_3d', fig, e)
@@ -486,9 +486,9 @@ class MultiUnitAuctionLogger(Logger):
 
         self.log_dir = os.path.join(self.logging_options['log_root'], self.base_dir, run_name)
         os.makedirs(self.log_dir, exist_ok=False)
-        if self.logging_options['save_figure_to_disc_png']:
+        if self.logging_options['save_figure_to_disk_png']:
             os.mkdir(os.path.join(self.log_dir, 'png'))
-        if self.logging_options['save_figure_to_disc_svg']:
+        if self.logging_options['save_figure_to_disk_svg']:
             os.mkdir(os.path.join(self.log_dir, 'svg'))
 
         print('Started run. Logging to {}'.format(self.log_dir))
@@ -539,7 +539,7 @@ class MultiUnitAuctionLogger(Logger):
             #         param_dict["n_items"], log_name, logdir, bidders,
             #         batch_size, device, #bounds=[param_dict["u_lo"], param_dict["u_hi"]],
             #         split_award = param_dict["exp_no"]==6,
-            #         save_fig_to_disc = save_figure_to_disc
+            #         save_fig_to_disk = save_figure_to_disk
             #     )
 
         self.log_metrics(
@@ -915,7 +915,7 @@ class MultiUnitAuctionLogger(Logger):
         axs[plot].locator_params(axis='x', nbins=5)
         fig.tight_layout()
 
-        if self.save_figure_to_disc_png and self.log_dir is not None:
+        if self.save_figure_to_disk_png and self.log_dir is not None:
             try:
                 os.mkdir(os.path.join(self.log_dir, 'plots'))
             except FileExistsError:

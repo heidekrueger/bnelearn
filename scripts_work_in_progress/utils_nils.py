@@ -675,8 +675,8 @@ def plot_bid_function(
         bounds = [0., 1.],
         # sort_by_bids = False,
         split_award = None,
-        save_vectors_to_disc = False,
-        save_fig_to_disc = False,
+        save_vectors_to_disk = False,
+        save_fig_to_disk = False,
         format = 'pdf',
         device = None
     ):
@@ -830,7 +830,7 @@ def plot_bid_function(
     axs[plot].locator_params(axis='x', nbins=5)
     fig.tight_layout()
 
-    if save_fig_to_disc and logdir is not None:
+    if save_fig_to_disk and logdir is not None:
         try:
             os.mkdir(os.path.join(logdir, 'plots'))
         except FileExistsError:
@@ -854,7 +854,7 @@ def plot_bid_function_3d(
         device,
         split_award = False,
         bounds = [0, 1],
-        save_fig_to_disc = False
+        save_fig_to_disk = False
     ):
     assert n_items == 2 or exp_no == 2, 'Only case of n_items equals 2 can be plotted.'
 
@@ -917,7 +917,7 @@ def plot_bid_function_3d(
     fig.suptitle('iteration {}'.format(e), size=16)
     fig.tight_layout()
 
-    if save_fig_to_disc and logdir is not None:
+    if save_fig_to_disk and logdir is not None:
         plt.savefig(os.path.join(logdir, 'plots', f'_{e:05}_3d.png'))
     if writer and log_name is not None:
         writer.add_figure('plot/plot_3d', fig, e)
@@ -1170,7 +1170,7 @@ def plot_saved_model(
             "efficiency_parameter": param_dict["efficiency_parameter"],
             "input_length": param_dict["input_length"] \
         } if param_dict["exp_no"] == 6 else None,
-        save_fig_to_disc = True,
+        save_fig_to_disk = True,
         format = format,
         device = device
     )
@@ -1682,7 +1682,7 @@ def compare_models(
             "efficiency_parameter": param_dict["efficiency_parameter"],
             "input_length": param_dict["input_length"] \
         } if param_dict["exp_no"] == 6 else None,
-        save_fig_to_disc = True,
+        save_fig_to_disk = True,
         format = 'png',
         device = device
     )
