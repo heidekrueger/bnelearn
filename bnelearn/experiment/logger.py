@@ -483,6 +483,7 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
         fig.tight_layout()
 
         return fig, plt
+
 class MultiUnitAuctionLogger(Logger):
     def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,
                                bidders, utility, log_params: dict):
@@ -537,13 +538,9 @@ class MultiUnitAuctionLogger(Logger):
         bne_utilities = log_params['bne_utilities']
         against_bne_utilities = log_params['against_bne_utilities']
 
-
         # ToDO I know it's ugly, this is to avoid importing the FPSBSplitAwardAuction2x2 class to use in isinstance
         # and creating a circular dependency. For sure type checking needs to be dispensed with altogether.
-        if 'is_FPSBSplitAwardAuction2x2' in log_params.keys():
-            is_FPSBSplitAwardAuction2x2 = log_params['is_FPSBSplitAwardAuction2x2']
-        else:
-            is_FPSBSplitAwardAuction2x2 = False
+        is_FPSBSplitAwardAuction = "efficiency_parameter" in self.experiment_params.keys()
 
         # ToDo Are bounds the same for all bidders? (used just [0] in all three cases below)
         # plotting
@@ -558,7 +555,7 @@ class MultiUnitAuctionLogger(Logger):
                     'split_award': True,
                     "efficiency_parameter": self.experiment_params['efficiency_parameter'],
                     "input_length": self.experiment_params["input_length"]
-                } if is_FPSBSplitAwardAuction2x2 else None,
+                } if is_FPSBSplitAwardAuction else None,
             )
 
             # if param_dict["n_items"] == 2 \
@@ -573,41 +570,35 @@ class MultiUnitAuctionLogger(Logger):
             #         save_fig_to_disk = save_figure_to_disk
             #     )
 
+        policy_metrics = dict()
+        bne_idx = 1
+        while True:
+            key = "BNE{}".format(bne_idx)
+            if key in self.experiment_params.keys():
+                policy_metrics[key] = [
+                self._policy_metric(
+                    model.forward,
+                    optimal_bid,
+                    self.experiment_params["n_items"],
+                    selection={'split_award': True,
+                            "efficiency_parameter": self.experiment_params['efficiency_parameter'],
+                            "input_length": self.experiment_params["input_length"]
+                        } if is_FPSBSplitAwardAuction else 'random',
+                    bounds=[self.experiment_params["u_lo"][0], self.experiment_params["u_hi"][0]],
+                    item_interest_limit=self.experiment_params["item_interest_limit"] if \
+                        "item_interest_limit" in self.experiment_params.keys() else None,
+                    eval_points_max=2 ** 18,
+                    device=self.gpu_config.device
+                )
+                for model in self.models]
+                bne_idx += 1
+            else:
+                break
+
         self.log_metrics(
-
-            utilities=utilities, bne_utilities=bne_utilities, against_bne_utilities=against_bne_utilities,
-            epoch=epoch,
-            policy_metrics={
-                self.experiment_params["BNE1"]: [
-                    self._policy_metric(
-                        model.forward,
-                        optimal_bid,
-                        self.experiment_params["n_items"],
-                        selection=self.split_award_dict
-                            if is_FPSBSplitAwardAuction2x2 else 'random',
-                        bounds=[self.experiment_params["u_lo"][0], self.experiment_params["u_hi"][0]],
-
-                        item_interest_limit=self.experiment_params["item_interest_limit"] if \
-                            "item_interest_limit" in self.experiment_params.keys() else None,
-                        eval_points_max=2 ** 18,
-                        device=self.gpu_config.device
-                    )
-                    for model in self.models],
-                self.experiment_params["BNE2"]: [
-                    self._policy_metric(
-                        model.forward,
-                        optimal_bid_2,
-                        self.experiment_params["n_items"],
-                        selection=self.split_award_dict \
-                            if is_FPSBSplitAwardAuction2x2 else 'random',
-                        bounds=[self.experiment_params["u_lo"][0], self.experiment_params["u_hi"][0]],
-                        item_interest_limit=self.experiment_params["item_interest_limit"] if \
-                            "item_interest_limit" in self.experiment_params.keys() else None,
-                        eval_points_max=2 ** 18,
-                        device=self.gpu_config.device
-                    )
-                    for model in self.models]
-            }
+            utilities=utilities, bne_utilities=bne_utilities,
+            against_bne_utilities=against_bne_utilities,
+            epoch=epoch, policy_metrics=policy_metrics
         )
 
         print('epoch {}:\t{}s'.format(epoch, round(elapsed, 2)))
@@ -635,16 +626,13 @@ class MultiUnitAuctionLogger(Logger):
 
         self.writer.add_scalar('hyperparameters/batch_size', self.l_config.batch_size, epoch)
         self.writer.add_scalar('hyperparameters/epochs', self.max_epochs, epoch)
-        self.writer.add_scalar('hyperparameters/pretrain_epoch', self.l_config.learner_hyperparams['pretrain_epoch'], epoch)
+        self.writer.add_scalar(
+            'hyperparameters/pretrain_iters',
+            self.l_config.learner_hyperparams['pretrain_iters'],
+            epoch
+        )
         # ToDo right now seeds are stored in a list and cannot be logged this way
         # self.writer.add_scalar('hyperparameters/seed', self.l_config.learner_hyperparams['seed'], epoch)
-
-        if self.experiment_params['experience'] is not None:
-            for key, value in self.experiment_params['experience'].items():
-                try:
-                    self.writer.add_scalar('hyperparameters/experience_' + str(key), float(value), epoch)
-                except:
-                    self.writer.add_text('hyperparameters/experience_' + str(key), value, epoch)
 
         # for key, value in self.l_config.learner_hyperparams.items():
         #     self.writer.add_scalar('hyperparameters/' + str(key), value, epoch)
@@ -729,14 +717,15 @@ class MultiUnitAuctionLogger(Logger):
 
     def _policy_metric(self, policy_1: Callable, policy_2: Callable, dim: int, bounds=[0, 1],
                        eval_points_max: int = 2 ** 7,
-                       selection='random', item_interest_limit=None, dim_of_interest=None, device=None, ):
+                       selection='random', item_interest_limit=None, dim_of_interest=None, device=None):
         """
         Calculate the p-norm on a grid between the two policy functions.
 
         TODO: Consider sampleing according to underlying distribution instead of
             the uniform grid sampleing!
         """
-        valuations = self.multi_unit_valuations(device, bounds, dim, eval_points_max, selection, item_interest_limit)
+        valuations = self.multi_unit_valuations(device if device!=None else self.gpu_config.device,
+                                                bounds, dim, eval_points_max, selection, item_interest_limit)
 
         policy_1_bidding = policy_1(valuations).detach()
         policy_2_bidding = policy_2(valuations).detach()
@@ -749,12 +738,20 @@ class MultiUnitAuctionLogger(Logger):
 
         return metric.detach().cpu().numpy()
 
-    def multi_unit_valuations(self, device=None, bounds=[0, 1], dim=2, batch_size=100, selection='random',
-                              item_interest_limit=False, sort=False):
+    @staticmethod
+    def multi_unit_valuations(
+            device = None,
+            bounds = [0, 1],
+            dim = 2,
+            batch_size = 100,
+            selection = 'random',
+            item_interest_limit = None,
+            sort = False,
+        ):
         """Returns uniformly sampled valuations for multi unit auctions."""
         # for uniform vals and 2 items <=> F1(v)=v**2, F2(v)=2v-v**2
 
-        eval_points_per_dim = round((2 * batch_size) ** (1 / dim))
+        eval_points_per_dim = round((2*batch_size) ** (1/dim))
         valuations = torch.zeros(eval_points_per_dim ** dim, dim, device=device)
 
         if selection == 'random':
@@ -763,11 +760,13 @@ class MultiUnitAuctionLogger(Logger):
 
         elif 'split_award' in selection.keys():
             if 'linspace' in selection.keys() and selection['linspace']:
-                valuations[:, 0] = torch.linspace(bounds[0], bounds[1],
-                                                  eval_points_per_dim ** dim, device=device)
+                valuations[:,0] = torch.linspace(
+                    bounds[0], bounds[1],
+                    eval_points_per_dim ** dim, device=device
+                )
             else:
                 valuations.uniform_(bounds[0], bounds[1])
-            valuations[:, 1] = selection['efficiency_parameter'] * valuations[:, 0]
+            valuations[:,1] = selection['efficiency_parameter'] * valuations[:,0]
             # if 'input_length' in selection.keys():
             #     valuations = valuations[:,:selection['input_length']]
 
@@ -775,14 +774,14 @@ class MultiUnitAuctionLogger(Logger):
             lin = torch.linspace(bounds[0], bounds[1], eval_points_per_dim, device=device)
             mesh = torch.meshgrid([lin] * dim)
             for n in range(dim):
-                valuations[:, n] = mesh[n].reshape(eval_points_per_dim ** dim)
+                valuations[:,n] = mesh[n].reshape(eval_points_per_dim ** dim)
 
             mask = valuations.sort(dim=1, descending=True)[0]
             mask = (mask == valuations).all(dim=1)
             valuations = valuations[mask]
 
-        if isinstance(item_interest_limit, int):
-            valuations[:, item_interest_limit:] = 0
+        if item_interest_limit is not None:
+            valuations[:,item_interest_limit:] = 0
         if sort:
             valuations = valuations.sort(dim=1)[0]
 
@@ -794,7 +793,7 @@ class MultiUnitAuctionLogger(Logger):
         """
         return torch.sqrt(torch.mean((torch.clone(y_hat) - torch.clone(y)) ** 2))
 
-    def plot_bid_function(self, bidders, optimal_bid, optimal_bid_2, epoch=None, format='pdf', bounds=[0., 1.],
+    def plot_bid_function(self, bidders, optimal_bid, optimal_bid_2, epoch=None, format='png', bounds=[0., 1.],
                           split_award=None):
         """Method for plotting"""
 
@@ -804,18 +803,22 @@ class MultiUnitAuctionLogger(Logger):
 
         if split_award is not None:
             split_award['linspace'] = True
-        # valuations = multi_unit_valuations(device, bounds, n_items, plot_points,
-        #     'random' if split_award is None else split_award, sort=split_award is not None)
-        valuations = deepcopy(bidders[0]).draw_valuations_()[:plot_points, :]
+
+        valuations = self.multi_unit_valuations(
+            self.gpu_config.device, bounds, n_items, plot_points,
+            'random' if split_award is None else split_award
+        )
+        # valuations = deepcopy(bidders[0]).draw_valuations_()[:plot_points,:]
+
         if split_award is not None:
             valuations, _ = valuations.sort(0)
 
-        b_opt = optimal_bid(valuations)
         b_opt_2 = optimal_bid_2(valuations).cpu().numpy()
-
         if split_award is None:
+            b_opt = optimal_bid(valuations)
             b_opt = b_opt.cpu().numpy()
         else:
+            b_opt = optimal_bid(valuations, return_payoff_dominant=False)
             for k, v in b_opt.items():
                 b_opt[k] = v.cpu().numpy()
             temp = b_opt
@@ -832,9 +835,9 @@ class MultiUnitAuctionLogger(Logger):
                 except Exception as exc:
                     print(exc)
             try:
-                actions.append(bidder.strategy.play(valuations[:, :dim]))
+                actions.append(bidder.strategy.play(valuations[:,:dim]))
             except:
-                actions.append(bidder.strategy(valuations[:, :dim]))
+                actions.append(bidder.strategy(valuations[:,:dim]))
 
         # sorting of points, s.t. 1st plot corresponds to 1st item, etc.
         # (from sorted values to sorted bids)
@@ -849,7 +852,7 @@ class MultiUnitAuctionLogger(Logger):
         fig, axs = plt.subplots(nrows=1, ncols=n_items, sharey=True, figsize=[7, 4])
         plt.cla()
 
-        if not isinstance(axs, np.ndarray):  # only one item/plot
+        if not isinstance(axs, np.ndarray): # only one item/plot
             axs = [axs]
 
         if split_award is not None and n_items == 2:
@@ -926,8 +929,8 @@ class MultiUnitAuctionLogger(Logger):
                      split_award["efficiency_parameter"] * bounds[1]]
                 )
                 axs[plot].set_ylim(
-                    [0, 1.9 * bounds[1]]  # if item == 0 else
-                    # [0, 3.2*split_award["efficiency_parameter"]*bounds[1]]
+                    [0, 1.9 * bounds[1]] if item == 0 else
+                    [0, 5.2*split_award["efficiency_parameter"]*bounds[1]]
                 )
 
             else:

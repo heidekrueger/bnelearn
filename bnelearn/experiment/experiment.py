@@ -28,18 +28,21 @@ class Experiment(ABC):
         # Experiment params
         self.experiment_params = experiment_params
         self.n_players = experiment_params['n_players']
-        self.common_prior = experiment_params['common_prior']
+        if 'common_prior' in experiment_params.keys():
+            self.common_prior = experiment_params['common_prior']
         self.u_lo = experiment_params['u_lo']
         self.u_hi = experiment_params['u_hi']
         self.plot_xmin = min(experiment_params['u_lo'])
         self.plot_xmax = max(experiment_params['u_hi']) * 1.05
         self.plot_ymin = min(experiment_params['u_lo'])
         self.plot_ymax = max(experiment_params['u_hi']) * 1.05
-        self.valuation_prior = experiment_params['valuation_prior']
+        if 'valuation_prior' in experiment_params.keys():
+            self.valuation_prior = experiment_params['valuation_prior']
         self.model_sharing = experiment_params['model_sharing']
         self.risk = experiment_params['risk']
         self.risk_profile = Experiment.get_risk_profile(self.risk)
-        self.mechanism_type = experiment_params['payment_rule']
+        if 'payment_rule' in experiment_params.keys():
+            self.mechanism_type = experiment_params['payment_rule']
         if 'regret_batch_size' in experiment_params.keys():
             self.regret_batch_size = experiment_params['regret_batch_size']
         if 'regret_grid_size' in experiment_params.keys():

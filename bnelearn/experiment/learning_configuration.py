@@ -26,9 +26,9 @@ class LearningConfiguration:
             return optimizer
 
         if isinstance(optimizer, str):
-            if optimizer in  ('adam', 'Adam'):
+            if optimizer in ('adam', 'Adam'):
                 return torch.optim.Adam
-            if optimizer == ('SGD', 'sgd', 'Sgd'):
+            if optimizer in ('SGD', 'sgd', 'Sgd'):
                 return torch.optim.SGD
             # TODO: add more optimizers as needed
         raise ValueError('Optimizer type could not be inferred!')
