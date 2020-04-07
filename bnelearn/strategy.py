@@ -6,6 +6,8 @@ import math
 from abc import ABC, abstractmethod
 from copy import copy
 from typing import Callable, Iterable
+import os
+import sys
 import warnings
 
 import torch
@@ -41,11 +43,16 @@ class ClosureStrategy(Strategy):
                       0/1 (i.e. no parallelism)
     """
 
+
     def __init__(self, closure: Callable, parallel: int = 0):
         if not isinstance(closure, Callable):
             raise ValueError("Provided closure must be Callable!")
         self.closure = closure
         self.parallel = parallel
+
+    def __mute(self):
+        """suppresses stdout output from workers (avoid integration warnings for each process)"""
+        sys.stderr = open(os.devnull, 'w')
 
     def play(self, inputs):
         pool_size = 1
@@ -79,7 +86,7 @@ class ClosureStrategy(Strategy):
 
             #torch.multiprocessing.set_sharing_strategy('file_system') # needed for very large number of chunks
 
-            with torch.multiprocessing.Pool(pool_size) as p:
+            with torch.multiprocessing.Pool(pool_size, initializer=self.__mute) as p:
                 # as we handled chunks ourselves, each element of our list should be an individual chunk,
                 # so the pool.map will get argument chunksize=1
                 # The following code is wrapped to produce progess bar, without it simplifies to:
