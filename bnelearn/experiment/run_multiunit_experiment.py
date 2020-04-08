@@ -27,37 +27,37 @@ settings = [
         'u_lo': [0] * 2,
         'u_hi': [1] * 2,
     },
-    {
-        'Auction': MultiItemUniformPriceAuction2x2,
-        'model_sharing': True,
-        'u_lo': [0] * 2,
-        'u_hi': [1] * 2,
-    },
-    {
-        'Auction': MultiItemUniformPriceAuction2x3limit2,
-        'model_sharing': True,
-        'u_lo': [0] * 3,
-        'u_hi': [1] * 3,
-    },
-    {
-        'Auction': MultiItemDiscriminatoryAuction2x2,
-        'model_sharing': True,
-        'u_lo': [0] * 2,
-        'u_hi': [1] * 2,
-    },
-    {
-        'Auction': MultiItemDiscriminatoryAuction2x2CMV,
-        'model_sharing': True,
-        'u_lo': [0] * 2,
-        'u_hi': [1] * 2,
-    },
-    {
-        'Auction': FPSBSplitAwardAuction2x2,
-        'model_sharing': True,
-        'u_lo': [1] * 2,
-        'u_hi': [1.4] * 2,
-        'efficiency_parameter': 0.3
-    }
+    # {
+    #     'Auction': MultiItemUniformPriceAuction2x2,
+    #     'model_sharing': True,
+    #     'u_lo': [0] * 2,
+    #     'u_hi': [1] * 2,
+    # },
+    # {
+    #     'Auction': MultiItemUniformPriceAuction2x3limit2,
+    #     'model_sharing': True,
+    #     'u_lo': [0] * 3,
+    #     'u_hi': [1] * 3,
+    # },
+    # {
+    #     'Auction': MultiItemDiscriminatoryAuction2x2,
+    #     'model_sharing': True,
+    #     'u_lo': [0] * 2,
+    #     'u_hi': [1] * 2,
+    # },
+    # {
+    #     'Auction': MultiItemDiscriminatoryAuction2x2CMV,
+    #     'model_sharing': True,
+    #     'u_lo': [0] * 2,
+    #     'u_hi': [1] * 2,
+    # },
+    # {
+    #     'Auction': FPSBSplitAwardAuction2x2,
+    #     'model_sharing': True,
+    #     'u_lo': [1] * 2,
+    #     'u_hi': [1.4] * 2,
+    #     'efficiency_parameter': 0.3
+    # }
 ]
 
 
@@ -79,9 +79,7 @@ for experiment_params in settings:
     }
 
     experiment_params['risk'] = 1.0
-
-    # experiment_params['regret_batch_size'] = 2**8
-    # experiment_params['regret_grid_size'] = 2**8
+    experiment_params['regret_batch_size'] = 2 ** 8
 
     input_length = experiment_params['Auction'].class_experiment_params['n_items']
     hidden_nodes = [5, 5, 5]

@@ -101,7 +101,6 @@ def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidd
     if half_precision:
         bid_profile = bid_profile.half()
         agent_valuation = agent_valuation.half()
-        agent_bid_actual = agent_bid_actual.half()
         grid = grid.half()
 
     # TODO: Generalize these dimensions
@@ -110,11 +109,10 @@ def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidd
     # Create multidimensional bid tensor if required
     if n_items == 1:
         grid = grid.view(grid_size, 1).to(bid_profile.device)
-    elif n_items == 2:
-        grid = torch.combinations(grid, with_replacement=True).to(bid_profile.device) #grid_size**2 x 2
+    elif n_items >= 2:
+        if len(grid.shape) == 1:
+            grid = torch.combinations(grid, r=n_items, with_replacement=True).to(bid_profile.device) #grid_size**2 x 2
             #TODO Stefan: this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
-    elif n_items > 2:
-        raise NotImplementedError("Regret for >2 items not implemented yet!")
     grid_size, _ = grid.shape #TODO this _new_ grid size refers to all combinations, whereas the previous one was 1D only
 
 

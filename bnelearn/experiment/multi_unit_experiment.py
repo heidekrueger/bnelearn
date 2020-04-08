@@ -17,6 +17,7 @@ from bnelearn.mechanism import (
     FPSBSplitAwardAuction, Mechanism
 )
 from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
+from bnelearn.util import metrics
 
 
 class MultiUnitExperiment(Experiment, ABC):
@@ -183,12 +184,8 @@ class MultiUnitExperiment(Experiment, ABC):
         for agent in self.bne_env.agents:
             u = self.bne_env.get_reward(agent, draw_valuations=True)
             bne_utilities.append(u)
-        # print('bne_utilities', bne_utilities)
 
         torch.cuda.empty_cache()
-
-        # torch.cuda.reset_max_memory_allocated(device=device)
-
         self.env.prepare_iteration()
 
         # record utilities and do optimizer step
@@ -196,16 +193,33 @@ class MultiUnitExperiment(Experiment, ABC):
         for i, learner in enumerate(self.learners):
             u = learner.update_strategy_and_evaluate_utility()
             utilities.append(u)
-        # print('util:', np.round(u.detach().cpu().numpy(), 4), end='\t')
-
-        # memory = torch.cuda.max_memory_allocated(device=device) * (2**-17)
 
         # log relative utility loss induced by not playing the BNE
         against_bne_utilities = list()
         for i, model in enumerate(self.models):
             u = self.bne_env.get_strategy_reward(model, player_position=i, draw_valuations=True)
             against_bne_utilities.append(u)
-        # print(' util_vs_bne:', np.round(u.detach().cpu().numpy(), 4), end='\t')
+
+        # calculate regret
+        grid = torch.linspace(
+            0, self.u_hi[0],
+            round((self.experiment_params['regret_batch_size']) ** (1 / self.n_items)),
+            device = self.gpu_config.device
+        )
+        bid_profile = torch.zeros(self.l_config.batch_size, self.n_players, self.n_items,
+                                  device=self.gpu_config.device)
+        for pos, bid in self.env._generate_agent_actions():
+            bid_profile[:, pos, :] = bid
+        regret = [None] * len(self.models)
+        for i in range(len(self.models)):
+            regret[i] = metrics.ex_post_regret(
+                self.mechanism,
+                bid_profile.detach(),
+                self.bidders[i],
+                grid, half_precision=True,
+                player_position = i
+            ).mean()
+        print('regret:', regret)
 
         elapsed = time.time() - start_time
 
@@ -219,22 +233,22 @@ class MultiUnitExperiment(Experiment, ABC):
         }
         self.logger._log_training_iteration(log_params=log_params, epoch=epoch, bidders=self.bidders)
 
-    def _optimal_bid(self, valuation, player_position=None):
+    def _optimal_bid(self, valuation: torch.Tensor or np.ndarray or float, player_position: int=0):
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.tensor(valuation, dtype=torch.float, device=self.gpu_config.device)
         else:
             valuation = valuation.clone().detach()
 
-            # unsqueeze if simple float
-        if valuation.dim() == 0:
-            valuation.unsqueeze_(0)
+        # # unsqueeze if simple float
+        # if valuation.dim() == 0:
+        #     valuation.unsqueeze_(0)
 
-        elif valuation.shape[1] == 1:
-            valuation = torch.cat((valuation, self.efficiency_parameter * valuation), 1)
+        # elif valuation.shape[1] == 1:
+        #     valuation = torch.cat((valuation, self.efficiency_parameter * valuation), 1)
 
         return valuation
 
-    def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
+    def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int=0):
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.tensor(valuation, dtype=torch.float, device=self.gpu_config.device)
         else:
@@ -299,8 +313,8 @@ class MultiItemVickreyAuction2x2(MultiUnitExperiment):
     def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
                  l_config: LearningConfiguration):
         mechanism = MultiItemVickreyAuction(cuda=gpu_config.cuda)
-        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism=mechanism, gpu_config=gpu_config, logger=logger,
-                         l_config=l_config)
+        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism=mechanism,
+                         gpu_config=gpu_config, logger=logger, l_config=l_config)
         self._run_setup()
 
     def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
@@ -383,7 +397,7 @@ class MultiItemUniformPriceAuction2x3limit2(MultiUnitExperiment):
     def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
                  l_config: LearningConfiguration):
         mechanism = MultiItemUniformPriceAuction(cuda=gpu_config.cuda)
-        
+
         super().__init__({**self.class_experiment_params, **experiment_params}, mechanism=mechanism,
                          gpu_config=gpu_config, logger=logger, l_config=l_config)
         self._run_setup()
@@ -640,9 +654,9 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
         # WTA equilibrium
         # Anton and Yao, 1992: Proposition 4
 
-        if self.experiment_params['input_length'] == 1 and self.experiment_params['n_items'] == 2 \
-                and valuation.shape[1] == 1:
-            valuation = torch.cat((valuation, self.experiment_params['efficiency_parameter'] * valuation), axis=1)
+        if valuation.shape[1] == 1:
+            valuation = torch.cat((valuation, self.experiment_params['efficiency_parameter'] * valuation),
+                                  axis=1)
         opt_bid_batch_size = 2 ** 12
         opt_bid = np.zeros(shape=(opt_bid_batch_size, valuation.shape[1]))
 
@@ -650,30 +664,34 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
         if 'opt_bid_function' not in globals():
             # do one-time approximation via integration
             eps = 1e-4
-            val_lin = np.linspace(self.experiment_params["u_lo"][0], self.experiment_params["u_hi"][0] - eps,
-                                  opt_bid_batch_size)
+            val_lin = np.linspace(self.experiment_params["u_lo"][0], self.experiment_params["u_hi"][0] \
+                                  - eps, opt_bid_batch_size)
 
             def integral(theta):
                 return np.array(
-                    [integrate.quad(
-                        lambda x: (1 - self.value_cdf(self.experiment_params["u_lo"][0],
-                                                      self.experiment_params["u_hi"][0])(x)) ** (
-                                          self.experiment_params["n_players"] - 1),
-                        v, self.experiment_params["u_hi"][0],
-                        epsabs=eps
-                    )[0]
-                     for v in theta]
-                )
+                        [integrate.quad(
+                            lambda x: (1 - self.value_cdf(
+                                self.experiment_params["u_lo"][0],
+                                self.experiment_params["u_hi"][0]
+                            )(x)) ** (self.experiment_params["n_players"] - 1),
+                            v,
+                            self.experiment_params["u_hi"][0],
+                            epsabs = eps
+                        )[0] for v in theta]
+                    )
 
             def opt_bid_100(theta):
-                return theta + (integral(theta) /
-                                ((1 - self.value_cdf(self.experiment_params["u_lo"][0],
-                                                     self.experiment_params["u_hi"][0])(theta)) ** (
-                                         self.experiment_params["n_players"] - 1)))
+                return theta + (integral(theta) / (
+                        (1 - self.value_cdf(
+                            self.experiment_params["u_lo"][0],
+                            self.experiment_params["u_hi"][0]
+                        )(theta)) ** (self.experiment_params["n_players"] - 1))
+                    )
 
             opt_bid[:, 0] = opt_bid_100(val_lin)
-            opt_bid[:, 1] = opt_bid_100(val_lin) - \
-                            self.experiment_params["efficiency_parameter"] * self.experiment_params["u_lo"][0]
+            opt_bid[:, 1] = opt_bid_100(val_lin) \
+                            - self.experiment_params["efficiency_parameter"] \
+                            * self.experiment_params["u_lo"][0]
             # or more
 
             global opt_bid_function
