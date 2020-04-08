@@ -15,6 +15,7 @@ pylint-exit #pip
 pylint2codeclimate #pip
 scipy # for numeric integration
 tqdm #for progress bars
+fire #conda -c conda-forge
 
 
 # non-python requirements (for package development only)
