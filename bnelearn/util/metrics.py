@@ -84,8 +84,13 @@ def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidd
         mechanism
         bid_profile: (batch_size x n_player x n_items)
         bidder: a Bidder (used to retrieve valuations and utilities)
-        grid: #TODO: currently (1d with length grid_size #Currently, for n_items == 2, all grid_size**2 combination will be used. Should be replaced by e.g. torch.meshgrid
-        player_position (optional): specific position in which the player will be evaluated (defaults to player_position of bidder)
+        grid:
+            option 1: 1d tensor with length grid_size
+                TODO for n_items > 1, all grid_size**n_items combination will be used. Should be
+                replaced by e.g. torch.meshgrid
+            option 2: tensor with shape (grid_size, n_items)
+        player_position (optional): specific position in which the player will be evaluated
+            (defaults to player_position of bidder)
         half_precision: (optional, bool) Whether to use half precision tensors. default: false
     Output:
         regret (batch_size)
@@ -111,7 +116,7 @@ def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidd
         grid = grid.view(grid_size, 1).to(bid_profile.device)
     elif n_items >= 2:
         if len(grid.shape) == 1:
-            grid = torch.combinations(grid, r=n_items, with_replacement=True).to(bid_profile.device) #grid_size**2 x 2
+            grid = torch.combinations(grid, r=n_items, with_replacement=True).to(bid_profile.device) #grid_size**n_items x n_items
             #TODO Stefan: this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
     grid_size, _ = grid.shape #TODO this _new_ grid size refers to all combinations, whereas the previous one was 1D only
 
