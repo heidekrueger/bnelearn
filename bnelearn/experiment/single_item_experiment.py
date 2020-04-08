@@ -3,6 +3,8 @@ import warnings
 from abc import ABC
 import torch
 import numpy as np
+from typing import Callable
+from functools import partial
 
 from scipy import integrate
 
@@ -14,51 +16,109 @@ from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
 
-# TODO: Change global_bne_utilitiy to global_bne_utilities (as list) and all it's dependencies. (Or is this never a list?!)
+# TODO: Move bne_utility to the proper place
 # general logic and setup, plot
 class SingleItemExperiment(Experiment, ABC):
+
+    # known issue: pylint doesn't recognize this class as abstract: https://github.com/PyCQA/pylint/commit/4024949f6caf5eff5f3da7ab2b4c3cf2e296472b
+    # pylint: disable=abstract-method
+
     def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
-                 l_config: LearningConfiguration):
-        self.mechanism_type = experiment_params['payment_rule']
+                 l_config: LearningConfiguration, known_bne = False):
+        # TODO: these are temporary, get rid of these
         self.global_bne_env = None
         self.global_bne_utility = None
-        super().__init__(gpu_config, experiment_params, logger, l_config)
-        self._run_setup()
+        self.mechanism_type = experiment_params['payment_rule']
+        super().__init__(gpu_config, experiment_params, logger, l_config, known_bne)
 
-    def _setup_learners(self):
-        self.learners = []
-        for i in range(len(self.models)):
-            self.learners.append(ESPGLearner(model=self.models[i],
-                                 environment=self.env,
-                                 hyperparams=self.l_config.learner_hyperparams,
-                                 optimizer_type=self.l_config.optimizer,
-                                 optimizer_hyperparams=self.l_config.optimizer_hyperparams,
-                                 strat_to_player_kwargs={"player_position": i}
-                                 ))
-
-    def _setup_learning_environment(self):
+    def _setup_mechanism(self):
         if self.mechanism_type == 'first_price':
             self.mechanism = FirstPriceSealedBidAuction(cuda=self.gpu_config.cuda)
         elif self.mechanism_type == 'second_price':
             self.mechanism = VickreyAuction(cuda=self.gpu_config.cuda)
+        else:
+            raise ValueError('Invalid Mechanism type!')
+
+    def _setup_learners(self):
+        self.learners = []
+        for i in range(len(self.models)):
+            self.learners.append(
+                ESPGLearner(model=self.models[i], #(known pylint issue for typing.Iterable) pylint: disable=unsubscriptable-object
+                            environment=self.env,
+                            hyperparams=self.l_config.learner_hyperparams,
+                            optimizer_type=self.l_config.optimizer,
+                            optimizer_hyperparams=self.l_config.optimizer_hyperparams,
+                            strat_to_player_kwargs={"player_position": i}
+                            )
+                )
+
+    def _setup_learning_environment(self):
+
 
         self.env = AuctionEnvironment(self.mechanism, agents=self.bidders,
                                       batch_size=self.l_config.batch_size, n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
 
 class AsymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
+
+    # known issue: pylint doesn't recognize this class as abstract: https://github.com/PyCQA/pylint/commit/4024949f6caf5eff5f3da7ab2b4c3cf2e296472b
+    # pylint: disable=abstract-method
+
     def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
                  l_config: LearningConfiguration):
         super().__init__(experiment_params, gpu_config, logger, l_config)
         assert self.model_sharing == False, "Model sharing not possible with assymetric bidders!"
 # implementation logic, e.g. model sharing. Model sharing should also override plotting function, etc.
+
+
+def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(valuation: torch.Tensor or np.ndarray or float,
+                                                             n_players: int,
+                                                             prior_cdf: Callable) -> torch.Tensor:
+    if not isinstance(valuation, torch.Tensor):
+        # For float and numpy --> convert to tensor (relevant for plotting)
+        valuation = torch.tensor(valuation, dtype=torch.float)
+    # For float / 0d tensors --> unsqueeze to allow list comprehension below
+    if valuation.dim() == 0:
+        valuation.unsqueeze_(0)
+    # shorthand notation for F^(n-1)
+    Fpowered = lambda v: torch.pow(prior_cdf(v), n_players - 1)
+    # do the calculations
+    numerator = torch.tensor(
+        [integrate.quad(Fpowered, 0, v)[0] for v in valuation],
+            device=valuation.device
+    ).reshape(valuation.shape)
+    return valuation - numerator / Fpowered(valuation)
+
+
+def _optimal_bid_FPSB_UniformSymmetricPriorSingleItem(valuation: torch.Tensor, n: int, r: float, u_lo, u_hi) -> torch.Tensor:
+    return u_lo + (valuation - u_lo) * (n - 1) / (n - 1.0 + r)
+
+def _truthful_bid(valuation: torch.Tensor) -> torch.Tensor:
+    return valuation
+
 class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
+
+    # TODO: this class should not be abstract, SymmetricSingleItemExperiment is implemented and has known bne for arbitrary prior!
+
     def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
-                 l_config: LearningConfiguration):
-        super().__init__(experiment_params, gpu_config, logger, l_config)
-        # Make sure all valuation priors are the same
+                 l_config: LearningConfiguration, known_bne = False):
+
+        # if not given by subclass, implement generic optimal_bid if known
+        known_bne = known_bne or \
+            experiment_params['mechanism_type'] == 'second_price' or \
+            (experiment_params['mechanism_type'] == 'first price' and  experiment_params['risk'] == 1)
+
+        super().__init__(experiment_params, gpu_config, logger, l_config, known_bne=True)
+        # Make sure all valuation priors are the same #TODO Stefan: why? do these even always exist?
         assert self.u_lo[1:] == self.u_lo[:-1]
         assert self.u_hi[1:] == self.u_hi[:-1]
+
+        # set optimal_bid here, possibly overwritten by subclasses if more specific form is known
+        if self.mechanism_type == 'first price' and  self.risk == 1:
+            self._optimal_bid = partial(_optimal_bid_single_item_FPSB_generic_prior_risk_neutral,
+                                    n_players = self.n_players, prior_cdf = self.common_prior.cdf)
+        if self.mechanism_type == 'second_price':
+            self._optimal_bid = _truthful_bid
 
     def _setup_bidders(self):
         print('Setting up bidders...')
@@ -89,6 +149,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
                 self.models[i].pretrain(self.bidders[i].valuations, self.l_config.pretrain_iters)
 
     def _setup_eval_environment(self):
+        # TODO: _optimal_bid closure should be set up once, not at runtime
         n_processes_optimal_strategy = 44 if self.valuation_prior != 'uniform' and \
                                              self.mechanism_type != 'second_price' else 0
         bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy)
@@ -115,7 +176,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
         # use higher batch size for calculating optimum
         self.bne_env = self.global_bne_env
         # Each bidder has the same bne utility
-        self.bne_utilities = [self.global_bne_utility] * self.n_players
+        self.bne_utilities = [self.global_bne_utility] * self.n_players #TODO: Stefan: why do we need a list at all?
 
     def _setup_name(self):
         name = ['single_item', self.mechanism_type, self.valuation_prior,
@@ -135,15 +196,17 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
         ])
 
         # everything after this is logging --> measure overhead
-        log_params = {}
+        log_params = {} # TODO Stefan: what does this do?
         self.logger.log_training_iteration(prev_params=prev_params, epoch=epoch, bne_env=self.bne_env,
                                            strat_to_bidder=self._strat_to_bidder,
                                            eval_batch_size=self.l_config.eval_batch_size, bne_utilities=self.bne_utilities,
                                            utilities=utilities, log_params=log_params)
-
+        # TODO Stefan: this should be part of logger, not be called here explicitly!
         if epoch%10 == 0:
-            self.logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
+            self.logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners,
                                           u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
+
+
 
 
 # implementation differences to symmetric case?
@@ -152,7 +215,16 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
     def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
                  l_config: LearningConfiguration):
+
         super().__init__(experiment_params, gpu_config, logger, l_config)
+
+        if self.mechanism_type == 'first_rpice':
+            self._optimal_bid = partial(_optimal_bid_FPSB_UniformSymmetricPriorSingleItem,
+                                        n=self.n_players, r=self.risk, u_lo = self.u_lo[0], u_hi = self.u_hi[0])
+        elif self.mechanism_type == 'second_price':
+            self._optimal_bid = _truthful_bid
+        else:
+            raise ValueError('unknown mechanistm_type')
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         strategy.connected_bidders.append(player_position)
@@ -168,14 +240,6 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         self.valuation_prior = 'uniform'  # for now, one of 'uniform' / 'normal', specific params defined in script
 
         super()._setup_bidders()
-
-    def _optimal_bid(self, valuation, player_position=None):
-        if self.mechanism_type == 'second_price':
-            return valuation
-        elif self.mechanism_type == 'first_price':
-            return self.u_lo[0] + (valuation - self.u_lo[0]) * (self.n_players - 1) / (self.n_players - 1.0 + self.risk)
-        else:
-            raise ValueError('Invalid Auction Mechanism')
 
     def _setup_eval_environment(self):
         if self.mechanism_type == 'first_price':
@@ -200,7 +264,7 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
 
 # known BNE + shared setup logic across runs (calculate and cache BNE
-#TODO: Adjust self.valuation_mean to lists like in Uniform?! 
+#TODO: Adjust self.valuation_mean to lists like in Uniform?!
 #TODO: Not working yet. Optimal bid doesn't look right to me. Check!
 class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
     def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
@@ -234,31 +298,7 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
 
         super()._setup_bidders()
 
-    def _optimal_bid(self, valuation: torch.Tensor or np.ndarray or float, player_position=None):
-        if self.mechanism_type == 'second_price':
-            return valuation
-        elif self.mechanism_type == 'first_price':
-            if self.risk_profile != 'risk_neutral':
-                warnings.warn("Ignoring risk-aversion in optimal bid!")
 
-            # For float and numpy --> convert to tensor
-            if not isinstance(valuation, torch.Tensor):
-                valuation = torch.tensor(valuation, dtype=torch.float)
-            # For float / 0d tensors --> unsqueeze to allow list comprehension below
-            if valuation.dim() == 0:
-                valuation.unsqueeze_(0)
-
-            # shorthand notation for F^(n-1)
-            Fpowered = lambda v: torch.pow(self.common_prior.cdf(v), self.n_players - 1)
-
-            # do the calculations
-            numerator = torch.tensor(
-                [integrate.quad(Fpowered, 0, v)[0] for v in valuation],
-                 device=valuation.device
-            ).reshape(valuation.shape)
-            return valuation - numerator / Fpowered(valuation)
-        else:
-            raise ValueError('Optimal Bid not implemented for {}, {}'.format(self.mechanism_type, self.risk_profile))
 
     def _setup_eval_environment(self):
         if self.mechanism_type == 'first_price':
@@ -294,7 +334,12 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
 class TwoPlayerUniformPriorSingleItemExperiment(AsymmetricPriorSingleItemExperiment):
     def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
                  l_config: LearningConfiguration):
+
+
         super().__init__(experiment_params, gpu_config, logger, l_config)
+        #TODO: implement optimal bid etc
+
+        raise NotImplementedError()
 
     def _setup_name(self):
         pass
@@ -308,8 +353,7 @@ class TwoPlayerUniformPriorSingleItemExperiment(AsymmetricPriorSingleItemExperim
     def _setup_eval_environment(self):
         pass
 
-    def _optimal_bid(self, valuation, player_position=None):
-        pass
+
 
     def _training_loop(self, epoch):
         pass

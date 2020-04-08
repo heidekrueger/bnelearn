@@ -2,7 +2,7 @@ import os
 import sys
 import time
 from abc import ABC, abstractmethod
-from collections import Callable
+from typing import Callable
 from copy import deepcopy
 from timeit import default_timer as timer
 import bnelearn.util.metrics as metrics
@@ -526,6 +526,7 @@ class MultiUnitAuctionLogger(Logger):
         print('Started run. Logging to {}'.format(self.log_dir))
         self.fig = plt.figure()
 
+        # TODO: this never shuts down the writer! (that's the memory leak probably)
         self.writer = SummaryWriter(self.log_dir, flush_secs=30)
 
         self._log_once()

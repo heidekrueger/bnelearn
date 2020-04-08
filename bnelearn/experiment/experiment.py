@@ -2,11 +2,18 @@
 
 
 from abc import ABC, abstractmethod
+from typing import Iterable, Callable
 
 import torch
+from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
 # pylint: disable=unnecessary-pass,unused-argument
+
+from bnelearn.bidder import Bidder
+from bnelearn.environment import Environment
+from bnelearn.mechanism import Mechanism
+from bnelearn.learner import Learner
 
 from bnelearn.experiment.gpu_controller import GPUController
 from bnelearn.experiment.learning_configuration import LearningConfiguration
@@ -18,20 +25,25 @@ class Experiment(ABC):
     """Abstract Class representing an experiment"""
 
     def __init__(self, gpu_config: GPUController, experiment_params: dict,
-                 logger: Logger, l_config: LearningConfiguration):
+                 logger: Logger, l_config: LearningConfiguration, known_bne=False):
 
         # Configs
         self.l_config = l_config
         self.gpu_config = gpu_config
         self.logger = logger
 
+
         # Experiment params
+        # TODO: consolidate these!
+        self.known_bne = known_bne
         self.experiment_params = experiment_params
         self.n_players = experiment_params['n_players']
         if 'common_prior' in experiment_params.keys():
             self.common_prior = experiment_params['common_prior']
         self.u_lo = experiment_params['u_lo']
         self.u_hi = experiment_params['u_hi']
+
+        # TODO: decouple --> logic should be in subclasses ?
         self.plot_xmin = min(experiment_params['u_lo'])
         self.plot_xmax = max(experiment_params['u_hi']) * 1.05
         self.plot_ymin = min(experiment_params['u_lo'])
@@ -50,30 +62,42 @@ class Experiment(ABC):
 
         # Misc
         self.base_dir = None
-        self.models = None
+        self.models: Iterable[torch.nn.Module] = None
 
-        # setup bidders        
+        # setup bidders
         self.positive_output_point = None
-        self.bidders = None
+        self.bidders: Iterable[Bidder] = None
 
         # setup learner
-        self.learners = None
+        self.learners: Iterable[Learner] = None
 
         # setup learning environment
-        self.env = None
-        self.mechanism = None
+        self.env: Environment = None
+        self.mechanism: Mechanism = None
 
         # setup eval environment
-        self.bne_env = None
-        self.bne_utility = None
+        self.bne_env: Environment = None
+        self.bne_utility: float or Iterable[float] = None
 
-    def _run_setup(self):
+        self._optimal_bid: Callable[[torch.Tensor], torch.Tensor] = None
+
+        # setup everything deterministic that is shared among runs
+        self._setup_mechanism()
+        if self.known_bne:
+            self._setup_eval_environment()
+
+    # TODO: rename this
+    def _setup_run(self):
+        """Setup everything that is specific to an individual run, including everything nondeterministic"""
         # setup the experiment, don't mess with the order
         self._setup_bidders()
         self._setup_learning_environment()
         self._setup_learners()
-        self._setup_eval_environment()
         self._setup_name()
+
+    @abstractmethod
+    def _setup_mechanism(self):
+        pass
 
     # ToDO This is a temporary measure
     @abstractmethod
@@ -101,15 +125,11 @@ class Experiment(ABC):
         """This method should set up learners for each of the models that are learnable."""
         pass
 
-    @abstractmethod
     def _setup_eval_environment(self):
         """Sets up an environment used for evaluation of learning agents (e.g.) vs known BNE"""
+
         pass
 
-    @abstractmethod
-    def _optimal_bid(self, valuation, player_position):
-        """Defines optimal BNE strategy in this setting"""
-        pass
 
     @staticmethod
     def get_risk_profile(risk) -> str:
@@ -125,16 +145,24 @@ class Experiment(ABC):
         """Main training loop to be executed in each iteration."""
         pass
 
-    def run(self, epochs, n_runs: int = 1, run_comment=None):
+    def run(self, epochs, n_runs: int = 1, run_comment: str=None, seeds: Iterable[int] = None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
 
-        seeds = list(range(n_runs))
+        if not seeds:
+            seeds = list(range(n_runs))
+
         for run in range(n_runs):
             seed = seeds[run]
             print('Running experiment {} (using seed {})'.format(run, seed))
             torch.random.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
             np.random.seed(seed)
+
+            self._setup_run()
+
+            # TODO: setup Writer here, or make logger an object that takes
+            # with Logger ... : (especially, needs to be destroyed on end of run!)
+
             self.logger.log_experiment(experiment_params=self.experiment_params, models=self.models, env=self.env,
                                        run_comment=run_comment, plot_xmin=self.plot_xmin, plot_xmax=self.plot_xmax,
                                        plot_ymin=self.plot_ymin, plot_ymax=self.plot_ymax,

@@ -30,7 +30,7 @@ import bnelearn.util.metrics as metrics
 cuda = True
 specific_gpu = 0
 
-n_runs = 1
+n_runs = 2
 seeds = list(range(n_runs))
 epochs = 50
 
@@ -46,7 +46,7 @@ logging_options = dict(
 # Experiment setting parameters
 n_players = 2
 auction_mechanism = 'first_price' # one of 'first_price', 'second_price'
-valuation_prior = 'uniform' # for now, one of 'uniform' / 'normal', specific params defined in script
+valuation_prior = 'normal' # for now, one of 'uniform' / 'normal', specific params defined in script
 risk = 1.0
 
 if risk == 1.0:
