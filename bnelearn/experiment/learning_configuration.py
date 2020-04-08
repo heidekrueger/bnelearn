@@ -5,7 +5,7 @@ import torch
 from torch.optim import Optimizer
 
 class LearningConfiguration:
-    def __init__(self,  learner_hyperparams: dict, optimizer_type: str or Type[Optimizer], optimizer_hyperparams: dict,
+    def __init__(self, learner_hyperparams: dict, optimizer_type: str or Type[Optimizer], optimizer_hyperparams: dict,
                  input_length: int, hidden_nodes: list, hidden_activations: list, pretrain_iters: int = 500,
                  batch_size: int = 2 ** 13, eval_batch_size: int = 2 ** 12, cache_eval_actions: bool = True):
         self.learner_hyperparams = learner_hyperparams

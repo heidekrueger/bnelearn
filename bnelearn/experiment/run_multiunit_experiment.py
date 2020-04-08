@@ -72,7 +72,6 @@ for experiment_params in settings:
         'population_size': 128,
         'sigma': 1.,
         'scale_sigma_by_model_size': True,
-        'pretrain_iters': 300
     }
     optimizer_hyperparams = {
         'lr': 3e-3
@@ -92,13 +91,13 @@ for experiment_params in settings:
         input_length = input_length,
         hidden_nodes = hidden_nodes,
         hidden_activations = hidden_activations,
-        pretrain_iters = 500,
+        pretrain_iters = 100,
         batch_size = 2 ** 17,
         eval_batch_size = 2 ** 22,
         cache_eval_actions = True
     )
 
-    logger = MultiUnitAuctionLogger(experiment_params, l_config)
+    logger = MultiUnitAuctionLogger(experiment_params, l_config, plot_epoch=100)
     experiment = experiment_params['Auction'](
         experiment_params,
         gpu_config = gpu_config,
