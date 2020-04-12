@@ -485,22 +485,14 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
         return fig, plt
 
 class MultiUnitAuctionLogger(Logger):
-    def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,
-                               bidders, utility, log_params: dict):
-        pass
-
-    def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute, L_2,
-                     L_inf):
-        pass
-
-    def __init__(self, experiment_params, l_config: LearningConfiguration):
+    def __init__(self, experiment_params, l_config: LearningConfiguration, plot_epoch: int=100):
         self.colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
                        '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
                        '#bcbd22', '#17becf']
         self.colors_warm = ['maroon', 'firebrick', 'red', 'salmon',
                             'coral', 'lightsalmon', 'mistyrose', 'lightgrey',
                             'white']
-        super().__init__(experiment_params=experiment_params, l_config=l_config)
+        super().__init__(experiment_params=experiment_params, l_config=l_config, plot_epoch=plot_epoch)
 
     def log_experiment(self, experiment_params, models, env, run_comment, plot_xmin, plot_xmax, plot_ymin, plot_ymax,
                        batch_size, optimal_bid, max_epochs: int, gpu_config):
@@ -531,13 +523,7 @@ class MultiUnitAuctionLogger(Logger):
 
         self._log_once()
 
-    def _log_training_iteration(self, epoch, bidders, log_params: dict):
-        optimal_bid = log_params['optima_bid']
-        optimal_bid_2 = log_params['optima_bid_2']
-        elapsed = log_params['elapsed']
-        utilities = log_params['utilities']
-        bne_utilities = log_params['bne_utilities']
-        against_bne_utilities = log_params['against_bne_utilities']
+    def log_training_iteration(self, epoch, bidders, log_params: dict):
 
         # ToDO I know it's ugly, this is to avoid importing the FPSBSplitAwardAuction2x2 class to use in isinstance
         # and creating a circular dependency. For sure type checking needs to be dispensed with altogether.
@@ -548,8 +534,8 @@ class MultiUnitAuctionLogger(Logger):
         if epoch % self.plot_epoch == 0:
             self.plot_bid_function(
                 bidders,
-                optimal_bid,
-                optimal_bid_2,
+                log_params['optima_bid'],
+                log_params['optima_bid_2'],
                 epoch=epoch,
                 bounds=[self.experiment_params['u_lo'][0], self.experiment_params["u_hi"][0]],
                 split_award={
@@ -576,33 +562,34 @@ class MultiUnitAuctionLogger(Logger):
         while True:
             key = "BNE{}".format(bne_idx)
             if key in self.experiment_params.keys():
-                policy_metrics[key] = [
-                self._policy_metric(
-                    model.forward,
-                    optimal_bid,
-                    self.experiment_params["n_items"],
-                    selection={'split_award': True,
-                            "efficiency_parameter": self.experiment_params['efficiency_parameter'],
-                            "input_length": self.experiment_params["input_length"]
-                        } if is_FPSBSplitAwardAuction else 'random',
-                    bounds=[self.experiment_params["u_lo"][0], self.experiment_params["u_hi"][0]],
-                    item_interest_limit=self.experiment_params["item_interest_limit"] if \
-                        "item_interest_limit" in self.experiment_params.keys() else None,
-                    eval_points_max=2 ** 18,
-                    device=self.gpu_config.device
-                )
-                for model in self.models]
+                policy_metrics[key] = torch.tensor([
+                    self._policy_metric(
+                        model.forward,
+                        log_params['optima_bid'],
+                        self.experiment_params["n_items"],
+                        selection={'split_award': True,
+                                "efficiency_parameter": self.experiment_params['efficiency_parameter'],
+                                "input_length": self.experiment_params["input_length"]
+                            } if is_FPSBSplitAwardAuction else 'random',
+                        bounds=[self.experiment_params["u_lo"][0], self.experiment_params["u_hi"][0]],
+                        item_interest_limit=self.experiment_params["item_interest_limit"] if \
+                            "item_interest_limit" in self.experiment_params.keys() else None,
+                        eval_points_max=2 ** 18,
+                        device = self.gpu_config.device
+                    )
+                    for model in self.models], device=self.gpu_config.device)
                 bne_idx += 1
             else:
                 break
 
-        self.log_metrics(
-            utilities=utilities, bne_utilities=bne_utilities,
-            against_bne_utilities=against_bne_utilities,
-            epoch=epoch, policy_metrics=policy_metrics
-        )
+        metrics_dict = log_params
+        metrics_dict['rel_utility_loss'] = [
+            1 - u / bne_u for u, bne_u
+            in zip(log_params['against_bne_utilities'], log_params['bne_utilities'])
+        ]
+        self._log_metrics(epoch, metrics_dict)
 
-        print('epoch {}:\t{}s'.format(epoch, round(elapsed, 2)))
+        print('epoch {}:\t{}s'.format(epoch, round(log_params['elapsed'], 2)))
 
         if epoch == self.max_epochs:
             for i, model in enumerate(self.models):
@@ -622,18 +609,18 @@ class MultiUnitAuctionLogger(Logger):
                                    n_parameters[agent], epoch)
         self.writer.add_scalar('hyperparameters/model_parameters', sum(n_parameters), epoch)
 
-        for model in self.models:
+        for i, model in enumerate(self.models):
             self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)
+            self.writer.add_graph(model, self.env.agents[i].valuations)
 
         self.writer.add_scalar('hyperparameters/batch_size', self.l_config.batch_size, epoch)
         self.writer.add_scalar('hyperparameters/epochs', self.max_epochs, epoch)
         self.writer.add_scalar(
             'hyperparameters/pretrain_iters',
-            self.l_config.learner_hyperparams['pretrain_iters'],
+            self.l_config.pretrain_iters,
             epoch
         )
-        # ToDo right now seeds are stored in a list and cannot be logged this way
-        # self.writer.add_scalar('hyperparameters/seed', self.l_config.learner_hyperparams['seed'], epoch)
+        # TODO log seeds
 
         # for key, value in self.l_config.learner_hyperparams.items():
         #     self.writer.add_scalar('hyperparameters/' + str(key), value, epoch)
@@ -641,77 +628,33 @@ class MultiUnitAuctionLogger(Logger):
         self.writer.add_text('hyperparameters/optimizer', str(self.l_config.optimizer), epoch)
         for key, value in self.l_config.optimizer_hyperparams.items():
             self.writer.add_scalar('hyperparameters/' + str(key), value, epoch)
-        # writer.add_graph(models[0], env.agents[0].valuations)
 
-    def log_metrics(self, utilities, bne_utilities, against_bne_utilities, epoch, policy_metrics):
+    def _log_metrics(self, epoch, metrics_dict: dict):
         """Log scalar for each player"""
 
         agent_name_list = ['agent_{}'.format(i) for i in range(self.experiment_params['n_players'])]
 
-        # log agents´ change in learning direction
-        # writer.add_scalars('eval/learning_rate', dict(zip(agent_name_list, lr)), e)
-
-        # # log agents´ learning rates
-        # writer.add_scalars('eval/direction_change', dict(zip(agent_name_list, change_in_direction)), e)
-
-        # log agents´ utilities
-        self.writer.add_scalars('eval/utility', dict(zip(agent_name_list, utilities)), epoch)
-        # writer.add_scalars('eval/utility_in_bne', dict(zip(agent_name_list, bne_utilities)), e)
-        self.writer.add_scalars(
-            'eval/utility_selfplay_vs_bne',
-            dict(zip(
-                agent_name_list,
-                [1 - u / bne_u for u, bne_u in zip(utilities, bne_utilities)]
-            )), epoch
-        )
-        self.writer.add_scalars(
-            'eval/utility_against_bne',
-            dict(zip(
-                agent_name_list,
-                [1 - u / bne_u for u, bne_u in zip(against_bne_utilities, bne_utilities)]
-            )), epoch
-        )
-        # log agents´ welfare
-        # writer.add_scalars('eval/welfare', dict(zip(agent_name_list, welfares)), e)
-        # writer.add_scalars('eval/welfare_in_bne', dict(zip(agent_name_list, bne_welfare)), e)
-        # writer.add_scalars(
-        #     'eval/welfare_vs_bne',
-        #     dict(zip(
-        #         agent_name_list,
-        #         [1 - w/bne_w for w, bne_w in zip(utilities, bne_welfare)]
-        #     )), e
-        # )
-
-        # log models´ learning directions
-        for name, policy_metric in policy_metrics.items():
-            self.writer.add_scalars(
-                'eval/distance_to_' + name,
-                dict(zip(agent_name_list, policy_metric)),
-                epoch
-            )
-
-        # # log agents´ allocations
-        # for i in range(len(models)):
-        #     writer.add_histogram('hist/allocations_' + agent_name_list[i], allocations[i], e)
+        for metric_key, metric_val in metrics_dict.items():
+            if isinstance(metric_val, float):
+                self.writer.add_scalar('eval/' + str(metric_key), metric_val, epoch)
+            elif isinstance(metric_val, list):
+                self.writer.add_scalars(
+                    'eval/' + str(metric_key),
+                    dict(zip(agent_name_list, metric_val)),
+                    epoch
+                )
+            elif isinstance(metric_val, dict):
+                for key, val in metric_val.items():
+                    self.writer.add_scalars(
+                        'eval/' + str(metric_key),
+                        dict(zip([name + '/' + str(key) for name in agent_name_list], val)),
+                        epoch
+                    )
 
         # log model parameters
         model_paras = [torch.norm(torch.nn.utils.parameters_to_vector(model.parameters()), p=2)
                        for model in self.models]
         self.writer.add_scalars('eval/weight_norm', dict(zip(agent_name_list, model_paras)), epoch)
-        # writer.add_scalars('eval/gradient_norm', dict(zip(agent_name_list, gradient_norm)), e)
-
-        # # log population rewards
-        # for i in range(len(models)):
-        #     writer.add_histogram('hist/rewards_' + agent_name_list[i], rewards[i], e)
-
-        # # log stopping criterion
-        # writer.add_scalars('eval/stopping', dict(zip(agent_name_list, stoppings)), e)
-
-        # # log changes in output
-        # writer.add_scalars('eval/changes_in_output', dict(zip(agent_name_list, changes_in_output)), e)
-
-        # log time
-        self.writer.add_scalar('eval/overhead_mins', self.overhead_mins, epoch)
 
     def _log_hyperparams(self, writer, epoch):
         pass
@@ -737,7 +680,7 @@ class MultiUnitAuctionLogger(Logger):
 
         metric = self.rmse(policy_1_bidding, policy_2_bidding)
 
-        return metric.detach().cpu().numpy()
+        return metric.detach()
 
     @staticmethod
     def multi_unit_valuations(

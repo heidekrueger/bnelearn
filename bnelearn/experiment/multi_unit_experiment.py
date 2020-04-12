@@ -112,7 +112,7 @@ class MultiUnitExperiment(Experiment, ABC):
         self.n_parameters = list()
         for model in self.models:
             self.n_parameters.append(sum([p.numel() for p in model.parameters()]))
-            model.pretrain(pretrain_valuations, self.l_config.learner_hyperparams['pretrain_iters'],
+            model.pretrain(pretrain_valuations, self.l_config.pretrain_iters,
                            self.pretrain_transform)
         self.experiment_params['n_parameters'] = self.n_parameters
 
@@ -219,7 +219,7 @@ class MultiUnitExperiment(Experiment, ABC):
                 grid, half_precision=True,
                 player_position = i
             ).mean()
-        print('regret:', regret)
+        # print('regret:', regret)
 
         elapsed = time.time() - start_time
 
@@ -229,9 +229,10 @@ class MultiUnitExperiment(Experiment, ABC):
             'optima_bid_2': self._optimal_bid_2,
             'bne_utilities': bne_utilities,
             'utilities': utilities,
-            'against_bne_utilities': against_bne_utilities
+            'against_bne_utilities': against_bne_utilities,
+            'regret': regret
         }
-        self.logger._log_training_iteration(log_params=log_params, epoch=epoch, bidders=self.bidders)
+        self.logger.log_training_iteration(log_params=log_params, epoch=epoch, bidders=self.bidders)
 
     def _optimal_bid(self, valuation: torch.Tensor or np.ndarray or float, player_position: int=0):
         if not isinstance(valuation, torch.Tensor):
@@ -259,47 +260,6 @@ class MultiUnitExperiment(Experiment, ABC):
     @staticmethod
     def default_pretrain_transform(input_tensor):
         return torch.clone(input_tensor)
-
-    # ToDo Selection should be a dictionary
-    @staticmethod
-    def multi_unit_valuations(device=None, bounds=[0.0, 1.0], dim=2, batch_size=100, selection='random',
-                              item_interest_limit=False, sort=False):
-        """Returns uniformly sampled valuations for multi unit auctions."""
-        # for uniform vals and 2 items <=> F1(v)=v**2, F2(v)=2v-v**2
-
-        eval_points_per_dim = round((2 * batch_size) ** (1 / dim))
-        valuations = torch.zeros(eval_points_per_dim ** dim, dim, device=device)
-
-        if selection == 'random':
-            valuations.uniform_(bounds[0], bounds[1])
-            valuations = valuations.sort(dim=1, descending=True)[0]
-
-        elif 'split_award' in selection.keys():
-            if 'linspace' in selection.keys() and selection['linspace']:
-                valuations[:, 0] = torch.linspace(bounds[0], bounds[1],
-                                                  eval_points_per_dim ** dim, device=device)
-            else:
-                valuations.uniform_(bounds[0], bounds[1])
-            valuations[:, 1] = selection['efficiency_parameter'] * valuations[:, 0]
-            # if 'input_length' in selection.keys():
-            #     valuations = valuations[:,:selection['input_length']]
-
-        else:
-            lin = torch.linspace(bounds[0], bounds[1], eval_points_per_dim, device=device)
-            mesh = torch.meshgrid([lin] * dim)
-            for n in range(dim):
-                valuations[:, n] = mesh[n].reshape(eval_points_per_dim ** dim)
-
-            mask = valuations.sort(dim=1, descending=True)[0]
-            mask = (mask == valuations).all(dim=1)
-        valuations = valuations[mask]
-
-        if isinstance(item_interest_limit, int):
-            valuations[:, item_interest_limit:] = 0
-        if sort:
-            valuations = valuations.sort(dim=1)[0]
-
-        return valuations
 
 
 # exp_no==0
