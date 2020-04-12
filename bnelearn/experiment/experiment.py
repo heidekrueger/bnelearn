@@ -35,37 +35,37 @@ class Experiment(ABC):
 
         # Experiment params
         # TODO: consolidate these!
-        self.known_bne = known_bne
+
         self.experiment_params = experiment_params
         self.n_players = experiment_params['n_players']
-        if 'common_prior' in experiment_params.keys():
-            self.common_prior = experiment_params['common_prior']
-        self.u_lo = experiment_params['u_lo']
-        self.u_hi = experiment_params['u_hi']
+        #if 'common_prior' in experiment_params.keys():
+        #    self.common_prior = experiment_params['common_prior']
+        #
+        #self.u_hi = experiment_params['u_hi']
 
         # TODO: decouple --> logic should be in subclasses ?
-        self.plot_xmin = min(experiment_params['u_lo'])
-        self.plot_xmax = max(experiment_params['u_hi']) * 1.05
-        self.plot_ymin = min(experiment_params['u_lo'])
-        self.plot_ymax = max(experiment_params['u_hi']) * 1.05
-        if 'valuation_prior' in experiment_params.keys():
-            self.valuation_prior = experiment_params['valuation_prior']
-        self.model_sharing = experiment_params['model_sharing']
-        self.risk = experiment_params['risk']
-        self.risk_profile = Experiment.get_risk_profile(self.risk)
-        if 'payment_rule' in experiment_params.keys():
-            self.mechanism_type = experiment_params['payment_rule']
-        if 'regret_batch_size' in experiment_params.keys():
-            self.regret_batch_size = experiment_params['regret_batch_size']
-        if 'regret_grid_size' in experiment_params.keys():
-            self.regret_grid_size = experiment_params['regret_grid_size']
+        #self.plot_xmin = min(experiment_params['u_lo'])
+        #self.plot_xmax = max(experiment_params['u_hi']) * 1.05
+        #self.plot_ymin = min(experiment_params['u_lo'])
+        #self.plot_ymax = max(experiment_params['u_hi']) * 1.05
+        #if 'valuation_prior' in experiment_params.keys():
+        #    self.valuation_prior = experiment_params['valuation_prior']
+        #self.model_sharing = experiment_params['model_sharing']
+        #self.risk = experiment_params['risk']
+        #self.risk_profile = Experiment.get_risk_profile(self.risk)
+        #if 'payment_rule' in experiment_params.keys():
+        #    self.mechanism_type = experiment_params['payment_rule']
+        #if 'regret_batch_size' in experiment_params.keys():
+        #    self.regret_batch_size = experiment_params['regret_batch_size']
+        #if 'regret_grid_size' in experiment_params.keys():
+        #    self.regret_grid_size = experiment_params['regret_grid_size']
 
         # Misc
         self.base_dir = None
         self.models: Iterable[torch.nn.Module] = None
 
         # setup bidders
-        self.positive_output_point = None
+        #self.positive_output_point = None
         self.bidders: Iterable[Bidder] = None
 
         # setup learner
@@ -75,16 +75,24 @@ class Experiment(ABC):
         self.env: Environment = None
         self.mechanism: Mechanism = None
 
-        # setup eval environment
-        self.bne_env: Environment = None
-        self.bne_utility: float or Iterable[float] = None
 
-        self._optimal_bid: Callable[[torch.Tensor], torch.Tensor] = None
+        self.known_bne = known_bne
+
+        ## TODO: These should only be set when it's clear that they're available and where known
+        ## i.e. in the subclasses
+        # setup eval environment
+        #self.bne_env: Environment = None
+        #self.bne_utility: float or Iterable[float] = None
+        #self._optimal_bid: Callable[[torch.Tensor], torch.Tensor] = None
 
         # setup everything deterministic that is shared among runs
         self._setup_mechanism()
+
         if self.known_bne:
             self._setup_eval_environment()
+
+        # TODO: cannot setup eval_environment because known bne strategies are available only in subclasses
+
 
     # TODO: rename this
     def _setup_run(self):
@@ -94,6 +102,14 @@ class Experiment(ABC):
         self._setup_learning_environment()
         self._setup_learners()
         self._setup_name()
+        self._setup_logger()
+
+    @abstractmethod
+    def _setup_logger(self):
+        """Creates logger for run.
+        THIS IS A TEMPORARY WORKAROUND TODO
+        """
+        pass
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -125,10 +141,11 @@ class Experiment(ABC):
         """This method should set up learners for each of the models that are learnable."""
         pass
 
+    @abstractmethod
     def _setup_eval_environment(self):
         """Sets up an environment used for evaluation of learning agents (e.g.) vs known BNE"""
 
-        pass
+        raise NotImplementedError("This Experiment has no implemented BNE!")
 
 
     @staticmethod

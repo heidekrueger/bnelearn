@@ -23,13 +23,15 @@ optimizer_hyperparams = {
     'lr': 3e-3
 }
 
-experiment_params_ls = ['n_players', 'model_sharing', 'u_lo', 'u_hi', 'valuation_prior', 'common_prior','payment_rule']
-experiment_params = dict(zip(experiment_params_ls, [None]*len(experiment_params_ls)))
+experiment_params_ls = ['n_players', 'model_sharing', 'u_lo', 'u_hi', 'valuation_prior', 'common_prior','payment_rule'] #why?
+experiment_params = dict(zip(experiment_params_ls, [None]*len(experiment_params_ls))) #TODO: why?
 
 experiment_params['n_players'] = 3
 experiment_params['model_sharing'] = True
-experiment_params['u_lo'] = [0] * experiment_params['n_players']
-experiment_params['u_hi'] = [1,1,1]
+
+# TODO: this is class specific --> don't always make it a list
+experiment_params['u_lo'] = 0 
+experiment_params['u_hi'] = 1
 #experiment_params['u_hi'] = [1,1,1,1,2,2]
 experiment_params['payment_rule'] = 'first_price'#'first_price'
 experiment_params['risk'] = 1.0
@@ -53,15 +55,14 @@ l_config = LearningConfiguration(learner_hyperparams=learner_hyperparams,
 #logger = SingleItemAuctionLogger(experiment_params, l_config)
 #experiment1 = UniformSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
  #                                                      l_config=l_config)
-warnings.simplefilter("ignore")
+#warnings.simplefilter("ignore")
 for i in range(2,3):
     experiment_params['n_players'] = i
-    experiment_params['u_lo'] = [0] * experiment_params['n_players']
-    experiment_params['u_hi'] = [1] * experiment_params['n_players']
+    # TODO: logger should be setup by experiment no here.
     logger = SingleItemAuctionLogger(experiment_params, l_config)
     experiment = UniformSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
                                                        l_config=l_config)
-    experiment.run(epochs=20, n_runs=2)
+    experiment.run(epochs=101, n_runs=2)
                             
 
 # experiment2 = UniformSymmetricPriorSingleItemExperiment(2, gpu_config=gpu_config, logger=logger,
