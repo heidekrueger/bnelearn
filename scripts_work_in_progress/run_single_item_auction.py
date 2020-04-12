@@ -32,14 +32,14 @@ specific_gpu = 0
 
 n_runs = 2
 seeds = list(range(n_runs))
-epochs = 50
+epochs = 101
 
 # Logging and plotting
 logging_options = dict(
     log_root=os.path.join(root_path, 'experiments'),
     save_figure_to_disk_png=True,
     save_figure_to_disk_svg=True,  # for publishing. better quality but a pain to work with
-    plot_epoch=100,
+    plot_epoch=50,
     show_plot_inline=False
 )
 
@@ -59,7 +59,7 @@ else:
 # Learning
 model_sharing = True
 pretrain_iters = 500
-batch_size = 2**13
+batch_size = 2**18
 
 regret_bid_size = 2**10
 ## ES

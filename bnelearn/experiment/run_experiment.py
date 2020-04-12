@@ -59,7 +59,7 @@ l_config = LearningConfiguration(learner_hyperparams=learner_hyperparams,
 for i in range(2,3):
     experiment_params['n_players'] = i
     # TODO: logger should be setup by experiment no here.
-    logger = SingleItemAuctionLogger(experiment_params, l_config)
+    
     experiment = UniformSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
                                                        l_config=l_config)
     experiment.run(epochs=101, n_runs=2)
