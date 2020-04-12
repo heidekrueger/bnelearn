@@ -10,8 +10,9 @@ from scipy import integrate
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import  AuctionEnvironment
-from bnelearn.experiment import Experiment, GPUController, Logger, LearningConfiguration, SingleItemAuctionLogger
+from bnelearn.experiment import Experiment, GPUController, Logger, LearningConfiguration
 
+import bnelearn
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
@@ -23,16 +24,16 @@ class SingleItemExperiment(Experiment, ABC):
     # known issue: pylint doesn't recognize this class as abstract: https://github.com/PyCQA/pylint/commit/4024949f6caf5eff5f3da7ab2b4c3cf2e296472b
     # pylint: disable=abstract-method
 
-    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+    def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration, known_bne = False):
         # TODO: these are temporary, get rid of these
         #self.global_bne_env = None
         #self.global_bne_utility = None
         self.mechanism_type = experiment_params['payment_rule'] #TODO: Why here?
-        super().__init__(gpu_config, experiment_params, logger, l_config, known_bne)
+        super().__init__(gpu_config, experiment_params, l_config, known_bne)
 
-    def _setup_logger(self):
-        self.logger = SingleItemAuctionLogger(self.experiment_params, self.l_config)
+    def _setup_logger(self, base_dir):
+        return bnelearn.experiment.logger.SingleItemAuctionLogger(exp = self, base_dir = base_dir)
 
     def _setup_mechanism(self):
         if self.mechanism_type == 'first_price':
@@ -67,9 +68,9 @@ class AsymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
     # known issue: pylint doesn't recognize this class as abstract: https://github.com/PyCQA/pylint/commit/4024949f6caf5eff5f3da7ab2b4c3cf2e296472b
     # pylint: disable=abstract-method
 
-    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+    def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        super().__init__(experiment_params, gpu_config, logger, l_config)
+        super().__init__(experiment_params, gpu_config,  l_config)
         assert self.model_sharing == False, "Model sharing not possible with assymetric bidders!" #TODO: this shouldn't even exist
 # implementation logic, e.g. model sharing. Model sharing should also override plotting function, etc.
 
@@ -80,7 +81,8 @@ class AsymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
 
 def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(valuation: torch.Tensor or np.ndarray or float,
                                                              n_players: int,
-                                                             prior_cdf: Callable) -> torch.Tensor:
+                                                             prior_cdf: Callable,
+                                                             player_position = None) -> torch.Tensor:
     if not isinstance(valuation, torch.Tensor):
         # For float and numpy --> convert to tensor (relevant for plotting)
         valuation = torch.tensor(valuation, dtype=torch.float)
@@ -96,17 +98,17 @@ def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(valuation: torch.Te
     ).reshape(valuation.shape)
     return valuation - numerator / Fpowered(valuation)
 
-def _optimal_bid_FPSB_UniformSymmetricPriorSingleItem(valuation: torch.Tensor, n: int, r: float, u_lo, u_hi) -> torch.Tensor:
+def _optimal_bid_FPSB_UniformSymmetricPriorSingleItem(valuation: torch.Tensor, n: int, r: float, u_lo, u_hi, player_position=None) -> torch.Tensor:
     return u_lo + (valuation - u_lo) * (n - 1) / (n - 1.0 + r)
 
-def _truthful_bid(valuation: torch.Tensor) -> torch.Tensor:
+def _truthful_bid(valuation: torch.Tensor, player_position = None) -> torch.Tensor:
     return valuation
 
 class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
 
     # TODO: this class should not be abstract, SymmetricSingleItemExperiment is implemented and has known bne for arbitrary prior!
 
-    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+    def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration, known_bne = False):
 
 
@@ -123,7 +125,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
             experiment_params['payment_rule'] == 'second_price' or \
             (experiment_params['payment_rule'] == 'first price' and self.risk == 1.0)
 
-        super().__init__(experiment_params, gpu_config, logger, l_config, known_bne=known_bne)
+        super().__init__(experiment_params, gpu_config, l_config, known_bne=known_bne)
 
 
 
@@ -190,12 +192,12 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
 
         self.bne_utility = self.bne_utility_sampled
 
-    def _setup_name(self):
+    def _get_logdir(self):
         name = ['single_item', self.mechanism_type, self.valuation_prior,
                 'symmetric', self.risk_profile, str(self.n_players) + 'p']
-        self.logger.base_dir = os.path.join(*name)
+        return os.path.join(*name)
 
-    def _training_loop(self, epoch):
+    def _training_loop(self, epoch, logger):
         # do in every iteration
         # save current params to calculate update norm
         #TODO: Doesn't make sense to track for bidders instead of models but for consistency in logging for now. Change later
@@ -209,14 +211,15 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
 
         # everything after this is logging --> measure overhead
         log_params = {} # TODO Stefan: what does this do?
-        self.logger.log_training_iteration(prev_params=prev_params, epoch=epoch, bne_env=self.bne_env,
-                                           strat_to_bidder=self._strat_to_bidder,
-                                           eval_batch_size=self.l_config.eval_batch_size, bne_utilities=self.bne_utilities,
-                                           utilities=utilities, log_params=log_params)
+        logger.log_training_iteration(prev_params=prev_params, epoch=epoch,
+                                      strat_to_bidder=self._strat_to_bidder,
+                                      bne_utilities=[self.bne_utility]*len(self.models),
+                                      utilities=utilities, log_params=log_params)
         # TODO Stefan: this should be part of logger, not be called here explicitly!
-        if epoch%10 == 0:
-            self.logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners,
-                                          u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
+        # TODO: add regret back later, disable for now
+        #if epoch%10 == 0:
+        #    self.logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners,
+        #                                  u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
 
 
 
@@ -225,7 +228,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
 # known BNE
 class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
 
-    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+    def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
 
         known_bne = experiment_params['payment_rule'] in ('first_price', 'second_price')
@@ -234,7 +237,7 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         self.u_lo = float(experiment_params['u_lo'])
         self.u_hi = float(experiment_params['u_hi'])
 
-        super().__init__(experiment_params, gpu_config, logger, l_config, known_bne=known_bne)
+        super().__init__(experiment_params, gpu_config, l_config, known_bne=known_bne)
 
         self.plot_xmin = self.u_lo
         self.plot_xmax = self.u_hi 
@@ -293,7 +296,7 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
             raise ValueError("Invalid auction mechanism.")
 
         print('Utility in BNE (analytic): \t{:.5f}'.format(self.bne_utility_analytical))
-        assert torch.allclose(self.bne_utility_analytical, self.bne_utility_sampled, atol=1e-4), \
+        assert torch.allclose(self.bne_utility_analytical, self.bne_utility_sampled, atol=1e-3), \
             "Analytical BNE Utility does not match sampled utility from parent class! \n\t sampled {}, analytic {}".format(self.bne_utility_sampled, self.bne_utility_analytical)
         print('Using analytical BNE utility.')
         self.bne_utility = self.bne_utility_analytical
@@ -305,11 +308,11 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 #TODO: Adjust self.valuation_mean to lists like in Uniform?!
 #TODO: Not working yet. Optimal bid doesn't look right to me. Check!
 class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
-    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+    def __init__(self, experiment_params: dict, gpu_config: GPUController, 
                  l_config: LearningConfiguration):
         self.valuation_mean = None
         self.valuation_std = None
-        super().__init__(experiment_params, gpu_config, logger, l_config)
+        super().__init__(experiment_params, gpu_config, l_config)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
         strategy.connected_bidders.append(player_position)
@@ -370,17 +373,17 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
 
 # known BNE
 class TwoPlayerUniformPriorSingleItemExperiment(AsymmetricPriorSingleItemExperiment):
-    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+    def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
 
 
-        super().__init__(experiment_params, gpu_config, logger, l_config)
+        super().__init__(experiment_params, gpu_config, l_config)
         #TODO: implement optimal bid etc
 
         raise NotImplementedError()
 
-    def _setup_name(self):
-        pass
+    def _get_logdir(self):
+        NotImplemented
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
         pass
@@ -393,5 +396,5 @@ class TwoPlayerUniformPriorSingleItemExperiment(AsymmetricPriorSingleItemExperim
 
 
 
-    def _training_loop(self, epoch):
+    def _training_loop(self, epoch, logger):
         pass

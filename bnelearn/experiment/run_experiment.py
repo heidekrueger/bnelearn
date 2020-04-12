@@ -52,16 +52,12 @@ l_config = LearningConfiguration(learner_hyperparams=learner_hyperparams,
                                  eval_batch_size=2 ** 22,
                                  cache_eval_actions=True)
 
-#logger = SingleItemAuctionLogger(experiment_params, l_config)
 #experiment1 = UniformSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
  #                                                      l_config=l_config)
 #warnings.simplefilter("ignore")
 for i in range(2,3):
     experiment_params['n_players'] = i
-    # TODO: logger should be setup by experiment no here.
-    
-    experiment = UniformSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
-                                                       l_config=l_config)
+    experiment = UniformSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, l_config=l_config)
     experiment.run(epochs=101, n_runs=2)
                             
 

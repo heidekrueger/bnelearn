@@ -25,12 +25,11 @@ class Experiment(ABC):
     """Abstract Class representing an experiment"""
 
     def __init__(self, gpu_config: GPUController, experiment_params: dict,
-                 logger: Logger, l_config: LearningConfiguration, known_bne=False):
+                 l_config: LearningConfiguration, known_bne=False):
 
         # Configs
         self.l_config = l_config
         self.gpu_config = gpu_config
-        self.logger = logger
 
 
         # Experiment params
@@ -75,15 +74,11 @@ class Experiment(ABC):
         self.env: Environment = None
         self.mechanism: Mechanism = None
 
+        # TODO: remove this probably
+        self.logger: Logger = None
 
         self.known_bne = known_bne
 
-        ## TODO: These should only be set when it's clear that they're available and where known
-        ## i.e. in the subclasses
-        # setup eval environment
-        #self.bne_env: Environment = None
-        #self.bne_utility: float or Iterable[float] = None
-        #self._optimal_bid: Callable[[torch.Tensor], torch.Tensor] = None
 
         # setup everything deterministic that is shared among runs
         self._setup_mechanism()
@@ -101,23 +96,21 @@ class Experiment(ABC):
         self._setup_bidders()
         self._setup_learning_environment()
         self._setup_learners()
-        self._setup_name()
-        self._setup_logger()
 
     @abstractmethod
-    def _setup_logger(self):
+    def _setup_logger(self, base_dir):
         """Creates logger for run.
         THIS IS A TEMPORARY WORKAROUND TODO
         """
-        pass
+        NotImplemented
 
     @abstractmethod
     def _setup_mechanism(self):
         pass
 
-    # ToDO This is a temporary measure
+    # TODO: move entire name/dir logic out of logger into run
     @abstractmethod
-    def _setup_name(self):
+    def _get_logdir(self):
         """"""
         pass
 
@@ -148,6 +141,7 @@ class Experiment(ABC):
         raise NotImplementedError("This Experiment has no implemented BNE!")
 
 
+    # TODO: why?
     @staticmethod
     def get_risk_profile(risk) -> str:
         if risk == 1.0:
@@ -158,7 +152,7 @@ class Experiment(ABC):
             return 'other'
 
     @abstractmethod
-    def _training_loop(self, epoch):
+    def _training_loop(self, epoch, logger):
         """Main training loop to be executed in each iteration."""
         pass
 
@@ -177,18 +171,17 @@ class Experiment(ABC):
 
             self._setup_run()
 
+            log_dir = self._get_logdir()
+            logger = self._setup_logger(log_dir)
+
             # TODO: setup Writer here, or make logger an object that takes
             # with Logger ... : (especially, needs to be destroyed on end of run!)
 
-            self.logger.log_experiment(experiment_params=self.experiment_params, models=self.models, env=self.env,
-                                       run_comment=run_comment, plot_xmin=self.plot_xmin, plot_xmax=self.plot_xmax,
-                                       plot_ymin=self.plot_ymin, plot_ymax=self.plot_ymax,
-                                       batch_size=self.l_config.batch_size, optimal_bid=self._optimal_bid,
-                                       max_epochs=epochs, gpu_config=self.gpu_config)
+            logger.log_experiment(run_comment=run_comment, max_epochs=epochs)
             # disable this to continue training?
             epoch = 0
             for epoch in range(epoch, epoch + epochs + 1):
-                self._training_loop(epoch=epoch)
+                self._training_loop(epoch=epoch, logger=logger)
 
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()

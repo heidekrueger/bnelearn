@@ -169,14 +169,14 @@ class MultiUnitExperiment(Experiment, ABC):
             strategy_to_player_closure=self._strat_to_bidder
         )
 
-    def _setup_name(self):
+    def _get_logdir(self):
         auction_type_str = str(type(self.mechanism))
         auction_type_str = str(auction_type_str[len(auction_type_str) - auction_type_str[::-1].find('.'):-2])
 
         name = ['expiriments_nils', auction_type_str, str(self.n_players) + 'players_' + str(self.n_items) + 'items']
-        self.logger.base_dir = os.path.join(*name)
+        return os.path.join(*name)
 
-    def _training_loop(self, epoch):
+    def _training_loop(self, epoch, logger):
         start_time = time.time()
 
         # calculate utility vs BNE
@@ -232,7 +232,7 @@ class MultiUnitExperiment(Experiment, ABC):
             'against_bne_utilities': against_bne_utilities,
             'regret': regret
         }
-        self.logger.log_training_iteration(log_params=log_params, epoch=epoch, bidders=self.bidders)
+        logger.log_training_iteration(log_params=log_params, epoch=epoch, bidders=self.bidders)
 
     def _optimal_bid(self, valuation: torch.Tensor or np.ndarray or float, player_position: int=0):
         if not isinstance(valuation, torch.Tensor):
