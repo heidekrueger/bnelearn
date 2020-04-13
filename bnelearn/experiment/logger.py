@@ -97,7 +97,7 @@ class Logger(ABC):
 
     @abstractmethod
     def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute,
-                     L_2, L_inf):
+                     L_2, L_inf, param_group_postfix = '', metric_prefix = ''):
         pass
 
     @abstractmethod
@@ -112,7 +112,7 @@ class SingleItemAuctionLogger(Logger):
     def log_experiment(self, run_comment, max_epochs: int):
 
         # setting up plotting
-        self.plot_points = min(10, self.exp.l_config.batch_size)
+        self.plot_points = min(100, self.exp.l_config.batch_size)
         self.v_opt = [np.linspace(self.exp.plot_xmin, self.exp.plot_xmax, 100)] * len(self.exp.models)
         # TODO: presumes existence of optimal bid --> should not be assumed here
         self.b_opt = [self.exp._optimal_bid(self.v_opt[i], player_position=model.connected_bidders[0])
@@ -151,9 +151,20 @@ class SingleItemAuctionLogger(Logger):
         plot_data = []
         
 
-        for i, model in enumerate(self.exp.models):
+        model_is_global = len(self.exp.models) == 1
 
-            ## TODO: no knowledge of bneenve should be assumed here!
+        # TODO: a lot of overhead is currently not counted correctly!
+        # TODO: update logging to follow following strategy:
+        #       1. calculate ALL updates (if we have multiple models)
+        #       2. caclulate ALL metrics as lists
+        #       3. log everything (using a single function call)
+
+        for i, model in enumerate(self.exp.models):
+            group_postfix = '' if model_is_global else f'_p{i}'
+            metric_prefix = ''
+
+
+            ## TODO: no knowledge of bneenve should be assumed here! Might have settings without bne
 
             # calculate infinity-norm of update step
             new_params = torch.nn.utils.parameters_to_vector(model.parameters())
@@ -170,7 +181,8 @@ class SingleItemAuctionLogger(Logger):
                                                       self.exp.bne_env.agents[i].valuations, float('inf'))
             self._log_metrics(writer=self.writer, epoch=epoch, utility=utilities[i], update_norm=update_norm,
                               utility_vs_bne=utility_vs_bne, epsilon_relative=epsilon_relative,
-                              epsilon_absolute=epsilon_absolute, L_2=L_2, L_inf=L_inf)
+                              epsilon_absolute=epsilon_absolute, L_2=L_2, L_inf=L_inf,
+                              param_group_postfix=group_postfix, metric_prefix=metric_prefix)
 
         if epoch % self.logging_options['plot_epoch'] == 0:
             bidders = [strat_to_bidder(model, self.exp.l_config.batch_size, model.connected_bidders[0]) for model in self.exp.models]
@@ -290,14 +302,22 @@ class SingleItemAuctionLogger(Logger):
         self.writer.add_graph(self.exp.models[0], self.exp.env.agents[0].valuations)
 
     def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute,
-                     L_2, L_inf):
-        writer.add_scalar('eval/utility', utility, epoch)
-        writer.add_scalar('debug/norm_parameter_update', update_norm, epoch)
-        writer.add_scalar('eval/utility_vs_bne', utility_vs_bne, epoch)
-        writer.add_scalar('eval/epsilon_relative', epsilon_relative, epoch)
-        writer.add_scalar('eval/epsilon_absolute', epsilon_absolute, epoch)
-        writer.add_scalar('eval/L_2', L_2, epoch)
-        writer.add_scalar('eval/L_inf', L_inf, epoch)
+                     L_2, L_inf, param_group_postfix = '', metric_prefix = ''):
+
+        def log_metric(group, name, value):
+            writer.add_scalar(
+                f'{group}{param_group_postfix}/{metric_prefix}{name}',
+                value, epoch
+                )
+
+        log_metric('debug', 'update_norm', update_norm)
+
+        log_metric('eval', 'utility', utility)
+        log_metric('eval', 'utility_vs_bne', utility_vs_bne)
+        log_metric('eval', 'epsilon_relative', epsilon_relative)
+        log_metric('eval', 'epsilon_absolute', epsilon_absolute)
+        log_metric('eval', 'L_2', L_2)
+        log_metric('eval', 'L_inf', L_inf)
 
     # TODO: deferred until writing logger
     def _log_hyperparams(self):
