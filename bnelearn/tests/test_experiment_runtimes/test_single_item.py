@@ -79,3 +79,31 @@
 #         experiment = UniformSymmetricPriorSingleItemExperiment(
 #             experiment_params, gpu_config=gpu_config, l_config=l_config)
 #         experiment.run(epochs=101, n_runs=2)
+
+
+# def test_gaussian_symmetric_with_model_sharing():
+#     gaussian_experiment_params = {
+#         'n_players': 2,
+#         'model_sharing': True,
+#         'valuation_mean': 15,
+#         'valuation_std': 5,
+#         'payment_rule': 'first_price',
+#         'risk': 1.0,
+#         'regret_batch_size': 2**8,
+#         'regret_grid_size': 2**8
+#         }
+
+#     l_config = LearningConfiguration(learner_hyperparams=learner_hyperparams,
+#                                  optimizer_type='adam',
+#                                  optimizer_hyperparams=optimizer_hyperparams,
+#                                  input_length=input_length,
+#                                  hidden_nodes=hidden_nodes,
+#                                  hidden_activations=hidden_activations,
+#                                  pretrain_iters=50, batch_size=2 ** 18,
+#                                  eval_batch_size=2 ** 14,
+#                                  cache_eval_actions=True)
+
+
+#     experiment = GaussianSymmetricPriorSingleItemExperiment(
+#         gaussian_experiment_params, gpu_config=gpu_config, l_config=l_config)
+#     experiment.run(epochs=101, n_runs=2)

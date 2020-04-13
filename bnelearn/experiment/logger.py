@@ -190,7 +190,7 @@ class SingleItemAuctionLogger(Logger):
             b = [bidder.get_action() for bidder in bidders]
             plot_data = ((v, b))
             print(
-                "Epoch {}: \tcurrent utility: {:.3f},\t utility vs BNE: {:.3f}, \tepsilon (abs/rel): ({:.5f}, {:.5f})".format(
+                "Epoch {}: \tcurrent utility: {:.3f},\t vs BNE: {:.3f}, \tepsilon (abs/rel): ({:.5f}, {:.5f})".format(
                     epoch, utilities[i], utility_vs_bne, epsilon_absolute, epsilon_relative))
             self._plot(self.fig, plot_data, self.writer, epoch)
 
