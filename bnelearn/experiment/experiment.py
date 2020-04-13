@@ -86,8 +86,6 @@ class Experiment(ABC):
         if self.known_bne:
             self._setup_eval_environment()
 
-        # TODO: cannot setup eval_environment because known bne strategies are available only in subclasses
-
 
     # TODO: rename this
     def _setup_run(self):
