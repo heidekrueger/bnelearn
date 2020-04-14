@@ -128,7 +128,7 @@ class Bidder(Player):
         if (new_value.dtype, new_value.device) != (self._valuations.dtype, self._valuations.device):
             warnings.warn(
                 "New valuations have different dtype and/or device than bidder. Converting to {},{}".format(
-                self._valuations.device, self._valuations.dtype)
+                    	self._valuations.device, self._valuations.dtype)
                 )
 
         if not new_value.equal(self._valuations):
@@ -137,6 +137,7 @@ class Bidder(Player):
 
     def draw_valuations_new_batch_(self, batch_size):
         # Lets you sample valuations of a new batch size (e.g. for regret)
+        # TODO: this will break action caching if it is being used! Consider redesigning this interface
         self.valuations = self.value_distribution.rsample(torch.Size([batch_size, self.valuations.size()[1]])).to(self.device).relu()
 
     def draw_valuations_(self):

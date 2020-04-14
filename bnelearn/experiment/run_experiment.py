@@ -23,18 +23,24 @@ optimizer_hyperparams = {
     'lr': 3e-3
 }
 
-experiment_params_ls = ['n_players', 'model_sharing', 'u_lo', 'u_hi', 'valuation_prior', 'common_prior','payment_rule']
-experiment_params = dict(zip(experiment_params_ls, [None]*len(experiment_params_ls)))
-
-experiment_params['n_players'] = 3
-experiment_params['model_sharing'] = True
-experiment_params['u_lo'] = [0] * experiment_params['n_players']
-experiment_params['u_hi'] = [1,1,1]
-#experiment_params['u_hi'] = [1,1,1,1,2,2]
-experiment_params['payment_rule'] = 'first_price'#'first_price'
-experiment_params['risk'] = 1.0
-experiment_params['regret_batch_size'] = 2**8
-experiment_params['regret_grid_size'] = 2**8
+# experiment_params = {
+#         'model_sharing': False,
+#         'u_lo': 0,
+#         'u_hi': 1,
+#         'payment_rule': 'first_price',
+#         'risk': 1.0,
+#         'regret_batch_size': 2**8,
+#         'regret_grid_size': 2**8
+#     }
+experiment_params = {
+        'model_sharing': True,
+        'valuation_mean': 15,
+        'valuation_std': 5,
+        'payment_rule': 'first_price',
+        'risk': 1.0,
+        'regret_batch_size': 2**8,
+        'regret_grid_size': 2**8
+    }
 
 input_length = 1
 hidden_nodes = [5, 5, 5]
@@ -47,25 +53,13 @@ l_config = LearningConfiguration(learner_hyperparams=learner_hyperparams,
                                  hidden_nodes=hidden_nodes,
                                  hidden_activations=hidden_activations,
                                  pretrain_iters=300, batch_size=2 ** 18,
-                                 eval_batch_size=2 ** 22,
+                                 eval_batch_size=2 ** 15,
                                  cache_eval_actions=True)
 
-#logger = SingleItemAuctionLogger(experiment_params, l_config)
-#experiment1 = UniformSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
- #                                                      l_config=l_config)
-warnings.simplefilter("ignore")
-for i in range(2,3):
+
+#warnings.simplefilter("ignore")
+for i in [2]:
     experiment_params['n_players'] = i
-    experiment_params['u_lo'] = [0] * experiment_params['n_players']
-    experiment_params['u_hi'] = [1] * experiment_params['n_players']
-    logger = SingleItemAuctionLogger(experiment_params, l_config)
-    experiment = UniformSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
-                                                       l_config=l_config)
-    experiment.run(epochs=20, n_runs=2)
+    experiment = GaussianSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, l_config=l_config)
+    experiment.run(epochs=101, n_runs=2)
                             
-
-# experiment2 = UniformSymmetricPriorSingleItemExperiment(2, gpu_config=gpu_config, logger=logger,
-                                                    #    mechanism_type='first_price', l_config=l_config, risk=1.0)
-
-#experiment1.run(epochs=10000, n_runs=2)
-#experiment2.run(epochs=100, n_runs=1)

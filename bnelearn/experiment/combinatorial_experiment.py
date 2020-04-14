@@ -150,12 +150,12 @@ class LLGExperiment(CombinatorialExperiment):
         self.bne_env = self.global_bne_env
         self.bne_utilities = global_bne_utility_sampled
 
-    def _setup_name(self):
+    def _get_logdir(self):
         name = ['LLG', self.mechanism_type, str(self.n_players) + 'p']
         self.base_dir = os.path.join(*name)  # ToDo Redundant?
-        self.logger.base_dir = os.path.join(*name)
+        return os.path.join(*name)
 
-    def _training_loop(self, epoch):
+    def _training_loop(self, epoch, logger):
         # do in every iteration
         # save current params to calculate update norm
         prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
@@ -167,7 +167,7 @@ class LLGExperiment(CombinatorialExperiment):
         ])
         # everything after this is logging --> measure overhead
         log_params = {}
-        self.logger.log_training_iteration(prev_params=prev_params, epoch=epoch, bne_env=self.bne_env,
+        logger.log_training_iteration(prev_params=prev_params, epoch=epoch, bne_env=self.bne_env,
                                            strat_to_bidder=self._strat_to_bidder,
                                            eval_batch_size=self.l_config.eval_batch_size,
                                            bne_utilities=self.bne_utilities, utilities=utilities, log_params=log_params)
@@ -175,7 +175,7 @@ class LLGExperiment(CombinatorialExperiment):
             print("epoch {}, utilities: ".format(epoch))
             for i in range(len(utilities)):
                 print("{}: {:.5f}".format(i, utilities[i]))
-            self.logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
+            logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
                                           u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
 
 # mechanism/bidding implementation, plot
@@ -204,17 +204,17 @@ class LLLLGGExperiment(CombinatorialExperiment):
         # Add _setup_eval_regret_environment(self)
         pass
 
-    def _setup_name(self):
+    def _get_logdir(self):
         name = ['LLLLGG', self.mechanism_type, str(self.n_players) + 'p']
         self.base_dir = os.path.join(*name)  # ToDo Redundant?
-        self.logger.base_dir = os.path.join(*name)
+        return os.path.join(*name)
 
     def _optimal_bid(self, valuation, player_position):
         # No bne eval known
         #TODO: Return dummy value for now
         return valuation * 9999
 
-    def _training_loop(self, epoch):
+    def _training_loop(self, epoch, logger):
         # do in every iteration
         # save current params to calculate update norm
         prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
@@ -227,7 +227,7 @@ class LLLLGGExperiment(CombinatorialExperiment):
         # everything after this is logging --> measure overhead
         # TODO: Adjust this such that we log all models params, not just the first
         log_params = {}
-        self.logger.log_training_iteration(prev_params=prev_params, epoch=epoch,
+        logger.log_training_iteration(prev_params=prev_params, epoch=epoch,
                                            strat_to_bidder=self._strat_to_bidder,
                                            eval_batch_size=self.l_config.eval_batch_size,
                                            utilities=utilities, log_params=log_params)
@@ -235,5 +235,5 @@ class LLLLGGExperiment(CombinatorialExperiment):
             print("epoch {}, utilities: ".format(epoch))
             for i in range(len(utilities)):
                 print("{}: {:.5f}".format(i, utilities[i]))
-            self.logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
+            logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
                                           u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
