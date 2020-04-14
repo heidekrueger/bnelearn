@@ -2,7 +2,7 @@
 
 
 from abc import ABC, abstractmethod
-from typing import Iterable, Callable
+from typing import Iterable
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -34,26 +34,16 @@ class Experiment(ABC):
 
         # Experiment params
         # TODO: consolidate these!
-
         self.experiment_params = experiment_params
         self.n_players = experiment_params['n_players']
-        #if 'common_prior' in experiment_params.keys():
-        #    self.common_prior = experiment_params['common_prior']
-        #
-        #self.u_hi = experiment_params['u_hi']
 
         # TODO: decouple --> logic should be in subclasses ?
-        #self.plot_xmin = min(experiment_params['u_lo'])
-        #self.plot_xmax = max(experiment_params['u_hi']) * 1.05
-        #self.plot_ymin = min(experiment_params['u_lo'])
-        #self.plot_ymax = max(experiment_params['u_hi']) * 1.05
         #if 'valuation_prior' in experiment_params.keys():
         #    self.valuation_prior = experiment_params['valuation_prior']
-        #self.model_sharing = experiment_params['model_sharing']
-        #self.risk = experiment_params['risk']
-        #self.risk_profile = Experiment.get_risk_profile(self.risk)
         #if 'payment_rule' in experiment_params.keys():
         #    self.mechanism_type = experiment_params['payment_rule']
+
+        # TODO: these may possibly stay here, uncommented for now because of added complexity (due to separate regret logging implementation)
         #if 'regret_batch_size' in experiment_params.keys():
         #    self.regret_batch_size = experiment_params['regret_batch_size']
         #if 'regret_grid_size' in experiment_params.keys():
@@ -63,18 +53,13 @@ class Experiment(ABC):
         self.base_dir = None
         self.models: Iterable[torch.nn.Module] = None
 
-        # setup bidders
-        #self.positive_output_point = None
-        self.bidders: Iterable[Bidder] = None
 
-        # setup learner
+        self.mechanism: Mechanism = None
+        self.bidders: Iterable[Bidder] = None
+        self.env: Environment = None
         self.learners: Iterable[Learner] = None
 
-        # setup learning environment
-        self.env: Environment = None
-        self.mechanism: Mechanism = None
-
-        # TODO: remove this probably
+        # TODO: remove this? move all logging logic into experiment itself?
         self.logger: Logger = None
 
         self.known_bne = known_bne
@@ -100,7 +85,7 @@ class Experiment(ABC):
         """Creates logger for run.
         THIS IS A TEMPORARY WORKAROUND TODO
         """
-        NotImplemented
+        pass
 
     @abstractmethod
     def _setup_mechanism(self):

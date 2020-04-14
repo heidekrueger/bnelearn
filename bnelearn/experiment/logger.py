@@ -149,7 +149,7 @@ class SingleItemAuctionLogger(Logger):
         # TODO It is by no means nice that there is so much specific logic in here
         start_time = timer()
         plot_data = []
-        
+
 
         model_is_global = len(self.exp.models) == 1
 
@@ -201,7 +201,7 @@ class SingleItemAuctionLogger(Logger):
 
     # TODO: rename u_lo, u_hi --> these have NOTHING to do with normal distribution.
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
-        
+
         original_batch_size = env.agents[0].batch_size
 
         bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
@@ -222,7 +222,7 @@ class SingleItemAuctionLogger(Logger):
             #print("Calculating regret...")
             torch.cuda.empty_cache()
             regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position, env.agents[player_position].valuations, regret_grid)
-            
+
             print("agent {} ex ante/ex interim regrat: avg: {:.3f}, max: {:.3f}".format(player_position,
                                                                  torch.mean(regret),
                                                                  torch.max(regret)))
@@ -241,14 +241,14 @@ class SingleItemAuctionLogger(Logger):
         #     fig, _ = self._plot_3d((valuations_tensor, regrets_tensor), epoch, [self.plot_xmin, self.plot_xmax], [self.plot_ymin, self.plot_ymax],
         #                         [0, max_regret.detach().cpu().numpy()], input_length=1, x_label="valuation", y_label="regret")
         # else:
-        fig, _ = self._plot_2d((valuations, regrets), epoch, [self.exp.plot_xmin, self.exp.plot_xmax], 
+        fig, _ = self._plot_2d((valuations, regrets), epoch, [self.exp.plot_xmin, self.exp.plot_xmax],
                             [0, max_regret.detach().cpu().numpy()], x_label="valuation", y_label="regret")
         self._process_figure(fig, self.writer, epoch, name="regret_epoch")
 
         for agent in env.agents:
             agent.batch_size = original_batch_size
             agent.draw_valuations_new_batch_(original_batch_size)
-        
+
 
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
         """This method should implement a vizualization of the experiment at the current state"""
@@ -263,7 +263,7 @@ class SingleItemAuctionLogger(Logger):
         self._process_figure(fig, writer, e)
 
     #TODO: Do I need "fig" here?
-    def _plot_2d(self, plot_data, epoch, xlim: list, 
+    def _plot_2d(self, plot_data, epoch, xlim: list,
                  ylim: list, x_label="valuation", y_label="bid"):
         """This implements plotting simple 2d data"""
         plot_xmin = xlim[0]
@@ -368,11 +368,11 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
             # calculate infinity-norm of update step
             new_params = torch.nn.utils.parameters_to_vector(model.parameters())
             update_norm = (new_params - prev_params[i]).norm(float('inf'))
-                
+
             self._log_metrics(writer=self.writer, epoch=epoch, utility=utilities[i], update_norm=update_norm)
 
         if epoch % self.logging_options['plot_epoch'] == 0:
-            [print("Epoch {}: \tcurrent utility: {:.3f}".format(epoch, utilities[i])) 
+            [print("Epoch {}: \tcurrent utility: {:.3f}".format(epoch, utilities[i]))
                 for i in range(len(self.exp.models))]
             self._plot(self.fig, self.exp.models, self.writer, epoch)
         elapsed = timer() - start_time

@@ -56,17 +56,10 @@ l_config = LearningConfiguration(learner_hyperparams=learner_hyperparams,
                                  eval_batch_size=2 ** 15,
                                  cache_eval_actions=True)
 
-#experiment1 = UniformSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, logger=logger,
- #                                                      l_config=l_config)
+
 #warnings.simplefilter("ignore")
 for i in [2]:
     experiment_params['n_players'] = i
     experiment = GaussianSymmetricPriorSingleItemExperiment(experiment_params, gpu_config=gpu_config, l_config=l_config)
     experiment.run(epochs=101, n_runs=2)
                             
-
-# experiment2 = UniformSymmetricPriorSingleItemExperiment(2, gpu_config=gpu_config, logger=logger,
-                                                    #    mechanism_type='first_price', l_config=l_config, risk=1.0)
-
-#experiment1.run(epochs=10000, n_runs=2)
-#experiment2.run(epochs=100, n_runs=1)

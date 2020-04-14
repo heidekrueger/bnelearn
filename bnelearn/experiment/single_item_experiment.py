@@ -14,7 +14,7 @@ from torch.distributions import Distribution
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import  AuctionEnvironment
-from bnelearn.experiment import Experiment, GPUController, Logger, LearningConfiguration
+from bnelearn.experiment import Experiment, GPUController, LearningConfiguration
 
 import bnelearn
 from bnelearn.learner import ESPGLearner
@@ -61,9 +61,7 @@ class SingleItemExperiment(Experiment, ABC):
 
     def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration, known_bne = False):
-        # TODO: these are temporary, get rid of these
-        #self.global_bne_env = None
-        #self.global_bne_utility = None
+
         self.mechanism_type = experiment_params['payment_rule'] #TODO: Why here?
         super().__init__(gpu_config, experiment_params, l_config, known_bne)
 
@@ -99,9 +97,9 @@ class SingleItemExperiment(Experiment, ABC):
                                       strategy_to_player_closure=self._strat_to_bidder)
 
 class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
-
-    # TODO: this class should not be abstract, SymmetricSingleItemExperiment is implemented and has known bne for arbitrary prior!
-
+    """A Single Item Experiment that has the same valuation prior for all participating bidders.
+    For risk-neutral agents, a unique BNE is known.
+    """
     def __init__(self, common_prior: Distribution,
                  experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration, known_bne = False):
@@ -118,7 +116,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         known_bne = known_bne or \
             experiment_params['payment_rule'] == 'second_price' or \
             (experiment_params['payment_rule'] == 'first_price' and self.risk == 1.0)
-
+        
         super().__init__(experiment_params, gpu_config, l_config, known_bne=known_bne)
 
 
