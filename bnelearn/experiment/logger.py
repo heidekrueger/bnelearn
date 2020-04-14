@@ -20,6 +20,17 @@ from bnelearn.experiment.learning_configuration import LearningConfiguration
 #from .experiment import Experiment
 #from bnelearn.experiment.MultiUnitExperiment import FPSBSplitAwardAuction2x2
 
+
+COLORS = [
+    '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
+    '#7f7f7f', '#bcbd22', '#17becf'
+]
+COLORSWARM = [
+    'maroon', 'firebrick', 'red', 'salmon', 'coral', 'lightsalmon', 'mistyrose',
+    'lightgrey', 'white'
+]
+
+
 # TODO: can't use type hint for experiment :/
 class Logger(ABC):
     def __init__(self, exp, base_dir, save_figure_to_disk_png: bool = True,
@@ -75,10 +86,53 @@ class Logger(ABC):
                                utility, log_params: dict):
         pass
 
-    @abstractmethod
-    def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
-        """This method should implement a vizualization of the experiment at the current state"""
-        pass
+    # TODO: More Arguments needed in children?
+    def _plot(self, plot_data):
+        """This method implements a vizualization of the experiment at the current state."""
+
+        valuations = plot_data[0]
+        bids = plot_data[1].cpu().numpy()
+        n_batch, n_players, n_bundles = bids.shape
+        bids_opt = np.array([
+            self.exp._optimal_bid(valuations[:,i,:], player_position=model.connected_bidders[0]).cpu().numpy()
+            for i, model in enumerate(self.exp.models)
+        ]).transpose((1, 0, 2))
+        valuations = valuations.cpu().numpy()
+
+        fig, axs = plt.subplots(nrows=1, ncols=n_bundles, sharey=True, figsize=[7, 4])
+        plt.cla()
+
+        if not isinstance(axs, np.ndarray):
+            axs = [axs] # only one item/plot
+
+        for plot in range(n_bundles):
+            for agent_idx in range(n_players):
+                axs[plot].scatter(
+                    valuations[:,agent_idx,plot], bids[:,agent_idx,plot],
+                    marker='.',
+                    color=COLORS[agent_idx % len(COLORS)],
+                    label='agent ' + str(agent_idx + 1),
+                )
+                axs[plot].plot(
+                    valuations[:,agent_idx,plot], bids_opt[:,agent_idx,plot],
+                    '.', color='black', label='BNE strategy'
+                )
+
+            x_label = 'valuation'
+            axs[plot].set_title(str(plot + 1) + '. bid')
+            # axs[plot].set_xlim([bounds[0], bounds[1]])
+            # axs[plot].set_ylim([bounds[0], bounds[1]])
+            axs[plot].set_xlabel(x_label)
+
+            if plot == 0:
+                axs[plot].set_ylabel('bid')
+                if n_players < 10:
+                    axs[plot].legend(loc='upper left')
+
+        axs[plot].locator_params(axis='x', nbins=5)
+        fig.tight_layout()
+
+        return fig, plt
 
     def _process_figure(self, fig, writer=None, epoch=None, figure_name='plot', group ='eval', filename=None):
         """displays, logs and/or saves figure built in plot method"""
@@ -260,18 +314,18 @@ class SingleItemAuctionLogger(Logger):
             agent.batch_size = original_batch_size
             agent.draw_valuations_new_batch_(original_batch_size)
 
+    # TODO implement in parent? And just adadt here with parameters?
+    # def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
+    #     """This method should implement a vizualization of the experiment at the current state"""
+    #     fig, plt = self._plot_2d(plot_data, e, [self.exp.plot_xmin, self.exp.plot_xmax], [self.exp.plot_ymin,self.exp.plot_ymax])
+    #     cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
-    def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
-        """This method should implement a vizualization of the experiment at the current state"""
-        fig, plt = self._plot_2d(plot_data, e, [self.exp.plot_xmin, self.exp.plot_xmax], [self.exp.plot_ymin,self.exp.plot_ymax])
-        cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-
-        for i in range(len(plot_data[0])):
-            #TODO: Plottet noch scheiße!
-            #TODO: Not working yet for LLG
-            plt.plot(self.v_opt[i], self.b_opt[i], color=cycle[i], linestyle = '--')#linestyle = '--')
-        # show and/or log
-        self._process_figure(fig, writer, e, figure_name='bid_function')
+    #     for i in range(len(plot_data[0])):
+    #         #TODO: Plottet noch scheiße!
+    #         #TODO: Not working yet for LLG
+    #         plt.plot(self.v_opt[i], self.b_opt[i], color=cycle[i], linestyle = '--')#linestyle = '--')
+    #     # show and/or log
+    #     self._process_figure(fig, writer, e, figure_name='bid_function')
 
     #TODO: Do I need "fig" here?
     def _plot_2d(self, plot_data, epoch, xlim: list,
@@ -545,18 +599,25 @@ class MultiUnitAuctionLogger(SingleItemAuctionLogger):
         # ToDo Are bounds the same for all bidders? (used just [0] in all three cases below)
         # plotting
         if epoch % self.plot_epoch == 0:
-            self.plot_bid_function(
-                bidders,
-                log_params['optima_bid'],
-                log_params['optima_bid_2'],
-                epoch=epoch,
-                bounds=[self.experiment_params['u_lo'][0], self.experiment_params["u_hi"][0]],
-                split_award={
-                    'split_award': True,
-                    "efficiency_parameter": self.experiment_params['efficiency_parameter'],
-                    "input_length": self.experiment_params["input_length"]
-                } if is_FPSBSplitAwardAuction else None,
-            )
+            # TODO replace placeholer
+            plot_data = [None] * 2
+            plot_data[0] = torch.linspace(0, 1, 20).repeat(2, 1).t()[:, None ,:]
+            plot_data[1] = torch.linspace(0, 1, 20).repeat(2, 1).t()[:, None ,:]
+
+            fig, plt = super()._plot(plot_data)
+            super()._process_figure(fig, writer=self.writer, epoch=epoch)
+            # self.plot_bid_function(
+            #     bidders,
+            #     log_params['optima_bid'],
+            #     log_params['optima_bid_2'],
+            #     epoch=epoch,
+            #     bounds=[self.experiment_params['u_lo'][0], self.experiment_params["u_hi"][0]],
+            #     split_award={
+            #         'split_award': True,
+            #         "efficiency_parameter": self.experiment_params['efficiency_parameter'],
+            #         "input_length": self.experiment_params["input_length"]
+            #     } if is_FPSBSplitAwardAuction else None,
+            # )
 
             # if param_dict["n_items"] == 2 \
             # and param_dict["n_players"] < 4 \
