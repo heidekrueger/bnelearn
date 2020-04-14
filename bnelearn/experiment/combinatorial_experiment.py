@@ -10,6 +10,7 @@ from bnelearn.mechanism.auctions_combinatorial import *
 from bnelearn.bidder import Bidder
 from bnelearn.environment import Environment, AuctionEnvironment
 from bnelearn.experiment import Experiment, GPUController, Logger, LearningConfiguration
+from bnelearn.experiment.logger import LLGAuctionLogger, LLLLGGAuctionLogger
 
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
@@ -19,22 +20,26 @@ from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
 # TODO: Currently only implemented for uniform val
 # TODO: Currently only implemented for LLG and LLLLGG
 class CombinatorialExperiment(Experiment, ABC):
-    def __init__(self, gpu_config: GPUController, experiment_params: dict, logger: Logger, l_config: LearningConfiguration):
-        self.gamma = 0.0
-        assert self.gamma == 0, "Gamma > 0 implemented yet!?"
-        super().__init__(gpu_config, experiment_params, logger, l_config)
-        self.global_bne_env = None
-        self.global_bne_utility = None
+    def __init__(self, gpu_config: GPUController, experiment_params: dict,
+                 l_config: LearningConfiguration, known_bne = False):
+
+        super().__init__(gpu_config, experiment_params, l_config, known_bne)
+
+
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0):
-        # The model should know who is using it
+        # TODO: this probably isn't the right place...
+        # The model should know who is using it # TODO: Stefan: In my oppinion, it shouldn't...
         strategy.connected_bidders.append(player_position)
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
                               batch_size=batch_size, n_items = self.n_items)
 
+
+
     # Currently only working for LLG and LLLLGG.
     def _setup_bidders(self):
         print('Setting up bidders...')
+        # TODO: this includes LLG / LLLLGG specific logic!
         self.models = [None] * 2 if self.model_sharing else [None] * self.n_players
 
         for i in range(len(self.models)):
@@ -68,6 +73,9 @@ class CombinatorialExperiment(Experiment, ABC):
                 bidder.strategy.pretrain(bidder.valuations, self.l_config.pretrain_iters)
 
     def _setup_learners(self):
+        # TODO: the current strat_to_player kwargs is weird. Cross-check this with how values are evaluated in learner.
+        # ideally, we can abstract this function away and move the functionality to the base Experiment class.
+        # Implementation in SingleItem case is identical except for player position argument below.
         self.learners = []
         for i in range(len(self.models)):
             self.learners.append(ESPGLearner(model=self.models[i],
@@ -78,15 +86,31 @@ class CombinatorialExperiment(Experiment, ABC):
                                  strat_to_player_kwargs={"player_position": i*self.n_local}
                                  ))
 
+
+
 # mechanism/bidding implementation, plot, bnes
 class LLGExperiment(CombinatorialExperiment):
-    def __init__(self, experiment_params:dict, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration):
+    def __init__(self, experiment_params:dict, gpu_config: GPUController, l_config: LearningConfiguration):
+
+        # coupling between valuations only 0 implemented currently
+        self.gamma = 0.0
+        assert self.gamma == 0, "Gamma > 0 implemented yet!?"
         # Experiment specific parameters
         self.n_local = 2
         experiment_params['n_players'] = 3
-        self.n_items = 1
-        super().__init__(gpu_config, experiment_params, logger, l_config)
-        self._run_setup()
+        self.n_items = 1 # TODO: what does this do? can we get rid of it?
+
+        self.payment_rule = experiment_params['payment_rule']
+        known_bne = self.payment_rule in ['first_price', 'vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']
+        super().__init__(gpu_config, experiment_params, l_config, known_bne)
+
+    def _setup_logger(self, base_dir):
+        return LLGAuctionLogger(self, base_dir)
+
+
+    def _setup_mechanism(self):
+        self.mechanism = LLGAuction(rule = self.payment_rule)
+
 
     def _setup_learning_environment(self):
         self.mechanism = LLGAuction(rule=self.mechanism_type, cuda=self.gpu_config.cuda)
@@ -101,18 +125,18 @@ class LLGExperiment(CombinatorialExperiment):
             valuation = torch.tensor(valuation)
 
         # all core-selecting rules are strategy proof for global player:
-        if self.mechanism_type in ['vcg', 'proxy', 'nearest_zero', 'nearest_bid',
+        if self.payment_rule in ['vcg', 'proxy', 'nearest_zero', 'nearest_bid',
                                    'nearest_vcg'] and player_position == 2:
             return valuation
         # local bidders:
-        if self.mechanism_type == 'vcg':
+        if self.payment_rule == 'vcg':
             return valuation
-        if self.mechanism_type in ['proxy', 'nearest_zero']:
+        if self.payment_rule in ['proxy', 'nearest_zero']:
             bid_if_positive = 1 + torch.log(valuation * (1.0 - self.gamma) + self.gamma) / (1.0 - self.gamma)
             return torch.max(torch.zeros_like(valuation), bid_if_positive)
-        if self.mechanism_type == 'nearest_bid':
+        if self.payment_rule == 'nearest_bid':
             return (np.log(2) - torch.log(2.0 - (1. - self.gamma) * valuation)) / (1. - self.gamma)
-        if self.mechanism_type == 'nearest_vcg':
+        if self.payment_rule == 'nearest_vcg':
             bid_if_positive = 2. / (2. + self.gamma) * (
                         valuation - (3. - np.sqrt(9 - (1. - self.gamma) ** 2)) / (1. - self.gamma))
             return torch.max(torch.zeros_like(valuation), bid_if_positive)
@@ -151,7 +175,7 @@ class LLGExperiment(CombinatorialExperiment):
         self.bne_utilities = global_bne_utility_sampled
 
     def _get_logdir(self):
-        name = ['LLG', self.mechanism_type, str(self.n_players) + 'p']
+        name = ['LLG', self.payment_rule]
         self.base_dir = os.path.join(*name)  # ToDo Redundant?
         return os.path.join(*name)
 
@@ -180,7 +204,7 @@ class LLGExperiment(CombinatorialExperiment):
 
 # mechanism/bidding implementation, plot
 class LLLLGGExperiment(CombinatorialExperiment):
-    def __init__(self, experiment_params, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration):
+    def __init__(self, experiment_params, gpu_config: GPUController, l_config: LearningConfiguration):
         self.n_local = 4
         experiment_params['n_players'] = 6
         self.n_items = 2
@@ -189,6 +213,12 @@ class LLLLGGExperiment(CombinatorialExperiment):
         #TODO:Dummy values for now
         self.bne_utilities = [9999] * 2 if experiment_params['model_sharing'] else [9999] * 6
         self._run_setup()
+
+    def _setup_logger(self, base_dir):
+        return LLGAuctionLogger(self, base_dir)
+
+    def _setup_mechanism(self):
+        self.mechanism = LLLLGGAuction(rule=experiment_params['payment_rule'])
 
     def _setup_learning_environment(self):
         #TODO: We could handover self.mechanism in experiment and move _self_learning_environment up, since it is identical in most places
@@ -199,10 +229,6 @@ class LLLLGGExperiment(CombinatorialExperiment):
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
 
-    def _setup_eval_environment(self):
-        # No bne eval known
-        # Add _setup_eval_regret_environment(self)
-        pass
 
     def _get_logdir(self):
         name = ['LLLLGG', self.mechanism_type, str(self.n_players) + 'p']

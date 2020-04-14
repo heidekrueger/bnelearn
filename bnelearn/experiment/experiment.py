@@ -117,10 +117,12 @@ class Experiment(ABC):
         """This method should set up learners for each of the models that are learnable."""
         pass
 
-    @abstractmethod
     def _setup_eval_environment(self):
-        """Sets up an environment used for evaluation of learning agents (e.g.) vs known BNE"""
+        """Overwritten by subclasses with known BNE.
+        Sets up an environment used for evaluation of learning agents (e.g.) vs known BNE"""
 
+        # this base class method should never be called, otherwise something is wrong in subclass logic.
+        # i.e. erroneously assuming a known BNE exists when it doesn't.
         raise NotImplementedError("This Experiment has no implemented BNE!")
 
 

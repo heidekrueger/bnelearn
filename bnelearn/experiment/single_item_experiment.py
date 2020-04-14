@@ -90,11 +90,10 @@ class SingleItemExperiment(Experiment, ABC):
                 )
 
     def _setup_learning_environment(self):
-
-
         self.env = AuctionEnvironment(self.mechanism, agents=self.bidders,
                                       batch_size=self.l_config.batch_size, n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
+
 
 class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
     """A Single Item Experiment that has the same valuation prior for all participating bidders.
@@ -339,7 +338,7 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
         self.plot_ymin = 0
         self.plot_ymax = 20 if self.mechanism_type == 'first_price' else self.plot_xmax
 
-class TwoPlayerUniformPriorSingleItemExperiment(SingleItemExperiment):
+class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
     def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
 
