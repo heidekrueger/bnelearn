@@ -1,3 +1,5 @@
+"""This module implements Experiments on single items"""
+
 import os
 import warnings
 from abc import ABC
@@ -19,8 +21,39 @@ from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
 
-# TODO: Move bne_utility to the proper place
-# general logic and setup, plot
+
+###############################################################################
+#######   Known equilibrium bid functions                                ######
+###############################################################################
+# Define known BNE functions top level, so they may be pickled for parallelization
+# These are called millions of times, so each implementation should be
+# setting specific, i.e. there should be NO setting checks at runtime.
+
+def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(
+        valuation: torch.Tensor or np.ndarray or float, n_players: int, prior_cdf: Callable, **kwargs) -> torch.Tensor:
+    if not isinstance(valuation, torch.Tensor):
+        # For float and numpy --> convert to tensor (relevant for plotting)
+        valuation = torch.tensor(valuation, dtype=torch.float)
+    # For float / 0d tensors --> unsqueeze to allow list comprehension below
+    if valuation.dim() == 0:
+        valuation.unsqueeze_(0)
+    # shorthand notation for F^(n-1)
+    Fpowered = lambda v: torch.pow(prior_cdf(v), n_players - 1)
+    # do the calculations
+    numerator = torch.tensor(
+        [integrate.quad(Fpowered, 0, v)[0] for v in valuation],
+            device=valuation.device
+    ).reshape(valuation.shape)
+    return valuation - numerator / Fpowered(valuation)
+
+def _optimal_bid_FPSB_UniformSymmetricPriorSingleItem(valuation: torch.Tensor, n: int, r: float, u_lo, u_hi, **kwargs) -> torch.Tensor:
+    return u_lo + (valuation - u_lo) * (n - 1) / (n - 1.0 + r)
+
+def _truthful_bid(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
+    return valuation
+
+
+# TODO: single item experiment should not be abstract and hold all logic for learning. Only bne needs to go into subclass
 class SingleItemExperiment(Experiment, ABC):
 
     # known issue: pylint doesn't recognize this class as abstract: https://github.com/PyCQA/pylint/commit/4024949f6caf5eff5f3da7ab2b4c3cf2e296472b
@@ -64,36 +97,6 @@ class SingleItemExperiment(Experiment, ABC):
         self.env = AuctionEnvironment(self.mechanism, agents=self.bidders,
                                       batch_size=self.l_config.batch_size, n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
-
-
-# Define known BNE functions top level, so they may be pickled for parallelization
-# These are called millions of timex, so each implementation should be
-# setting specific, i.e. there should be NO setting checks at runtime.
-
-def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(valuation: torch.Tensor or np.ndarray or float,
-                                                             n_players: int,
-                                                             prior_cdf: Callable,
-                                                             player_position = None) -> torch.Tensor:
-    if not isinstance(valuation, torch.Tensor):
-        # For float and numpy --> convert to tensor (relevant for plotting)
-        valuation = torch.tensor(valuation, dtype=torch.float)
-    # For float / 0d tensors --> unsqueeze to allow list comprehension below
-    if valuation.dim() == 0:
-        valuation.unsqueeze_(0)
-    # shorthand notation for F^(n-1)
-    Fpowered = lambda v: torch.pow(prior_cdf(v), n_players - 1)
-    # do the calculations
-    numerator = torch.tensor(
-        [integrate.quad(Fpowered, 0, v)[0] for v in valuation],
-            device=valuation.device
-    ).reshape(valuation.shape)
-    return valuation - numerator / Fpowered(valuation)
-
-def _optimal_bid_FPSB_UniformSymmetricPriorSingleItem(valuation: torch.Tensor, n: int, r: float, u_lo, u_hi, player_position=None) -> torch.Tensor:
-    return u_lo + (valuation - u_lo) * (n - 1) / (n - 1.0 + r)
-
-def _truthful_bid(valuation: torch.Tensor, player_position = None) -> torch.Tensor:
-    return valuation
 
 class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
@@ -262,10 +265,6 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         #    self.logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners,
         #                                  u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
 
-
-
-# implementation differences to symmetric case?
-# known BNE
 class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
 
     def __init__(self, experiment_params: dict, gpu_config: GPUController,
@@ -341,7 +340,6 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
         self.plot_xmax = int(self.valuation_mean + 3 * self.valuation_std)
         self.plot_ymin = 0
         self.plot_ymax = 20 if self.mechanism_type == 'first_price' else self.plot_xmax
-
 
 class TwoPlayerUniformPriorSingleItemExperiment(SingleItemExperiment):
     def __init__(self, experiment_params: dict, gpu_config: GPUController,
