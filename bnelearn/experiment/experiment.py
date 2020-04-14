@@ -44,10 +44,10 @@ class Experiment(ABC):
         #    self.mechanism_type = experiment_params['payment_rule']
 
         # TODO: these may possibly stay here, uncommented for now because of added complexity (due to separate regret logging implementation)
-        #if 'regret_batch_size' in experiment_params.keys():
-        #    self.regret_batch_size = experiment_params['regret_batch_size']
-        #if 'regret_grid_size' in experiment_params.keys():
-        #    self.regret_grid_size = experiment_params['regret_grid_size']
+        if 'regret_batch_size' in experiment_params.keys():
+            self.regret_batch_size = experiment_params['regret_batch_size']
+        if 'regret_grid_size' in experiment_params.keys():
+            self.regret_grid_size = experiment_params['regret_grid_size']
 
         # Misc
         self.base_dir = None
@@ -117,10 +117,12 @@ class Experiment(ABC):
         """This method should set up learners for each of the models that are learnable."""
         pass
 
-    @abstractmethod
     def _setup_eval_environment(self):
-        """Sets up an environment used for evaluation of learning agents (e.g.) vs known BNE"""
+        """Overwritten by subclasses with known BNE.
+        Sets up an environment used for evaluation of learning agents (e.g.) vs known BNE"""
 
+        # this base class method should never be called, otherwise something is wrong in subclass logic.
+        # i.e. erroneously assuming a known BNE exists when it doesn't.
         raise NotImplementedError("This Experiment has no implemented BNE!")
 
 

@@ -75,17 +75,20 @@ class Logger(ABC):
         """This method should implement a vizualization of the experiment at the current state"""
         pass
 
-    def _process_figure(self, fig, writer=None, epoch=None, name='epoch_'):
+    def _process_figure(self, fig, writer=None, epoch=None, figure_name='plot', group ='eval', filename=None):
         """displays, logs and/or saves figure built in plot method"""
 
+        if not filename:
+            filename = figure_name
+
         if self.logging_options['save_figure_to_disk_png']:
-            plt.savefig(os.path.join(self.log_dir, 'png', f'{name}{epoch:05}.png'))
+            plt.savefig(os.path.join(self.log_dir, 'png', f'{filename}_{epoch:05}.png'))
 
         if self.logging_options['save_figure_to_disk_svg']:
-            plt.savefig(os.path.join(self.log_dir, 'svg', f'{name}{epoch:05}.svg'),
+            plt.savefig(os.path.join(self.log_dir, 'svg', f'{filename}_{epoch:05}.svg'),
                         format='svg', dpi=1200)
         if writer:
-            writer.add_figure('eval/bid_function', fig, epoch)
+            writer.add_figure(f'{group}/{figure_name}', fig, epoch)
         if self.logging_options['show_plot_inline']:
             # display.display(plt.gcf())
             plt.show()
@@ -113,6 +116,7 @@ class SingleItemAuctionLogger(Logger):
 
         # setting up plotting
         self.plot_points = min(100, self.exp.l_config.batch_size)
+        # TODO: this should be model specific! (e.g. in LLG locals should not plot higher vals than their own)
         self.v_opt = [np.linspace(self.exp.plot_xmin, self.exp.plot_xmax, 100)] * len(self.exp.models)
         # TODO: presumes existence of optimal bid --> should not be assumed here
         self.b_opt = [self.exp._optimal_bid(self.v_opt[i], player_position=model.connected_bidders[0])
@@ -243,7 +247,7 @@ class SingleItemAuctionLogger(Logger):
         # else:
         fig, _ = self._plot_2d((valuations, regrets), epoch, [self.exp.plot_xmin, self.exp.plot_xmax],
                             [0, max_regret.detach().cpu().numpy()], x_label="valuation", y_label="regret")
-        self._process_figure(fig, self.writer, epoch, name="regret_epoch")
+        self._process_figure(fig, self.writer, epoch, figure_name="regret")
 
         for agent in env.agents:
             agent.batch_size = original_batch_size
@@ -260,7 +264,7 @@ class SingleItemAuctionLogger(Logger):
             #TODO: Not working yet for LLG
             plt.plot(self.v_opt[i], self.b_opt[i], color=cycle[i], linestyle = '--')#linestyle = '--')
         # show and/or log
-        self._process_figure(fig, writer, e)
+        self._process_figure(fig, writer, e, figure_name='bid_function')
 
     #TODO: Do I need "fig" here?
     def _plot_2d(self, plot_data, epoch, xlim: list,
@@ -329,9 +333,6 @@ class SingleItemAuctionLogger(Logger):
     #     writer.add_scalar('hyperparams/n_perturbations', n_perturbations, e
 
 class LLGAuctionLogger(SingleItemAuctionLogger):
-    # TODO: Inherit from Logger
-    def __init__(self, l_config: LearningConfiguration):
-        super().__init__(None, l_config)
 
     #TODO: Delete!?
     def plot_bid_function(self, fig, v, b, writer=None, e=None):
@@ -347,18 +348,15 @@ class LLGAuctionLogger(SingleItemAuctionLogger):
 
         fig = plt.gcf()
         plt.cla()
-        plt.xlim(0, 2)
-        plt.ylim(0, 2)
+        plt.xlim(self.exp.plot_xmin, self.exp.plot_xmax)
+        plt.ylim(self.exp.plot_ymin, self.exp.plot_ymax)
         plt.xlabel('valuation')
         plt.ylabel('bid')
         plt.text(0 + 0.5, 2 - 0.5, 'iteration {}'.format(e))
         plt.plot(v[0],b[0], 'bo', self.v_opt[0], self.b_opt[0], 'b--', v[1],b[1], 'go', self.v_opt[1], self.b_opt[1], 'g--', v[2],b[2], 'ro', self.v_opt[2],self.b_opt[2], 'r--')
-        self._process_figure(fig, writer, e)
+        self._process_figure(fig, writer, e, figure_name='bid_function')
 
 class LLLLGGAuctionLogger(SingleItemAuctionLogger):
-    # TODO: Inherit from Logger
-    def __init__(self, l_config: LearningConfiguration):
-        super().__init__(None, l_config)
 
     def log_training_iteration(self, prev_params, epoch, strat_to_bidder, eval_batch_size, utilities, log_params: dict):
         # TODO It is by no means nice that there is so much specific logic in here
@@ -413,7 +411,7 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
         fig, plt = self._plot_3d([valuations, models_print], e, [self.plot_xmin, self.plot_xmax],
                                  [self.plot_ymin, self.plot_ymax], [self.plot_ymin, self.plot_ymax])
 
-        self._process_figure(fig, writer, e)
+        self._process_figure(fig, writer, e, figure_name='bid_functions')
 
     #TODO: Fix output (currently overpallping)
     def _plot_3d(self, plot_data, epoch, xlim: list, ylim: list, zlim:list=[None,None],
@@ -607,7 +605,7 @@ class MultiUnitAuctionLogger(Logger):
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
         pass
 
-    def _process_figure(self, fig, writer=None, epoch=None):
+    def _process_figure(self, fig, **kwargs):
         pass
 
     def _log_once(self):

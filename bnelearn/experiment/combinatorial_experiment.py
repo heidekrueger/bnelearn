@@ -3,6 +3,7 @@ from abc import ABC
 import numpy as np
 import scipy.integrate as integrate
 from functools import partial
+from typing import Iterable
 
 from bnelearn.experiment import Experiment
 from bnelearn.mechanism.auctions_combinatorial import *
@@ -10,6 +11,7 @@ from bnelearn.mechanism.auctions_combinatorial import *
 from bnelearn.bidder import Bidder
 from bnelearn.environment import Environment, AuctionEnvironment
 from bnelearn.experiment import Experiment, GPUController, Logger, LearningConfiguration
+from bnelearn.experiment.logger import LLGAuctionLogger, LLLLGGAuctionLogger
 
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
@@ -19,22 +21,23 @@ from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
 # TODO: Currently only implemented for uniform val
 # TODO: Currently only implemented for LLG and LLLLGG
 class CombinatorialExperiment(Experiment, ABC):
-    def __init__(self, gpu_config: GPUController, experiment_params: dict, logger: Logger, l_config: LearningConfiguration):
-        self.gamma = 0.0
-        assert self.gamma == 0, "Gamma > 0 implemented yet!?"
-        super().__init__(gpu_config, experiment_params, logger, l_config)
-        self.global_bne_env = None
-        self.global_bne_utility = None
+
+
+
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0):
-        # The model should know who is using it
+        # TODO: this probably isn't the right place...
+        # The model should know who is using it # TODO: Stefan: In my oppinion, it shouldn't...
         strategy.connected_bidders.append(player_position)
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
                               batch_size=batch_size, n_items = self.n_items)
 
+
+
     # Currently only working for LLG and LLLLGG.
     def _setup_bidders(self):
         print('Setting up bidders...')
+        # TODO: this includes LLG / LLLLGG specific logic!
         self.models = [None] * 2 if self.model_sharing else [None] * self.n_players
 
         for i in range(len(self.models)):
@@ -64,10 +67,14 @@ class CombinatorialExperiment(Experiment, ABC):
 
         if self.l_config.pretrain_iters > 0:
             print('\tpretraining...')
+            #TODO: why is this on per bidder basis when everything else is on per model basis?
             for bidder in self.bidders:
                 bidder.strategy.pretrain(bidder.valuations, self.l_config.pretrain_iters)
 
     def _setup_learners(self):
+        # TODO: the current strat_to_player kwargs is weird. Cross-check this with how values are evaluated in learner.
+        # ideally, we can abstract this function away and move the functionality to the base Experiment class.
+        # Implementation in SingleItem case is identical except for player position argument below.
         self.learners = []
         for i in range(len(self.models)):
             self.learners.append(ESPGLearner(model=self.models[i],
@@ -78,18 +85,67 @@ class CombinatorialExperiment(Experiment, ABC):
                                  strat_to_player_kwargs={"player_position": i*self.n_local}
                                  ))
 
+
+
 # mechanism/bidding implementation, plot, bnes
 class LLGExperiment(CombinatorialExperiment):
-    def __init__(self, experiment_params:dict, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration):
+    def __init__(self, experiment_params:dict, gpu_config: GPUController, l_config: LearningConfiguration):
+
+        # coupling between valuations only 0 implemented currently
+        self.gamma = 0.0
+        assert self.gamma == 0, "Gamma > 0 implemented yet!?"
         # Experiment specific parameters
         self.n_local = 2
         experiment_params['n_players'] = 3
-        self.n_items = 1
-        super().__init__(gpu_config, experiment_params, logger, l_config)
-        self._run_setup()
+        self.n_items = 1 # TODO: what does this do? can we get rid of it?
+
+        self.payment_rule = experiment_params['payment_rule']
+
+        self.model_sharing = experiment_params['model_sharing']
+        
+        
+
+        assert all(key in experiment_params for key in ['u_lo', 'u_hi']), \
+            """Missing prior information!"""
+
+        u_lo = experiment_params['u_lo']
+        if isinstance(u_lo, Iterable):
+            assert len(u_lo) == 3
+            u_lo = [float(l) for l in u_lo]
+        else:
+            u_lo = [float(u_lo)] * 3
+        self.u_lo = u_lo
+
+
+        u_hi = experiment_params['u_hi']
+        assert isinstance(u_hi, Iterable)
+        assert len(u_hi) == 3
+        assert u_hi[0] == u_hi[1], "local bidders should be identical"
+        assert u_hi[0] < u_hi[2], "local bidders must be weaker than global bidder"
+        self.u_hi = [float(h) for h in u_hi]
+
+
+        self.plot_xmin = min(u_lo)
+        self.plot_xmax = max(u_hi)
+        self.plot_ymin = self.plot_xmin
+        self.plot_ymax = self.plot_xmax * 1.05
+
+
+        # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known! (i.e. uniformity, bounds, etc)
+        known_bne = self.payment_rule in ['first_price', 'vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
+        
+        super().__init__(gpu_config, experiment_params, l_config, known_bne)
+
+    def _setup_logger(self, base_dir):
+        return LLGAuctionLogger(self, base_dir)
+
+
+    def _setup_mechanism(self):
+        self.mechanism = LLGAuction(rule = self.payment_rule)
+
 
     def _setup_learning_environment(self):
-        self.mechanism = LLGAuction(rule=self.mechanism_type, cuda=self.gpu_config.cuda)
+        # TODO: is this the same for all settings (single, multi-unit, combinatorial???)
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
                                       batch_size=self.l_config.batch_size,
@@ -101,32 +157,30 @@ class LLGExperiment(CombinatorialExperiment):
             valuation = torch.tensor(valuation)
 
         # all core-selecting rules are strategy proof for global player:
-        if self.mechanism_type in ['vcg', 'proxy', 'nearest_zero', 'nearest_bid',
+        if self.payment_rule in ['vcg', 'proxy', 'nearest_zero', 'nearest_bid',
                                    'nearest_vcg'] and player_position == 2:
             return valuation
         # local bidders:
-        if self.mechanism_type == 'vcg':
+        if self.payment_rule == 'vcg':
             return valuation
-        if self.mechanism_type in ['proxy', 'nearest_zero']:
+        if self.payment_rule in ['proxy', 'nearest_zero']:
             bid_if_positive = 1 + torch.log(valuation * (1.0 - self.gamma) + self.gamma) / (1.0 - self.gamma)
             return torch.max(torch.zeros_like(valuation), bid_if_positive)
-        if self.mechanism_type == 'nearest_bid':
+        if self.payment_rule == 'nearest_bid':
             return (np.log(2) - torch.log(2.0 - (1. - self.gamma) * valuation)) / (1. - self.gamma)
-        if self.mechanism_type == 'nearest_vcg':
+        if self.payment_rule == 'nearest_vcg':
             bid_if_positive = 2. / (2. + self.gamma) * (
                         valuation - (3. - np.sqrt(9 - (1. - self.gamma) ** 2)) / (1. - self.gamma))
             return torch.max(torch.zeros_like(valuation), bid_if_positive)
         raise ValueError('optimal bid not implemented for other rules')
 
     def _setup_eval_environment(self):
-        # TODO: Check if correct and finish
-        grid_size = [50, 50, 100]
         bne_strategies = [
             ClosureStrategy(partial(self._optimal_bid, player_position=i))
             for i in range(self.n_players)
         ]
 
-        self.global_bne_env = AuctionEnvironment(
+        bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
             agents=[self._strat_to_bidder(bne_strategies[i], player_position=i, batch_size=self.l_config.eval_batch_size)
                     for i in range(self.n_players)],
@@ -135,24 +189,18 @@ class LLGExperiment(CombinatorialExperiment):
             strategy_to_player_closure=self._strat_to_bidder
         )
 
-        # print("Utility in BNE (analytical): \t{:.5f}".format(bne_utility))
-        global_bne_utility_sampled = torch.tensor(
-            [self.global_bne_env.get_reward(a, draw_valuations=True) for a in self.global_bne_env.agents])
-        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*global_bne_utility_sampled))
+        self.bne_env = bne_env
 
-        #TODO: Remove since this is done in logigng!?
-        #eps_abs = lambda us: global_bne_utility_sampled - us
-        #eps_rel = lambda us: 1 - us / global_bne_utility_sampled
+        bne_utilities_sampled = torch.tensor(
+            [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
 
-        # environment filled with optimal players for logging
-        # use higher batch size for calculating optimum
-        # TODO:@Stefan: Check if this is correcgt!?
-        self.bne_env = self.global_bne_env
-        self.bne_utilities = global_bne_utility_sampled
+        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
+        print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
+        # TODO: possibly redraw bne-env valuations over time to eliminate bias
+        self.bne_utilities = bne_utilities_sampled
 
     def _get_logdir(self):
-        name = ['LLG', self.mechanism_type, str(self.n_players) + 'p']
-        self.base_dir = os.path.join(*name)  # ToDo Redundant?
+        name = ['LLG', self.payment_rule]
         return os.path.join(*name)
 
     def _training_loop(self, epoch, logger):
@@ -167,10 +215,10 @@ class LLGExperiment(CombinatorialExperiment):
         ])
         # everything after this is logging --> measure overhead
         log_params = {}
-        logger.log_training_iteration(prev_params=prev_params, epoch=epoch, bne_env=self.bne_env,
-                                           strat_to_bidder=self._strat_to_bidder,
-                                           eval_batch_size=self.l_config.eval_batch_size,
-                                           bne_utilities=self.bne_utilities, utilities=utilities, log_params=log_params)
+        logger.log_training_iteration(prev_params=prev_params, epoch=epoch,
+                                           strat_to_bidder=self._strat_to_bidder,                                           
+                                           bne_utilities=self.bne_utilities, utilities=utilities,
+                                           log_params=log_params)
         if epoch % 10 == 0:
             print("epoch {}, utilities: ".format(epoch))
             for i in range(len(utilities)):
@@ -180,15 +228,18 @@ class LLGExperiment(CombinatorialExperiment):
 
 # mechanism/bidding implementation, plot
 class LLLLGGExperiment(CombinatorialExperiment):
-    def __init__(self, experiment_params, gpu_config: GPUController, logger: Logger, l_config: LearningConfiguration):
+    def __init__(self, experiment_params, gpu_config: GPUController, l_config: LearningConfiguration):
         self.n_local = 4
         experiment_params['n_players'] = 6
         self.n_items = 2
         assert l_config.input_length == 2, "Learner config has to take 2 inputs!"
-        super().__init__(gpu_config, experiment_params, logger, l_config)
-        #TODO:Dummy values for now
-        self.bne_utilities = [9999] * 2 if experiment_params['model_sharing'] else [9999] * 6
-        self._run_setup()
+        super().__init__(experiment_params, gpu_config, l_config)
+
+    def _setup_logger(self, base_dir):
+        return LLGAuctionLogger(self, base_dir)
+
+    def _setup_mechanism(self):
+        self.mechanism = LLLLGGAuction(rule=self.payment_rule)
 
     def _setup_learning_environment(self):
         #TODO: We could handover self.mechanism in experiment and move _self_learning_environment up, since it is identical in most places
@@ -199,10 +250,6 @@ class LLLLGGExperiment(CombinatorialExperiment):
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
 
-    def _setup_eval_environment(self):
-        # No bne eval known
-        # Add _setup_eval_regret_environment(self)
-        pass
 
     def _get_logdir(self):
         name = ['LLLLGG', self.mechanism_type, str(self.n_players) + 'p']
