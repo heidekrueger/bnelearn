@@ -500,15 +500,15 @@ class MultiUnitAuctionLogger(Logger):
         self.colors_warm = ['maroon', 'firebrick', 'red', 'salmon',
                             'coral', 'lightsalmon', 'mistyrose', 'lightgrey',
                             'white']
-        super().__init__(exp=exp, base_dir = base_dir, plot_epoch=plot_epoch)
+        super().__init__(exp=exp, base_dir=base_dir, plot_epoch=plot_epoch)
 
     def log_experiment(self, run_comment, max_epochs: int):
 
         # TODO: rewrite to get fields from self.exp instead of parameters
-        self.models = models
-        self.env = env
-        self.experiment_params = experiment_params
-        self.gpu_config= gpu_config
+        self.models = self.exp.models
+        self.env = self.exp.env
+        self.experiment_params = self.exp.experiment_params
+        self.gpu_config = self.exp.gpu_config
 
         self.max_epochs = max_epochs
         if os.name == 'nt':

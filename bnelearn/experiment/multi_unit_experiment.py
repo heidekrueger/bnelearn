@@ -16,13 +16,14 @@ from bnelearn.mechanism import (
     MultiItemVickreyAuction, MultiItemUniformPriceAuction, MultiItemDiscriminatoryAuction,
     FPSBSplitAwardAuction, Mechanism
 )
+from bnelearn.experiment.logger import MultiUnitAuctionLogger
 from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
 from bnelearn.util import metrics
 
 
 class MultiUnitExperiment(Experiment, ABC):
-    def __init__(self, experiment_params: dict, mechanism: Mechanism, gpu_config: GPUController, logger: Logger,
-                 l_config: LearningConfiguration):
+    def __init__(self, experiment_params: dict, mechanism_type: Mechanism, gpu_config: GPUController,
+                 l_config: LearningConfiguration, known_bne=True):
 
         # ToDO How about to assigning expetiment parameters to the object and just using them from the dictionary?
         self.n_players = experiment_params['n_players']
@@ -31,6 +32,7 @@ class MultiUnitExperiment(Experiment, ABC):
         self.u_hi = experiment_params['u_hi']
         self.BNE1 = experiment_params['BNE1']
         self.model_sharing = experiment_params['model_sharing']
+        self.mechanism_type = mechanism_type
 
         if 'BNE2' in experiment_params.keys():
             self.BNE2 = experiment_params['BNE2']
@@ -61,9 +63,7 @@ class MultiUnitExperiment(Experiment, ABC):
             print('{}: {}'.format(k, l_config.learner_hyperparams[k]))
         print('-----------\n')
 
-        super().__init__(gpu_config, experiment_params, logger, l_config)
-
-        self.mechanism = mechanism
+        super().__init__(gpu_config, experiment_params, l_config, known_bne=known_bne)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         """
@@ -123,9 +123,18 @@ class MultiUnitExperiment(Experiment, ABC):
             for i in range(self.n_players)
         ]
 
+    def _setup_logger(self, base_dir):
+        """Creates logger for run.
+        THIS IS A TEMPORARY WORKAROUND TODO
+        """
+        return MultiUnitAuctionLogger(exp=self, base_dir=base_dir, plot_epoch=100)
+
+    def _setup_mechanism(self):
+        self.mechanism = self.mechanism_type(cuda=self.gpu_config.cuda)
+
     def _setup_learning_environment(self):
         self.env = AuctionEnvironment(
-            self.mechanism,
+            mechanism=self.mechanism,
             agents=self.bidders,
             n_players=self.n_players,
             batch_size=self.l_config.batch_size,
@@ -135,7 +144,7 @@ class MultiUnitExperiment(Experiment, ABC):
     def _setup_learners(self):
         self.learners = [
             ESPGLearner(
-                model=self.models[i],
+                model=model,
                 environment=self.env,
                 hyperparams=self.l_config.learner_hyperparams,
                 optimizer_type=self.l_config.optimizer,
@@ -159,7 +168,7 @@ class MultiUnitExperiment(Experiment, ABC):
         ]
 
         self.bne_env = AuctionEnvironment(
-            self.mechanism,
+            mechanism=self.mechanism,
             agents=[
                 self._strat_to_bidder(bne_strategy, self.l_config.batch_size, i)
                 for i, bne_strategy in enumerate(self.bne_strategies)
@@ -270,12 +279,13 @@ class MultiItemVickreyAuction2x2(MultiUnitExperiment):
         'BNE1': 'Truthful'
     }
 
-    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+    def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        mechanism = MultiItemVickreyAuction(cuda=gpu_config.cuda)
-        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism=mechanism,
-                         gpu_config=gpu_config, logger=logger, l_config=l_config)
-        self._run_setup()
+        mechanism_type = MultiItemVickreyAuction
+
+        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism_type=mechanism_type,
+                         gpu_config=gpu_config, l_config=l_config, known_bne=True)
+        self._setup_run()
 
     def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
         warnings.warn("No 2nd explicit BNE known.", Warning)
@@ -291,12 +301,13 @@ class MultiItemUniformPriceAuction2x2(MultiUnitExperiment):
         'BNE2': 'BNE2'
     }
 
-    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+    def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        mechanism = MultiItemUniformPriceAuction(cuda=gpu_config.cuda)
-        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism=mechanism,
-                         gpu_config=gpu_config, logger=logger, l_config=l_config)
-        self._run_setup()
+        mechanism_type = MultiItemUniformPriceAuction
+
+        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism_type=mechanism_type,
+                         gpu_config=gpu_config, l_config=l_config, known_bne=True)
+        self._setup_run()
 
     @staticmethod
     def default_pretrain_transform(input_tensor):
@@ -354,13 +365,13 @@ class MultiItemUniformPriceAuction2x3limit2(MultiUnitExperiment):
         'item_interest_limit': 2
     }
 
-    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+    def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        mechanism = MultiItemUniformPriceAuction(cuda=gpu_config.cuda)
+        mechanism_type = MultiItemUniformPriceAuction
 
-        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism=mechanism,
-                         gpu_config=gpu_config, logger=logger, l_config=l_config)
-        self._run_setup()
+        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism_type=mechanism_type,
+                         gpu_config=gpu_config, l_config=l_config, known_bne=True)
+        self._setup_run()
 
     # ToDO Once again in this method using u_hi/u_lo[0]. Is it appropriate?
     def _optimal_bid(self, valuation, player_position=None):
@@ -404,12 +415,13 @@ class MultiItemDiscriminatoryAuction2x2(MultiUnitExperiment):
         'BNE2': 'Truthful'
     }
 
-    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+    def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        mechanism = MultiItemDiscriminatoryAuction(cuda=gpu_config.cuda)
+        mechanism = MultiItemDiscriminatoryAuction
+
         super().__init__({**self.class_experiment_params, **experiment_params}, mechanism=mechanism,
-                         gpu_config=gpu_config, logger=logger, l_config=l_config)
-        self._run_setup()
+                         gpu_config=gpu_config, l_config=l_config, known_bne=True)
+        self._setup_run()
 
     def _optimal_bid(self, valuation, player_position=None):
         valuation = super()._optimal_bid(valuation)
@@ -447,12 +459,13 @@ class MultiItemDiscriminatoryAuction2x2CMV(MultiUnitExperiment):
         'constant_marginal_values': True
     }
 
-    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+    def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        mechanism = MultiItemDiscriminatoryAuction(cuda=gpu_config.cuda)
-        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism=mechanism,
-                         gpu_config=gpu_config, logger=logger, l_config=l_config)
-        self._run_setup()
+        mechanism_type = MultiItemDiscriminatoryAuction
+
+        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism_type=mechanism_type,
+                         gpu_config=gpu_config, l_config=l_config, known_bne=True)
+        self._setup_run()
 
     def _optimal_bid(self, valuation, player_position=None):
         valuation = super()._optimal_bid(valuation)
@@ -518,11 +531,12 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
         'is_FPSBSplitAwardAuction2x2': True
     }
 
-    def __init__(self, experiment_params: dict, gpu_config: GPUController, logger: Logger,
+    def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        mechanism = FPSBSplitAwardAuction(cuda=gpu_config.cuda)
-        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism=mechanism,
-                         gpu_config=gpu_config, logger=logger, l_config=l_config)
+        mechanism_type = FPSBSplitAwardAuction
+
+        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism_type=mechanism_type,
+                         gpu_config=gpu_config, l_config=l_config, known_bne=True)
 
         self.efficiency_parameter = 0.3
 
@@ -532,7 +546,7 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
             'input_length': self.input_length,
             'linspace': False
         }
-        self._run_setup()
+        self._setup_run()
 
     # ToDO Efficiency parameter shouldn't be hardcoded here, but it is called in strategy class from pretrain without
     # the efficiency_parameter

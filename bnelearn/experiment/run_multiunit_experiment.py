@@ -97,11 +97,9 @@ for experiment_params in settings:
         cache_eval_actions = True
     )
 
-    logger = MultiUnitAuctionLogger(experiment_params, l_config, plot_epoch=100)
     experiment = experiment_params['Auction'](
         experiment_params,
         gpu_config = gpu_config,
-        logger = logger,
         l_config = l_config
     )
     experiment.run(epochs=2000, n_runs=1)
