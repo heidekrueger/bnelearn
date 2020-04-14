@@ -65,17 +65,6 @@ class SingleItemExperiment(Experiment, ABC):
                                       batch_size=self.l_config.batch_size, n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
 
-class AsymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
-
-    # known issue: pylint doesn't recognize this class as abstract: https://github.com/PyCQA/pylint/commit/4024949f6caf5eff5f3da7ab2b4c3cf2e296472b
-    # pylint: disable=abstract-method
-
-    def __init__(self, experiment_params: dict, gpu_config: GPUController,
-                 l_config: LearningConfiguration):
-        super().__init__(experiment_params, gpu_config,  l_config)
-        assert self.model_sharing == False, "Model sharing not possible with assymetric bidders!" #TODO: this shouldn't even exist
-# implementation logic, e.g. model sharing. Model sharing should also override plotting function, etc.
-
 
 # Define known BNE functions top level, so they may be pickled for parallelization
 # These are called millions of timex, so each implementation should be
@@ -106,14 +95,13 @@ def _optimal_bid_FPSB_UniformSymmetricPriorSingleItem(valuation: torch.Tensor, n
 def _truthful_bid(valuation: torch.Tensor, player_position = None) -> torch.Tensor:
     return valuation
 
-class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
+class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
     # TODO: this class should not be abstract, SymmetricSingleItemExperiment is implemented and has known bne for arbitrary prior!
 
     def __init__(self, common_prior: Distribution,
                  experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration, known_bne = False):
-
 
         self.common_prior = common_prior
         self.risk = float(experiment_params['risk'])
@@ -204,7 +192,6 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
 
         return torch.tensor(bne_utility, device=self.gpu_config.device)
 
-
     def _setup_eval_environment(self):
 
         self._set_symmetric_bne_closure()
@@ -242,6 +229,9 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
         print('Using analytical BNE utility.')
         self.bne_utility = bne_utility_analytical
 
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+        strategy.connected_bidders.append(player_position)
+        return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions, risk=self.risk)
 
     def _get_logdir(self):
         name = ['single_item', self.mechanism_type, self.valuation_prior,
@@ -274,7 +264,6 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment, ABC):
 
 
 
-
 # implementation differences to symmetric case?
 # known BNE
 class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
@@ -295,15 +284,9 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         super().__init__(common_prior, experiment_params, gpu_config, l_config, known_bne=known_bne)
 
         self.plot_xmin = self.u_lo
-        self.plot_xmax = self.u_hi 
+        self.plot_xmax = self.u_hi
         self.plot_ymin = 0
         self.plot_ymax = self.u_hi * 1.05
-
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
-        strategy.connected_bidders.append(player_position)
-        return Bidder.uniform(self.u_lo, self.u_hi, strategy, batch_size=batch_size,
-                              player_position=player_position, cache_actions=cache_actions, risk=self.risk)
-
 
     def _set_symmetric_bne_closure(self):
         # set optimal_bid here, possibly overwritten by subclasses if more specific form is known
@@ -318,7 +301,7 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
     def _get_analytical_bne_utility(self):
         if self.mechanism_type == 'first_price':
             bne_utility = torch.tensor(
-                (self.risk * (self.u_hi - self.u_lo) / (self.n_players - 1 + self.risk)) ** 
+                (self.risk * (self.u_hi - self.u_lo) / (self.n_players - 1 + self.risk)) **
                     self.risk / (self.n_players + self.risk),
                 device = self.gpu_config.device
                 )
@@ -340,68 +323,27 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
         return bne_utility
 
-# known BNE + shared setup logic across runs (calculate and cache BNE
-#TODO: Adjust self.valuation_mean to lists like in Uniform?!
-#TODO: Not working yet. Optimal bid doesn't look right to me. Check!
 class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
-    def __init__(self, experiment_params: dict, gpu_config: GPUController, 
+    def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        
+
         assert all([key in experiment_params for key in ['valuation_mean', 'valuation_std']]), \
             """Valuation mean and/or std not specified!"""
 
-        self.valuation_prior = 'normal'        
+        self.valuation_prior = 'normal'
         self.valuation_mean = experiment_params['valuation_mean']
         self.valuation_std = experiment_params['valuation_std']
         common_prior = torch.distributions.normal.Normal(loc=self.valuation_mean, scale=self.valuation_std)
 
         super().__init__(common_prior, experiment_params, gpu_config, l_config)
 
-        self.plot_xmin = int(max(0, self.valuation_mean - 3 * self.valuation_std))        
+        self.plot_xmin = int(max(0, self.valuation_mean - 3 * self.valuation_std))
         self.plot_xmax = int(self.valuation_mean + 3 * self.valuation_std)
         self.plot_ymin = 0
         self.plot_ymax = 20 if self.mechanism_type == 'first_price' else self.plot_xmax
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
-        strategy.connected_bidders.append(player_position)
-        return Bidder.normal(self.valuation_mean, self.valuation_std, strategy,
-                             batch_size=batch_size,
-                             player_position=player_position,
-                             cache_actions=cache_actions,
-                             risk=self.risk)
 
-    def _setup_eval_environment(self):
-
-        super()._setup_eval_environment()
-
-        if self.mechanism_type == 'first_price':
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
-                # don't print scipy accuracy warnings
-                self.bne_utility, error_estimate = integrate.dblquad(
-                    lambda x, v: self.common_prior.cdf(x) ** (self.n_players - 1) * self.common_prior.log_prob(
-                        v).exp(),
-                    0, float('inf'),  # outer boundaries
-                    lambda v: 0, lambda v: v)  # inner boundaries
-                if error_estimate > 1e-6:
-                    warnings.warn('Error in optimal utility might not be negligible')
-        elif self.mechanism_type == 'second_price':
-            F = self.common_prior.cdf
-            f = lambda x: self.common_prior.log_prob(torch.tensor(x)).exp()
-            f1n = lambda x, n: n * F(x) ** (n - 1) * f(x)
-
-            self.bne_utility, error_estimate = integrate.dblquad(
-                lambda x, v: (v - x) * f1n(x, self.n_players - 1) * f(v),
-                0, float('inf'),  # outer boundaries
-                lambda v: 0, lambda v: v)  # inner boundaries
-
-            if error_estimate > 1e-6:
-                warnings.warn('Error bound on analytical bne utility is not negligible!')
-        else:
-            raise ValueError("Invalid auction mechanism.")
-
-
-class TwoPlayerUniformPriorSingleItemExperiment(AsymmetricPriorSingleItemExperiment):
+class TwoPlayerUniformPriorSingleItemExperiment(SingleItemExperiment):
     def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
 
