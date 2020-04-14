@@ -73,6 +73,7 @@ class MultiUnitExperiment(Experiment, ABC):
         """
         Standard strat_to_bidder method.
         """
+        strategy.connected_bidders.append(player_position)
         return Bidder.uniform(
             lower=self.u_lo[player_position], upper=self.u_hi[player_position],
             strategy=strategy,
@@ -111,7 +112,7 @@ class MultiUnitExperiment(Experiment, ABC):
         #     selection = 'random' if param_dict["exp_no"] != 6 else split_award_dict
         # )
         pretrain_valuations = self._strat_to_bidder(
-            lambda x: x, self.l_config.batch_size, 0).draw_valuations_()[:pretrain_points, :]
+            ClosureStrategy(lambda x: x), self.l_config.batch_size, 0).draw_valuations_()[:pretrain_points, :]
 
         self.n_parameters = list()
         for model in self.models:

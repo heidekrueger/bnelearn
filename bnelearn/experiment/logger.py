@@ -641,8 +641,6 @@ class MultiUnitAuctionLogger(SingleItemAuctionLogger):
                        for model in self.models]
         self.writer.add_scalars('eval/weight_norm', dict(zip(agent_name_list, model_paras)), epoch)
 
-    def _log_hyperparams(self, writer, epoch):
-        pass
 
     def _policy_metric(self, policy_1: Callable, policy_2: Callable, dim: int, bounds=[0, 1],
                        eval_points_max: int = 2 ** 7,
