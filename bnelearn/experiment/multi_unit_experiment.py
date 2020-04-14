@@ -30,6 +30,10 @@ class MultiUnitExperiment(Experiment, ABC):
         self.n_items = experiment_params['n_items']
         self.u_lo = experiment_params['u_lo']
         self.u_hi = experiment_params['u_hi']
+        self.plot_xmin = min(self.u_lo)
+        self.plot_xmax = max(self.u_hi)
+        self.plot_ymin = 0
+        self.plot_ymax = self.plot_xmax * 1.05
         self.BNE1 = experiment_params['BNE1']
         self.model_sharing = experiment_params['model_sharing']
         self.mechanism_type = mechanism_type

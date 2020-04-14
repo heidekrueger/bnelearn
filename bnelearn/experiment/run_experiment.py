@@ -11,6 +11,7 @@ from bnelearn.experiment.single_item_experiment import UniformSymmetricPriorSing
     GaussianSymmetricPriorSingleItemExperiment
 
 from bnelearn.experiment.combinatorial_experiment import LLGExperiment, LLLLGGExperiment
+from bnelearn.experiment.multi_unit_experiment import MultiItemVickreyAuction2x2
 import warnings
 
 #TODO: Using locals() to directly create the dict 
@@ -46,14 +47,24 @@ def run_llg(n_runs: int, n_epochs: int,
     return n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params
 
 def run_llllgg(n_runs: int, n_epochs: int, 
-            payment_rule: str, model_sharing=True, u_lo=[0,0,0,0,0,0], u_hi=[1,1,1,1,2,2],
-            risk=1.0, regret_batch_size=2**8, regret_grid_size=2**8,
-            specific_gpu=1):
+               payment_rule: str, model_sharing=True, u_lo=[0,0,0,0,0,0], u_hi=[1,1,1,1,2,2],
+               risk=1.0, regret_batch_size=2**8, regret_grid_size=2**8,
+               specific_gpu=1):
     
     experiment_params = locals()
     n_players = [6]
     input_length = 2
     experiment_class = LLLLGGExperiment
+    return n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params
+
+def run_MultiItemVickreyAuction2x2(n_runs: int, n_epochs: int, 
+                                   model_sharing=True, u_lo=[0,0], u_hi=[1,1],
+                                   risk=1.0, regret_batch_size=2**8, regret_grid_size=2**8,
+                                   specific_gpu=1):
+    experiment_params = locals()
+    n_players = [2]
+    input_length = 2
+    experiment_class = MultiItemVickreyAuction2x2
     return n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params
 
 if __name__ == '__main__':
@@ -68,7 +79,11 @@ if __name__ == '__main__':
         run_single_item_uniform_symmetric(1,20,[2,3],'first_price')
 
     '''
-    n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = fire.Fire()
+    #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = fire.Fire()
+    #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_llg(1,20,'vcg')
+    #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_single_item_uniform_symmetric(1,20, [2], 'first_price')
+    n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_MultiItemVickreyAuction2x2(2, 20)
+
 
     gpu_config = GPUController(specific_gpu=specific_gpu)
 

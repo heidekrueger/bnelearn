@@ -41,6 +41,11 @@ class Logger(ABC):
         self.l_config = exp.l_config
         self.experiment_params = exp.experiment_params
 
+        # metrics
+        self.log_opt = self.exp.known_bne
+        self.log_regret = None
+        self.log_L2 = None
+        self.log_rmse = None
 
         self.base_dir = base_dir
         self.log_dir = None
@@ -61,7 +66,7 @@ class Logger(ABC):
     #    self.writer.close()
 
     @abstractmethod
-    def log_experiment(self, run_comment, max_epochs: int):
+    def log_experiment(self, run_comment):
         pass
 
     # ToDo Make a signature take a single dictionary parameter, as signatures would differ in each class
@@ -112,15 +117,17 @@ class SingleItemAuctionLogger(Logger):
     def __init__(self, exp, base_dir):
         super().__init__(exp, base_dir)
 
-    def log_experiment(self, run_comment, max_epochs: int):
-
+    def log_experiment(self, run_comment, max_epochs):
+        self.max_epochs = max_epochs
         # setting up plotting
         self.plot_points = min(100, self.exp.l_config.batch_size)
-        # TODO: this should be model specific! (e.g. in LLG locals should not plot higher vals than their own)
-        self.v_opt = [np.linspace(self.exp.plot_xmin, self.exp.plot_xmax, 100)] * len(self.exp.models)
-        # TODO: presumes existence of optimal bid --> should not be assumed here
-        self.b_opt = [self.exp._optimal_bid(self.v_opt[i], player_position=model.connected_bidders[0])
-                        for i,model in enumerate(self.exp.models)]
+
+        if self.log_opt:
+            # TODO: this should be model specific! (e.g. in LLG locals should not plot higher vals than their own)
+            self.v_opt = [np.linspace(self.exp.plot_xmin, self.exp.plot_xmax, 100)] * len(self.exp.models)
+            # TODO: presumes existence of optimal bid --> should not be assumed here
+            self.b_opt = [self.exp._optimal_bid(self.v_opt[i], player_position=model.connected_bidders[0])
+                            for i,model in enumerate(self.exp.models)]
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
@@ -144,7 +151,7 @@ class SingleItemAuctionLogger(Logger):
         self.fig = plt.figure()
 
         self.writer = SummaryWriter(self.log_dir, flush_secs=30)
-        self._log_once()
+        self._log_experimentparams()
         self._log_hyperparams()
 
     #TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
@@ -296,7 +303,15 @@ class SingleItemAuctionLogger(Logger):
             plt.plot(x[i], y[i], color=cycle[i], marker='o', linestyle = 'None')
         return fig, plt
 
+    def _log_experimentparams(self):
+        #TODO: write out all experiment params (complete dict)
+        pass
 
+    def _log_trained_model(self):
+        #TODO: write out the trained model at the end of training @Stefan
+        pass
+
+    #TODO: delete!?
     # Setup logging
     def _log_once(self):
         """Everything that should be logged only once on initialization."""
@@ -323,14 +338,31 @@ class SingleItemAuctionLogger(Logger):
         log_metric('eval', 'L_2', L_2)
         log_metric('eval', 'L_inf', L_inf)
 
-    # TODO: deferred until writing logger
     def _log_hyperparams(self):
         """Everything that should be logged on every learning_rate updates"""
-    #     writer.add_scalar('hyperparams/batch_size', batch_size, e)
-    #     writer.add_scalar('hyperparams/learning_rate', learning_rate, e)
-    #     writer.add_scalar('hyperparams/momentum', momentum, e)
-    #     writer.add_scalar('hyperparams/sigma', sigma, e)
-    #     writer.add_scalar('hyperparams/n_perturbations', n_perturbations, e
+        epoch = 0
+        #TODO: what is n_parameters?
+        #n_parameters = self.experiment_params['n_parameters']
+        #for agent in range(len(self.exp.models)):
+        #    self.writer.add_scalar('hyperparameters/p{}_model_parameters'.format(agent),
+        #                           n_parameters[agent], epoch)
+        #self.writer.add_scalar('hyperparameters/model_parameters', sum(n_parameters), epoch)
+
+        for i, model in enumerate(self.exp.models):
+            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)
+            self.writer.add_graph(model, self.exp.env.agents[i].valuations)
+
+        self.writer.add_scalar('hyperparameters/batch_size', self.l_config.batch_size, epoch)
+        self.writer.add_scalar('hyperparameters/epochs', self.max_epochs, epoch)
+        self.writer.add_scalar(
+            'hyperparameters/pretrain_iters',
+            self.l_config.pretrain_iters,
+            epoch
+        )
+
+        self.writer.add_text('hyperparameters/optimizer', str(self.l_config.optimizer), epoch)
+        for key, value in self.l_config.optimizer_hyperparams.items():
+            self.writer.add_scalar('hyperparameters/' + str(key), value, epoch)
 
 class LLGAuctionLogger(SingleItemAuctionLogger):
 
@@ -490,7 +522,7 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
 
         return fig, plt
 
-class MultiUnitAuctionLogger(Logger):
+class MultiUnitAuctionLogger(SingleItemAuctionLogger):
     def __init__(self, exp, base_dir, plot_epoch: int=100):
         self.colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
                        '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
@@ -498,37 +530,11 @@ class MultiUnitAuctionLogger(Logger):
         self.colors_warm = ['maroon', 'firebrick', 'red', 'salmon',
                             'coral', 'lightsalmon', 'mistyrose', 'lightgrey',
                             'white']
-        super().__init__(exp=exp, base_dir=base_dir, plot_epoch=plot_epoch)
-
-    def log_experiment(self, run_comment, max_epochs: int):
-
-        # TODO: rewrite to get fields from self.exp instead of parameters
+        super().__init__(exp=exp, base_dir=base_dir)
         self.models = self.exp.models
         self.env = self.exp.env
         self.experiment_params = self.exp.experiment_params
         self.gpu_config = self.exp.gpu_config
-
-        self.max_epochs = max_epochs
-        if os.name == 'nt':
-            raise ValueError('The run_name may not contain : on Windows!')
-        run_name = time.strftime('%Y-%m-%d %a %H:%M:%S')
-        if run_comment:
-            run_name = run_name + ' - ' + str(run_comment)
-
-        self.log_dir = os.path.join(self.logging_options['log_root'], self.base_dir, run_name)
-        os.makedirs(self.log_dir, exist_ok=False)
-        if self.logging_options['save_figure_to_disk_png']:
-            os.mkdir(os.path.join(self.log_dir, 'png'))
-        if self.logging_options['save_figure_to_disk_svg']:
-            os.mkdir(os.path.join(self.log_dir, 'svg'))
-
-        print('Started run. Logging to {}'.format(self.log_dir))
-        self.fig = plt.figure()
-
-        # TODO: this never shuts down the writer! (that's the memory leak probably)
-        self.writer = SummaryWriter(self.log_dir, flush_secs=30)
-
-        self._log_once()
 
     def log_training_iteration(self, epoch, bidders, log_params: dict):
 
@@ -607,34 +613,6 @@ class MultiUnitAuctionLogger(Logger):
 
     def _process_figure(self, fig, **kwargs):
         pass
-
-    def _log_once(self):
-        epoch = 0
-        n_parameters = self.experiment_params['n_parameters']
-        for agent in range(len(self.models)):
-            self.writer.add_scalar('hyperparameters/p{}_model_parameters'.format(agent),
-                                   n_parameters[agent], epoch)
-        self.writer.add_scalar('hyperparameters/model_parameters', sum(n_parameters), epoch)
-
-        for i, model in enumerate(self.models):
-            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)
-            self.writer.add_graph(model, self.env.agents[i].valuations)
-
-        self.writer.add_scalar('hyperparameters/batch_size', self.l_config.batch_size, epoch)
-        self.writer.add_scalar('hyperparameters/epochs', self.max_epochs, epoch)
-        self.writer.add_scalar(
-            'hyperparameters/pretrain_iters',
-            self.l_config.pretrain_iters,
-            epoch
-        )
-        # TODO log seeds
-
-        # for key, value in self.l_config.learner_hyperparams.items():
-        #     self.writer.add_scalar('hyperparameters/' + str(key), value, epoch)
-
-        self.writer.add_text('hyperparameters/optimizer', str(self.l_config.optimizer), epoch)
-        for key, value in self.l_config.optimizer_hyperparams.items():
-            self.writer.add_scalar('hyperparameters/' + str(key), value, epoch)
 
     def _log_metrics(self, epoch, metrics_dict: dict):
         """Log scalar for each player"""
