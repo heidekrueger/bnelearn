@@ -301,6 +301,8 @@ class FPSBSplitAwardAuction(Mechanism):
         allocation: torch.Tensor(batch_size, b_bundles=2), values = {0,1}
         """
 
+        print(bids)
+        print()
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
@@ -322,20 +324,20 @@ class FPSBSplitAwardAuction(Mechanism):
 
         batch_arange = torch.arange(0, n_batch, device=bids.device)
         winning_bundles[
-                batch_arange,
-                best_100_indices,
-                torch.zeros_like(best_100_indices)
-            ] = 1
+            batch_arange,
+            best_100_indices,
+            torch.zeros_like(best_100_indices)
+        ] = 1
         winning_bundles[
-                batch_arange,
-                best_50_indices[:,0],
-                torch.ones_like(best_100_indices)
-            ] = 1
+            batch_arange,
+            best_50_indices[:,0],
+            torch.ones_like(best_100_indices)
+        ] = 1
         winning_bundles[
-                batch_arange,
-                best_50_indices[:,1],
-                torch.ones_like(best_100_indices)
-            ] = 1
+            batch_arange,
+            best_50_indices[:,1],
+            torch.ones_like(best_100_indices)
+        ] = 1
 
         winning_bundles[bid_100_won,:,1] = 0
         winning_bundles[~bid_100_won,:,0] = 0
@@ -343,7 +345,7 @@ class FPSBSplitAwardAuction(Mechanism):
         if random_tie_break: # restore bidder order
             idx_rev = idx.sort(dim=1)[1]
             winning_bundles = batched_index_select(winning_bundles, 1, idx_rev)
-            bids = batched_index_select(bids, 1, idx_rev) # are bids even needed later on? 
+            bids = batched_index_select(bids, 1, idx_rev) # are bids even needed later on?
 
         return winning_bundles
 

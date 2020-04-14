@@ -235,7 +235,7 @@ class AuctionEnvironment(Environment):
         else: # at least 2 environment agent --> build bid_profile, then play
             # get bid profile
             bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
-                                      dtype=agent_bid.dtype, device = self.mechanism.device)
+                                      dtype=agent_bid.dtype, device=self.mechanism.device)
             bid_profile[:, player_position, :] = agent_bid
 
             # Get actions for all players in the environment except the one at player_position
