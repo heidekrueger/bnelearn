@@ -163,6 +163,7 @@ class SingleItemAuctionLogger(Logger):
         #       2. caclulate ALL metrics as lists
         #       3. log everything (using a single function call)
 
+        # TODO: this logic does not work for LLG model
         for i, model in enumerate(self.exp.models):
             group_postfix = '' if model_is_global else f'_p{i}'
             metric_prefix = ''

@@ -56,14 +56,15 @@ class CombinatorialExperiment(Experiment, ABC):
         self.bidders = []
         for i in range(self.n_players):
             if self.model_sharing:
-                self.bidders.append(self._strat_to_bidder(self.models[int(i/self.n_local)],
-                                                     batch_size=self.l_config.batch_size, player_position=i))
+                model_idx = 0 if i < self.n_local else 1
+                self.bidders.append(self._strat_to_bidder(
+                    self.models[model_idx], batch_size=self.l_config.batch_size, player_position=i))
             else:
-                self.bidders.append(self._strat_to_bidder(self.models[i],
-                                                     batch_size=self.l_config.batch_size, player_position=i))
+                self.bidders.append(self._strat_to_bidder(
+                    self.models[i], batch_size=self.l_config.batch_size, player_position=i))
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
-                             [b.strategy for b in self.bidders]]
+                             self.models]
 
         if self.l_config.pretrain_iters > 0:
             print('\tpretraining...')
@@ -82,12 +83,10 @@ class CombinatorialExperiment(Experiment, ABC):
                                  hyperparams=self.l_config.learner_hyperparams,
                                  optimizer_type=self.l_config.optimizer,
                                  optimizer_hyperparams=self.l_config.optimizer_hyperparams,
-                                 strat_to_player_kwargs={"player_position": i*self.n_local}
+                                 strat_to_player_kwargs={"player_position": self.models[i].connected_bidders[0]}
                                  ))
 
 
-
-# mechanism/bidding implementation, plot, bnes
 class LLGExperiment(CombinatorialExperiment):
     def __init__(self, experiment_params:dict, gpu_config: GPUController, l_config: LearningConfiguration):
 
