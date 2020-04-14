@@ -16,28 +16,58 @@ import warnings
 #TODO: Using locals() to directly create the dict 
 # (https://stackoverflow.com/questions/2521901/get-a-list-tuple-dict-of-the-arguments-passed-to-a-function)
 # fine with you? 
-def run_single_item_uniform_symmetric(n_runs, n_epochs, 
-                                      n_players: [int], model_sharing=True, u_lo=0, u_hi=1, 
-                                      payment_rule='first_price', risk=1.0, regret_batch_size=2**8, regret_grid_size=2**8,
+def run_single_item_uniform_symmetric(n_runs: int, n_epochs: int, 
+                                      n_players: [int], payment_rule: str, model_sharing=True, u_lo=0, u_hi=1, 
+                                      risk=1.0, regret_batch_size=2**8, regret_grid_size=2**8,
                                       specific_gpu=1):
     experiment_params = locals()
     input_length = 1
     experiment_class = UniformSymmetricPriorSingleItemExperiment
     return n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params
 
-def run_single_item_gaussian_symmetric(n_runs, n_epochs, 
-                                       n_players: [int], model_sharing=True, valuation_mean=15, valuation_std=10, 
-                                       payment_rule='first_price', risk=1.0, regret_batch_size=2**8, regret_grid_size=2**8,
+def run_single_item_gaussian_symmetric(n_runs: int, n_epochs: int, 
+                                       n_players: [int], payment_rule: str, model_sharing=True, valuation_mean=15, valuation_std=10, 
+                                       risk=1.0, regret_batch_size=2**8, regret_grid_size=2**8,
                                        specific_gpu=1):
     experiment_params = locals()
     input_length = 1
     experiment_class = GaussianSymmetricPriorSingleItemExperiment
     return n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params
-                            
 
+def run_llg(n_runs: int, n_epochs: int, 
+            payment_rule: str, model_sharing=True, u_lo=[0,0,0], u_hi=[1,1,2],
+            risk=1.0, regret_batch_size=2**8, regret_grid_size=2**8,
+            specific_gpu=1):
+    
+    experiment_params = locals()
+    n_players = [3]
+    input_length = 1
+    experiment_class = LLGExperiment
+    return n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params
+
+def run_llllgg(n_runs: int, n_epochs: int, 
+            payment_rule: str, model_sharing=True, u_lo=[0,0,0,0,0,0], u_hi=[1,1,1,1,2,2],
+            risk=1.0, regret_batch_size=2**8, regret_grid_size=2**8,
+            specific_gpu=1):
+    
+    experiment_params = locals()
+    n_players = [6]
+    input_length = 2
+    experiment_class = LLLLGGExperiment
+    return n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params
 
 if __name__ == '__main__':
-    #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_single_item_gaussian_symmetric(1,20,[2,3])
+    '''
+    Runs predefined experiments with individual parameters
+    fire.Fire() asks you to decide for one of the experiments defined above
+    by writing its name and define the required (and optional) parameters
+    e.g.: 
+        run_experiment.py run_single_item_uniform_symmetric 1 20 [2,3] 'first_price'
+
+    alternatively instead of fire.Fire() use, e.g.:
+        run_single_item_uniform_symmetric(1,20,[2,3],'first_price')
+
+    '''
     n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = fire.Fire()
 
     gpu_config = GPUController(specific_gpu=specific_gpu)
@@ -54,7 +84,6 @@ if __name__ == '__main__':
     optimizer_hyperparams = {
         'lr': 3e-3
     }
-    #TODO: input length must result from experiment
     l_config = LearningConfiguration(learner_hyperparams=learner_hyperparams,
                                     optimizer_type='adam',
                                     optimizer_hyperparams=optimizer_hyperparams,
