@@ -247,12 +247,10 @@ class MultiUnitExperiment(Experiment, ABC):
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.tensor(valuation, dtype=torch.float, device=self.gpu_config.device)
         else:
-            valuation = valuation.clone().detach()
-
-        # # unsqueeze if simple float
-        # if valuation.dim() == 0:
-        #     valuation.unsqueeze_(0)
-
+            valuation = valuation.detach()
+        
+        if valuation.dim() == 0:
+            valuation.unsqueeze_(0) # unsqueeze if simple float
         # elif valuation.shape[1] == 1:
         #     valuation = torch.cat((valuation, self.efficiency_parameter * valuation), 1)
 
@@ -412,14 +410,13 @@ class MultiItemDiscriminatoryAuction2x2(MultiUnitExperiment):
         'n_items': 2,
         'n_players': 2,
         'BNE1': 'BNE1',
-        'BNE2': 'Truthful'
     }
 
     def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        mechanism = MultiItemDiscriminatoryAuction
+        mechanism_type = MultiItemDiscriminatoryAuction
 
-        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism=mechanism,
+        super().__init__({**self.class_experiment_params, **experiment_params}, mechanism_type=mechanism_type,
                          gpu_config=gpu_config, l_config=l_config, known_bne=True)
         self._setup_run()
 
@@ -455,7 +452,6 @@ class MultiItemDiscriminatoryAuction2x2CMV(MultiUnitExperiment):
         'n_items': 2,
         'n_players': 2,
         'BNE1': 'BNE1',
-        'BNE2': 'Truthful',
         'constant_marginal_values': True
     }
 
@@ -535,6 +531,9 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
                  l_config: LearningConfiguration):
         mechanism_type = FPSBSplitAwardAuction
 
+        assert all(u_lo > 0 for u_lo in experiment_params['u_lo']), \
+            '100% item must be valued > 0'
+
         super().__init__({**self.class_experiment_params, **experiment_params}, mechanism_type=mechanism_type,
                          gpu_config=gpu_config, l_config=l_config, known_bne=True)
 
@@ -581,7 +580,7 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
 
     def _optimal_bid(self, valuation, player_position=None, return_payoff_dominant=True):
         valuation = super()._optimal_bid(valuation)
-
+        print(valuation)
         # sigma/pooling equilibrium
         if self.input_length == 1 and self.n_items == 2 and valuation.shape[1] == 1:
             valuation = torch.cat(
@@ -610,7 +609,11 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
         # cutoff value: otherwise would go to inf
         # lim = 4 * param_dict["u_hi"][0]
         # wta_bounds[wta_bounds > lim] = lim
-
+        print(torch.cat(
+                (
+                    wta_bounds[:, 1].unsqueeze(0).t_(),
+                    sigma_bounds[:, 1].unsqueeze(0).t_()
+                )))
         if return_payoff_dominant:
             return torch.cat(
                 (
@@ -619,8 +622,8 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
                 ),
                 axis=1
             )
-        else:
-            return {'sigma_bounds': sigma_bounds, 'wta_bounds': wta_bounds}
+
+        return {'sigma_bounds': sigma_bounds, 'wta_bounds': wta_bounds}
 
     def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
         super()._optimal_bid_2(valuation, player_position)
