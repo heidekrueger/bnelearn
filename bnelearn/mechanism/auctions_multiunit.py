@@ -79,9 +79,9 @@ def _get_multiunit_allocation(
     return allocations
 
 
-class MultiItemDiscriminatoryAuction(Mechanism):
+class MultiUnitDiscriminatoryAuction(Mechanism):
     """ Multi item discriminatory auction.
-        Items are allocated to the highest n_item bids, winners pay as bid.
+        Units are allocated to the highest n_item bids, winners pay as bid.
 
         Bids of each bidder must be in decreasing
         order, otherwise the mechanism does not accept these bids and allocates no units
@@ -130,7 +130,7 @@ class MultiItemDiscriminatoryAuction(Mechanism):
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
 
-class MultiItemUniformPriceAuction(Mechanism):
+class MultiUnitUniformPriceAuction(Mechanism):
     """ In a uniform-price auction, all units are sold at a “market-clearing” price
         such that the total amount demanded is equal to the total amount supplied.
         We adopt the rule that the market-clearing price is the same as the highest
@@ -142,7 +142,7 @@ class MultiItemUniformPriceAuction(Mechanism):
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Runs a (batch of) Multi Item Uniform-Price Auction(s). Invalid bids (i.e. in
+        Runs a (batch of) Multi Unit Uniform-Price Auction(s). Invalid bids (i.e. in
         increasing order) will be ignored (-> no allocation to that bidder), s.t.
         the bidder might be able to ´learn´ the right behavior.
 
@@ -183,7 +183,7 @@ class MultiItemUniformPriceAuction(Mechanism):
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
 
-class MultiItemVickreyAuction(Mechanism):
+class MultiUnitVickreyAuction(Mechanism):
     """ In a Vickrey auction, a bidder who wins k units pays the k highest
         losing bids of the other bidders.
 
@@ -194,7 +194,7 @@ class MultiItemVickreyAuction(Mechanism):
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Runs a (batch of) Multi Item Vickrey Auction(s). Invalid bids (i.e. in
+        Runs a (batch of) Multi Unit Vickrey Auction(s). Invalid bids (i.e. in
         increasing order) will be ignored (-> no allocation to that bidder), s.t.
         the bidder might be able to ´learn´ the right behavior.
 

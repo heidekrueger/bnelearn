@@ -13,7 +13,7 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import LearningConfiguration, GPUController, Logger, Experiment
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import (
-    MultiItemVickreyAuction, MultiItemUniformPriceAuction, MultiItemDiscriminatoryAuction,
+    MultiUnitVickreyAuction, MultiUnitUniformPriceAuction, MultiUnitDiscriminatoryAuction,
     FPSBSplitAwardAuction, Mechanism
 )
 from bnelearn.experiment.logger import MultiUnitAuctionLogger
@@ -23,13 +23,15 @@ from bnelearn.util import metrics
 
 class MultiUnitExperiment(Experiment, ABC):
     def __init__(self, experiment_params: dict, mechanism_type: Mechanism, gpu_config: GPUController,
-                 l_config: LearningConfiguration, known_bne=True):
+                 l_config: LearningConfiguration, plot_epoch=100, known_bne=True):
 
         # ToDO How about to assigning expetiment parameters to the object and just using them from the dictionary?
         self.n_players = experiment_params['n_players']
-        self.n_items = experiment_params['n_items']
+        self.n_units = experiment_params['n_units']
         self.u_lo = experiment_params['u_lo']
         self.u_hi = experiment_params['u_hi']
+
+        self.plot_epoch = plot_epoch
         self.plot_xmin = min(self.u_lo)
         self.plot_xmax = max(self.u_hi)
         self.plot_ymin = 0
@@ -57,8 +59,8 @@ class MultiUnitExperiment(Experiment, ABC):
         if 'input_length' in experiment_params.keys():
             self.input_length = experiment_params['input_length']
         else:
-            experiment_params['input_length'] = self.n_items
-            self.input_length = self.n_items
+            experiment_params['input_length'] = self.n_units
+            self.input_length = self.n_units
 
         self.n_parameters = list()
 
@@ -77,7 +79,7 @@ class MultiUnitExperiment(Experiment, ABC):
         return Bidder.uniform(
             lower=self.u_lo[player_position], upper=self.u_hi[player_position],
             strategy=strategy,
-            n_items=self.n_items,
+            n_items=self.n_units,
             item_interest_limit=self.item_interest_limit,
             descending_valuations=True,
             constant_marginal_values=self.constant_marginal_values,
@@ -98,7 +100,7 @@ class MultiUnitExperiment(Experiment, ABC):
                     hidden_nodes=self.l_config.hidden_nodes,
                     hidden_activations=self.l_config.hidden_activations,
                     ensure_positive_output=ensure_positive_output,
-                    output_length=self.n_items
+                    output_length=self.n_units
                 ).to(self.gpu_config.device)
             ]
 
@@ -107,7 +109,7 @@ class MultiUnitExperiment(Experiment, ABC):
         # pretrain_valuations = multi_unit_valuations(
         #     device = device,
         #     bounds = [param_dict["u_lo"], param_dict["u_hi"][0]],
-        #     dim = param_dict["n_items"],
+        #     dim = param_dict["n_units"],
         #     batch_size = pretrain_points,
         #     selection = 'random' if param_dict["exp_no"] != 6 else split_award_dict
         # )
@@ -132,7 +134,7 @@ class MultiUnitExperiment(Experiment, ABC):
         """Creates logger for run.
         THIS IS A TEMPORARY WORKAROUND TODO
         """
-        return MultiUnitAuctionLogger(exp=self, base_dir=base_dir, plot_epoch=100)
+        return MultiUnitAuctionLogger(exp=self, base_dir=base_dir, plot_epoch=self.plot_epoch)
 
     def _setup_mechanism(self):
         self.mechanism = self.mechanism_type(cuda=self.gpu_config.cuda)
@@ -187,7 +189,7 @@ class MultiUnitExperiment(Experiment, ABC):
         auction_type_str = str(type(self.mechanism))
         auction_type_str = str(auction_type_str[len(auction_type_str) - auction_type_str[::-1].find('.'):-2])
 
-        name = ['expiriments_nils', auction_type_str, str(self.n_players) + 'players_' + str(self.n_items) + 'items']
+        name = ['expiriments_nils', auction_type_str, str(self.n_players) + 'players_' + str(self.n_units) + 'Units']
         return os.path.join(*name)
 
     def _training_loop(self, epoch, logger):
@@ -217,10 +219,10 @@ class MultiUnitExperiment(Experiment, ABC):
         # calculate regret
         grid = torch.linspace(
             0, self.u_hi[0],
-            round((self.experiment_params['regret_batch_size']) ** (1 / self.n_items)),
+            round((self.experiment_params['regret_batch_size']) ** (1 / self.n_units)),
             device = self.gpu_config.device
         )
-        bid_profile = torch.zeros(self.l_config.batch_size, self.n_players, self.n_items,
+        bid_profile = torch.zeros(self.l_config.batch_size, self.n_players, self.n_units,
                                   device=self.gpu_config.device)
         for pos, bid in self.env._generate_agent_actions():
             bid_profile[:, pos, :] = bid
@@ -275,16 +277,16 @@ class MultiUnitExperiment(Experiment, ABC):
 
 
 # exp_no==0
-class MultiItemVickreyAuction2x2(MultiUnitExperiment):
+class MultiUnitVickreyAuction2x2(MultiUnitExperiment):
     class_experiment_params = {
-        'n_items': 2,
+        'n_units': 2,
         'n_players': 2,
         'BNE1': 'Truthful'
     }
 
     def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        mechanism_type = MultiItemVickreyAuction
+        mechanism_type = MultiUnitVickreyAuction
 
         super().__init__({**self.class_experiment_params, **experiment_params}, mechanism_type=mechanism_type,
                          gpu_config=gpu_config, l_config=l_config, known_bne=True)
@@ -296,9 +298,9 @@ class MultiItemVickreyAuction2x2(MultiUnitExperiment):
 
 
 # exp_no==1, BNE continua
-class MultiItemUniformPriceAuction2x2(MultiUnitExperiment):
+class MultiUnitUniformPriceAuction2x2(MultiUnitExperiment):
     class_experiment_params = {
-        'n_items': 2,
+        'n_units': 2,
         'n_players': 2,
         'BNE1': 'BNE1',
         'BNE2': 'BNE2'
@@ -306,7 +308,7 @@ class MultiItemUniformPriceAuction2x2(MultiUnitExperiment):
 
     def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        mechanism_type = MultiItemUniformPriceAuction
+        mechanism_type = MultiUnitUniformPriceAuction
 
         super().__init__({**self.class_experiment_params, **experiment_params}, mechanism_type=mechanism_type,
                          gpu_config=gpu_config, l_config=l_config, known_bne=True)
@@ -320,57 +322,30 @@ class MultiItemUniformPriceAuction2x2(MultiUnitExperiment):
 
     def _optimal_bid(self, valuation, player_position=None):
         valuation = super()._optimal_bid(valuation)
-
-        if self.n_players == 2 and self.n_items == 3 \
-                and self.u_lo == 0 and self.u_hi == 1 \
-                and self.item_interest_limit == 2:
-            opt_bid = torch.clone(valuation)
-            opt_bid[:, 1] = opt_bid[:, 1] ** 2
-            opt_bid[:, 2] = 0
-            return opt_bid
-        elif self.n_players == 2 and self.n_items == 2:
-            opt_bid = torch.clone(valuation)
-            opt_bid[:, 1] = 0
-            return opt_bid
-        elif self.n_players == self.n_items:
-            opt_bid = torch.zeros_like(valuation)
-            opt_bid[:, 0] = self.u_hi
-            return opt_bid
-        elif self.n_players > self.n_items:  # & cdf of v_1 is strictly increasing
-            opt_bid = torch.clone(valuation)
-            opt_bid[:, 1:] = 0
-            warnings.warn("Only BNE bidding for 0th item known.", Warning)
-            return opt_bid
-        else:
-            warnings.warn("No explict BNE for MultiItemUniformPriceAuction known.", Warning)
-            return valuation
+        opt_bid = torch.clone(valuation)
+        opt_bid[:, 1] = 0
+        return opt_bid
 
     def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
         super()._optimal_bid_2(valuation, player_position)
-
-        if self.experiment_params["n_players"] == 2 and self.experiment_params["n_items"] == 2:
-            opt_bid = torch.clone(valuation)
-            opt_bid[:, 0] = self.experiment_params["u_hi"][0]
-            opt_bid[:, 1] = 0
-            return opt_bid
-        else:
-            warnings.warn("No 2nd explicit BNE known.", Warning)
-            return valuation
+        opt_bid = torch.clone(valuation)
+        opt_bid[:, 0] = self.experiment_params["u_hi"][0]
+        opt_bid[:, 1] = 0
+        return opt_bid
 
 
 # exp_no==2
-class MultiItemUniformPriceAuction2x3limit2(MultiUnitExperiment):
+class MultiUnitUniformPriceAuction2x3limit2(MultiUnitExperiment):
     class_experiment_params = {
-        'n_items': 3,
+        'n_units': 3,
         'n_players': 2,
         'BNE1': 'BNE1',
-        'BNE2': 'Truthful',
         'item_interest_limit': 2
     }
 
     def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        mechanism_type = MultiItemUniformPriceAuction
+        mechanism_type = MultiUnitUniformPriceAuction
 
         super().__init__({**self.class_experiment_params, **experiment_params}, mechanism_type=mechanism_type,
                          gpu_config=gpu_config, l_config=l_config, known_bne=True)
@@ -379,47 +354,23 @@ class MultiItemUniformPriceAuction2x3limit2(MultiUnitExperiment):
     # ToDO Once again in this method using u_hi/u_lo[0]. Is it appropriate?
     def _optimal_bid(self, valuation, player_position=None):
         valuation = super()._optimal_bid(valuation)
-
-        if self.n_players == 2 and self.n_items == 3 \
-                and self.u_lo[0] == 0 and self.u_hi[0] == 1 \
-                and self.item_interest_limit == 2:
-            opt_bid = torch.clone(valuation)
-            opt_bid[:, 1] = opt_bid[:, 1] ** 2
-            opt_bid[:, 2] = 0
-            return opt_bid
-        elif self.n_players == 2 and self.n_items == 2:
-            opt_bid = torch.clone(valuation)
-            opt_bid[:, 1] = 0
-            return opt_bid
-        elif self.n_players == self.n_items:
-            opt_bid = torch.zeros_like(valuation)
-            opt_bid[:, 0] = self.u_hi[0]
-            return opt_bid
-        elif self.n_players > self.n_items:  # & cdf of v_1 is strictly increasing
-            opt_bid = torch.clone(valuation)
-            opt_bid[:, 1:] = 0
-            warnings.warn("Only BNE bidding for 0th item known.", Warning)
-            return opt_bid
-        else:
-            warnings.warn("No explict BNE for MultiItemUniformPriceAuction known.", Warning)
-            return valuation
-
-    def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
-        warnings.warn("No 2nd explicit BNE known.", Warning)
-        return super()._optimal_bid_2(valuation, player_position)
+        opt_bid = torch.clone(valuation)
+        opt_bid[:, 1] = opt_bid[:, 1] ** 2
+        opt_bid[:, 2] = 0
+        return opt_bid
 
 
 # exp_no==4
-class MultiItemDiscriminatoryAuction2x2(MultiUnitExperiment):
+class MultiUnitDiscriminatoryAuction2x2(MultiUnitExperiment):
     class_experiment_params = {
-        'n_items': 2,
+        'n_units': 2,
         'n_players': 2,
         'BNE1': 'BNE1',
     }
 
     def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        mechanism_type = MultiItemDiscriminatoryAuction
+        mechanism_type = MultiUnitDiscriminatoryAuction
 
         super().__init__({**self.class_experiment_params, **experiment_params}, mechanism_type=mechanism_type,
                          gpu_config=gpu_config, l_config=l_config, known_bne=True)
@@ -446,15 +397,12 @@ class MultiItemDiscriminatoryAuction2x2(MultiUnitExperiment):
         opt_bid = opt_bid.sort(dim=1, descending=True)[0]
         return opt_bid
 
-    def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
-        warnings.warn("No 2nd explicit BNE known.", Warning)
-        return super()._optimal_bid_2(valuation, player_position)
 
 
 # exp_no==5
-class MultiItemDiscriminatoryAuction2x2CMV(MultiUnitExperiment):
+class MultiUnitDiscriminatoryAuction2x2CMV(MultiUnitExperiment):
     class_experiment_params = {
-        'n_items': 2,
+        'n_units': 2,
         'n_players': 2,
         'BNE1': 'BNE1',
         'constant_marginal_values': True
@@ -462,7 +410,7 @@ class MultiItemDiscriminatoryAuction2x2CMV(MultiUnitExperiment):
 
     def __init__(self, experiment_params: dict, gpu_config: GPUController,
                  l_config: LearningConfiguration):
-        mechanism_type = MultiItemDiscriminatoryAuction
+        mechanism_type = MultiUnitDiscriminatoryAuction
 
         super().__init__({**self.class_experiment_params, **experiment_params}, mechanism_type=mechanism_type,
                          gpu_config=gpu_config, l_config=l_config, known_bne=True)
@@ -517,15 +465,11 @@ class MultiItemDiscriminatoryAuction2x2CMV(MultiUnitExperiment):
                 opt_bid[agent] = bidding(valuation[agent, :])
             return torch.tensor(opt_bid)
 
-    def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
-        warnings.warn("No 2nd explicit BNE known.", Warning)
-        return super()._optimal_bid_2(valuation, player_position)
-
 
 # exp_no==6, two BNE types, BNE continua
 class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
     class_experiment_params = {
-        'n_items': 2,
+        'n_units': 2,
         'n_players': 2,
         'BNE1': 'PD_Sigma_BNE',
         'BNE2': 'WTA_BNE',
@@ -537,7 +481,7 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
         mechanism_type = FPSBSplitAwardAuction
 
         assert all(u_lo > 0 for u_lo in experiment_params['u_lo']), \
-            '100% item must be valued > 0'
+            '100% Unit must be valued > 0'
 
         super().__init__({**self.class_experiment_params, **experiment_params}, mechanism_type=mechanism_type,
                          gpu_config=gpu_config, l_config=l_config, known_bne=True)
@@ -574,7 +518,7 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
         return ReverseBidder.uniform(
             lower=self.u_lo[0], upper=self.u_hi[0],
             strategy=strategy,
-            n_items=self.n_items,
+            n_units=self.n_units,
             item_interest_limit=self.item_interest_limit,
             descending_valuations=True,
             constant_marginal_values=self.constant_marginal_values,
@@ -587,7 +531,7 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
         valuation = super()._optimal_bid(valuation)
         print(valuation)
         # sigma/pooling equilibrium
-        if self.input_length == 1 and self.n_items == 2 and valuation.shape[1] == 1:
+        if self.input_length == 1 and self.n_units == 2 and valuation.shape[1] == 1:
             valuation = torch.cat(
                 (valuation, self.efficiency_parameter * valuation), axis=1
             )
