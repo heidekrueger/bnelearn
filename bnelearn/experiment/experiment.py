@@ -16,7 +16,7 @@ from bnelearn.mechanism import Mechanism
 from bnelearn.learner import Learner
 
 from bnelearn.experiment.gpu_controller import GPUController
-from bnelearn.experiment.learning_configuration import LearningConfiguration
+from bnelearn.experiment.configurations import LearningConfiguration
 from bnelearn.experiment.logger import Logger
 
 

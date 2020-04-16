@@ -15,7 +15,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 import bnelearn
-from bnelearn.experiment.learning_configuration import LearningConfiguration
+from bnelearn.experiment.configurations import LearningConfiguration
 # TODO: can't import experiment because of circular import :/
 #from .experiment import Experiment
 #from bnelearn.experiment.MultiUnitExperiment import FPSBSplitAwardAuction2x2
