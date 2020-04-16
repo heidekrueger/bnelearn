@@ -385,49 +385,6 @@ class SingleItemAuctionLogger(Logger):
         elapsed = timer() - start_time
         self.overhead += elapsed
 
-    # def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
-    #     """This method should implement a vizualization of the experiment at the current state"""
-    #     fig, plt = self._plot_2d(plot_data, e, [self.exp.plot_xmin, self.exp.plot_xmax], [self.exp.plot_ymin,self.exp.plot_ymax])
-    #     cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-
-    #     if self.exp.known_bne:
-    #         for i in range(len(plot_data[0])):
-    #             #TODO: Plottet noch scheiße!
-    #             #TODO: Not working yet for LLG
-    #             plt.plot(self.v_opt[i], self.b_opt[i], color=cycle[i], linestyle = '--')#linestyle = '--')
-    #     # show and/or log
-    #     self._process_figure(fig, writer, e, figure_name='bid_function')
-
-    # #TODO: Do I need "fig" here?
-    # def _plot_2d(self, plot_data, epoch, xlim: list,
-    #              ylim: list, x_label="valuation", y_label="bid"):
-    #     """This implements plotting simple 2d data"""
-    #     plot_xmin = xlim[0]
-    #     plot_xmax = xlim[1]
-    #     plot_ymin = ylim[0]
-    #     plot_ymax = ylim[1]
-    #     x = [None] * len(plot_data[0])
-    #     y = [None] * len(plot_data[0])
-
-    #     for i in range(len(x)):
-    #         x[i] = plot_data[0][i].detach().cpu().numpy()[:self.plot_points]
-    #         y[i] = plot_data[1][i].detach().cpu().numpy()[:self.plot_points]
-
-    #     # create the plot
-    #     fig = plt.gcf()
-    #     plt.cla()
-    #     plt.xlim(plot_xmin, plot_xmax)
-    #     plt.ylim(plot_ymin, plot_ymax)
-    #     plt.xlabel(x_label)
-    #     plt.ylabel(y_label)
-    #     plt.text(plot_xmin + 0.05 * (plot_xmax - plot_xmin),
-    #              plot_ymax - 0.05 * (plot_ymax - plot_ymin),
-    #              'iteration {}'.format(epoch))
-    #     cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    #     for i in range(len(x)):
-    #         plt.plot(x[i], y[i], color=cycle[i], marker='o', linestyle = 'None')
-    #     return fig, plt
-
     # Setup logging
     def _log_once(self):
         """Everything that should be logged only once on initialization."""
