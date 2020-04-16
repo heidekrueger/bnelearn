@@ -109,7 +109,15 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         # TODO: This probably shouldnt be here --> will come from subclass and/or builder.
         #if 'valuation_prior' in experiment_params.keys():
         #    self.valuation_prior = experiment_params['valuation_prior']
+        self.n_players = experiment_params['n_players']
         self.model_sharing = experiment_params['model_sharing']
+        
+        if self.model_sharing:
+            self.n_models = 1
+            self._bidder2model = [0] * self.n_players
+        else:
+            self.n_models = self.n_players
+            self._bidder2model = list(range(self.n_players))
 
         # if not given by subclass, implement generic optimal_bid if known
         known_bne = known_bne or \
@@ -230,7 +238,6 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.bne_utility = bne_utility_analytical
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
-        strategy.connected_bidders.append(player_position)
         return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions, risk=self.risk)
 
     def _get_logdir(self):

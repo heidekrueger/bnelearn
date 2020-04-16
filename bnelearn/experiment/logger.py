@@ -119,8 +119,8 @@ class SingleItemAuctionLogger(Logger):
         # TODO: this should be model specific! (e.g. in LLG locals should not plot higher vals than their own)
         self.v_opt = [np.linspace(self.exp.plot_xmin, self.exp.plot_xmax, 100)] * len(self.exp.models)
         # TODO: presumes existence of optimal bid --> should not be assumed here
-        self.b_opt = [self.exp._optimal_bid(self.v_opt[i], player_position=model.connected_bidders[0])
-                        for i,model in enumerate(self.exp.models)]
+        self.b_opt = [self.exp._optimal_bid(self.v_opt[m_id], player_position=self._model2bidder[m_id][0])
+                        for m_id,model in enumerate(self.exp.models)]
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
@@ -190,7 +190,7 @@ class SingleItemAuctionLogger(Logger):
                               param_group_postfix=group_postfix, metric_prefix=metric_prefix)
 
         if epoch % self.logging_options['plot_epoch'] == 0:
-            bidders = [strat_to_bidder(model, self.exp.l_config.batch_size, model.connected_bidders[0]) for model in self.exp.models]
+            bidders = [strat_to_bidder(model, self.exp.l_config.batch_size, self.exp._model2bidder[m_id][0]) for m_id,model in enumerate(self.exp.models)]
             v = [bidder.valuations for bidder in bidders]
             b = [bidder.get_action() for bidder in bidders]
             plot_data = ((v, b))

@@ -49,7 +49,6 @@ class ClosureStrategy(Strategy):
             raise ValueError("Provided closure must be Callable!")
         self.closure = closure
         self.parallel = parallel
-        self.connected_bidders = []
         self._mute = mute
 
     def __mute(self):
@@ -317,7 +316,6 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.hidden_nodes = copy(hidden_nodes)
         self.activations = copy(hidden_activations) # do not write to list outside!
         self.dropout = dropout
-        self.connected_bidders = []
 
         self.layers = nn.ModuleDict()
 

@@ -3,7 +3,7 @@ from abc import ABC
 import numpy as np
 import scipy.integrate as integrate
 from functools import partial
-from typing import Iterable
+from typing import Iterable, List
 
 from bnelearn.experiment import Experiment
 from bnelearn.mechanism.auctions_combinatorial import *
@@ -22,29 +22,39 @@ from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
 # TODO: Currently only implemented for LLG and LLLLGG
 class CombinatorialExperiment(Experiment, ABC):
 
+    def __init__(self, experiment_params, gpu_config, l_config, known_bne):
+        self.n_global = self.n_players - self.n_local
 
+        self.model_sharing = experiment_params['model_sharing']
+        if self.model_sharing:
+            self.n_models = 2
+            self._bidder2model: List[int] = [0] * self.n_local + [1] * (self.n_players - self.n_local)
+        else:
+            self.n_models = self.n_players
+            self._bidder2model: List[int] = list(range(n_players))
+        self._model2bidder: List[List[int]] = [[] for m in range(self.n_models)]
+        for b_id, m_id in enumerate(self._bidder2model):
+            self._model2bidder[m_id].append(b_id)
+
+        super().__init__(experiment_params=experiment_params, gpu_config=gpu_config, l_config=l_config, known_bne=known_bne)
 
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0):
         # TODO: this probably isn't the right place...
         # The model should know who is using it # TODO: Stefan: In my oppinion, it shouldn't...
-        strategy.connected_bidders.append(player_position)
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
                               batch_size=batch_size, n_items = self.n_items)
-
-
 
     # Currently only working for LLG and LLLLGG.
     def _setup_bidders(self):
         print('Setting up bidders...')
-        # TODO: this includes LLG / LLLLGG specific logic!
-        self.models = [None] * 2 if self.model_sharing else [None] * self.n_players
+        # TODO: this seems tightly coupled with setup learners... can we change this?
+        self.models = [None] * self.n_models
 
         for i in range(len(self.models)):
-            if self.model_sharing:
-                positive_output_point = torch.tensor([self.u_hi[i*self.n_local]] * self.n_items, dtype=torch.float32)
-            else:
-                positive_output_point = torch.tensor([self.u_hi[i]] * self.n_items, dtype=torch.float32)
+            # get id of canonical bidder for this model
+            b_id = self._model2bidder[i][0]
+            positive_output_point = torch.tensor([self.u_hi[b_id]]*self.n_items, dtype= torch.float)
 
             self.models[i] = NeuralNetStrategy(
                 self.l_config.input_length, hidden_nodes=self.l_config.hidden_nodes,
@@ -53,15 +63,10 @@ class CombinatorialExperiment(Experiment, ABC):
                 output_length = self.n_items
             ).to(self.gpu_config.device)
 
-        self.bidders = []
-        for i in range(self.n_players):
-            if self.model_sharing:
-                model_idx = 0 if i < self.n_local else 1
-                self.bidders.append(self._strat_to_bidder(
-                    self.models[model_idx], batch_size=self.l_config.batch_size, player_position=i))
-            else:
-                self.bidders.append(self._strat_to_bidder(
-                    self.models[i], batch_size=self.l_config.batch_size, player_position=i))
+        self.bidders = [
+            self._strat_to_bidder(self.models[m_id], batch_size=self.l_config.batch_size, player_position=i)
+            for i, m_id in enumerate(self._bidder2model)]
+
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
                              self.models]
@@ -77,13 +82,13 @@ class CombinatorialExperiment(Experiment, ABC):
         # ideally, we can abstract this function away and move the functionality to the base Experiment class.
         # Implementation in SingleItem case is identical except for player position argument below.
         self.learners = []
-        for i in range(len(self.models)):
-            self.learners.append(ESPGLearner(model=self.models[i],
+        for m_id, model in self.models:
+            self.learners.append(ESPGLearner(model=model,
                                  environment=self.env,
                                  hyperparams=self.l_config.learner_hyperparams,
                                  optimizer_type=self.l_config.optimizer,
                                  optimizer_hyperparams=self.l_config.optimizer_hyperparams,
-                                 strat_to_player_kwargs={"player_position": self.models[i].connected_bidders[0]}
+                                 strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
                                  ))
 
 
@@ -94,15 +99,12 @@ class LLGExperiment(CombinatorialExperiment):
         self.gamma = 0.0
         assert self.gamma == 0, "Gamma > 0 implemented yet!?"
         # Experiment specific parameters
-        self.n_local = 2
         experiment_params['n_players'] = 3
+        self.n_players = experiment_params['n_players'] # TODO: this will also be set in superclass but le'ts use it below
+        self.n_local = 2
+        
         self.n_items = 1 # TODO: what does this do? can we get rid of it?
-
         self.payment_rule = experiment_params['payment_rule']
-
-        self.model_sharing = experiment_params['model_sharing']
-        
-        
 
         assert all(key in experiment_params for key in ['u_lo', 'u_hi']), \
             """Missing prior information!"""
@@ -115,14 +117,12 @@ class LLGExperiment(CombinatorialExperiment):
             u_lo = [float(u_lo)] * 3
         self.u_lo = u_lo
 
-
         u_hi = experiment_params['u_hi']
         assert isinstance(u_hi, Iterable)
         assert len(u_hi) == 3
         assert u_hi[0] == u_hi[1], "local bidders should be identical"
         assert u_hi[0] < u_hi[2], "local bidders must be weaker than global bidder"
         self.u_hi = [float(h) for h in u_hi]
-
 
         self.plot_xmin = min(u_lo)
         self.plot_xmax = max(u_hi)
