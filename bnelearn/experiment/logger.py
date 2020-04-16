@@ -41,6 +41,11 @@ class Logger(ABC):
         self.l_config = exp.l_config
         self.experiment_params = exp.experiment_params
 
+        # metrics
+        self.log_opt = self.exp.known_bne
+        self.log_regret = None
+        self.log_L2 = None
+        self.log_rmse = None
 
         self.base_dir = base_dir
         self.log_dir = None
@@ -60,20 +65,82 @@ class Logger(ABC):
     # def __del__(self):
     #    self.writer.close()
 
-    @abstractmethod
-    def log_experiment(self, run_comment, max_epochs: int):
-        pass
-
     # ToDo Make a signature take a single dictionary parameter, as signatures would differ in each class
     @abstractmethod
     def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder,
                                utility, log_params: dict):
         pass
 
-    @abstractmethod
-    def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
-        """This method should implement a vizualization of the experiment at the current state"""
-        pass
+    # TODO: Could be moved outside as a static method
+    def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
+              xlim: list=None, ylim: list=None, labels: list=None,
+              x_label="valuation", y_label="bid", fmts=['o'],
+              figure_name: str='bid_function', plot_points=100):
+        """
+        This implements plotting simple 2D data.
+
+        Args
+            fig: matplotlib.figure, TODO might not be needed
+            plot_data: tuple of two pytorch tensors first beeing for x axis, second for y.
+                Both of dimensions (batch_size, n_strategies, n_bundles)
+            writer: could be replaced by self.writer
+            epoch: int, epoch or iteration number
+            xlim: list of floats, x axis limits for all n_bundles dimensions
+            ylim: list of floats, y axis limits for all n_bundles dimensions
+            labels: list of str lables for legend
+            fmts: list of str for matplotlib markers and lines
+            figure_name: str, for seperate plot saving of e.g. bids and regret,
+            plot_point: int of number of ploting points for each strategy in each subplot
+        """
+
+        x = plot_data[0].detach().cpu().numpy()
+        y = plot_data[1].detach().cpu().numpy()
+        n_batch, n_players, n_bundles = y.shape
+
+        n_batch = min(plot_points, n_batch)
+        x = x[:n_batch,:,:]
+        y = y[:n_batch,:,:]
+
+        # create the plot
+        fig, axs = plt.subplots(nrows=1, ncols=n_bundles, sharey=True)
+        plt.cla()
+        if not isinstance(axs, np.ndarray):
+            axs = [axs] # one plot only
+
+        cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+        # actual plotting
+        for plot_idx in range(n_bundles):
+            for agent_idx in range(n_players):
+                axs[plot_idx].plot(
+                    x[:,agent_idx,plot_idx], y[:,agent_idx,plot_idx],
+                    fmts[agent_idx % len(fmts)],
+                    label=None if labels is None else labels[agent_idx % len(labels)],
+                    color=cycle[agent_idx],
+                )
+
+            # formating
+            axs[plot_idx].set_xlabel(x_label)
+            if plot_idx == 0:
+                axs[plot_idx].set_ylabel(y_label)
+                if n_players < 10 and labels is not None:
+                    axs[plot_idx].legend(loc='upper left')
+            if xlim is not None:
+                axs[plot_idx].set_xlim(xlim[0], xlim[1])
+            elif hasattr(self.exp, 'plot_xmin'):
+                axs[plot_idx].set_xlim(self.exp.plot_xmin, self.exp.plot_xmax)
+            if ylim is not None:
+                axs[plot_idx].set_ylim(ylim[0], ylim[1])
+            elif hasattr(self.exp, 'plot_xmin'):
+                axs[plot_idx].set_ylim(self.exp.plot_ymin, self.exp.plot_ymax)
+
+            axs[plot_idx].locator_params(axis='x', nbins=5)
+        title = plt.title if n_bundles == 1 else plt.suptitle
+        title('iteration {}'.format(epoch))
+
+        self._process_figure(fig, writer=writer, epoch=epoch, figure_name=figure_name)
+
+        return fig
 
     def _process_figure(self, fig, writer=None, epoch=None, figure_name='plot', group ='eval', filename=None):
         """displays, logs and/or saves figure built in plot method"""
@@ -94,33 +161,65 @@ class Logger(ABC):
             plt.show()
 
     @abstractmethod
+    def _log_experimentparams():
+        pass
+
+    #TODO: delete!?
+    # Setup logging
     def _log_once(self):
         """Everything that should be logged only once on initialization."""
-        pass
+        # writer.add_scalar('debug/total_model_parameters', n_parameters, epoch)
+        # writer.add_text('hyperparams/neural_net_spec', str(self.model), 0)
+        # writer.add_scalar('debug/eval_batch_size', eval_batch_size, epoch)
+        self.writer.add_graph(self.exp.models[0], self.exp.env.agents[0].valuations)
 
     @abstractmethod
     def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute,
                      L_2, L_inf, param_group_postfix = '', metric_prefix = ''):
         pass
 
-    @abstractmethod
-    def _log_hyperparams(self, writer, epoch):
-        pass
+    def _log_hyperparams(self):
+        """Everything that should be logged on every learning_rate updates"""
+        epoch = 0
+        #TODO: what is n_parameters?
+        #n_parameters = self.experiment_params['n_parameters']
+        #for agent in range(len(self.exp.models)):
+        #    self.writer.add_scalar('hyperparameters/p{}_model_parameters'.format(agent),
+        #                           n_parameters[agent], epoch)
+        #self.writer.add_scalar('hyperparameters/model_parameters', sum(n_parameters), epoch)
+
+        for i, model in enumerate(self.exp.models):
+            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)
+            self.writer.add_graph(model, self.exp.env.agents[i].valuations)
+
+        self.writer.add_scalar('hyperparameters/batch_size', self.l_config.batch_size, epoch)
+        self.writer.add_scalar('hyperparameters/epochs', self.max_epochs, epoch)
+        self.writer.add_scalar(
+            'hyperparameters/pretrain_iters',
+            self.l_config.pretrain_iters,
+            epoch
+        )
 
 # TODO: Allow multiple utilities and params (for multiple learners)
 class SingleItemAuctionLogger(Logger):
     def __init__(self, exp, base_dir):
         super().__init__(exp, base_dir)
 
-    def log_experiment(self, run_comment, max_epochs: int):
+    def log_experiment(self, run_comment, max_epochs):
+        self.max_epochs = max_epochs
         # setting up plotting
         self.plot_points = min(100, self.exp.l_config.batch_size)
-        # TODO: this should be model specific! (e.g. in LLG locals should not plot higher vals than their own)
 
-        if self.exp.known_bne:
-            self.v_opt = [np.linspace(self.exp.plot_xmin, self.exp.plot_xmax, 100)] * len(self.exp.models)
-            self.b_opt = [self.exp._optimal_bid(self.v_opt[m_id], player_position=self.exp._model2bidder[m_id][0])
-                            for m_id,model in enumerate(self.exp.models)]
+        if self.log_opt:
+            # TODO: apdapt interval to be model specific! (e.g. for LLG)
+            self.v_opt = torch.stack(
+                [torch.linspace(self.exp.plot_xmin, self.exp.plot_xmax, self.plot_points,
+                 device=self.exp.gpu_config.device) for i in self.exp.models],
+                dim=1)[:,:,None]
+            self.b_opt = torch.stack(
+                [self.exp._optimal_bid(self.v_opt[:,i,:], player_position=self.exp._model2bidder[i][0])
+                 for i in range(len(self.exp.models))],
+                dim=1)
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
@@ -146,6 +245,7 @@ class SingleItemAuctionLogger(Logger):
         self.writer = SummaryWriter(self.log_dir, flush_secs=30)
         start_time = timer()
         self._log_once()
+        self._log_experimentparams() # TODO: what to use
         self._log_hyperparams()
         elapsed = timer() - start_time
         self.overhead += elapsed
@@ -171,7 +271,6 @@ class SingleItemAuctionLogger(Logger):
             group_postfix = '' if model_is_global else f'_p{i}'
             metric_prefix = ''
 
-
             ## TODO: no knowledge of bneenve should be assumed here! Might have settings without bne
 
             # calculate infinity-norm of update step
@@ -188,24 +287,35 @@ class SingleItemAuctionLogger(Logger):
                 L_2 = metrics.norm_strategy_and_actions(model, self.exp.bne_env.agents[i].get_action(),
                                                         self.exp.bne_env.agents[i].valuations, 2)
                 L_inf = metrics.norm_strategy_and_actions(model, self.exp.bne_env.agents[i].get_action(),
-                                                        self.exp.bne_env.agents[i].valuations, float('inf'))
+                                                          self.exp.bne_env.agents[i].valuations, float('inf'))
             else:
                 utility_vs_bne, epsilon_relative, epsilon_absolute, L_2, L_inf = None,None,None,None,None
-            
+
             self._log_metrics(writer=self.writer, epoch=epoch, utility=utilities[i], update_norm=update_norm,
                               utility_vs_bne=utility_vs_bne, epsilon_relative=epsilon_relative,
                               epsilon_absolute=epsilon_absolute, L_2=L_2, L_inf=L_inf,
                               param_group_postfix=group_postfix, metric_prefix=metric_prefix)
 
         if epoch % self.logging_options['plot_epoch'] == 0:
-            bidders = [strat_to_bidder(model, self.exp.l_config.batch_size, self.exp._model2bidder[m_id][0]) for m_id,model in enumerate(self.exp.models)]
-            v = [bidder.valuations for bidder in bidders]
-            b = [bidder.get_action() for bidder in bidders]
-            plot_data = ((v, b))
+            bidders = [strat_to_bidder(model, self.exp.l_config.batch_size, self.exp._model2bidder[i][0])
+                       for i, model in enumerate(self.exp.models)]
+            v = torch.stack([bidder.valuations for bidder in bidders], dim=1) # shape: n_batch, n_players, n_bundles
+            b = torch.stack([bidder.get_action() for bidder in bidders], dim=1)
             print(
                 "Epoch {}: \tcurrent utility: {:.3f},\t vs BNE: {:.3f}, \tepsilon (abs/rel): ({:.5f}, {:.5f})".format(
                     epoch, utilities[i], utility_vs_bne, epsilon_absolute, epsilon_relative))
-            self._plot(self.fig, plot_data, self.writer, epoch)
+
+            labels = ['NPGA']
+            fmts = ['bo']
+            if self.log_opt:
+                # TODO: handle case of no opt strategy
+                v = torch.cat([v[:self.plot_points,:,:], self.v_opt], dim=1)
+                b = torch.cat([b[:self.plot_points,:,:], self.b_opt], dim=1)
+                labels.append('BNE')
+                fmts.append('b--')
+                
+            self._plot(fig=self.fig, plot_data=(v, b), writer=self.writer, figure_name='bid_function',
+                       epoch=epoch, labels=labels, fmts=fmts)
 
         elapsed = timer() - start_time
         self.overhead = self.overhead + elapsed
@@ -218,7 +328,7 @@ class SingleItemAuctionLogger(Logger):
 
         original_batch_size = env.agents[0].batch_size
         bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
-                                          dtype=env.agents[0].valuations.dtype, device = env.mechanism.device)
+                                  dtype=env.agents[0].valuations.dtype, device = env.mechanism.device)
         for agent in env.agents:
             agent.batch_size = regret_batch_size
             agent.draw_valuations_new_batch_(regret_batch_size)
@@ -234,7 +344,8 @@ class SingleItemAuctionLogger(Logger):
 
             #print("Calculating regret...")
             torch.cuda.empty_cache()
-            regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position, env.agents[player_position].valuations, regret_grid)
+            regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position,
+                                               env.agents[player_position].valuations, regret_grid)
 
             print("agent {} ex ante/ex interim regrat: avg: {:.3f}, max: {:.3f}".format(player_position,
                                                                  torch.mean(regret),
@@ -254,9 +365,17 @@ class SingleItemAuctionLogger(Logger):
         #     fig, _ = self._plot_3d((valuations_tensor, regrets_tensor), epoch, [self.plot_xmin, self.plot_xmax], [self.plot_ymin, self.plot_ymax],
         #                         [0, max_regret.detach().cpu().numpy()], input_length=1, x_label="valuation", y_label="regret")
         # else:
-        fig, _ = self._plot_2d((valuations, regrets), epoch, [self.exp.plot_xmin, self.exp.plot_xmax],
-                            [0, max_regret.detach().cpu().numpy()], x_label="valuation", y_label="regret")
-        self._process_figure(fig, self.writer, epoch, figure_name="regret")
+
+        # TODO: as tensors in first place?
+        valuations = torch.stack(valuations, dim=1)
+        regrets = torch.stack(regrets, dim=1)[:,:,None]
+
+        self.fig = self._plot(
+            fig=self.fig, plot_data=(valuations, regrets), writer=self.writer,
+            epoch=epoch, xlim=[self.exp.plot_xmin, self.exp.plot_xmax],
+            ylim=[0, max_regret.detach().cpu().numpy()],
+            x_label="valuation", y_label="regret", figure_name='regret'
+        )
 
         # TODO: why? don't we redraw valuations at beginning of loop anyway.
         for agent in env.agents:
@@ -266,50 +385,48 @@ class SingleItemAuctionLogger(Logger):
         elapsed = timer() - start_time
         self.overhead += elapsed
 
+    # def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
+    #     """This method should implement a vizualization of the experiment at the current state"""
+    #     fig, plt = self._plot_2d(plot_data, e, [self.exp.plot_xmin, self.exp.plot_xmax], [self.exp.plot_ymin,self.exp.plot_ymax])
+    #     cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
-    def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
-        """This method should implement a vizualization of the experiment at the current state"""
-        fig, plt = self._plot_2d(plot_data, e, [self.exp.plot_xmin, self.exp.plot_xmax], [self.exp.plot_ymin,self.exp.plot_ymax])
-        cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    #     if self.exp.known_bne:
+    #         for i in range(len(plot_data[0])):
+    #             #TODO: Plottet noch scheiße!
+    #             #TODO: Not working yet for LLG
+    #             plt.plot(self.v_opt[i], self.b_opt[i], color=cycle[i], linestyle = '--')#linestyle = '--')
+    #     # show and/or log
+    #     self._process_figure(fig, writer, e, figure_name='bid_function')
 
-        if self.exp.known_bne:
-            for i in range(len(plot_data[0])):
-                #TODO: Plottet noch scheiße!
-                #TODO: Not working yet for LLG
-                plt.plot(self.v_opt[i], self.b_opt[i], color=cycle[i], linestyle = '--')#linestyle = '--')
-        # show and/or log
-        self._process_figure(fig, writer, e, figure_name='bid_function')
+    # #TODO: Do I need "fig" here?
+    # def _plot_2d(self, plot_data, epoch, xlim: list,
+    #              ylim: list, x_label="valuation", y_label="bid"):
+    #     """This implements plotting simple 2d data"""
+    #     plot_xmin = xlim[0]
+    #     plot_xmax = xlim[1]
+    #     plot_ymin = ylim[0]
+    #     plot_ymax = ylim[1]
+    #     x = [None] * len(plot_data[0])
+    #     y = [None] * len(plot_data[0])
 
-    #TODO: Do I need "fig" here?
-    def _plot_2d(self, plot_data, epoch, xlim: list,
-                 ylim: list, x_label="valuation", y_label="bid"):
-        """This implements plotting simple 2d data"""
-        plot_xmin = xlim[0]
-        plot_xmax = xlim[1]
-        plot_ymin = ylim[0]
-        plot_ymax = ylim[1]
-        x = [None] * len(plot_data[0])
-        y = [None] * len(plot_data[0])
+    #     for i in range(len(x)):
+    #         x[i] = plot_data[0][i].detach().cpu().numpy()[:self.plot_points]
+    #         y[i] = plot_data[1][i].detach().cpu().numpy()[:self.plot_points]
 
-        for i in range(len(x)):
-            x[i] = plot_data[0][i].detach().cpu().numpy()[:self.plot_points]
-            y[i] = plot_data[1][i].detach().cpu().numpy()[:self.plot_points]
-
-        # create the plot
-        fig = plt.gcf()
-        plt.cla()
-        plt.xlim(plot_xmin, plot_xmax)
-        plt.ylim(plot_ymin, plot_ymax)
-        plt.xlabel(x_label)
-        plt.ylabel(y_label)
-        plt.text(plot_xmin + 0.05 * (plot_xmax - plot_xmin),
-                 plot_ymax - 0.05 * (plot_ymax - plot_ymin),
-                 'iteration {}'.format(epoch))
-        cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-        for i in range(len(x)):
-            plt.plot(x[i], y[i], color=cycle[i], marker='o', linestyle = 'None')
-        return fig, plt
-
+    #     # create the plot
+    #     fig = plt.gcf()
+    #     plt.cla()
+    #     plt.xlim(plot_xmin, plot_xmax)
+    #     plt.ylim(plot_ymin, plot_ymax)
+    #     plt.xlabel(x_label)
+    #     plt.ylabel(y_label)
+    #     plt.text(plot_xmin + 0.05 * (plot_xmax - plot_xmin),
+    #              plot_ymax - 0.05 * (plot_ymax - plot_ymin),
+    #              'iteration {}'.format(epoch))
+    #     cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    #     for i in range(len(x)):
+    #         plt.plot(x[i], y[i], color=cycle[i], marker='o', linestyle = 'None')
+    #     return fig, plt
 
     # Setup logging
     def _log_once(self):
@@ -318,6 +435,14 @@ class SingleItemAuctionLogger(Logger):
         # writer.add_text('hyperparams/neural_net_spec', str(self.model), 0)
         # writer.add_scalar('debug/eval_batch_size', eval_batch_size, epoch)
         self.writer.add_graph(self.exp.models[0], self.exp.env.agents[0].valuations)
+
+    def _log_experimentparams(self):
+        #TODO: write out all experiment params (complete dict)
+        pass
+
+    def _log_trained_model(self):
+        #TODO: write out the trained model at the end of training @Stefan
+        pass
 
     def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute,
                      L_2, L_inf, param_group_postfix = '', metric_prefix = ''):
@@ -337,14 +462,10 @@ class SingleItemAuctionLogger(Logger):
         log_metric('eval', 'L_2', L_2)
         log_metric('eval', 'L_inf', L_inf)
 
-    # TODO: deferred until writing logger
-    def _log_hyperparams(self):
-        """Everything that should be logged on every learning_rate updates"""
-    #     writer.add_scalar('hyperparams/batch_size', batch_size, e)
-    #     writer.add_scalar('hyperparams/learning_rate', learning_rate, e)
-    #     writer.add_scalar('hyperparams/momentum', momentum, e)
-    #     writer.add_scalar('hyperparams/sigma', sigma, e)
-    #     writer.add_scalar('hyperparams/n_perturbations', n_perturbations, e
+        self.writer.add_text('hyperparameters/optimizer', str(self.l_config.optimizer), epoch)
+        for key, value in self.l_config.optimizer_hyperparams.items():
+            self.writer.add_scalar('hyperparameters/' + str(key), value, epoch)
+
 
 class LLGAuctionLogger(SingleItemAuctionLogger):
 
@@ -367,7 +488,7 @@ class LLGAuctionLogger(SingleItemAuctionLogger):
         plt.xlabel('valuation')
         plt.ylabel('bid')
         plt.text(0 + 0.5, 2 - 0.5, 'iteration {}'.format(e))
-        
+
         if self.exp.known_bne:
             plt.plot(v[0],b[0],'bo',   self.v_opt[0],self.b_opt[0],'b--', 
                      v[1],b[1],'go',   self.v_opt[1],self.b_opt[1],'g--', 
@@ -376,6 +497,7 @@ class LLGAuctionLogger(SingleItemAuctionLogger):
             plt.plot(v[0],b[0],'bo',   v[1],b[1],'go',   v[2],b[2],'ro')
 
         self._process_figure(fig, writer, e, figure_name='bid_function')
+
 
 class LLLLGGAuctionLogger(SingleItemAuctionLogger):
 
@@ -392,10 +514,10 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
 
         if epoch % self.logging_options['plot_epoch'] == 0:
             [print("Epoch {}: \tcurrent utility: {:.3f}".format(epoch, utilities[i]))
-                for i in range(len(self.exp.models))]
+             for i in range(len(self.exp.models))]
             self._plot(self.fig, self.exp.models, self.writer, epoch)
         elapsed = timer() - start_time
-        self.overhead = self.overhead + elapsed 
+        self.overhead = self.overhead + elapsed
         self.writer.add_scalar('debug/overhead_hours', self.overhead/3600, epoch)
 
     def _log_metrics(self, writer, epoch, utility, update_norm):
@@ -512,24 +634,35 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
         return fig, plt
 
 class MultiUnitAuctionLogger(Logger):
-    def __init__(self, exp, base_dir, plot_epoch: int=100):
-        self.colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
-                       '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
-                       '#bcbd22', '#17becf']
-        self.colors_warm = ['maroon', 'firebrick', 'red', 'salmon',
-                            'coral', 'lightsalmon', 'mistyrose', 'lightgrey',
-                            'white']
-        super().__init__(exp=exp, base_dir=base_dir, plot_epoch=plot_epoch)
+    def __init__(self, exp, base_dir, save_figure_to_disk_png: bool = True,
+                 save_figure_to_disk_svg: bool = True, plot_epoch: int = 100,
+                 show_plot_inline: bool = True, save_figure_data_to_disk: bool = False):
+        super().__init__(exp, base_dir, save_figure_to_disk_png, save_figure_to_disk_svg,
+                         plot_epoch, show_plot_inline, save_figure_data_to_disk)
 
-    def log_experiment(self, run_comment, max_epochs: int):
-
-        # TODO: rewrite to get fields from self.exp instead of parameters
         self.models = self.exp.models
         self.env = self.exp.env
         self.experiment_params = self.exp.experiment_params
         self.gpu_config = self.exp.gpu_config
 
+    def log_experiment(self, run_comment, max_epochs):
         self.max_epochs = max_epochs
+
+        self.plot_points = min(100, self.exp.l_config.batch_size)
+        if self.log_opt:
+            self.v_opt = torch.stack([
+                torch.linspace(self.exp.plot_xmin, self.exp.plot_xmax, self.plot_points,
+                               device=self.exp.gpu_config.device)
+                ] * self.exp.n_units,
+                dim = 1
+            )
+            self.b_opt = self.exp._optimal_bid(self.v_opt) # only one sym. BNE supported
+
+        is_ipython = 'inline' in plt.get_backend()
+        if is_ipython:
+            from IPython import display
+        plt.rcParams['figure.figsize'] = [8, 5]
+
         if os.name == 'nt':
             raise ValueError('The run_name may not contain : on Windows!')
         run_name = time.strftime('%Y-%m-%d %a %H:%M:%S')
@@ -546,45 +679,41 @@ class MultiUnitAuctionLogger(Logger):
         print('Started run. Logging to {}'.format(self.log_dir))
         self.fig = plt.figure()
 
-        # TODO: this never shuts down the writer! (that's the memory leak probably)
         self.writer = SummaryWriter(self.log_dir, flush_secs=30)
-
-        self._log_once()
+        self._log_experimentparams()
+        self._log_hyperparams()
 
     def log_training_iteration(self, epoch, bidders, log_params: dict):
 
-        # ToDO I know it's ugly, this is to avoid importing the FPSBSplitAwardAuction2x2 class to use in isinstance
-        # and creating a circular dependency. For sure type checking needs to be dispensed with altogether.
+        # TODO: can be deleted after change of ´policy_metrics´
         is_FPSBSplitAwardAuction = "efficiency_parameter" in self.experiment_params.keys()
 
-        # ToDo Are bounds the same for all bidders? (used just [0] in all three cases below)
         # plotting
         if epoch % self.plot_epoch == 0:
-            self.plot_bid_function(
-                bidders,
-                log_params['optima_bid'],
-                log_params['optima_bid_2'],
-                epoch=epoch,
-                bounds=[self.experiment_params['u_lo'][0], self.experiment_params["u_hi"][0]],
-                split_award={
-                    'split_award': True,
-                    "efficiency_parameter": self.experiment_params['efficiency_parameter'],
-                    "input_length": self.experiment_params["input_length"]
-                } if is_FPSBSplitAwardAuction else None,
-            )
+            valuations = list()
+            bids = list()
+            for bidder in bidders:
+                valuations.append(bidder.draw_valuations_())
+                bids.append(bidder.get_action())
+            valuations = torch.stack(valuations, dim=1)
+            bids = torch.stack(bids, dim=1)
 
-            # if param_dict["n_items"] == 2 \
-            # and param_dict["n_players"] < 4 \
-            # and param_dict["exp_no"] != 6 \
-            # or param_dict["exp_no"] == 2:
-            #     plot_bid_function_3d(
-            #         writer, e, param_dict["exp_no"],
-            #         param_dict["n_items"], log_name, logdir, bidders,
-            #         batch_size, device, #bounds=[param_dict["u_lo"], param_dict["u_hi"]],
-            #         split_award = param_dict["exp_no"]==6,
-            #         save_fig_to_disk = save_figure_to_disk
-            #     )
+            labels = ['NPGA'] * len(bidders)
+            fmts = ['bo'] * len(bidders)
+            if self.log_opt:
+                valuations = torch.cat([
+                    valuations[:self.plot_points,:,:], self.v_opt[:,None,:],
+                ], dim=1)
+                bids = torch.cat([
+                    bids[:self.plot_points,:,:], self.b_opt[:,None,:],
+                ], dim=1)
+                labels.append('BNE')
+                fmts.append('b--')
 
+            _ = super()._plot(fig=self.fig, plot_data=(valuations, bids), writer=self.writer,
+                              figure_name='bid_function', epoch=epoch, labels=labels, fmts=fmts)
+
+        # TODO: switch to unified version of ´policy_metrics´
         policy_metrics = dict()
         bne_idx = 1
         while True:
@@ -594,7 +723,7 @@ class MultiUnitAuctionLogger(Logger):
                     self._policy_metric(
                         model.forward,
                         log_params['optima_bid'],
-                        self.experiment_params["n_items"],
+                        self.experiment_params["n_units"],
                         selection={'split_award': True,
                                 "efficiency_parameter": self.experiment_params['efficiency_parameter'],
                                 "input_length": self.experiment_params["input_length"]
@@ -619,43 +748,14 @@ class MultiUnitAuctionLogger(Logger):
 
         print('epoch {}:\t{}s'.format(epoch, round(log_params['elapsed'], 2)))
 
+        # TODO: unify model saving via switch
         if epoch == self.max_epochs:
             for i, model in enumerate(self.models):
                 torch.save(model.state_dict(), os.path.join(self.log_dir, 'saved_model_' + str(i) + '.pt'))
 
-    def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
+    def _log_experimentparams(self):
+        #TODO: write out all experiment params (complete dict)
         pass
-
-    def _process_figure(self, fig, **kwargs):
-        pass
-
-    def _log_once(self):
-        epoch = 0
-        n_parameters = self.experiment_params['n_parameters']
-        for agent in range(len(self.models)):
-            self.writer.add_scalar('hyperparameters/p{}_model_parameters'.format(agent),
-                                   n_parameters[agent], epoch)
-        self.writer.add_scalar('hyperparameters/model_parameters', sum(n_parameters), epoch)
-
-        for i, model in enumerate(self.models):
-            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)
-            self.writer.add_graph(model, self.env.agents[i].valuations)
-
-        self.writer.add_scalar('hyperparameters/batch_size', self.l_config.batch_size, epoch)
-        self.writer.add_scalar('hyperparameters/epochs', self.max_epochs, epoch)
-        self.writer.add_scalar(
-            'hyperparameters/pretrain_iters',
-            self.l_config.pretrain_iters,
-            epoch
-        )
-        # TODO log seeds
-
-        # for key, value in self.l_config.learner_hyperparams.items():
-        #     self.writer.add_scalar('hyperparameters/' + str(key), value, epoch)
-
-        self.writer.add_text('hyperparameters/optimizer', str(self.l_config.optimizer), epoch)
-        for key, value in self.l_config.optimizer_hyperparams.items():
-            self.writer.add_scalar('hyperparameters/' + str(key), value, epoch)
 
     def _log_metrics(self, epoch, metrics_dict: dict):
         """Log scalar for each player"""
@@ -684,9 +784,6 @@ class MultiUnitAuctionLogger(Logger):
                        for model in self.models]
         self.writer.add_scalars('eval/weight_norm', dict(zip(agent_name_list, model_paras)), epoch)
 
-    def _log_hyperparams(self, writer, epoch):
-        pass
-
     def _policy_metric(self, policy_1: Callable, policy_2: Callable, dim: int, bounds=[0, 1],
                        eval_points_max: int = 2 ** 7,
                        selection='random', item_interest_limit=None, dim_of_interest=None, device=None):
@@ -706,7 +803,7 @@ class MultiUnitAuctionLogger(Logger):
             policy_1_bidding = policy_1_bidding[:, dim_of_interest]
             policy_2_bidding = policy_2_bidding[:, dim_of_interest]
 
-        metric = self.rmse(policy_1_bidding, policy_2_bidding)
+        metric = bnelearn.util.metrics.norm_actions(policy_1_bidding, policy_2_bidding)
 
         return metric.detach()
 
@@ -758,176 +855,3 @@ class MultiUnitAuctionLogger(Logger):
             valuations = valuations.sort(dim=1)[0]
 
         return valuations
-
-    # TODO: Why is this a method? why does it clone the tensors?
-    def rmse(self, y, y_hat):
-        """
-        Root mean squared error.
-        """
-        return torch.sqrt(torch.mean((torch.clone(y_hat) - torch.clone(y)) ** 2))
-
-    def plot_bid_function(self, bidders, optimal_bid, optimal_bid_2, epoch=None, format='png', bounds=[0., 1.],
-                          split_award=None):
-        """Method for plotting"""
-
-        n_items = bidders[0].n_items
-        n_players = len(bidders)
-        plot_points = 25
-
-        if split_award is not None:
-            split_award['linspace'] = True
-
-        valuations = self.multi_unit_valuations(
-            self.gpu_config.device, bounds, n_items, plot_points,
-            'random' if split_award is None else split_award
-        )
-        # valuations = deepcopy(bidders[0]).draw_valuations_()[:plot_points,:]
-
-        if split_award is not None:
-            valuations, _ = valuations.sort(0)
-
-        b_opt_2 = optimal_bid_2(valuations).cpu().numpy()
-        if split_award is None:
-            b_opt = optimal_bid(valuations)
-            b_opt = b_opt.cpu().numpy()
-        else:
-            b_opt = optimal_bid(valuations, return_payoff_dominant=False)
-            for k, v in b_opt.items():
-                b_opt[k] = v.cpu().numpy()
-            temp = b_opt
-            b_opt = b_opt_2
-            b_opt_2 = temp
-
-        actions = list()
-        for bidder in bidders:
-            try:
-                dim = bidder.strategy.input_length
-            except:
-                try:
-                    dim = n_items
-                except Exception as exc:
-                    print(exc)
-            try:
-                actions.append(bidder.strategy.play(valuations[:,:dim]))
-            except:
-                actions.append(bidder.strategy(valuations[:,:dim]))
-
-        # sorting of points, s.t. 1st plot corresponds to 1st item, etc.
-        # (from sorted values to sorted bids)
-        acts = list()
-        for act in actions:
-            # if sort_by_bids:
-            #     sorted_idx = torch.sort(act, dim=1, descending=True)[1]
-            #     acts.append(batched_index_select(act, 1, sorted_idx).detach().cpu().numpy())
-            # else:
-            acts.append(act.detach().cpu().numpy())
-
-        fig, axs = plt.subplots(nrows=1, ncols=n_items, sharey=True, figsize=[7, 4])
-        plt.cla()
-
-        if not isinstance(axs, np.ndarray): # only one item/plot
-            axs = [axs]
-
-        if split_award is not None and n_items == 2:
-            if valuations.shape[1] == 1:
-                valuations = torch.cat(
-                    (valuations, split_award["efficiency_parameter"] * valuations), 1
-                )
-
-        valuations = valuations.cpu().numpy()
-
-        for item in range(n_items):
-            if split_award is not None:
-                plot = list(reversed(range(n_items)))[item]
-            else:
-                plot = item
-
-            for agent_idx in range(n_players):
-                if split_award is None:
-                    zeros = acts[agent_idx][:, item] < 1e-9
-                    axs[plot].scatter(
-                        valuations[:, item][~zeros], acts[agent_idx][:, item][~zeros],
-                        marker='.',
-                        color=self.colors[agent_idx % len(self.colors)],
-                        label='agent ' + str(agent_idx + 1),
-                    )
-                    axs[plot].plot(
-                        valuations[:, item][zeros], acts[agent_idx][:, item][zeros],
-                        marker="x",
-                        color=self.colors[agent_idx % len(self.colors)],
-                    )
-                else:
-                    zeros = acts[agent_idx][:, item] < 1e-9
-                    axs[plot].plot(
-                        valuations[:, item][~zeros], acts[agent_idx][:, item][~zeros],
-                        '.-',
-                        color=self.colors[agent_idx % len(self.colors)],
-                        label='agent ' + str(agent_idx + 1),
-                    )
-                    axs[plot].plot(
-                        valuations[:, item][zeros], acts[agent_idx][:, item][zeros],
-                        marker="x",
-                        color=self.colors[agent_idx % len(self.colors)],
-                    )
-
-            axs[plot].plot(
-                valuations[:, item], b_opt[:, item],
-                '.' if split_award is None else '-', color='black',
-                label='WTA BNE strategy' if split_award is not None
-                else 'BNE strategy'
-            )
-
-            if split_award is not None:
-                x_label = 'cost'
-                axs[plot].yaxis.grid(which="major", linestyle=':')
-                axs[plot].set_title('100% share' if item == 0 else '50% share')
-
-                select = 'wta_bounds' if item == 0 else 'sigma_bounds'
-                axs[plot].plot(
-                    valuations[:, 0 if item == 0 else 1],
-                    b_opt_2[select][:, 0], '--',
-                    label='pooling BNE bounds',
-                    color='black'
-                )
-                axs[plot].plot(
-                    valuations[:, 0 if item == 0 else 1],
-                    b_opt_2[select][:, 1], '--',
-                    color='black'
-                )
-
-            if split_award is not None:
-                axs[plot].set_xlim(
-                    [bounds[0], bounds[1]] if item == 0 else
-                    [split_award["efficiency_parameter"] * bounds[0],
-                     split_award["efficiency_parameter"] * bounds[1]]
-                )
-                axs[plot].set_ylim(
-                    [0, 1.9 * bounds[1]] if item == 0 else
-                    [0, 5.2*split_award["efficiency_parameter"]*bounds[1]]
-                )
-
-            else:
-                x_label = 'valuation'
-                axs[plot].set_title(str(item + 1) + '. bid')
-                axs[plot].set_xlim([bounds[0], bounds[1]])
-                axs[plot].set_ylim([bounds[0], bounds[1]])
-
-            axs[plot].set_xlabel(x_label)
-
-            if plot == 0:
-                axs[plot].set_ylabel('bid')
-                if n_players < 10:
-                    axs[plot].legend(loc='upper left')
-
-        axs[plot].locator_params(axis='x', nbins=5)
-        fig.tight_layout()
-
-        if self.save_figure_to_disk_png and self.log_dir is not None:
-            try:
-                os.mkdir(os.path.join(self.log_dir, 'plots'))
-            except FileExistsError:
-                pass
-            print(os.path.join(self.log_dir, 'plots', f'_{epoch:05}.' + format))
-            plt.savefig(os.path.join(self.log_dir, 'plots', f'_{epoch:05}.' + format))
-
-        self.writer.add_figure('plot/plot', fig, epoch)

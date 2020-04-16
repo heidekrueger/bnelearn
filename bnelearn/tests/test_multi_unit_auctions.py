@@ -3,15 +3,15 @@
 import pytest
 import torch
 
-from bnelearn.mechanism import (MultiItemDiscriminatoryAuction,
-                                MultiItemUniformPriceAuction,
-                                MultiItemVickreyAuction)
+from bnelearn.mechanism import (MultiUnitDiscriminatoryAuction,
+                                MultiUnitUniformPriceAuction,
+                                MultiUnitVickreyAuction)
 
 cuda = torch.cuda.is_available()
 
-mida = MultiItemDiscriminatoryAuction(cuda=cuda)
-miup = MultiItemUniformPriceAuction(cuda=cuda)
-miva = MultiItemVickreyAuction(cuda=cuda)
+mida = MultiUnitDiscriminatoryAuction(cuda=cuda)
+miup = MultiUnitUniformPriceAuction(cuda=cuda)
+miva = MultiUnitVickreyAuction(cuda=cuda)
 
 device = mida.device
 
@@ -66,7 +66,7 @@ bids_multi_unit_1_allocations = torch.tensor([
 
 
 def test_mida_correctness():
-    """Test of allocation and payments in MultiItemDiscriminatoryAuction."""
+    """Test of allocation and payments in MultiUnitDiscriminatoryAuction."""
 
     # test 0
     allocations, payments = mida.run(bids_multi_unit_0)
@@ -86,7 +86,7 @@ def test_mida_correctness():
         device = payments.device))
 
 def test_miup_correctness():
-    """Test of allocation and payments in MultiItemUniformPriceAuction."""
+    """Test of allocation and payments in MultiUnitUniformPriceAuction."""
 
     # test 0
     allocations, payments = miup.run(bids_multi_unit_0)
@@ -106,7 +106,7 @@ def test_miup_correctness():
         device = payments.device))
 
 def test_miva_correctness():
-    """Test of allocation and payments in MultiItemVickreyAuction."""
+    """Test of allocation and payments in MultiUnitVickreyAuction."""
 
     # test 0
     allocations, payments = miva.run(bids_multi_unit_0)
