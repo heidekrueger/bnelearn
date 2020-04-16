@@ -81,8 +81,8 @@ if __name__ == '__main__':
 
     '''
     # n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = fire.Fire()
-    # n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_llg(1,20,'vcg')
-    n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_single_item_uniform_symmetric(1, 120, [2], 'first_price')
+    n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_llg(1,20,'vcg')
+    # n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_single_item_uniform_symmetric(1, 120, [2], 'first_price')
     # n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_MultiUnitVickreyAuction2x2(2, 20)
 
 

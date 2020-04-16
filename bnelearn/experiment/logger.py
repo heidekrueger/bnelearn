@@ -106,8 +106,7 @@ class Logger(ABC):
                 axs[plot_idx].plot(
                     x[:,agent_idx,plot_idx], y[:,agent_idx,plot_idx],
                     fmts[agent_idx % len(fmts)],
-                    label=None if labels is None else \
-                        labels[plot_idx % len(labels)][agent_idx % len(labels[plot_idx % len(labels)])],
+                    label=None if labels is None else labels[agent_idx % len(labels)],
                     color=cycle[agent_idx],
                 )
 
@@ -288,8 +287,6 @@ class SingleItemAuctionLogger(Logger):
                     v[:self.plot_points,:,:],
                     torch.tensor(self.v_opt, device=self.exp.gpu_config.device).t().type(v.type())[:,:,None]
                 ], dim=1)
-                for i in self.b_opt:
-                    print(i.shape)
 
                 # TODO: unify to get rid of try/catch!
                 try: # run_single_item_uniform_symmetric
@@ -304,7 +301,7 @@ class SingleItemAuctionLogger(Logger):
                     ], dim=1)
 
             self._plot(fig=self.fig, plot_data=(v, b), writer=None, epoch=epoch,
-                       labels=[['NPGA', 'BNE']], fmts=['bo', 'b--']) # TODO self.writer
+                       labels=['NPGA', 'BNE'], fmts=['bo', 'b--']) # TODO self.writer
 
         elapsed = timer() - start_time
         self.overhead_mins = self.overhead_mins + elapsed / 60
@@ -370,36 +367,6 @@ class SingleItemAuctionLogger(Logger):
             agent.batch_size = original_batch_size
             agent.draw_valuations_new_batch_(original_batch_size)
 
-    #TODO: Do I need "fig" here?
-    # def _plot_2d(self, plot_data, epoch, xlim: list,
-    #              ylim: list, x_label="valuation", y_label="bid"):
-    #     """This implements plotting simple 2d data"""
-    #     plot_xmin = xlim[0]
-    #     plot_xmax = xlim[1]
-    #     plot_ymin = ylim[0]
-    #     plot_ymax = ylim[1]
-    #     x = [None] * len(plot_data[0])
-    #     y = [None] * len(plot_data[0])
-
-    #     for i in range(len(x)):
-    #         x[i] = plot_data[0][i].detach().cpu().numpy()[:self.plot_points]
-    #         y[i] = plot_data[1][i].detach().cpu().numpy()[:self.plot_points]
-
-    #     # create the plot
-    #     fig = plt.gcf()
-    #     plt.cla()
-    #     plt.xlim(plot_xmin, plot_xmax)
-    #     plt.ylim(plot_ymin, plot_ymax)
-    #     plt.xlabel(x_label)
-    #     plt.ylabel(y_label)
-    #     plt.text(plot_xmin + 0.05 * (plot_xmax - plot_xmin),
-    #              plot_ymax - 0.05 * (plot_ymax - plot_ymin),
-    #              'iteration {}'.format(epoch))
-    #     cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    #     for i in range(len(x)):
-    #         plt.plot(x[i], y[i], color=cycle[i], marker='o', linestyle = 'None')
-    #     return fig, plt
-
     def _log_experimentparams(self):
         #TODO: write out all experiment params (complete dict)
         pass
@@ -431,29 +398,8 @@ class SingleItemAuctionLogger(Logger):
             self.writer.add_scalar('hyperparameters/' + str(key), value, epoch)
 
 class LLGAuctionLogger(SingleItemAuctionLogger):
-
+    # TODO need?
     pass
-    #TODO: Delete!?
-    # def plot_bid_function(self, fig, v, b, writer=None, e=None):
-    #     # subsample points and plot
-    #     for i in range(len(v)):
-    #         if i in [0,1]:
-    #             #plot fewer points for local bidders
-    #             v[i] = v[i].detach().cpu().numpy()[:self.plot_points]
-    #             b[i] = b[i].detach().cpu().numpy()[:self.plot_points]
-    #         else:
-    #             v[i] = v[i].detach().cpu().numpy()[:self.plot_points]
-    #             b[i] = b[i].detach().cpu().numpy()[:self.plot_points]
-
-    #     fig = plt.gcf()
-    #     plt.cla()
-    #     plt.xlim(self.exp.plot_xmin, self.exp.plot_xmax)
-    #     plt.ylim(self.exp.plot_ymin, self.exp.plot_ymax)
-    #     plt.xlabel('valuation')
-    #     plt.ylabel('bid')
-    #     plt.text(0 + 0.5, 2 - 0.5, 'iteration {}'.format(e))
-    #     plt.plot(v[0],b[0], 'bo', self.v_opt[0], self.b_opt[0], 'b--', v[1],b[1], 'go', self.v_opt[1], self.b_opt[1], 'g--', v[2],b[2], 'ro', self.v_opt[2],self.b_opt[2], 'r--')
-    #     self._process_figure(fig, writer, e, figure_name='bid_function')
 
 class LLLLGGAuctionLogger(SingleItemAuctionLogger):
 
@@ -604,20 +550,15 @@ class MultiUnitAuctionLogger(Logger):
     def log_experiment(self, run_comment, max_epochs):
         self.max_epochs = max_epochs
 
-        self.plot_points = min(100, self.exp.l_config.batch_size)        
+        self.plot_points = min(100, self.exp.l_config.batch_size)
         if self.log_opt:
-            # TODO: this should be model specific! (e.g. in LLG locals should not plot higher vals than their own)
             self.v_opt = torch.stack([
-                    np.linspace(self.exp.plot_xmin, self.exp.plot_xmax, self.plot_points)
-                ] * len(self.exp.models),
+                torch.linspace(self.exp.plot_xmin, self.exp.plot_xmax, self.plot_points,
+                               device=self.exp.gpu_config.device)
+                ] * self.exp.n_units,
                 dim = 1
             )
-            self.b_opt = torch.stack([
-                    self.exp._optimal_bid(self.v_opt[i], player_position=model.connected_bidders[0])
-                    for i, model in enumerate(self.exp.models)
-                ],
-                dim = 1
-            )
+            self.b_opt = self.exp._optimal_bid(self.v_opt) # only one sym. BNE supported
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
@@ -646,8 +587,7 @@ class MultiUnitAuctionLogger(Logger):
 
     def log_training_iteration(self, epoch, bidders, log_params: dict):
 
-        # ToDO I know it's ugly, this is to avoid importing the FPSBSplitAwardAuction2x2 class to use in isinstance
-        # and creating a circular dependency. For sure type checking needs to be dispensed with altogether.
+        # TODO: can be deleted after change of ´policy_metrics´
         is_FPSBSplitAwardAuction = "efficiency_parameter" in self.experiment_params.keys()
 
         # plotting
@@ -660,33 +600,22 @@ class MultiUnitAuctionLogger(Logger):
             valuations = torch.stack(valuations, dim=1)
             bids = torch.stack(bids, dim=1)
 
-            fig = super()._plot(fig=None, plot_data=(valuations, bids), writer=self.writer, epoch=epoch)
+            labels = ['NPGA'] * len(bidders)
+            fmts = ['bo'] * len(bidders)
+            if self.log_opt:
+                valuations = torch.cat([
+                    valuations[:self.plot_points,:,:], self.v_opt[:,None,:],
+                ], dim=1)
+                bids = torch.cat([
+                    bids[:self.plot_points,:,:], self.b_opt[:,None,:],
+                ], dim=1)
+                labels.append('BNE')
+                fmts.append('b--')
 
-            # self.plot_bid_function(
-            #     bidders,
-            #     log_params['optima_bid'],
-            #     log_params['optima_bid_2'],
-            #     epoch=epoch,
-            #     bounds=[self.experiment_params['u_lo'][0], self.experiment_params["u_hi"][0]],
-            #     split_award={
-            #         'split_award': True,
-            #         "efficiency_parameter": self.experiment_params['efficiency_parameter'],
-            #         "input_length": self.experiment_params["input_length"]
-            #     } if is_FPSBSplitAwardAuction else None,
-            # )
+            _ = super()._plot(fig=self.fig, plot_data=(valuations, bids), writer=self.writer,
+                              epoch=epoch, labels=labels, fmts=fmts)
 
-            # if param_dict["n_units"] == 2 \
-            # and param_dict["n_players"] < 4 \
-            # and param_dict["exp_no"] != 6 \
-            # or param_dict["exp_no"] == 2:
-            #     plot_bid_function_3d(
-            #         writer, e, param_dict["exp_no"],
-            #         param_dict["n_units"], log_name, logdir, bidders,
-            #         batch_size, device, #bounds=[param_dict["u_lo"], param_dict["u_hi"]],
-            #         split_award = param_dict["exp_no"]==6,
-            #         save_fig_to_disk = save_figure_to_disk
-            #     )
-
+        # TODO: switch to unified version of ´policy_metrics´
         policy_metrics = dict()
         bne_idx = 1
         while True:
@@ -721,6 +650,7 @@ class MultiUnitAuctionLogger(Logger):
 
         print('epoch {}:\t{}s'.format(epoch, round(log_params['elapsed'], 2)))
 
+        # TODO: unify model saving via switch
         if epoch == self.max_epochs:
             for i, model in enumerate(self.models):
                 torch.save(model.state_dict(), os.path.join(self.log_dir, 'saved_model_' + str(i) + '.pt'))
@@ -756,7 +686,6 @@ class MultiUnitAuctionLogger(Logger):
                        for model in self.models]
         self.writer.add_scalars('eval/weight_norm', dict(zip(agent_name_list, model_paras)), epoch)
 
-
     def _policy_metric(self, policy_1: Callable, policy_2: Callable, dim: int, bounds=[0, 1],
                        eval_points_max: int = 2 ** 7,
                        selection='random', item_interest_limit=None, dim_of_interest=None, device=None):
@@ -776,7 +705,7 @@ class MultiUnitAuctionLogger(Logger):
             policy_1_bidding = policy_1_bidding[:, dim_of_interest]
             policy_2_bidding = policy_2_bidding[:, dim_of_interest]
 
-        metric = self.rmse(policy_1_bidding, policy_2_bidding)
+        metric = bnelearn.util.metrics.norm_actions(policy_1_bidding, policy_2_bidding)
 
         return metric.detach()
 
@@ -828,176 +757,3 @@ class MultiUnitAuctionLogger(Logger):
             valuations = valuations.sort(dim=1)[0]
 
         return valuations
-
-    # TODO: Why is this a method? why does it clone the tensors?
-    def rmse(self, y, y_hat):
-        """
-        Root mean squared error.
-        """
-        return torch.sqrt(torch.mean((torch.clone(y_hat) - torch.clone(y)) ** 2))
-
-    def plot_bid_function(self, bidders, optimal_bid, optimal_bid_2, epoch=None, format='png', bounds=[0., 1.],
-                          split_award=None):
-        """Method for plotting"""
-
-        n_items = bidders[0].n_items
-        n_players = len(bidders)
-        plot_points = 25
-
-        if split_award is not None:
-            split_award['linspace'] = True
-
-        valuations = self.multi_unit_valuations(
-            self.gpu_config.device, bounds, n_items, plot_points,
-            'random' if split_award is None else split_award
-        )
-        # valuations = deepcopy(bidders[0]).draw_valuations_()[:plot_points,:]
-
-        if split_award is not None:
-            valuations, _ = valuations.sort(0)
-
-        b_opt_2 = optimal_bid_2(valuations).cpu().numpy()
-        if split_award is None:
-            b_opt = optimal_bid(valuations)
-            b_opt = b_opt.cpu().numpy()
-        else:
-            b_opt = optimal_bid(valuations, return_payoff_dominant=False)
-            for k, v in b_opt.items():
-                b_opt[k] = v.cpu().numpy()
-            temp = b_opt
-            b_opt = b_opt_2
-            b_opt_2 = temp
-
-        actions = list()
-        for bidder in bidders:
-            try:
-                dim = bidder.strategy.input_length
-            except:
-                try:
-                    dim = n_items
-                except Exception as exc:
-                    print(exc)
-            try:
-                actions.append(bidder.strategy.play(valuations[:,:dim]))
-            except:
-                actions.append(bidder.strategy(valuations[:,:dim]))
-
-        # sorting of points, s.t. 1st plot corresponds to 1st item, etc.
-        # (from sorted values to sorted bids)
-        acts = list()
-        for act in actions:
-            # if sort_by_bids:
-            #     sorted_idx = torch.sort(act, dim=1, descending=True)[1]
-            #     acts.append(batched_index_select(act, 1, sorted_idx).detach().cpu().numpy())
-            # else:
-            acts.append(act.detach().cpu().numpy())
-
-        fig, axs = plt.subplots(nrows=1, ncols=n_items, sharey=True, figsize=[7, 4])
-        plt.cla()
-
-        if not isinstance(axs, np.ndarray): # only one item/plot
-            axs = [axs]
-
-        if split_award is not None and n_items == 2:
-            if valuations.shape[1] == 1:
-                valuations = torch.cat(
-                    (valuations, split_award["efficiency_parameter"] * valuations), 1
-                )
-
-        valuations = valuations.cpu().numpy()
-
-        for item in range(n_items):
-            if split_award is not None:
-                plot = list(reversed(range(n_items)))[item]
-            else:
-                plot = item
-
-            for agent_idx in range(n_players):
-                if split_award is None:
-                    zeros = acts[agent_idx][:, item] < 1e-9
-                    axs[plot].scatter(
-                        valuations[:, item][~zeros], acts[agent_idx][:, item][~zeros],
-                        marker='.',
-                        color=self.colors[agent_idx % len(self.colors)],
-                        label='agent ' + str(agent_idx + 1),
-                    )
-                    axs[plot].plot(
-                        valuations[:, item][zeros], acts[agent_idx][:, item][zeros],
-                        marker="x",
-                        color=self.colors[agent_idx % len(self.colors)],
-                    )
-                else:
-                    zeros = acts[agent_idx][:, item] < 1e-9
-                    axs[plot].plot(
-                        valuations[:, item][~zeros], acts[agent_idx][:, item][~zeros],
-                        '.-',
-                        color=self.colors[agent_idx % len(self.colors)],
-                        label='agent ' + str(agent_idx + 1),
-                    )
-                    axs[plot].plot(
-                        valuations[:, item][zeros], acts[agent_idx][:, item][zeros],
-                        marker="x",
-                        color=self.colors[agent_idx % len(self.colors)],
-                    )
-
-            axs[plot].plot(
-                valuations[:, item], b_opt[:, item],
-                '.' if split_award is None else '-', color='black',
-                label='WTA BNE strategy' if split_award is not None
-                else 'BNE strategy'
-            )
-
-            if split_award is not None:
-                x_label = 'cost'
-                axs[plot].yaxis.grid(which="major", linestyle=':')
-                axs[plot].set_title('100% share' if item == 0 else '50% share')
-
-                select = 'wta_bounds' if item == 0 else 'sigma_bounds'
-                axs[plot].plot(
-                    valuations[:, 0 if item == 0 else 1],
-                    b_opt_2[select][:, 0], '--',
-                    label='pooling BNE bounds',
-                    color='black'
-                )
-                axs[plot].plot(
-                    valuations[:, 0 if item == 0 else 1],
-                    b_opt_2[select][:, 1], '--',
-                    color='black'
-                )
-
-            if split_award is not None:
-                axs[plot].set_xlim(
-                    [bounds[0], bounds[1]] if item == 0 else
-                    [split_award["efficiency_parameter"] * bounds[0],
-                     split_award["efficiency_parameter"] * bounds[1]]
-                )
-                axs[plot].set_ylim(
-                    [0, 1.9 * bounds[1]] if item == 0 else
-                    [0, 5.2*split_award["efficiency_parameter"]*bounds[1]]
-                )
-
-            else:
-                x_label = 'valuation'
-                axs[plot].set_title(str(item + 1) + '. bid')
-                axs[plot].set_xlim([bounds[0], bounds[1]])
-                axs[plot].set_ylim([bounds[0], bounds[1]])
-
-            axs[plot].set_xlabel(x_label)
-
-            if plot == 0:
-                axs[plot].set_ylabel('bid')
-                if n_players < 10:
-                    axs[plot].legend(loc='upper left')
-
-        axs[plot].locator_params(axis='x', nbins=5)
-        fig.tight_layout()
-
-        if self.save_figure_to_disk_png and self.log_dir is not None:
-            try:
-                os.mkdir(os.path.join(self.log_dir, 'plots'))
-            except FileExistsError:
-                pass
-            print(os.path.join(self.log_dir, 'plots', f'_{epoch:05}.' + format))
-            plt.savefig(os.path.join(self.log_dir, 'plots', f'_{epoch:05}.' + format))
-
-        self.writer.add_figure('plot/plot', fig, epoch)
