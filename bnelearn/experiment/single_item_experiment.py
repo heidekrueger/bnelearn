@@ -236,6 +236,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
                 bne_utility_sampled, bne_utility_analytical)
         print('Using analytical BNE utility.')
         self.bne_utility = bne_utility_analytical
+        self.bne_utilities = [self.bne_utility]*self.n_models
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions, risk=self.risk)
@@ -261,7 +262,6 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         log_params = {} # TODO Stefan: what does this do?
         logger.log_training_iteration(prev_params=prev_params, epoch=epoch,
                                       strat_to_bidder=self._strat_to_bidder,
-                                      bne_utilities=[self.bne_utility]*len(self.models),
                                       utilities=utilities, log_params=log_params)
         # TODO Stefan: this should be part of logger, not be called here explicitly!
         # TODO: add regret back later, disable for now

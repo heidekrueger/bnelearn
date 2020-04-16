@@ -23,9 +23,12 @@ from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
 class CombinatorialExperiment(Experiment, ABC):
     payment_rule: str
 
-    def __init__(self, n_players, n_local, experiment_params, gpu_config, l_config, known_bne):
+    def __init__(self, n_players, n_local, n_items, experiment_params, gpu_config, l_config, known_bne):
         self.n_players = n_players
         self.n_local = n_local
+        self.n_items = n_items
+
+        self.payment_rule = experiment_params['payment_rule']
 
         self.model_sharing = experiment_params['model_sharing']
         if self.model_sharing:
@@ -134,7 +137,7 @@ class CombinatorialExperiment(Experiment, ABC):
         log_params = {}
         logger.log_training_iteration(prev_params=prev_params, epoch=epoch,
                                            strat_to_bidder=self._strat_to_bidder,                                           
-                                           utilities=utilities, bne_utilities=None,
+                                           utilities=utilities, 
                                            log_params=log_params)
         if epoch % 10 == 0:
             print("epoch {}, utilities: ".format(epoch))
@@ -154,11 +157,11 @@ class LLGExperiment(CombinatorialExperiment):
         experiment_params['n_players'] = 3
         self.n_players = experiment_params['n_players'] # TODO: this will also be set in superclass but le'ts use it below
         
-        self.n_items = 1 # TODO: what does this do? can we get rid of it?
+        #self.payment_rule =experiment_params['payment_rule']
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known! (i.e. uniformity, bounds, etc)
         known_bne = experiment_params['payment_rule'] in ['first_price', 'vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
         
-        super().__init__(3, 2, experiment_params, gpu_config, l_config, known_bne)
+        super().__init__(3, 2, 1, experiment_params, gpu_config, l_config, known_bne)
 
     def _setup_logger(self, base_dir):
         return LLGAuctionLogger(self, base_dir)
@@ -230,7 +233,7 @@ class LLLLGGExperiment(CombinatorialExperiment):
         #TODO: BNE is known for vcg
         known_bne = False
 
-        super().__init__(6, 4, experiment_params, gpu_config, l_config, known_bne)
+        super().__init__(6, 4, 2, experiment_params, gpu_config, l_config, known_bne)
 
     def _setup_logger(self, base_dir):
         return LLLLGGAuctionLogger(self, base_dir)

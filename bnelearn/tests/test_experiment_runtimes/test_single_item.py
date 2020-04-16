@@ -12,22 +12,14 @@
 """
 
 
-# import pytest
-
-# import sys
-# import torch
 # import torch.nn as nn
 
 # from bnelearn.experiment.gpu_controller import GPUController
 # from bnelearn.experiment.learning_configuration import LearningConfiguration
-# from bnelearn.experiment.logger import SingleItemAuctionLogger
 # from bnelearn.experiment.single_item_experiment import UniformSymmetricPriorSingleItemExperiment, \
 #     GaussianSymmetricPriorSingleItemExperiment
 
-# from bnelearn.experiment.combinatorial_experiment import LLGExperiment, LLLLGGExperiment
-# import warnings
 # gpu_config = GPUController(specific_gpu=0)
-
 
 # learner_hyperparams = {
 #     'population_size': 64,
@@ -65,11 +57,11 @@
 # def test_uniform_symmetric_model_sharing():
 #     experiment_params['model_sharing'] = True
 
-#     for n in [2,3]:
+#     for n in [2]:
 #         experiment_params['n_players'] = n
 #         experiment = UniformSymmetricPriorSingleItemExperiment(
 #             experiment_params, gpu_config=gpu_config, l_config=l_config)
-#         experiment.run(epochs=101, n_runs=2)
+#         experiment.run(epochs=51, n_runs=2)
 
 # def test_uniform_symmetric_without_model_sharing():
 #     experiment_params['model_sharing'] = False
@@ -78,7 +70,7 @@
 #         experiment_params['n_players'] = n
 #         experiment = UniformSymmetricPriorSingleItemExperiment(
 #             experiment_params, gpu_config=gpu_config, l_config=l_config)
-#         experiment.run(epochs=101, n_runs=2)
+#         experiment.run(epochs=51, n_runs=2)
 
 
 # def test_gaussian_symmetric_with_model_sharing():
@@ -106,4 +98,4 @@
 
 #     experiment = GaussianSymmetricPriorSingleItemExperiment(
 #         gaussian_experiment_params, gpu_config=gpu_config, l_config=l_config)
-#     experiment.run(epochs=101, n_runs=2)
+#     experiment.run(epochs=51, n_runs=2)
