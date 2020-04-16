@@ -176,16 +176,21 @@ class SingleItemAuctionLogger(Logger):
             # calculate infinity-norm of update step
             new_params = torch.nn.utils.parameters_to_vector(model.parameters())
             update_norm = (new_params - prev_params[i]).norm(float('inf'))
-            # calculate utility vs bne
-            utility_vs_bne = self.exp.bne_env.get_reward(
-                strat_to_bidder(model, batch_size=self.exp.l_config.eval_batch_size),
-                draw_valuations=False)  # False because expensive for normal priors
-            epsilon_relative = 1 - utility_vs_bne / bne_utilities[i]
-            epsilon_absolute = bne_utilities[i] - utility_vs_bne
-            L_2 = metrics.norm_strategy_and_actions(model, self.exp.bne_env.agents[i].get_action(),
-                                                    self.exp.bne_env.agents[i].valuations, 2)
-            L_inf = metrics.norm_strategy_and_actions(model, self.exp.bne_env.agents[i].get_action(),
-                                                      self.exp.bne_env.agents[i].valuations, float('inf'))
+
+            if self.exp.known_bne:
+                # calculate utility vs bne
+                utility_vs_bne = self.exp.bne_env.get_reward(
+                    strat_to_bidder(model, batch_size=self.exp.l_config.eval_batch_size),
+                    draw_valuations=False)  # False because expensive for normal priors
+                epsilon_relative = 1 - utility_vs_bne / bne_utilities[i]
+                epsilon_absolute = bne_utilities[i] - utility_vs_bne
+                L_2 = metrics.norm_strategy_and_actions(model, self.exp.bne_env.agents[i].get_action(),
+                                                        self.exp.bne_env.agents[i].valuations, 2)
+                L_inf = metrics.norm_strategy_and_actions(model, self.exp.bne_env.agents[i].get_action(),
+                                                        self.exp.bne_env.agents[i].valuations, float('inf'))
+            else:
+                utility_vs_bne, epsilon_relative, epsilon_absolute, L_2, L_inf = None,None,None,None,None
+            
             self._log_metrics(writer=self.writer, epoch=epoch, utility=utilities[i], update_norm=update_norm,
                               utility_vs_bne=utility_vs_bne, epsilon_relative=epsilon_relative,
                               epsilon_absolute=epsilon_absolute, L_2=L_2, L_inf=L_inf,
@@ -365,7 +370,7 @@ class LLGAuctionLogger(SingleItemAuctionLogger):
 
 class LLLLGGAuctionLogger(SingleItemAuctionLogger):
 
-    def log_training_iteration(self, prev_params, epoch, strat_to_bidder, eval_batch_size, utilities, log_params: dict):
+    def log_training_iteration(self, prev_params, epoch, strat_to_bidder, utilities, bne_utilities=None, log_params: dict):
         # TODO It is by no means nice that there is so much specific logic in here
         #TODO: Change similar to single_item
         start_time = timer()
