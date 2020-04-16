@@ -8,11 +8,11 @@ from bnelearn.experiment.gpu_controller import GPUController
 from bnelearn.experiment.learning_configuration import LearningConfiguration
 from bnelearn.experiment.logger import MultiUnitAuctionLogger
 from bnelearn.experiment.multi_unit_experiment import (
-    MultiItemVickreyAuction2x2,
-    MultiItemUniformPriceAuction2x2,
-    MultiItemUniformPriceAuction2x3limit2,
-    MultiItemDiscriminatoryAuction2x2,
-    MultiItemDiscriminatoryAuction2x2CMV,
+    MultiUnitVickreyAuction2x2,
+    MultiUnitUniformPriceAuction2x2,
+    MultiUnitUniformPriceAuction2x3limit2,
+    MultiUnitDiscriminatoryAuction2x2,
+    MultiUnitDiscriminatoryAuction2x2CMV,
     FPSBSplitAwardAuction2x2
 )
 
@@ -22,31 +22,31 @@ gpu_config = GPUController(specific_gpu=7)
 
 settings = [
     {
-        'Auction': MultiItemVickreyAuction2x2,
+        'Auction': MultiUnitVickreyAuction2x2,
         'model_sharing': True,
         'u_lo': [0] * 2,
         'u_hi': [1] * 2,
     },
     # {
-    #     'Auction': MultiItemUniformPriceAuction2x2,
+    #     'Auction': MultiUnitUniformPriceAuction2x2,
     #     'model_sharing': True,
     #     'u_lo': [0] * 2,
     #     'u_hi': [1] * 2,
     # },
     # {
-    #     'Auction': MultiItemUniformPriceAuction2x3limit2,
+    #     'Auction': MultiUnitUniformPriceAuction2x3limit2,
     #     'model_sharing': True,
     #     'u_lo': [0] * 3,
     #     'u_hi': [1] * 3,
     # },
     # {
-    #     'Auction': MultiItemDiscriminatoryAuction2x2,
+    #     'Auction': MultiUnitDiscriminatoryAuction2x2,
     #     'model_sharing': True,
     #     'u_lo': [0] * 2,
     #     'u_hi': [1] * 2,
     # },
     # {
-    #     'Auction': MultiItemDiscriminatoryAuction2x2CMV,
+    #     'Auction': MultiUnitDiscriminatoryAuction2x2CMV,
     #     'model_sharing': True,
     #     'u_lo': [0] * 2,
     #     'u_hi': [1] * 2,
@@ -80,7 +80,7 @@ for experiment_params in settings:
     experiment_params['risk'] = 1.0
     experiment_params['regret_batch_size'] = 2 ** 8
 
-    input_length = experiment_params['Auction'].class_experiment_params['n_items']
+    input_length = experiment_params['Auction'].class_experiment_params['n_Units']
     hidden_nodes = [5, 5, 5]
     hidden_activations = [nn.SELU(), nn.SELU(), nn.SELU()]
 
