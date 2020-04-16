@@ -54,7 +54,7 @@ class Logger(ABC):
         self.plot_points = None
         self.max_epochs = None
 
-        self.overhead_mins = 0.0
+        self.overhead = 0.0
 
     # Doesn't seem to be needed
     # def __del__(self):
@@ -113,13 +113,12 @@ class SingleItemAuctionLogger(Logger):
         super().__init__(exp, base_dir)
 
     def log_experiment(self, run_comment, max_epochs: int):
-
         # setting up plotting
         self.plot_points = min(100, self.exp.l_config.batch_size)
         # TODO: this should be model specific! (e.g. in LLG locals should not plot higher vals than their own)
         self.v_opt = [np.linspace(self.exp.plot_xmin, self.exp.plot_xmax, 100)] * len(self.exp.models)
         # TODO: presumes existence of optimal bid --> should not be assumed here
-        self.b_opt = [self.exp._optimal_bid(self.v_opt[m_id], player_position=self._model2bidder[m_id][0])
+        self.b_opt = [self.exp._optimal_bid(self.v_opt[m_id], player_position=self.exp._model2bidder[m_id][0])
                         for m_id,model in enumerate(self.exp.models)]
 
         is_ipython = 'inline' in plt.get_backend()
@@ -144,8 +143,11 @@ class SingleItemAuctionLogger(Logger):
         self.fig = plt.figure()
 
         self.writer = SummaryWriter(self.log_dir, flush_secs=30)
+        start_time = timer()
         self._log_once()
         self._log_hyperparams()
+        elapsed = timer() - start_time
+        self.overhead += elapsed
 
     #TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
     def log_training_iteration(self, prev_params, epoch, strat_to_bidder, bne_utilities,
@@ -200,15 +202,15 @@ class SingleItemAuctionLogger(Logger):
             self._plot(self.fig, plot_data, self.writer, epoch)
 
         elapsed = timer() - start_time
-        self.overhead_mins = self.overhead_mins + elapsed / 60
-        self.writer.add_scalar('debug/overhead_mins', self.overhead_mins, epoch)
+        self.overhead = self.overhead + elapsed
+        self.writer.add_scalar('debug/overhead_hours', self.overhead/3600, epoch)
 
 
     # TODO: rename u_lo, u_hi --> these have NOTHING to do with normal distribution.
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
+        start_time = timer()
 
         original_batch_size = env.agents[0].batch_size
-
         bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
                                           dtype=env.agents[0].valuations.dtype, device = env.mechanism.device)
         for agent in env.agents:
@@ -250,9 +252,13 @@ class SingleItemAuctionLogger(Logger):
                             [0, max_regret.detach().cpu().numpy()], x_label="valuation", y_label="regret")
         self._process_figure(fig, self.writer, epoch, figure_name="regret")
 
+        # TODO: why? don't we redraw valuations at beginning of loop anyway.
         for agent in env.agents:
             agent.batch_size = original_batch_size
             agent.draw_valuations_new_batch_(original_batch_size)
+
+        elapsed = timer() - start_time
+        self.overhead += elapsed
 
 
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
@@ -375,8 +381,8 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
                 for i in range(len(self.exp.models))]
             self._plot(self.fig, self.exp.models, self.writer, epoch)
         elapsed = timer() - start_time
-        self.overhead_mins = self.overhead_mins + elapsed / 60
-        self.writer.add_scalar('debug/overhead_mins', self.overhead_mins, epoch)
+        self.overhead = self.overhead + elapsed 
+        self.writer.add_scalar('debug/overhead_hours', self.overhead/3600, epoch)
 
     def _log_metrics(self, writer, epoch, utility, update_norm):
         writer.add_scalar('eval/utility', utility, epoch)

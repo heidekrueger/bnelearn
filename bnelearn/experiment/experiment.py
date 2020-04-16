@@ -58,6 +58,11 @@ class Experiment(ABC):
         self.base_dir = None
         self.models: Iterable[torch.nn.Module] = None
 
+        # Inverse of bidder --> model lookup table
+        self._model2bidder: List[List[int]] = [[] for m in range(self.n_models)]
+        for b_id, m_id in enumerate(self._bidder2model):
+            self._model2bidder[m_id].append(b_id)
+
 
         self.mechanism: Mechanism = None
         self.bidders: Iterable[Bidder] = None

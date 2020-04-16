@@ -22,21 +22,43 @@ from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
 # TODO: Currently only implemented for LLG and LLLLGG
 class CombinatorialExperiment(Experiment, ABC):
 
-    def __init__(self, experiment_params, gpu_config, l_config, known_bne):
-        self.n_global = self.n_players - self.n_local
+    def __init__(self, n_players, n_local, experiment_params, gpu_config, l_config, known_bne):
+        self.n_local = n_players
 
         self.model_sharing = experiment_params['model_sharing']
         if self.model_sharing:
             self.n_models = 2
-            self._bidder2model: List[int] = [0] * self.n_local + [1] * (self.n_players - self.n_local)
+            self._bidder2model: List[int] = [0] * n_local + [1] * (n_players - n_local)
         else:
             self.n_models = self.n_players
-            self._bidder2model: List[int] = list(range(n_players))
-        self._model2bidder: List[List[int]] = [[] for m in range(self.n_models)]
-        for b_id, m_id in enumerate(self._bidder2model):
-            self._model2bidder[m_id].append(b_id)
+            self._bidder2model: List[int] = list(range(self.n_players))
+
+        assert all(key in experiment_params for key in ['u_lo', 'u_hi']), \
+            """Missing prior information!"""
+
+        u_lo = experiment_params['u_lo']
+        if isinstance(u_lo, Iterable):
+            assert len(u_lo) == n_players
+            u_lo = [float(l) for l in u_lo]
+        else:
+            u_lo = [float(u_lo)] * n_players
+        self.u_lo = u_lo
+
+        u_hi = experiment_params['u_hi']
+        assert isinstance(u_hi, Iterable)
+        assert len(u_hi) == n_players
+        assert u_hi[1:n_local] == u_hi[:n_local-1], "local bidders should be identical"
+        assert u_hi[0] < u_hi[n_local], "local bidders must be weaker than global bidder"
+        self.u_hi = [float(h) for h in u_hi]
+
+        self.plot_xmin = min(u_lo)
+        self.plot_xmax = max(u_hi)
+        self.plot_ymin = self.plot_xmin
+        self.plot_ymax = self.plot_xmax * 1.05
+
 
         super().__init__(experiment_params=experiment_params, gpu_config=gpu_config, l_config=l_config, known_bne=known_bne)
+
 
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0):
@@ -82,7 +104,7 @@ class CombinatorialExperiment(Experiment, ABC):
         # ideally, we can abstract this function away and move the functionality to the base Experiment class.
         # Implementation in SingleItem case is identical except for player position argument below.
         self.learners = []
-        for m_id, model in self.models:
+        for m_id, model in enumerate(self.models):
             self.learners.append(ESPGLearner(model=model,
                                  environment=self.env,
                                  hyperparams=self.l_config.learner_hyperparams,
@@ -100,40 +122,18 @@ class LLGExperiment(CombinatorialExperiment):
         assert self.gamma == 0, "Gamma > 0 implemented yet!?"
         # Experiment specific parameters
         experiment_params['n_players'] = 3
+        n_local =2
         self.n_players = experiment_params['n_players'] # TODO: this will also be set in superclass but le'ts use it below
         self.n_local = 2
         
         self.n_items = 1 # TODO: what does this do? can we get rid of it?
         self.payment_rule = experiment_params['payment_rule']
 
-        assert all(key in experiment_params for key in ['u_lo', 'u_hi']), \
-            """Missing prior information!"""
-
-        u_lo = experiment_params['u_lo']
-        if isinstance(u_lo, Iterable):
-            assert len(u_lo) == 3
-            u_lo = [float(l) for l in u_lo]
-        else:
-            u_lo = [float(u_lo)] * 3
-        self.u_lo = u_lo
-
-        u_hi = experiment_params['u_hi']
-        assert isinstance(u_hi, Iterable)
-        assert len(u_hi) == 3
-        assert u_hi[0] == u_hi[1], "local bidders should be identical"
-        assert u_hi[0] < u_hi[2], "local bidders must be weaker than global bidder"
-        self.u_hi = [float(h) for h in u_hi]
-
-        self.plot_xmin = min(u_lo)
-        self.plot_xmax = max(u_hi)
-        self.plot_ymin = self.plot_xmin
-        self.plot_ymax = self.plot_xmax * 1.05
-
 
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known! (i.e. uniformity, bounds, etc)
         known_bne = self.payment_rule in ['first_price', 'vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
         
-        super().__init__(gpu_config, experiment_params, l_config, known_bne)
+        super().__init__(3, 2, experiment_params, gpu_config, l_config, known_bne)
 
     def _setup_logger(self, base_dir):
         return LLGAuctionLogger(self, base_dir)
