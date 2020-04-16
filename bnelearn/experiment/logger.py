@@ -54,7 +54,7 @@ class Logger(ABC):
         self.plot_points = None
         self.max_epochs = None
 
-        self.overhead_mins = 0.0
+        self.overhead = 0.0
 
     # Doesn't seem to be needed
     # def __del__(self):
@@ -66,7 +66,7 @@ class Logger(ABC):
 
     # ToDo Make a signature take a single dictionary parameter, as signatures would differ in each class
     @abstractmethod
-    def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder, eval_batch_size, bne_utility,
+    def log_training_iteration(self, prev_params, epoch, bne_env, strat_to_bidder,
                                utility, log_params: dict):
         pass
 
@@ -113,14 +113,14 @@ class SingleItemAuctionLogger(Logger):
         super().__init__(exp, base_dir)
 
     def log_experiment(self, run_comment, max_epochs: int):
-
         # setting up plotting
         self.plot_points = min(100, self.exp.l_config.batch_size)
         # TODO: this should be model specific! (e.g. in LLG locals should not plot higher vals than their own)
-        self.v_opt = [np.linspace(self.exp.plot_xmin, self.exp.plot_xmax, 100)] * len(self.exp.models)
-        # TODO: presumes existence of optimal bid --> should not be assumed here
-        self.b_opt = [self.exp._optimal_bid(self.v_opt[i], player_position=model.connected_bidders[0])
-                        for i,model in enumerate(self.exp.models)]
+
+        if self.exp.known_bne:
+            self.v_opt = [np.linspace(self.exp.plot_xmin, self.exp.plot_xmax, 100)] * len(self.exp.models)
+            self.b_opt = [self.exp._optimal_bid(self.v_opt[m_id], player_position=self.exp._model2bidder[m_id][0])
+                            for m_id,model in enumerate(self.exp.models)]
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
@@ -144,11 +144,14 @@ class SingleItemAuctionLogger(Logger):
         self.fig = plt.figure()
 
         self.writer = SummaryWriter(self.log_dir, flush_secs=30)
+        start_time = timer()
         self._log_once()
         self._log_hyperparams()
+        elapsed = timer() - start_time
+        self.overhead += elapsed
 
     #TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
-    def log_training_iteration(self, prev_params, epoch, strat_to_bidder, bne_utilities,
+    def log_training_iteration(self, prev_params, epoch, strat_to_bidder,
                                utilities, log_params: dict):
         # TODO It is by no means nice that there is so much specific logic in here
         start_time = timer()
@@ -163,6 +166,7 @@ class SingleItemAuctionLogger(Logger):
         #       2. caclulate ALL metrics as lists
         #       3. log everything (using a single function call)
 
+        # TODO: this logic does not work for LLG model
         for i, model in enumerate(self.exp.models):
             group_postfix = '' if model_is_global else f'_p{i}'
             metric_prefix = ''
@@ -173,23 +177,28 @@ class SingleItemAuctionLogger(Logger):
             # calculate infinity-norm of update step
             new_params = torch.nn.utils.parameters_to_vector(model.parameters())
             update_norm = (new_params - prev_params[i]).norm(float('inf'))
-            # calculate utility vs bne
-            utility_vs_bne = self.exp.bne_env.get_reward(
-                strat_to_bidder(model, batch_size=self.exp.l_config.eval_batch_size),
-                draw_valuations=False)  # False because expensive for normal priors
-            epsilon_relative = 1 - utility_vs_bne / bne_utilities[i]
-            epsilon_absolute = bne_utilities[i] - utility_vs_bne
-            L_2 = metrics.norm_strategy_and_actions(model, self.exp.bne_env.agents[i].get_action(),
-                                                    self.exp.bne_env.agents[i].valuations, 2)
-            L_inf = metrics.norm_strategy_and_actions(model, self.exp.bne_env.agents[i].get_action(),
-                                                      self.exp.bne_env.agents[i].valuations, float('inf'))
+
+            if self.exp.known_bne:
+                # calculate utility vs bne
+                utility_vs_bne = self.exp.bne_env.get_reward(
+                    strat_to_bidder(model, batch_size=self.exp.l_config.eval_batch_size),
+                    draw_valuations=False)  # False because expensive for normal priors
+                epsilon_relative = 1 - utility_vs_bne / self.exp.bne_utilities[i]
+                epsilon_absolute = self.exp.bne_utilities[i] - utility_vs_bne
+                L_2 = metrics.norm_strategy_and_actions(model, self.exp.bne_env.agents[i].get_action(),
+                                                        self.exp.bne_env.agents[i].valuations, 2)
+                L_inf = metrics.norm_strategy_and_actions(model, self.exp.bne_env.agents[i].get_action(),
+                                                        self.exp.bne_env.agents[i].valuations, float('inf'))
+            else:
+                utility_vs_bne, epsilon_relative, epsilon_absolute, L_2, L_inf = None,None,None,None,None
+            
             self._log_metrics(writer=self.writer, epoch=epoch, utility=utilities[i], update_norm=update_norm,
                               utility_vs_bne=utility_vs_bne, epsilon_relative=epsilon_relative,
                               epsilon_absolute=epsilon_absolute, L_2=L_2, L_inf=L_inf,
                               param_group_postfix=group_postfix, metric_prefix=metric_prefix)
 
         if epoch % self.logging_options['plot_epoch'] == 0:
-            bidders = [strat_to_bidder(model, self.exp.l_config.batch_size, model.connected_bidders[0]) for model in self.exp.models]
+            bidders = [strat_to_bidder(model, self.exp.l_config.batch_size, self.exp._model2bidder[m_id][0]) for m_id,model in enumerate(self.exp.models)]
             v = [bidder.valuations for bidder in bidders]
             b = [bidder.get_action() for bidder in bidders]
             plot_data = ((v, b))
@@ -199,15 +208,15 @@ class SingleItemAuctionLogger(Logger):
             self._plot(self.fig, plot_data, self.writer, epoch)
 
         elapsed = timer() - start_time
-        self.overhead_mins = self.overhead_mins + elapsed / 60
-        self.writer.add_scalar('debug/overhead_mins', self.overhead_mins, epoch)
+        self.overhead = self.overhead + elapsed
+        self.writer.add_scalar('debug/overhead_hours', self.overhead/3600, epoch)
 
 
     # TODO: rename u_lo, u_hi --> these have NOTHING to do with normal distribution.
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
+        start_time = timer()
 
         original_batch_size = env.agents[0].batch_size
-
         bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
                                           dtype=env.agents[0].valuations.dtype, device = env.mechanism.device)
         for agent in env.agents:
@@ -249,9 +258,13 @@ class SingleItemAuctionLogger(Logger):
                             [0, max_regret.detach().cpu().numpy()], x_label="valuation", y_label="regret")
         self._process_figure(fig, self.writer, epoch, figure_name="regret")
 
+        # TODO: why? don't we redraw valuations at beginning of loop anyway.
         for agent in env.agents:
             agent.batch_size = original_batch_size
             agent.draw_valuations_new_batch_(original_batch_size)
+
+        elapsed = timer() - start_time
+        self.overhead += elapsed
 
 
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, e=None):
@@ -259,10 +272,11 @@ class SingleItemAuctionLogger(Logger):
         fig, plt = self._plot_2d(plot_data, e, [self.exp.plot_xmin, self.exp.plot_xmax], [self.exp.plot_ymin,self.exp.plot_ymax])
         cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
-        for i in range(len(plot_data[0])):
-            #TODO: Plottet noch scheiße!
-            #TODO: Not working yet for LLG
-            plt.plot(self.v_opt[i], self.b_opt[i], color=cycle[i], linestyle = '--')#linestyle = '--')
+        if self.exp.known_bne:
+            for i in range(len(plot_data[0])):
+                #TODO: Plottet noch scheiße!
+                #TODO: Not working yet for LLG
+                plt.plot(self.v_opt[i], self.b_opt[i], color=cycle[i], linestyle = '--')#linestyle = '--')
         # show and/or log
         self._process_figure(fig, writer, e, figure_name='bid_function')
 
@@ -353,12 +367,19 @@ class LLGAuctionLogger(SingleItemAuctionLogger):
         plt.xlabel('valuation')
         plt.ylabel('bid')
         plt.text(0 + 0.5, 2 - 0.5, 'iteration {}'.format(e))
-        plt.plot(v[0],b[0], 'bo', self.v_opt[0], self.b_opt[0], 'b--', v[1],b[1], 'go', self.v_opt[1], self.b_opt[1], 'g--', v[2],b[2], 'ro', self.v_opt[2],self.b_opt[2], 'r--')
+        
+        if self.exp.known_bne:
+            plt.plot(v[0],b[0],'bo',   self.v_opt[0],self.b_opt[0],'b--', 
+                     v[1],b[1],'go',   self.v_opt[1],self.b_opt[1],'g--', 
+                     v[2],b[2],'ro',   self.v_opt[2],self.b_opt[2],'r--')
+        else:
+            plt.plot(v[0],b[0],'bo',   v[1],b[1],'go',   v[2],b[2],'ro')
+
         self._process_figure(fig, writer, e, figure_name='bid_function')
 
 class LLLLGGAuctionLogger(SingleItemAuctionLogger):
 
-    def log_training_iteration(self, prev_params, epoch, strat_to_bidder, eval_batch_size, utilities, log_params: dict):
+    def log_training_iteration(self, prev_params, epoch, strat_to_bidder, utilities, log_params: dict):
         # TODO It is by no means nice that there is so much specific logic in here
         #TODO: Change similar to single_item
         start_time = timer()
@@ -374,8 +395,8 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
                 for i in range(len(self.exp.models))]
             self._plot(self.fig, self.exp.models, self.writer, epoch)
         elapsed = timer() - start_time
-        self.overhead_mins = self.overhead_mins + elapsed / 60
-        self.writer.add_scalar('debug/overhead_mins', self.overhead_mins, epoch)
+        self.overhead = self.overhead + elapsed 
+        self.writer.add_scalar('debug/overhead_hours', self.overhead/3600, epoch)
 
     def _log_metrics(self, writer, epoch, utility, update_norm):
         writer.add_scalar('eval/utility', utility, epoch)
@@ -385,13 +406,13 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
     def _plot(self, fig, models, writer: SummaryWriter or None, e=None):
         input_length = 2
         plot_points = self.plot_points
-        lin_local = torch.linspace(self.experiment_params['u_lo'][0], self.experiment_params['u_hi'][0], plot_points)
-        lin_global = torch.linspace(self.experiment_params['u_lo'][4], self.experiment_params['u_hi'][4], plot_points)
+        lin_local = torch.linspace(self.exp.u_lo[0], self.exp.u_hi[0], plot_points)
+        lin_global = torch.linspace(self.exp.u_lo[4], self.exp.u_hi[4], plot_points)
         xv = [None] * 2
         yv = [None] * 2
         xv[0], yv[0] = torch.meshgrid([lin_local, lin_local])
         xv[1], yv[1] = torch.meshgrid([lin_global, lin_global])
-        valuations = torch.zeros(plot_points**2, len(models), input_length, device=self.gpu_config)
+        valuations = torch.zeros(plot_points**2, len(models), input_length, device=self.exp.gpu_config.device)
         models_print = [None] * len(models)
         models_print_wf = [None] * len(models)
 
@@ -408,8 +429,8 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
             models_print[model_idx] = models[model_idx].play(valuations[:,model_idx,:])
             models_print_wf[model_idx] = models_print[model_idx].view(plot_points,plot_points,input_length)
 
-        fig, plt = self._plot_3d([valuations, models_print], e, [self.plot_xmin, self.plot_xmax],
-                                 [self.plot_ymin, self.plot_ymax], [self.plot_ymin, self.plot_ymax])
+        fig, plt = self._plot_3d([valuations, models_print], e, [self.exp.plot_xmin, self.exp.plot_xmax],
+                                 [self.exp.plot_ymin, self.exp.plot_ymax], [self.exp.plot_ymin, self.exp.plot_ymax])
 
         self._process_figure(fig, writer, e, figure_name='bid_functions')
 

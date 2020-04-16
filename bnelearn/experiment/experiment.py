@@ -2,7 +2,7 @@
 
 
 from abc import ABC, abstractmethod
-from typing import Iterable
+from typing import Iterable, List
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -23,6 +23,11 @@ from bnelearn.experiment.logger import Logger
 
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
+
+    # abstract fields that must be set in subclass init
+    _bidder2model: List[int] = NotImplemented
+    n_models: int = NotImplemented
+    # TODO: make all fields that MUST be set in subclass abstract members
 
     def __init__(self, gpu_config: GPUController, experiment_params: dict,
                  l_config: LearningConfiguration, known_bne=False):
@@ -52,6 +57,11 @@ class Experiment(ABC):
         # Misc
         self.base_dir = None
         self.models: Iterable[torch.nn.Module] = None
+
+        # Inverse of bidder --> model lookup table
+        self._model2bidder: List[List[int]] = [[] for m in range(self.n_models)]
+        for b_id, m_id in enumerate(self._bidder2model):
+            self._model2bidder[m_id].append(b_id)
 
 
         self.mechanism: Mechanism = None

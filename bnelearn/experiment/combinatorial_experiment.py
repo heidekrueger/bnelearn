@@ -3,7 +3,7 @@ from abc import ABC
 import numpy as np
 import scipy.integrate as integrate
 from functools import partial
-from typing import Iterable
+from typing import Iterable, List
 
 from bnelearn.experiment import Experiment
 from bnelearn.mechanism.auctions_combinatorial import *
@@ -21,30 +21,66 @@ from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
 # TODO: Currently only implemented for uniform val
 # TODO: Currently only implemented for LLG and LLLLGG
 class CombinatorialExperiment(Experiment, ABC):
+    payment_rule: str
 
+    def __init__(self, n_players, n_local, n_items, experiment_params, gpu_config, l_config, known_bne):
+        self.n_players = n_players
+        self.n_local = n_local
+        self.n_items = n_items
+
+        self.payment_rule = experiment_params['payment_rule']
+
+        self.model_sharing = experiment_params['model_sharing']
+        if self.model_sharing:
+            self.n_models = 2
+            self._bidder2model: List[int] = [0] * n_local + [1] * (n_players - n_local)
+        else:
+            self.n_models = self.n_players
+            self._bidder2model: List[int] = list(range(self.n_players))
+
+        assert all(key in experiment_params for key in ['u_lo', 'u_hi']), \
+            """Missing prior information!"""
+
+        u_lo = experiment_params['u_lo']
+        if isinstance(u_lo, Iterable):
+            assert len(u_lo) == n_players
+            u_lo = [float(l) for l in u_lo]
+        else:
+            u_lo = [float(u_lo)] * n_players
+        self.u_lo = u_lo
+
+        u_hi = experiment_params['u_hi']
+        assert isinstance(u_hi, Iterable)
+        assert len(u_hi) == n_players
+        assert u_hi[1:n_local] == u_hi[:n_local-1], "local bidders should be identical"
+        assert u_hi[0] < u_hi[n_local], "local bidders must be weaker than global bidder"
+        self.u_hi = [float(h) for h in u_hi]
+
+        self.plot_xmin = min(u_lo)
+        self.plot_xmax = max(u_hi)
+        self.plot_ymin = self.plot_xmin
+        self.plot_ymax = self.plot_xmax * 1.05
+
+        super().__init__(experiment_params=experiment_params, gpu_config=gpu_config, l_config=l_config, known_bne=known_bne)
 
 
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0):
         # TODO: this probably isn't the right place...
         # The model should know who is using it # TODO: Stefan: In my oppinion, it shouldn't...
-        strategy.connected_bidders.append(player_position)
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
                               batch_size=batch_size, n_items = self.n_items)
-
-
 
     # Currently only working for LLG and LLLLGG.
     def _setup_bidders(self):
         print('Setting up bidders...')
-        # TODO: this includes LLG / LLLLGG specific logic!
-        self.models = [None] * 2 if self.model_sharing else [None] * self.n_players
+        # TODO: this seems tightly coupled with setup learners... can we change this?
+        self.models = [None] * self.n_models
 
         for i in range(len(self.models)):
-            if self.model_sharing:
-                positive_output_point = torch.tensor([self.u_hi[i*self.n_local]] * self.n_items, dtype=torch.float32)
-            else:
-                positive_output_point = torch.tensor([self.u_hi[i]] * self.n_items, dtype=torch.float32)
+            # get id of canonical bidder for this model
+            b_id = self._model2bidder[i][0]
+            positive_output_point = torch.tensor([self.u_hi[b_id]]*self.n_items, dtype= torch.float)
 
             self.models[i] = NeuralNetStrategy(
                 self.l_config.input_length, hidden_nodes=self.l_config.hidden_nodes,
@@ -53,17 +89,13 @@ class CombinatorialExperiment(Experiment, ABC):
                 output_length = self.n_items
             ).to(self.gpu_config.device)
 
-        self.bidders = []
-        for i in range(self.n_players):
-            if self.model_sharing:
-                self.bidders.append(self._strat_to_bidder(self.models[int(i/self.n_local)],
-                                                     batch_size=self.l_config.batch_size, player_position=i))
-            else:
-                self.bidders.append(self._strat_to_bidder(self.models[i],
-                                                     batch_size=self.l_config.batch_size, player_position=i))
+        self.bidders = [
+            self._strat_to_bidder(self.models[m_id], batch_size=self.l_config.batch_size, player_position=i)
+            for i, m_id in enumerate(self._bidder2model)]
+
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
-                             [b.strategy for b in self.bidders]]
+                             self.models]
 
         if self.l_config.pretrain_iters > 0:
             print('\tpretraining...')
@@ -76,18 +108,45 @@ class CombinatorialExperiment(Experiment, ABC):
         # ideally, we can abstract this function away and move the functionality to the base Experiment class.
         # Implementation in SingleItem case is identical except for player position argument below.
         self.learners = []
-        for i in range(len(self.models)):
-            self.learners.append(ESPGLearner(model=self.models[i],
+        for m_id, model in enumerate(self.models):
+            self.learners.append(ESPGLearner(model=model,
                                  environment=self.env,
                                  hyperparams=self.l_config.learner_hyperparams,
                                  optimizer_type=self.l_config.optimizer,
                                  optimizer_hyperparams=self.l_config.optimizer_hyperparams,
-                                 strat_to_player_kwargs={"player_position": i*self.n_local}
+                                 strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
                                  ))
 
+    def _setup_learning_environment(self):
+        self.env = AuctionEnvironment(self.mechanism,
+                                      agents=self.bidders,
+                                      batch_size=self.l_config.batch_size,
+                                      n_players=self.n_players,
+                                      strategy_to_player_closure=self._strat_to_bidder)
+
+    def _training_loop(self, epoch, logger):
+        # do in every iteration
+        # save current params to calculate update norm
+        prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
+                       for model in self.models]
+        # update models
+        utilities = torch.tensor([
+            learner.update_strategy_and_evaluate_utility()
+            for learner in self.learners
+        ])
+        log_params = {}
+        logger.log_training_iteration(prev_params=prev_params, epoch=epoch,
+                                           strat_to_bidder=self._strat_to_bidder,                                           
+                                           utilities=utilities, 
+                                           log_params=log_params)
+        if epoch % 10 == 0:
+            print("epoch {}, utilities: ".format(epoch))
+            for i in range(len(utilities)):
+                print("{}: {:.5f}".format(i, utilities[i]))
+            logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
+                                          u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
 
 
-# mechanism/bidding implementation, plot, bnes
 class LLGExperiment(CombinatorialExperiment):
     def __init__(self, experiment_params:dict, gpu_config: GPUController, l_config: LearningConfiguration):
 
@@ -95,46 +154,14 @@ class LLGExperiment(CombinatorialExperiment):
         self.gamma = 0.0
         assert self.gamma == 0, "Gamma > 0 implemented yet!?"
         # Experiment specific parameters
-        self.n_local = 2
         experiment_params['n_players'] = 3
-        self.n_items = 1 # TODO: what does this do? can we get rid of it?
-
-        self.payment_rule = experiment_params['payment_rule']
-
-        self.model_sharing = experiment_params['model_sharing']
+        self.n_players = experiment_params['n_players'] # TODO: this will also be set in superclass but le'ts use it below
         
-        
-
-        assert all(key in experiment_params for key in ['u_lo', 'u_hi']), \
-            """Missing prior information!"""
-
-        u_lo = experiment_params['u_lo']
-        if isinstance(u_lo, Iterable):
-            assert len(u_lo) == 3
-            u_lo = [float(l) for l in u_lo]
-        else:
-            u_lo = [float(u_lo)] * 3
-        self.u_lo = u_lo
-
-
-        u_hi = experiment_params['u_hi']
-        assert isinstance(u_hi, Iterable)
-        assert len(u_hi) == 3
-        assert u_hi[0] == u_hi[1], "local bidders should be identical"
-        assert u_hi[0] < u_hi[2], "local bidders must be weaker than global bidder"
-        self.u_hi = [float(h) for h in u_hi]
-
-
-        self.plot_xmin = min(u_lo)
-        self.plot_xmax = max(u_hi)
-        self.plot_ymin = self.plot_xmin
-        self.plot_ymax = self.plot_xmax * 1.05
-
-
+        #self.payment_rule =experiment_params['payment_rule']
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known! (i.e. uniformity, bounds, etc)
-        known_bne = self.payment_rule in ['first_price', 'vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
+        known_bne = experiment_params['payment_rule'] in ['first_price', 'vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
         
-        super().__init__(gpu_config, experiment_params, l_config, known_bne)
+        super().__init__(3, 2, 1, experiment_params, gpu_config, l_config, known_bne)
 
     def _setup_logger(self, base_dir):
         return LLGAuctionLogger(self, base_dir)
@@ -143,14 +170,6 @@ class LLGExperiment(CombinatorialExperiment):
     def _setup_mechanism(self):
         self.mechanism = LLGAuction(rule = self.payment_rule)
 
-
-    def _setup_learning_environment(self):
-        # TODO: is this the same for all settings (single, multi-unit, combinatorial???)
-        self.env = AuctionEnvironment(self.mechanism,
-                                      agents=self.bidders,
-                                      batch_size=self.l_config.batch_size,
-                                      n_players=self.n_players,
-                                      strategy_to_player_closure=self._strat_to_bidder)
 
     def _optimal_bid(self, valuation, player_position):
         if not isinstance(valuation, torch.Tensor):
@@ -203,84 +222,26 @@ class LLGExperiment(CombinatorialExperiment):
         name = ['LLG', self.payment_rule]
         return os.path.join(*name)
 
-    def _training_loop(self, epoch, logger):
-        # do in every iteration
-        # save current params to calculate update norm
-        prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
-                       for model in self.models]
-        # update models
-        utilities = torch.tensor([
-            learner.update_strategy_and_evaluate_utility()
-            for learner in self.learners
-        ])
-        # everything after this is logging --> measure overhead
-        log_params = {}
-        logger.log_training_iteration(prev_params=prev_params, epoch=epoch,
-                                           strat_to_bidder=self._strat_to_bidder,                                           
-                                           bne_utilities=self.bne_utilities, utilities=utilities,
-                                           log_params=log_params)
-        if epoch % 10 == 0:
-            print("epoch {}, utilities: ".format(epoch))
-            for i in range(len(utilities)):
-                print("{}: {:.5f}".format(i, utilities[i]))
-            logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
-                                          u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
 
-# mechanism/bidding implementation, plot
+
 class LLLLGGExperiment(CombinatorialExperiment):
     def __init__(self, experiment_params, gpu_config: GPUController, l_config: LearningConfiguration):
-        self.n_local = 4
         experiment_params['n_players'] = 6
         self.n_items = 2
-        assert l_config.input_length == 2, "Learner config has to take 2 inputs!"
-        super().__init__(experiment_params, gpu_config, l_config)
+        assert l_config.input_length == 2, "Learner config has to take 2 inputs!" #TODO: what does this mean? can we move it upstream?
+        
+        #TODO: BNE is known for vcg
+        known_bne = False
+
+        super().__init__(6, 4, 2, experiment_params, gpu_config, l_config, known_bne)
 
     def _setup_logger(self, base_dir):
-        return LLGAuctionLogger(self, base_dir)
+        return LLLLGGAuctionLogger(self, base_dir)
 
     def _setup_mechanism(self):
-        self.mechanism = LLLLGGAuction(rule=self.payment_rule)
-
-    def _setup_learning_environment(self):
-        #TODO: We could handover self.mechanism in experiment and move _self_learning_environment up, since it is identical in most places
-        self.mechanism = LLLLGGAuction(rule=self.mechanism_type, core_solver='NoCore', parallel=1, cuda=self.gpu_config.cuda)
-        self.env = AuctionEnvironment(self.mechanism,
-                                      agents=self.bidders,
-                                      batch_size=self.l_config.batch_size,
-                                      n_players=self.n_players,
-                                      strategy_to_player_closure=self._strat_to_bidder)
-
+        self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver='NoCore', parallel=1, cuda=self.gpu_config.cuda)
 
     def _get_logdir(self):
-        name = ['LLLLGG', self.mechanism_type, str(self.n_players) + 'p']
+        name = ['LLLLGG', self.payment_rule, str(self.n_players) + 'p']
         self.base_dir = os.path.join(*name)  # ToDo Redundant?
         return os.path.join(*name)
-
-    def _optimal_bid(self, valuation, player_position):
-        # No bne eval known
-        #TODO: Return dummy value for now
-        return valuation * 9999
-
-    def _training_loop(self, epoch, logger):
-        # do in every iteration
-        # save current params to calculate update norm
-        prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
-                       for model in self.models]
-        # update models
-        utilities = torch.tensor([
-            learner.update_strategy_and_evaluate_utility()
-            for learner in self.learners
-        ])
-        # everything after this is logging --> measure overhead
-        # TODO: Adjust this such that we log all models params, not just the first
-        log_params = {}
-        logger.log_training_iteration(prev_params=prev_params, epoch=epoch,
-                                           strat_to_bidder=self._strat_to_bidder,
-                                           eval_batch_size=self.l_config.eval_batch_size,
-                                           utilities=utilities, log_params=log_params)
-        if epoch % 100 == 0:
-            print("epoch {}, utilities: ".format(epoch))
-            for i in range(len(utilities)):
-                print("{}: {:.5f}".format(i, utilities[i]))
-            logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
-                                          u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
