@@ -12,15 +12,11 @@
 """
 # import pytest
 
-# import sys
-# import torch
 # import torch.nn as nn
 
 # from bnelearn.experiment.gpu_controller import GPUController
 # from bnelearn.experiment.learning_configuration import LearningConfiguration
 # from bnelearn.experiment.logger import SingleItemAuctionLogger
-# from bnelearn.experiment.single_item_experiment import UniformSymmetricPriorSingleItemExperiment, \
-#     GaussianSymmetricPriorSingleItemExperiment
 
 # from bnelearn.experiment.combinatorial_experiment import LLGExperiment, LLLLGGExperiment
 # import warnings
@@ -71,3 +67,10 @@
 #     experiment_params['model_sharing'] = False
 #     experiment = LLGExperiment(experiment_params, gpu_config, l_config)
 #     experiment.run(epochs = 101, n_runs=2)
+
+
+# def test_llllgg_model_sharing():
+#     experiment_params['model_sharing'] = True
+#     experiment_params['payment_rule'] = 'first_price'
+#     experiment = LLLLGGExperiment(experiment_params, gpu_config, l_config)
+#     experiment.run(epochs = 11, n_runs=2)
