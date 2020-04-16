@@ -34,6 +34,13 @@ class MultiUnitExperiment(Experiment, ABC):
         self.model_sharing = experiment_params['model_sharing']
         self.mechanism_type = mechanism_type
 
+        if self.model_sharing:
+            self.n_models = 1
+            self._bidder2model = [0] * self.n_players
+        else:
+            self.n_models = self.n_players
+            self._bidder2model = list(range(self.n_players))
+
         if 'BNE2' in experiment_params.keys():
             self.BNE2 = experiment_params['BNE2']
         if 'constant_marginal_values' in experiment_params.keys():
@@ -82,9 +89,8 @@ class MultiUnitExperiment(Experiment, ABC):
 
     def _setup_bidders(self):
         epo_n = 2  # for ensure positive output of initialization
-
-        n_models = 1 if self.model_sharing else self.n_players
-        for i in range(n_models):
+        
+        for i in range(self.n_models):
             ensure_positive_output = torch.zeros(epo_n, self.input_length).uniform_(self.u_lo[i], self.u_hi[i]) \
                 .sort(dim=1, descending=True)[0]
             self.models = [
