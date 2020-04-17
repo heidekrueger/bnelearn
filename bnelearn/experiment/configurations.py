@@ -30,16 +30,19 @@ class ExperimentConfiguration:
     u_hi: list = None
 
     # MultiUnit #TODO: Check which are really needed and make sense here
-    n_items: int = None
-    BNE1: str = None #??
-    BNE2: str = None#??
-    #constant_marginal_values
-    #item_interest_limit
-    #efficiency_parameter
-    #pretrain_transform
-    #input_length
-    def set_n_players(self, n_players):
-        self.n_players=n_players
+    n_units: int
+    input_length: int = None
+    BNE1: str = None
+    BNE2: str = None
+    constant_marginal_values: bool = False
+    item_interest_limit: int = None
+    efficiency_parameter: float = None
+    pretrain_transform: callable = None
+    n_params
+
+    def __post_init__(self):
+        if self.input_length is None:
+            self.input_length = self.n_units
 
 @dataclass#(frozen=True) TODO: frozen not possible with post_init
 class LoggingConfiguration:
@@ -67,12 +70,11 @@ class LoggingConfiguration:
                             'regret': False}
         if metrics is not None:
             for metric in metrics:
-                assert metric in ['opt','l2','rmse','regret'], "Metric not known."
+                assert metric in self.log_metrics.keys(), "Metric not known."
                 self.log_metrics[metric] = True
         if self.log_metrics['regret'] and self.regret_batch_size is None:
-            self.regret_batch_size = 2**8
+            self.regret_batch_size: int = 2**8
             self.regret_grid_size: int = 2**8
-
         if self.save_disable_all:
             self.save_figure_to_disk_png = False
             self.save_figure_to_disk_svg = False
@@ -102,7 +104,7 @@ class LearningConfiguration:
         if self.hidden_activations is None:
             self.hidden_activations = [nn.SELU(),nn.SELU(),nn.SELU()]
 
-    @staticmethod  #TODO: How to do this with a static method?
+    @staticmethod
     def _set_optimizer(optimizer: str or Type[Optimizer]) -> Type[Optimizer]:
         """Maps shortcut strings to torch.optim.Optimizer types, if required."""
         if isinstance(optimizer, type) and issubclass(optimizer, Optimizer):

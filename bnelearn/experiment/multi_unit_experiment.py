@@ -23,21 +23,22 @@ from bnelearn.util import metrics
 
 
 class MultiUnitExperiment(Experiment, ABC):
-    def __init__(self, experiment_config: dict, mechanism_type: Mechanism, gpu_config: GPUController,
-                 learning_config: LearningConfiguration, plot_epoch=100, known_bne=True):
+    def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUController,
+                 mechanism_type: Mechanism, known_bne=True):
 
         # ToDO How about to assigning expetiment parameters to the object and just using them from the dictionary?
         self.n_players = experiment_config.n_players
-        self.n_units = experiment_config['n_units']
+        self.n_units = experiment_config.n_units
         self.u_lo = experiment_config.u_lo
         self.u_hi = experiment_config.u_hi
 
-        self.plot_epoch = plot_epoch
+        self.plot_frequency = logging_config.plot_frequency
         self.plot_xmin = min(self.u_lo)
         self.plot_xmax = max(self.u_hi)
         self.plot_ymin = 0
         self.plot_ymax = self.plot_xmax * 1.05
-        self.BNE1 = experiment_config['BNE1']
+        self.BNE1 = experiment_config.BNE1
         self.model_sharing = experiment_config.model_sharing
         self.mechanism_type = mechanism_type
 
@@ -48,36 +49,27 @@ class MultiUnitExperiment(Experiment, ABC):
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
 
-        if 'BNE2' in experiment_config.keys():
-            self.BNE2 = experiment_config['BNE2']
-        if 'constant_marginal_values' in experiment_config.keys():
-            self.constant_marginal_values = experiment_config['constant_marginal_values']
-        else:
-            self.constant_marginal_values = None
-        if 'item_interest_limit' in experiment_config.keys():
-            self.item_interest_limit = experiment_config['item_interest_limit']
-        else:
-            self.item_interest_limit = None
-        if 'efficiency_parameter' in experiment_config.keys():
-            self.efficiency_parameter = experiment_config['efficiency_parameter']
-        if 'pretrain_transform' in experiment_config.keys():
-            self.pretrain_transform = experiment_config['pretrain_transform']
+        if experiment_config.BNE2 is not None:
+            self.BNE2 = experiment_config.BNE2
+        self.constant_marginal_values = experiment_config.constant_marginal_values
+        self.item_interest_limit = experiment_config.item_interest_limit
+        
+        if experiment_config.efficiency_parameter is not None:
+            self.efficiency_parameter = experiment_config.efficiency_parameter
+
+        if experiment_config.pretrain_transform:
+            self.pretrain_transform = experiment_config.pretrain_transform
         else:
             self.pretrain_transform = self.default_pretrain_transform
-        if 'input_length' in experiment_config.keys():
-            self.input_length = experiment_config['input_length']
-        else:
-            experiment_config['input_length'] = self.n_units
-            self.input_length = self.n_units
-
-        self.n_parameters = list()
+        
+        self.input_length = experiment_config.input_length
 
         print('\nhyperparams\n-----------')
         for k in learning_config.learner_hyperparams.keys():
             print('{}: {}'.format(k, learning_config.learner_hyperparams[k]))
         print('-----------\n')
 
-        super().__init__(gpu_config, experiment_config, learning_config, known_bne=known_bne)
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         """
@@ -122,15 +114,9 @@ class MultiUnitExperiment(Experiment, ABC):
         pretrain_valuations = self._strat_to_bidder(
             ClosureStrategy(lambda x: x), self.learning_config.batch_size, 0).draw_valuations_()[:pretrain_points, :]
 
-        self.n_parameters = list()
         for model in self.models:
-            self.n_parameters.append(sum([p.numel() for p in model.parameters()]))
             model.pretrain(pretrain_valuations, self.learning_config.pretrain_iters,
                            self.pretrain_transform)
-        self.experiment_config['n_parameters'] = self.n_parameters
-
-        # I see no other way to get this info to the logger
-        self.experiment_config['n_parameters'] = self.n_parameters
         self.bidders = [
             self._strat_to_bidder(self.models[0 if self.model_sharing else i], self.learning_config.batch_size, i)
             for i in range(self.n_players)
@@ -140,7 +126,7 @@ class MultiUnitExperiment(Experiment, ABC):
         """Creates logger for run.
         THIS IS A TEMPORARY WORKAROUND TODO
         """
-        return MultiUnitAuctionLogger(exp=self, base_dir=base_dir, plot_epoch=self.plot_epoch)
+        return MultiUnitAuctionLogger(exp=self, base_dir=base_dir, plot_epoch=self.plot_frequency)
 
     def _setup_mechanism(self):
         self.mechanism = self.mechanism_type(cuda=self.gpu_config.cuda)
@@ -402,7 +388,6 @@ class MultiUnitDiscriminatoryAuction2x2(MultiUnitExperiment):
         opt_bid[:, 1] = b2(opt_bid[:, 1])
         opt_bid = opt_bid.sort(dim=1, descending=True)[0]
         return opt_bid
-
 
 
 # exp_no==5

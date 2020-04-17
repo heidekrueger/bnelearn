@@ -285,7 +285,7 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         self.u_hi = float(experiment_config.u_hi)
         common_prior = torch.distributions.uniform.Uniform(low = self.u_lo, high=self.u_hi)
 
-        super().__init__(common_prior, experiment_config, learning_config, logging_config, gpu_config, known_bne=known_bne)
+        super().__init__(common_prior, experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
         self.plot_xmin = self.u_lo
         self.plot_xmax = self.u_hi
