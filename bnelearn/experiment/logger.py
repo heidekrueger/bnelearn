@@ -126,11 +126,11 @@ class Logger(ABC):
                 if n_players < 10 and labels is not None:
                     axs[plot_idx].legend(loc='upper left')
             if xlim is not None:
-                axs[plot_idx].set_xlim(xlim[0], xlim[1])
+                axs[plot_idx].set_xlim(xlim[plot_idx][0], xlim[plot_idx][1])
             elif hasattr(self.exp, 'plot_xmin'):
                 axs[plot_idx].set_xlim(self.exp.plot_xmin, self.exp.plot_xmax)
             if ylim is not None:
-                axs[plot_idx].set_ylim(ylim[0], ylim[1])
+                axs[plot_idx].set_ylim(ylim[plot_idx][0], ylim[plot_idx][1])
             elif hasattr(self.exp, 'plot_xmin'):
                 axs[plot_idx].set_ylim(self.exp.plot_ymin, self.exp.plot_ymax)
 
@@ -642,65 +642,58 @@ class MultiUnitAuctionLogger(Logger):
 
     def log_training_iteration(self, epoch, bidders, log_params: dict):
 
-        # TODO: can be deleted after change of ´policy_metrics´
-        is_FPSBSplitAwardAuction = self.experiment_config.efficiency_parameter != None
+        valuations = list()
+        bids = list()
+        for bidder in bidders:
+            valuations.append(bidder.draw_valuations_())
+            bids.append(bidder.get_action())
+        valuations = torch.stack(valuations, dim=1)
+        bids = torch.stack(bids, dim=1)
+
+        if self.log_opt:
+            valuations = torch.cat([
+                valuations[:self.plot_points,:,:], self.v_opt[:,None,:],
+            ], dim=1)
+            bids = torch.cat([
+                bids[:self.plot_points,:,:], self.b_opt[:,None,:],
+            ], dim=1)
 
         # plotting
         if epoch % self.plot_epoch == 0:
-            valuations = list()
-            bids = list()
-            for bidder in bidders:
-                valuations.append(bidder.draw_valuations_())
-                bids.append(bidder.get_action())
-            valuations = torch.stack(valuations, dim=1)
-            bids = torch.stack(bids, dim=1)
-
             labels = ['NPGA'] * len(bidders)
             fmts = ['bo'] * len(bidders)
             if self.log_opt:
-                valuations = torch.cat([
-                    valuations[:self.plot_points,:,:], self.v_opt[:,None,:],
-                ], dim=1)
-                bids = torch.cat([
-                    bids[:self.plot_points,:,:], self.b_opt[:,None,:],
-                ], dim=1)
                 labels.append('BNE')
                 fmts.append('b--')
-
-            _ = super()._plot(fig=self.fig, plot_data=(valuations, bids), writer=self.writer,
-                              figure_name='bid_function', epoch=epoch, labels=labels, fmts=fmts)
-
-        # TODO: switch to unified version of ´policy_metrics´
-        policy_metrics = dict()
-        bne_idx = 1
-        while True:
-            key = "BNE{}".format(bne_idx)
-            if key in self.exp.logging_config.log_metrics.keys():
-                policy_metrics[key] = torch.tensor([
-                    self._policy_metric(
-                        model.forward,
-                        log_params['optimal_bid'],
-                        self.experiment_config.n_units,
-                        selection={'split_award': True,
-                                "efficiency_parameter": self.experiment_config.efficiency_parameter,
-                                "input_length": self.experiment_config.input_length,
-                            } if is_FPSBSplitAwardAuction else 'random',
-                        bounds=[self.experiment_config.u_lo[0], self.experiment_config.u_hi[0]],
-                        item_interest_limit=self.experiment_config.item_interest_limit,
-                        eval_points_max=2 ** 18,
-                        device = self.gpu_config.device
-                    )
-                    for model in self.models], device=self.gpu_config.device)
-                bne_idx += 1
+            from bnelearn.experiment.multi_unit_experiment import SplitAwardExperiment
+            if isinstance(self.exp, SplitAwardExperiment):
+                xlim = [
+                    [self.exp.u_lo[0], self.exp.u_hi[0]],
+                    [self.exp.efficiency_parameter * self.exp.u_lo[0],
+                     self.exp.efficiency_parameter * self.exp.u_hi[0]]
+                ]
+                ylim = [
+                    [0, 2 * self.exp.u_hi[0]],
+                    [0, 2 * self.exp.u_hi[0]]
+                ]
             else:
-                break
+                xlim = ylim = None
+            super()._plot(fig=self.fig, plot_data=(valuations, bids), writer=self.writer, xlim=xlim, ylim=ylim,
+                          figure_name='bid_function', epoch=epoch, labels=labels, fmts=fmts)
 
-        metrics_dict = log_params
-        metrics_dict['rel_utility_loss'] = [
+        # TODO: dim_of_interest for multiple BNE
+        log_params['rmse'] = {
+            'BNE1': torch.tensor(
+                [bnelearn.util.metrics.norm_actions(bids[:,i,:], self.exp._optimal_bid(valuations[:,i,:]))
+                 for i, model in enumerate(self.models)]
+            )
+        }
+
+        log_params['rel_utility_loss'] = [
             1 - u / bne_u for u, bne_u
             in zip(log_params['against_bne_utilities'], log_params['bne_utilities'])
         ]
-        self._log_metrics(epoch, metrics_dict)
+        self._log_metrics(epoch, log_params)
 
         print('epoch {}:\t{}s'.format(epoch, round(log_params['elapsed'], 2)))
 
@@ -739,75 +732,3 @@ class MultiUnitAuctionLogger(Logger):
         model_paras = [torch.norm(torch.nn.utils.parameters_to_vector(model.parameters()), p=2)
                        for model in self.models]
         self.writer.add_scalars('eval/weight_norm', dict(zip(agent_name_list, model_paras)), epoch)
-
-    def _policy_metric(self, policy_1: Callable, policy_2: Callable, dim: int, bounds=[0, 1],
-                       eval_points_max: int = 2 ** 7,
-                       selection='random', item_interest_limit=None, dim_of_interest=None, device=None):
-        """
-        Calculate the p-norm on a grid between the two policy functions.
-
-        TODO: Consider sampleing according to underlying distribution instead of
-            the uniform grid sampleing!
-        """
-        valuations = self.multi_unit_valuations(device if device!=None else self.gpu_config.device,
-                                                bounds, dim, eval_points_max, selection, item_interest_limit)
-
-        policy_1_bidding = policy_1(valuations).detach()
-        policy_2_bidding = policy_2(valuations).detach()
-
-        if dim_of_interest is not None:
-            policy_1_bidding = policy_1_bidding[:, dim_of_interest]
-            policy_2_bidding = policy_2_bidding[:, dim_of_interest]
-
-        metric = bnelearn.util.metrics.norm_actions(policy_1_bidding, policy_2_bidding)
-
-        return metric.detach()
-
-    @staticmethod
-    def multi_unit_valuations(
-            device = None,
-            bounds = [0, 1],
-            dim = 2,
-            batch_size = 100,
-            selection = 'random',
-            item_interest_limit = None,
-            sort = False,
-        ):
-        """Returns uniformly sampled valuations for multi unit auctions."""
-        # for uniform vals and 2 items <=> F1(v)=v**2, F2(v)=2v-v**2
-
-        eval_points_per_dim = round((2*batch_size) ** (1/dim))
-        valuations = torch.zeros(eval_points_per_dim ** dim, dim, device=device)
-
-        if selection == 'random':
-            valuations.uniform_(bounds[0], bounds[1])
-            valuations = valuations.sort(dim=1, descending=True)[0]
-
-        elif 'split_award' in selection.keys():
-            if 'linspace' in selection.keys() and selection['linspace']:
-                valuations[:,0] = torch.linspace(
-                    bounds[0], bounds[1],
-                    eval_points_per_dim ** dim, device=device
-                )
-            else:
-                valuations.uniform_(bounds[0], bounds[1])
-            valuations[:,1] = selection['efficiency_parameter'] * valuations[:,0]
-            # if 'input_length' in selection.keys():
-            #     valuations = valuations[:,:selection['input_length']]
-
-        else:
-            lin = torch.linspace(bounds[0], bounds[1], eval_points_per_dim, device=device)
-            mesh = torch.meshgrid([lin] * dim)
-            for n in range(dim):
-                valuations[:,n] = mesh[n].reshape(eval_points_per_dim ** dim)
-
-            mask = valuations.sort(dim=1, descending=True)[0]
-            mask = (mask == valuations).all(dim=1)
-            valuations = valuations[mask]
-
-        if item_interest_limit is not None:
-            valuations[:,item_interest_limit:] = 0
-        if sort:
-            valuations = valuations.sort(dim=1)[0]
-
-        return valuations

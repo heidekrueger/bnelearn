@@ -12,7 +12,7 @@ from bnelearn.experiment.single_item_experiment import UniformSymmetricPriorSing
     GaussianSymmetricPriorSingleItemExperiment
 
 from bnelearn.experiment.combinatorial_experiment import LLGExperiment, LLLLGGExperiment
-from bnelearn.experiment.multi_unit_experiment import MultiUnitExperiment
+from bnelearn.experiment.multi_unit_experiment import MultiUnitExperiment, SplitAwardExperiment
 import warnings
 
 from dataclasses import dataclass, field, asdict
@@ -117,9 +117,21 @@ def run_multiunit(
     experiment_class = MultiUnitExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
-def run_splitaward(n_runs: int, n_epochs: int, payment_rule: str, model_sharing=True,
-                         u_lo=[0], u_hi=[1], risk=1.0, regret_batch_size=2**8,
-                         regret_grid_size=2**8, specific_gpu=1):
+def run_splitaward(
+        n_runs: int, n_epochs: int,
+        n_players: list=[2],
+        payment_rule: str='first_price',
+        n_units=2,
+        model_sharing=True,
+        u_lo=[1,1], u_hi=[1.4,1.4],
+        risk=1.0,
+        constant_marginal_values: bool=False,
+        item_interest_limit: int=None,
+        efficiency_parameter: float=0.3,
+        regret_batch_size=2**8,
+        regret_grid_size=2**8,
+        specific_gpu=1
+    ):
 
     running_configuration = RunningConfiguration(
         n_runs=n_runs, n_epochs=n_epochs,
@@ -131,12 +143,15 @@ def run_splitaward(n_runs: int, n_epochs: int, payment_rule: str, model_sharing=
         regret_grid_size=regret_grid_size
     )
     experiment_configuration = ExperimentConfiguration(
-        payment_rule=None, n_units=2,
+        payment_rule=payment_rule, n_units=n_units,
         model_sharing=model_sharing,
-        u_lo=u_lo, u_hi=u_hi,
-        risk=risk
+        u_lo=u_lo, u_hi=u_hi, risk=risk,
+        constant_marginal_values=constant_marginal_values,
+        item_interest_limit=item_interest_limit,
+        efficiency_parameter=efficiency_parameter
     )
-    return running_configuration, logging_configuration, experiment_configuration, MultiUnitExperiment
+    experiment_class = SplitAwardExperiment
+    return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 if __name__ == '__main__':
     '''
@@ -154,12 +169,12 @@ if __name__ == '__main__':
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_llg(1,20,'vcg')
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_single_item_uniform_symmetric(1,20, 2, 'first_price')
     
-    #running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_single_item_uniform_symmetric(1,20, [2], 'first_price')
-    #running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_single_item_gaussian_symmetric(1,20, [2], 'first_price')
-    #running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_llg(1,20,'vcg')
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_llllgg(1,20,'firstprice')
-    running_configuration, logging_configuration, experiment_configuration, experiment_class \
-        = run_multiunit(1, 20, [2], 'uniform', 3, item_interest_limit=2)
+    #running_configuration, logging_configuration, experiment_configuration, experiment_class = run_single_item_uniform_symmetric(1,20, [2], 'first_price')
+    #running_configuration, logging_configuration, experiment_configuration, experiment_class = run_single_item_gaussian_symmetric(1,20, [2], 'first_price')
+    #running_configuration, logging_configuration, experiment_configuration, experiment_class = run_llg(1,20,'vcg')
+    # running_configuration, logging_configuration, experiment_configuration, experiment_class = run_llllgg(1,20,'firstprice')
+    running_configuration, logging_configuration, experiment_configuration, experiment_class = run_multiunit(1, 500, [2], 'vickrey')
+    running_configuration, logging_configuration, experiment_configuration, experiment_class = run_splitaward(1, 500, [2])
 
     gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
     learning_configuration = LearningConfiguration(input_length=2)

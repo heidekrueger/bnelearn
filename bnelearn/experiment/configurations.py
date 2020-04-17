@@ -30,14 +30,14 @@ class ExperimentConfiguration:
     u_lo: list = None
     u_hi: list = None
 
-    # MultiUnit #TODO: Check which are really needed and make sense here
-    input_length: int = None
-    BNE1: str = None
-    BNE2: str = None
+    # Multi-Unit
+    pretrain_transform: callable = None
     constant_marginal_values: bool = False
     item_interest_limit: int = None
+
+    # Split-Award
     efficiency_parameter: float = None
-    pretrain_transform: callable = None
+    input_length: int = None
 
     def __post_init__(self):
         if self.input_length is None:
