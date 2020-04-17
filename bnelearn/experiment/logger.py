@@ -38,8 +38,8 @@ class Logger(ABC):
         )
 
         self.exp = exp
-        self.l_config = exp.l_config
-        self.experiment_params = exp.experiment_params
+        self.learning_config = exp.learning_config
+        self.experiment_config = exp.experiment_config
 
         # metrics
         self.log_opt = self.exp.known_bne
@@ -182,7 +182,7 @@ class Logger(ABC):
         """Everything that should be logged on every learning_rate updates"""
         epoch = 0
         #TODO: what is n_parameters?
-        #n_parameters = self.experiment_params['n_parameters']
+        #n_parameters = self.experiment_config['n_parameters']
         #for agent in range(len(self.exp.models)):
         #    self.writer.add_scalar('hyperparameters/p{}_model_parameters'.format(agent),
         #                           n_parameters[agent], epoch)
@@ -192,11 +192,11 @@ class Logger(ABC):
             self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)
             self.writer.add_graph(model, self.exp.env.agents[i].valuations)
 
-        self.writer.add_scalar('hyperparameters/batch_size', self.l_config.batch_size, epoch)
+        self.writer.add_scalar('hyperparameters/batch_size', self.learning_config.batch_size, epoch)
         self.writer.add_scalar('hyperparameters/epochs', self.max_epochs, epoch)
         self.writer.add_scalar(
             'hyperparameters/pretrain_iters',
-            self.l_config.pretrain_iters,
+            self.learning_config.pretrain_iters,
             epoch
         )
 
@@ -208,7 +208,7 @@ class SingleItemAuctionLogger(Logger):
     def log_experiment(self, run_comment, max_epochs):
         self.max_epochs = max_epochs
         # setting up plotting
-        self.plot_points = min(100, self.exp.l_config.batch_size)
+        self.plot_points = min(100, self.exp.learning_config.batch_size)
 
         if self.log_opt:
             # TODO: apdapt interval to be model specific! (e.g. for LLG)
@@ -280,7 +280,7 @@ class SingleItemAuctionLogger(Logger):
             if self.exp.known_bne:
                 # calculate utility vs bne
                 utility_vs_bne = self.exp.bne_env.get_reward(
-                    strat_to_bidder(model, batch_size=self.exp.l_config.eval_batch_size),
+                    strat_to_bidder(model, batch_size=self.exp.logging_config.eval_batch_size),
                     draw_valuations=False)  # False because expensive for normal priors
                 epsilon_relative = 1 - utility_vs_bne / self.exp.bne_utilities[i]
                 epsilon_absolute = self.exp.bne_utilities[i] - utility_vs_bne
@@ -297,7 +297,7 @@ class SingleItemAuctionLogger(Logger):
                               param_group_postfix=group_postfix, metric_prefix=metric_prefix)
 
         if epoch % self.logging_options['plot_epoch'] == 0:
-            bidders = [strat_to_bidder(model, self.exp.l_config.batch_size, self.exp._model2bidder[i][0])
+            bidders = [strat_to_bidder(model, self.exp.learning_config.batch_size, self.exp._model2bidder[i][0])
                        for i, model in enumerate(self.exp.models)]
             v = torch.stack([bidder.valuations for bidder in bidders], dim=1) # shape: n_batch, n_players, n_bundles
             b = torch.stack([bidder.get_action() for bidder in bidders], dim=1)
@@ -419,8 +419,8 @@ class SingleItemAuctionLogger(Logger):
         log_metric('eval', 'L_2', L_2)
         log_metric('eval', 'L_inf', L_inf)
 
-        self.writer.add_text('hyperparameters/optimizer', str(self.l_config.optimizer), epoch)
-        for key, value in self.l_config.optimizer_hyperparams.items():
+        self.writer.add_text('hyperparameters/optimizer', str(self.learning_config.optimizer), epoch)
+        for key, value in self.learning_config.optimizer_hyperparams.items():
             self.writer.add_scalar('hyperparameters/' + str(key), value, epoch)
 
 
@@ -551,32 +551,32 @@ class LLLLGGAuctionLogger(SingleItemAuctionLogger):
                 # Axis labeling
                 if n_models>2:
                     if model_idx < 4:
-                        ax.set_xlim(plot_xmin, plot_xmax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
-                        ax.set_ylim(plot_ymin, plot_ymax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
+                        ax.set_xlim(plot_xmin, plot_xmax-(self.experiment_config.u_hi[4] - self.experiment_config.u_hi[0]))
+                        ax.set_ylim(plot_ymin, plot_ymax-(self.experiment_config.u_hi[4] - self.experiment_config.u_hi[0]))
                         if plot_zmin==None:
-                            ax.set_zlim(plot_zmin, self.experiment_params['u_hi'][0])
+                            ax.set_zlim(plot_zmin, self.experiment_config.u_hi[0])
                         else:
                             ax.set_zlim(plot_zmin, plot_zmax)
                     else:
                         ax.set_xlim(plot_xmin, plot_xmax)
                         ax.set_ylim(plot_ymin, plot_ymax)
                         if plot_zmin==None:
-                            ax.set_zlim(plot_zmin, self.experiment_params['u_hi'][4])
+                            ax.set_zlim(plot_zmin, self.experiment_config.u_hi[4])
                         else:
                             ax.set_zlim(plot_zmin, plot_zmax)
                 else:
                     if model_idx == 0:
-                        ax.set_xlim(plot_xmin, plot_xmax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
-                        ax.set_ylim(plot_ymin, plot_ymax-(self.experiment_params['u_hi'][4] - self.experiment_params['u_hi'][0]))
+                        ax.set_xlim(plot_xmin, plot_xmax-(self.experiment_config.u_hi[4] - self.experiment_config.u_hi[0]))
+                        ax.set_ylim(plot_ymin, plot_ymax-(self.experiment_config.u_hi[4] - self.experiment_config.u_hi[0]))
                         if plot_zmin==None:
-                            ax.set_zlim(plot_zmin, self.experiment_params['u_hi'][0])
+                            ax.set_zlim(plot_zmin, self.experiment_config.u_hi[0])
                         else:
                             ax.set_zlim(plot_zmin, plot_zmax)
                     else:
                         ax.set_xlim(plot_xmin, plot_xmax)
                         ax.set_ylim(plot_ymin, plot_ymax)
                         if plot_zmin==None:
-                            ax.set_zlim(plot_zmin, self.experiment_params['u_hi'][4])
+                            ax.set_zlim(plot_zmin, self.experiment_config.u_hi[4])
                         else:
                             ax.set_zlim(plot_zmin, plot_zmax)
 
@@ -599,13 +599,13 @@ class MultiUnitAuctionLogger(Logger):
 
         self.models = self.exp.models
         self.env = self.exp.env
-        self.experiment_params = self.exp.experiment_params
+        self.experiment_config = self.exp.experiment_config
         self.gpu_config = self.exp.gpu_config
 
     def log_experiment(self, run_comment, max_epochs):
         self.max_epochs = max_epochs
 
-        self.plot_points = min(100, self.exp.l_config.batch_size)
+        self.plot_points = min(100, self.exp.learning_config.batch_size)
         if self.log_opt:
             self.v_opt = torch.stack([
                 torch.linspace(self.exp.plot_xmin, self.exp.plot_xmax, self.plot_points,
@@ -643,7 +643,7 @@ class MultiUnitAuctionLogger(Logger):
     def log_training_iteration(self, epoch, bidders, log_params: dict):
 
         # TODO: can be deleted after change of ´policy_metrics´
-        is_FPSBSplitAwardAuction = "efficiency_parameter" in self.experiment_params.keys()
+        is_FPSBSplitAwardAuction = "efficiency_parameter" in self.experiment_config.keys()
 
         # plotting
         if epoch % self.plot_epoch == 0:
@@ -675,19 +675,19 @@ class MultiUnitAuctionLogger(Logger):
         bne_idx = 1
         while True:
             key = "BNE{}".format(bne_idx)
-            if key in self.experiment_params.keys():
+            if key in self.experiment_config.keys():
                 policy_metrics[key] = torch.tensor([
                     self._policy_metric(
                         model.forward,
                         log_params['optima_bid'],
-                        self.experiment_params["n_units"],
+                        self.experiment_config["n_units"],
                         selection={'split_award': True,
-                                "efficiency_parameter": self.experiment_params['efficiency_parameter'],
-                                "input_length": self.experiment_params["input_length"]
+                                "efficiency_parameter": self.experiment_config['efficiency_parameter'],
+                                "input_length": self.experiment_config["input_length"]
                             } if is_FPSBSplitAwardAuction else 'random',
-                        bounds=[self.experiment_params["u_lo"][0], self.experiment_params["u_hi"][0]],
-                        item_interest_limit=self.experiment_params["item_interest_limit"] if \
-                            "item_interest_limit" in self.experiment_params.keys() else None,
+                        bounds=[self.experiment_config["u_lo"][0], self.experiment_config["u_hi"][0]],
+                        item_interest_limit=self.experiment_config["item_interest_limit"] if \
+                            "item_interest_limit" in self.experiment_config.keys() else None,
                         eval_points_max=2 ** 18,
                         device = self.gpu_config.device
                     )
@@ -717,7 +717,7 @@ class MultiUnitAuctionLogger(Logger):
     def _log_metrics(self, epoch, metrics_dict: dict):
         """Log scalar for each player"""
 
-        agent_name_list = ['agent_{}'.format(i) for i in range(self.experiment_params['n_players'])]
+        agent_name_list = ['agent_{}'.format(i) for i in range(self.experiment_config.n_players)]
 
         for metric_key, metric_val in metrics_dict.items():
             if isinstance(metric_val, float):

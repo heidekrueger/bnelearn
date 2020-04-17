@@ -23,7 +23,7 @@ from dataclasses import dataclass, field, asdict
 def run_single_item_uniform_symmetric(n_runs: int, n_epochs: int, 
                                       n_players: [int], payment_rule: str, model_sharing=True, u_lo=0, u_hi=1, 
                                       risk=1.0, 
-                                      log_metrics = ['bne','l2','rmse','regret'], regret_batch_size=2**8, regret_grid_size=2**8,
+                                      log_metrics = ['opt','l2','rmse','regret'], regret_batch_size=2**8, regret_grid_size=2**8,
                                       specific_gpu=1):
 
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
@@ -36,35 +36,52 @@ def run_single_item_uniform_symmetric(n_runs: int, n_epochs: int,
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 def run_single_item_gaussian_symmetric(n_runs: int, n_epochs: int, 
-                                       n_players: [int], payment_rule: str, model_sharing=True, valuation_mean=15, valuation_std=10, 
-                                       risk=1.0, regret_batch_size=2**8, regret_grid_size=2**8,
-                                       specific_gpu=1):
-    experiment_params = locals()
-    input_length = 1
+                                      n_players: [int], payment_rule: str, model_sharing=True, valuation_mean=15, valuation_std=10, 
+                                      risk=1.0, eval_batch_size = 2**15,
+                                      log_metrics = ['opt','l2','rmse','regret'], regret_batch_size=2**8, regret_grid_size=2**8,
+                                      specific_gpu=1):
+
+    running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
+    logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
+                                                 regret_batch_size=regret_batch_size,
+                                                 regret_grid_size=regret_grid_size,
+                                                 eval_batch_size=eval_batch_size)
+    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
+                                                       valuation_mean=valuation_mean, valuation_std=valuation_std, risk=risk)
     experiment_class = GaussianSymmetricPriorSingleItemExperiment
-    return n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params
+    return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 def run_llg(n_runs: int, n_epochs: int, 
-            payment_rule: str, model_sharing=True, u_lo=[0,0,0], u_hi=[1,1,2],
-            risk=1.0, regret_batch_size=2**8, regret_grid_size=2**8,
+            payment_rule: str, model_sharing=True, u_lo=[0,0,0], u_hi=[1,1,2], 
+            risk=1.0, 
+            log_metrics = ['regret'], regret_batch_size=2**8, regret_grid_size=2**8,
             specific_gpu=1):
-    
-    experiment_params = locals()
+
     n_players = [3]
-    input_length = 1
+    running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
+    logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
+                                                 regret_batch_size=regret_batch_size,
+                                                 regret_grid_size=regret_grid_size)
+    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
+                                                       u_lo=u_lo, u_hi=u_hi, risk=risk)
     experiment_class = LLGExperiment
-    return n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params
+    return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 def run_llllgg(n_runs: int, n_epochs: int, 
-               payment_rule: str, model_sharing=True, u_lo=[0,0,0,0,0,0], u_hi=[1,1,1,1,2,2],
-               risk=1.0, regret_batch_size=2**8, regret_grid_size=2**8,
-               specific_gpu=1):
+            payment_rule: str, model_sharing=True, u_lo=[0,0,0,0,0,0], u_hi=[1,1,1,1,2,2], 
+            risk=1.0, 
+            log_metrics = ['regret'], regret_batch_size=2**8, regret_grid_size=2**8,
+            specific_gpu=1):
     
-    experiment_params = locals()
     n_players = [6]
-    input_length = 2
+    running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
+    logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
+                                                 regret_batch_size=regret_batch_size,
+                                                 regret_grid_size=regret_grid_size)
+    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
+                                                       u_lo=u_lo, u_hi=u_hi, risk=risk)
     experiment_class = LLLLGGExperiment
-    return n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params
+    return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 def run_MultiUnitVickreyAuction2x2(n_runs: int, n_epochs: int, 
                                    model_sharing=True, u_lo=[0,0], u_hi=[1,1],
@@ -92,13 +109,17 @@ if __name__ == '__main__':
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_llg(1,20,'vcg')
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_single_item_uniform_symmetric(1,20, 2, 'first_price')
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_MultiUnitVickreyAuction2x2(2, 20)
-    running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_single_item_uniform_symmetric(1,20, [2], 'first_price')
+    
+    #running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_single_item_uniform_symmetric(1,20, [2], 'first_price')
+    #running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_single_item_gaussian_symmetric(1,20, [2], 'first_price')
+    #running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_llg(1,20,'vcg')
+    running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_llllgg(1,20,'first_price')
 
     gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
-    learning_configuration = LearningConfiguration()
+    learning_configuration = LearningConfiguration(input_length=2)
 
     
     for i in running_configuration.n_players:
         experiment_configuration.n_players = i
-    experiment = experiment_class(experiment_configuration, gpu_configuration, learning_configuration)
+    experiment = experiment_class(experiment_configuration, learning_configuration, logging_configuration, gpu_configuration)
     experiment.run(epochs=running_configuration.n_epochs, n_runs=running_configuration.n_runs)

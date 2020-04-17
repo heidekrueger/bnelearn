@@ -41,7 +41,7 @@ class ExperimentConfiguration:
     def set_n_players(self, n_players):
         self.n_players=n_players
 
-@dataclass(frozen=True)
+@dataclass#(frozen=True) TODO: frozen not possible with post_init
 class LoggingConfiguration:
     file_name: str = time.strftime('%Y-%m-%d %a %H:%M:%S')
     plot_frequency: int = 100
@@ -78,7 +78,7 @@ class LoggingConfiguration:
             self.save_figure_to_disk_svg = False
             self.save_figure_data_to_disk = False
 
-@dataclass(frozen=True)
+@dataclass#(frozen=True)
 class LearningConfiguration:
     learner_hyperparams: dict = None
     optimizer_type: str or Type[Optimizer] = 'adam'
@@ -87,6 +87,7 @@ class LearningConfiguration:
     hidden_activations: list = None 
     pretrain_iters: int = 500
     batch_size: int = 2**13
+    input_length: int = 1 #TODO: To be removed later
 
     def __post_init__(self):
         self.optimizer: Type[Optimizer] = self._set_optimizer(self.optimizer_type)

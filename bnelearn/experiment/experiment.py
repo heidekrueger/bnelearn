@@ -16,7 +16,7 @@ from bnelearn.mechanism import Mechanism
 from bnelearn.learner import Learner
 
 from bnelearn.experiment.gpu_controller import GPUController
-from bnelearn.experiment.configurations import LearningConfiguration
+from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
 from bnelearn.experiment.logger import Logger
 
 
@@ -29,30 +29,29 @@ class Experiment(ABC):
     n_models: int = NotImplemented
     # TODO: make all fields that MUST be set in subclass abstract members
 
-    def __init__(self, gpu_config: GPUController, experiment_params: dict,
-                 l_config: LearningConfiguration, known_bne=False):
+    def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne=False):
 
         # Configs
-        self.l_config = l_config
+        self.experiment_config = experiment_config
+        self.learning_config = learning_config
+        self.logging_config = logging_config
         self.gpu_config = gpu_config
 
-
-        # Experiment params
-        # TODO: consolidate these!
-        self.experiment_params = experiment_params
-        self.n_players = experiment_params['n_players']
+        # Save locally
+        self.n_players = experiment_config.n_players
 
         # TODO: decouple --> logic should be in subclasses ?
-        #if 'valuation_prior' in experiment_params.keys():
-        #    self.valuation_prior = experiment_params['valuation_prior']
-        #if 'payment_rule' in experiment_params.keys():
-        #    self.mechanism_type = experiment_params['payment_rule']
+        #if 'valuation_prior' in experiment_config.keys():
+        #    self.valuation_prior = experiment_config['valuation_prior']
+        #if 'payment_rule' in experiment_config.keys():
+        #    self.mechanism_type = experiment_config.payment_rule
 
         # TODO: these may possibly stay here, uncommented for now because of added complexity (due to separate regret logging implementation)
-        if 'regret_batch_size' in experiment_params.keys():
-            self.regret_batch_size = experiment_params['regret_batch_size']
-        if 'regret_grid_size' in experiment_params.keys():
-            self.regret_grid_size = experiment_params['regret_grid_size']
+        if logging_config.regret_batch_size is not None:
+            self.regret_batch_size = logging_config.regret_batch_size
+        if logging_config.regret_grid_size is not None:
+            self.regret_grid_size = logging_config.regret_grid_size
 
         # Misc
         self.base_dir = None
