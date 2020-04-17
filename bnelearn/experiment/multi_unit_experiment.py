@@ -23,13 +23,15 @@ from bnelearn.util import metrics
 
 
 class MultiUnitExperiment(Experiment, ABC):
-    def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController,
                  mechanism_type: Mechanism, known_bne=True):
 
         # ToDO How about to assigning expetiment parameters to the object and just using them from the dictionary?
         self.n_players = experiment_config.n_players
         self.n_units = experiment_config.n_units
+        # self.payment_rule = experiment_config.payment_rule # TODO new feature
+
         self.u_lo = experiment_config.u_lo
         self.u_hi = experiment_config.u_hi
 
@@ -53,7 +55,7 @@ class MultiUnitExperiment(Experiment, ABC):
             self.BNE2 = experiment_config.BNE2
         self.constant_marginal_values = experiment_config.constant_marginal_values
         self.item_interest_limit = experiment_config.item_interest_limit
-        
+
         if experiment_config.efficiency_parameter is not None:
             self.efficiency_parameter = experiment_config.efficiency_parameter
 
@@ -61,7 +63,7 @@ class MultiUnitExperiment(Experiment, ABC):
             self.pretrain_transform = experiment_config.pretrain_transform
         else:
             self.pretrain_transform = self.default_pretrain_transform
-        
+
         self.input_length = experiment_config.input_length
 
         print('\nhyperparams\n-----------')
@@ -88,7 +90,7 @@ class MultiUnitExperiment(Experiment, ABC):
 
     def _setup_bidders(self):
         epo_n = 2  # for ensure positive output of initialization
-        
+
         for i in range(self.n_models):
             ensure_positive_output = torch.zeros(epo_n, self.input_length).uniform_(self.u_lo[i], self.u_hi[i]) \
                 .sort(dim=1, descending=True)[0]
@@ -247,7 +249,7 @@ class MultiUnitExperiment(Experiment, ABC):
             valuation = torch.tensor(valuation, dtype=torch.float, device=self.gpu_config.device)
         else:
             valuation = valuation.detach()
-        
+
         if valuation.dim() == 0:
             valuation.unsqueeze_(0) # unsqueeze if simple float
         # elif valuation.shape[1] == 1:
@@ -273,20 +275,19 @@ class MultiUnitVickreyAuction2x2(MultiUnitExperiment):
     class_experiment_config = {
         'n_units': 2,
         'n_players': 2,
-        'BNE1': 'Truthful'
     }
 
-    def __init__(self, experiment_config: dict, gpu_config: GPUController,
-                 learning_config: LearningConfiguration):
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUController):
         mechanism_type = MultiUnitVickreyAuction
 
-        super().__init__({**self.class_experiment_config, **experiment_config}, mechanism_type=mechanism_type,
-                         gpu_config=gpu_config, learning_config=learning_config, known_bne=True)
+        for k, v in self.class_experiment_config.items():
+            assert v == eval('experiment_config.' + str(k))
+
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, mechanism_type, known_bne=True)
+
         self._setup_run()
 
-    def _optimal_bid_2(self, valuation: torch.Tensor or np.ndarray or float, player_position: int = 0):
-        warnings.warn("No 2nd explicit BNE known.", Warning)
-        return super()._optimal_bid_2(valuation, player_position)
 
 
 # exp_no==1, BNE continua
@@ -294,23 +295,18 @@ class MultiUnitUniformPriceAuction2x2(MultiUnitExperiment):
     class_experiment_config = {
         'n_units': 2,
         'n_players': 2,
-        'BNE1': 'BNE1',
-        'BNE2': 'BNE2'
     }
 
-    def __init__(self, experiment_config: dict, gpu_config: GPUController,
-                 learning_config: LearningConfiguration):
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUController):
         mechanism_type = MultiUnitUniformPriceAuction
 
-        super().__init__({**self.class_experiment_config, **experiment_config}, mechanism_type=mechanism_type,
-                         gpu_config=gpu_config, learning_config=learning_config, known_bne=True)
-        self._setup_run()
+        for k, v in self.class_experiment_config.items():
+            assert v == eval('experiment_config.' + str(k))
 
-    @staticmethod
-    def default_pretrain_transform(input_tensor):
-        output_tensor = torch.clone(input_tensor)
-        output_tensor[:, 1] = 0
-        return output_tensor
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, mechanism_type, known_bne=True)
+
+        self._setup_run()
 
     def _optimal_bid(self, valuation, player_position=None):
         valuation = super()._optimal_bid(valuation)
@@ -331,16 +327,18 @@ class MultiUnitUniformPriceAuction2x3limit2(MultiUnitExperiment):
     class_experiment_config = {
         'n_units': 3,
         'n_players': 2,
-        'BNE1': 'BNE1',
         'item_interest_limit': 2
     }
 
-    def __init__(self, experiment_config: dict, gpu_config: GPUController,
-                 learning_config: LearningConfiguration):
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUController):
         mechanism_type = MultiUnitUniformPriceAuction
 
-        super().__init__({**self.class_experiment_config, **experiment_config}, mechanism_type=mechanism_type,
-                         gpu_config=gpu_config, learning_config=learning_config, known_bne=True)
+        for k, v in self.class_experiment_config.items():
+            assert v == eval('experiment_config.' + str(k))
+
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, mechanism_type, known_bne=True)
+
         self._setup_run()
 
     # ToDO Once again in this method using u_hi/u_lo[0]. Is it appropriate?
@@ -357,15 +355,17 @@ class MultiUnitDiscriminatoryAuction2x2(MultiUnitExperiment):
     class_experiment_config = {
         'n_units': 2,
         'n_players': 2,
-        'BNE1': 'BNE1',
     }
 
-    def __init__(self, experiment_config: dict, gpu_config: GPUController,
-                 learning_config: LearningConfiguration):
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUController):
         mechanism_type = MultiUnitDiscriminatoryAuction
 
-        super().__init__({**self.class_experiment_config, **experiment_config}, mechanism_type=mechanism_type,
-                         gpu_config=gpu_config, learning_config=learning_config, known_bne=True)
+        for k, v in self.class_experiment_config.items():
+            assert v == eval('experiment_config.' + str(k))
+
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, mechanism_type, known_bne=True)
+
         self._setup_run()
 
     def _optimal_bid(self, valuation, player_position=None):
@@ -395,16 +395,18 @@ class MultiUnitDiscriminatoryAuction2x2CMV(MultiUnitExperiment):
     class_experiment_config = {
         'n_units': 2,
         'n_players': 2,
-        'BNE1': 'BNE1',
         'constant_marginal_values': True
     }
 
-    def __init__(self, experiment_config: dict, gpu_config: GPUController,
-                 learning_config: LearningConfiguration):
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUController):
         mechanism_type = MultiUnitDiscriminatoryAuction
 
-        super().__init__({**self.class_experiment_config, **experiment_config}, mechanism_type=mechanism_type,
-                         gpu_config=gpu_config, learning_config=learning_config, known_bne=True)
+        for k, v in self.class_experiment_config.items():
+            assert v == eval('experiment_config.' + str(k))
+
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, mechanism_type, known_bne=True)
+
         self._setup_run()
 
     def _optimal_bid(self, valuation, player_position=None):
@@ -462,20 +464,22 @@ class FPSBSplitAwardAuction2x2(MultiUnitExperiment):
     class_experiment_config = {
         'n_units': 2,
         'n_players': 2,
-        'BNE1': 'PD_Sigma_BNE',
-        'BNE2': 'WTA_BNE',
+        # 'BNE1': 'PD_Sigma_BNE',
+        # 'BNE2': 'WTA_BNE',
         'is_FPSBSplitAwardAuction2x2': True
     }
 
-    def __init__(self, experiment_config: dict, gpu_config: GPUController,
-                 learning_config: LearningConfiguration):
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUController):
         mechanism_type = FPSBSplitAwardAuction
+
+        for k, v in self.class_experiment_config.items():
+            assert v == eval('experiment_config.' + str(k))
 
         assert all(u_lo > 0 for u_lo in experiment_config.u_lo), \
             '100% Unit must be valued > 0'
 
-        super().__init__({**self.class_experiment_config, **experiment_config}, mechanism_type=mechanism_type,
-                         gpu_config=gpu_config, learning_config=learning_config, known_bne=True)
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, mechanism_type, known_bne=True)
 
         self.efficiency_parameter = 0.3
 

@@ -17,6 +17,7 @@ class RunningConfiguration:
 @dataclass#(frozen=True)
 class ExperimentConfiguration:
     payment_rule: str
+    n_units: int
     n_players: int = None
     model_sharing: bool = True
     risk: float = 1.0
@@ -30,7 +31,6 @@ class ExperimentConfiguration:
     u_hi: list = None
 
     # MultiUnit #TODO: Check which are really needed and make sense here
-    n_units: int
     input_length: int = None
     BNE1: str = None
     BNE2: str = None
@@ -38,7 +38,6 @@ class ExperimentConfiguration:
     item_interest_limit: int = None
     efficiency_parameter: float = None
     pretrain_transform: callable = None
-    n_params
 
     def __post_init__(self):
         if self.input_length is None:

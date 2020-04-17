@@ -643,7 +643,7 @@ class MultiUnitAuctionLogger(Logger):
     def log_training_iteration(self, epoch, bidders, log_params: dict):
 
         # TODO: can be deleted after change of ´policy_metrics´
-        is_FPSBSplitAwardAuction = "efficiency_parameter" in self.experiment_config.keys()
+        is_FPSBSplitAwardAuction = self.experiment_config.efficiency_parameter != None
 
         # plotting
         if epoch % self.plot_epoch == 0:
@@ -675,19 +675,18 @@ class MultiUnitAuctionLogger(Logger):
         bne_idx = 1
         while True:
             key = "BNE{}".format(bne_idx)
-            if key in self.experiment_config.keys():
+            if key in self.exp.logging_config.log_metrics.keys():
                 policy_metrics[key] = torch.tensor([
                     self._policy_metric(
                         model.forward,
-                        log_params['optima_bid'],
-                        self.experiment_config["n_units"],
+                        log_params['optimal_bid'],
+                        self.experiment_config.n_units,
                         selection={'split_award': True,
-                                "efficiency_parameter": self.experiment_config['efficiency_parameter'],
-                                "input_length": self.experiment_config["input_length"]
+                                "efficiency_parameter": self.experiment_config.efficiency_parameter,
+                                "input_length": self.experiment_config.input_length,
                             } if is_FPSBSplitAwardAuction else 'random',
-                        bounds=[self.experiment_config["u_lo"][0], self.experiment_config["u_hi"][0]],
-                        item_interest_limit=self.experiment_config["item_interest_limit"] if \
-                            "item_interest_limit" in self.experiment_config.keys() else None,
+                        bounds=[self.experiment_config.u_lo[0], self.experiment_config.u_hi[0]],
+                        item_interest_limit=self.experiment_config.item_interest_limit,
                         eval_points_max=2 ** 18,
                         device = self.gpu_config.device
                     )

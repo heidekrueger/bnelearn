@@ -83,17 +83,25 @@ def run_llllgg(n_runs: int, n_epochs: int,
     experiment_class = LLLLGGExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
-def run_MultiUnitVickreyAuction2x2(n_runs: int, n_epochs: int, 
-                                   model_sharing=True, u_lo=[0,0], u_hi=[1,1],
-                                   risk=1.0, regret_batch_size=2**8, regret_grid_size=2**8,
-                                   specific_gpu=1):
+def run_MultiUnitVickreyAuction2x2(n_runs: int, n_epochs: int, model_sharing=True,
+                                   u_lo=[0,0], u_hi=[1,1], risk=1.0, regret_batch_size=2**8,
+                                   regret_grid_size=2**8, specific_gpu=1):
 
-    running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
-    logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
-                                                 regret_batch_size=regret_batch_size,
-                                                 regret_grid_size=regret_grid_size)
-    experiment_configuration = ExperimentConfiguration(payment_rule='vcg', n_units=2, model_sharing=model_sharing,
-                                                       u_lo=u_lo, u_hi=u_hi, risk=risk)
+    running_configuration = RunningConfiguration(
+        n_runs=n_runs, n_epochs=n_epochs,
+        specific_gpu=specific_gpu, n_players=[2]
+    )
+    logging_configuration = LoggingConfiguration(
+        log_metrics=['rmse'],
+        regret_batch_size=regret_batch_size,
+        regret_grid_size=regret_grid_size
+    )
+    experiment_configuration = ExperimentConfiguration(
+        payment_rule=None, n_units=2,
+        model_sharing=model_sharing,
+        u_lo=u_lo, u_hi=u_hi,
+        risk=risk
+    )
     experiment_class = MultiUnitVickreyAuction2x2
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
@@ -117,7 +125,7 @@ if __name__ == '__main__':
     #running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_single_item_uniform_symmetric(1,20, [2], 'first_price')
     #running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_single_item_gaussian_symmetric(1,20, [2], 'first_price')
     #running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_llg(1,20,'vcg')
-    running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_llllgg(1,20,'firstprice')
+    # running_configuration, logging_configuration, experiment_configuration, experiment_class  = run_llllgg(1,20,'firstprice')
     running_configuration, logging_configuration, experiment_configuration, experiment_class = run_MultiUnitVickreyAuction2x2(2, 20)
 
     gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
