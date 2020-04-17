@@ -1,5 +1,5 @@
-import warnings
 from typing import Type
+import time
 
 import torch
 from torch.optim import Optimizer
@@ -43,37 +43,40 @@ class ExperimentConfiguration:
 
 @dataclass(frozen=True)
 class LoggingConfiguration:
-    plot_frequency = 100
+    file_name: str = time.strftime('%Y-%m-%d %a %H:%M:%S')
+    plot_frequency: int = 100
+    plot_points: int = 100
+    plot_show_inline: bool = True
     log_metrics: list = None
     regret_batch_size: int = None
     regret_grid_size: int = None
     regret_frequency: int = 100
     eval_batch_size: int = 2**12
     cache_eval_actions: bool = True
-    #TODO: Save figure to disc stuff, boolean
-    log_png = True
-    log_svg = True
-    file_name = #Timestamp
-
-    disable_logging = False
+    
+    save_figure_to_disk_png: bool = True
+    save_figure_to_disk_svg: bool = True
+    save_figure_data_to_disk: bool = True
+    save_disable_all: bool = False
 
     def __post_init__(self):
         metrics = self.log_metrics
-        self.log_metrics = {'bne': False,
+        self.log_metrics = {'opt': False,
                             'rmse': False,
                             'l2': False,
                             'regret': False}
         if metrics is not None:
             for metric in metrics:
-                assert metric in ['bne','l2','rmse','regret'], "Metric not known."
+                assert metric in ['opt','l2','rmse','regret'], "Metric not known."
                 self.log_metrics[metric] = True
         if self.log_metrics['regret'] and self.regret_batch_size is None:
             self.regret_batch_size = 2**8
             self.regret_grid_size: int = 2**8
 
-        if disable_logging:
-            log_png = False
-            log_svg = False
+        if self.save_disable_all:
+            self.save_figure_to_disk_png = False
+            self.save_figure_to_disk_svg = False
+            self.save_figure_data_to_disk = False
 
 @dataclass(frozen=True)
 class LearningConfiguration:
