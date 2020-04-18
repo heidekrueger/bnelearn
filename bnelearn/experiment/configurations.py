@@ -55,6 +55,8 @@ class LoggingConfiguration:
     regret_frequency: int = 100
     eval_batch_size: int = 2**12
     cache_eval_actions: bool = True
+    max_epochs: int = None
+
     
     save_figure_to_disk_png: bool = True
     save_figure_to_disk_svg: bool = True

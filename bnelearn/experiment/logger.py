@@ -164,15 +164,6 @@ class Logger(ABC):
     def _log_experimentparams():
         pass
 
-    #TODO: delete!?
-    # Setup logging
-    def _log_once(self):
-        """Everything that should be logged only once on initialization."""
-        # writer.add_scalar('debug/total_model_parameters', n_parameters, epoch)
-        # writer.add_text('hyperparams/neural_net_spec', str(self.model), 0)
-        # writer.add_scalar('debug/eval_batch_size', eval_batch_size, epoch)
-        self.writer.add_graph(self.exp.models[0], self.exp.env.agents[0].valuations)
-
     @abstractmethod
     def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute,
                      L_2, L_inf, param_group_postfix = '', metric_prefix = ''):

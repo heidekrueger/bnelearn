@@ -29,7 +29,8 @@ def run_single_item_uniform_symmetric(n_runs: int, n_epochs: int,
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
-                                                 regret_grid_size=regret_grid_size)
+                                                 regret_grid_size=regret_grid_size,
+                                                 max_epochs=n_epochs)
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        u_lo=u_lo, u_hi=u_hi, risk=risk)
     experiment_class = UniformSymmetricPriorSingleItemExperiment
@@ -45,7 +46,8 @@ def run_single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
-                                                 eval_batch_size=eval_batch_size)
+                                                 eval_batch_size=eval_batch_size
+                                                 max_epochs=n_epochs)
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        valuation_mean=valuation_mean, valuation_std=valuation_std, risk=risk)
     experiment_class = GaussianSymmetricPriorSingleItemExperiment
@@ -61,7 +63,8 @@ def run_llg(n_runs: int, n_epochs: int,
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
-                                                 regret_grid_size=regret_grid_size)
+                                                 regret_grid_size=regret_grid_size,
+                                                 max_epochs=n_epochs)
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        u_lo=u_lo, u_hi=u_hi, risk=risk)
     experiment_class = LLGExperiment
@@ -77,7 +80,8 @@ def run_llllgg(n_runs: int, n_epochs: int,
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
-                                                 regret_grid_size=regret_grid_size)
+                                                 regret_grid_size=regret_grid_size,
+                                                 max_epochs=n_epochs)
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        u_lo=u_lo, u_hi=u_hi, risk=risk)
     experiment_class = LLLLGGExperiment
@@ -105,7 +109,8 @@ def run_multiunit(
     logging_configuration = LoggingConfiguration(
         log_metrics=['rmse'],
         regret_batch_size=regret_batch_size,
-        regret_grid_size=regret_grid_size
+        regret_grid_size=regret_grid_size,
+        max_epochs=n_epochs
     )
     experiment_configuration = ExperimentConfiguration(
         payment_rule=payment_rule, n_units=n_units,
@@ -140,7 +145,8 @@ def run_splitaward(
     logging_configuration = LoggingConfiguration(
         log_metrics=['rmse'],
         regret_batch_size=regret_batch_size,
-        regret_grid_size=regret_grid_size
+        regret_grid_size=regret_grid_size,
+        max_epochs=n_epochs
     )
     experiment_configuration = ExperimentConfiguration(
         payment_rule=payment_rule, n_units=n_units,
