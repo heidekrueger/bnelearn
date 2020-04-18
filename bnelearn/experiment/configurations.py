@@ -17,7 +17,6 @@ class RunningConfiguration:
 @dataclass#(frozen=True)
 class ExperimentConfiguration:
     payment_rule: str
-    n_units: int
     n_players: int = None
     model_sharing: bool = True
     risk: float = 1.0
@@ -31,6 +30,7 @@ class ExperimentConfiguration:
     u_hi: list = None
 
     # Multi-Unit
+    n_units: int = None
     pretrain_transform: callable = None
     constant_marginal_values: bool = False
     item_interest_limit: int = None
