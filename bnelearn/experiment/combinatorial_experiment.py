@@ -10,9 +10,9 @@ from bnelearn.mechanism.auctions_combinatorial import *
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import Environment, AuctionEnvironment
-from bnelearn.experiment import Experiment, GPUController, Logger
+from bnelearn.experiment import Experiment, GPUController
 from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
-from bnelearn.experiment.logger import LLGAuctionLogger, LLLLGGAuctionLogger
+#from bnelearn.experiment.logger import LLGAuctionLogger, LLLLGGAuctionLogger
 
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
@@ -122,7 +122,7 @@ class CombinatorialExperiment(Experiment, ABC):
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
 
-    def _training_loop(self, epoch, logger):
+    def _training_loop(self, epoch):
         # do in every iteration
         # save current params to calculate update norm
         prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
@@ -133,7 +133,7 @@ class CombinatorialExperiment(Experiment, ABC):
             for learner in self.learners
         ])
         log_params = {}
-        logger.log_training_iteration(prev_params=prev_params, epoch=epoch,
+        self.log_training_iteration(prev_params=prev_params, epoch=epoch,
                                            strat_to_bidder=self._strat_to_bidder,                                           
                                            utilities=utilities, 
                                            log_params=log_params)
@@ -141,7 +141,7 @@ class CombinatorialExperiment(Experiment, ABC):
             print("epoch {}, utilities: ".format(epoch))
             for i in range(len(utilities)):
                 print("{}: {:.5f}".format(i, utilities[i]))
-            logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
+            self.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
                                           u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
 
 class LLGExperiment(CombinatorialExperiment):
@@ -158,11 +158,8 @@ class LLGExperiment(CombinatorialExperiment):
         #self.payment_rule =experiment_config.payment_rule
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known! (i.e. uniformity, bounds, etc)
         known_bne = experiment_config.payment_rule in ['first_price', 'vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
-        
-        super().__init__(3, 2, 1, experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
-    def _setup_logger(self, base_dir):
-        return LLGAuctionLogger(self, base_dir)
+        super().__init__(3, 2, 1, experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
 
     def _setup_mechanism(self):
@@ -232,9 +229,6 @@ class LLLLGGExperiment(CombinatorialExperiment):
         known_bne = False
 
         super().__init__(6, 4, 2, experiment_config, learning_config, logging_config, gpu_config, known_bne)
-
-    def _setup_logger(self, base_dir):
-        return LLLLGGAuctionLogger(self, base_dir)
 
     def _setup_mechanism(self):
         self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver='NoCore', parallel=1, cuda=self.gpu_config.cuda)

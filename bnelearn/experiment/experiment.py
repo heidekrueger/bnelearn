@@ -97,15 +97,14 @@ class Experiment(ABC):
         self.b_opt = None
 
         #The if statements can be removed if we set this None directly and set the super.init() at the beginnign
-        if hasattr(self, 'plot_xmin'):
+        if not hasattr(self, 'plot_xmin'):
             self.plot_xmin = None
-        if hasattr(self, 'plot_xmax'):
+        if not hasattr(self, 'plot_xmax'):
             self.plot_xmax = None
-        if hasattr(self, 'plot_ymin'):
+        if not hasattr(self, 'plot_ymin'):
             self.plot_ymin = None
-        if hasattr(self, 'plot_ymax'):
+        if not hasattr(self, 'plot_ymax'):
             self.plot_ymax = None
-        self._optimal_bid = None
         self.bne_utilities = None
         self.bne_env = None
 
@@ -268,11 +267,11 @@ class Experiment(ABC):
                 if n_players < 10 and labels is not None:
                     axs[plot_idx].legend(loc='upper left')
             if xlim is not None:
-                axs[plot_idx].set_xlim(xlim[plot_idx][0], xlim[plot_idx][1])
+                axs[plot_idx].set_xlim(xlim[0], xlim[1])
             elif hasattr(self, 'plot_xmin'):
                 axs[plot_idx].set_xlim(self.plot_xmin, self.plot_xmax)
             if ylim is not None:
-                axs[plot_idx].set_ylim(ylim[plot_idx][0], ylim[plot_idx][1])
+                axs[plot_idx].set_ylim(ylim[0], ylim[1])
             elif hasattr(self, 'plot_xmin'):
                 axs[plot_idx].set_ylim(self.plot_ymin, self.plot_ymax)
 
