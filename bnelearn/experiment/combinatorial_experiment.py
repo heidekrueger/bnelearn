@@ -10,7 +10,8 @@ from bnelearn.mechanism.auctions_combinatorial import *
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import Environment, AuctionEnvironment
-from bnelearn.experiment import Experiment, GPUController, Logger, LearningConfiguration
+from bnelearn.experiment import Experiment, GPUController, Logger
+from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
 from bnelearn.experiment.logger import LLGAuctionLogger, LLLLGGAuctionLogger
 
 from bnelearn.learner import ESPGLearner
@@ -23,14 +24,14 @@ from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
 class CombinatorialExperiment(Experiment, ABC):
     payment_rule: str
 
-    def __init__(self, n_players, n_local, n_items, experiment_params, gpu_config, l_config, known_bne):
+    def __init__(self, n_players, n_local, n_items, experiment_config, learning_config, logging_config, gpu_config, known_bne):
         self.n_players = n_players
         self.n_local = n_local
         self.n_items = n_items
 
-        self.payment_rule = experiment_params['payment_rule']
+        self.payment_rule = experiment_config.payment_rule
 
-        self.model_sharing = experiment_params['model_sharing']
+        self.model_sharing = experiment_config.model_sharing
         if self.model_sharing:
             self.n_models = 2
             self._bidder2model: List[int] = [0] * n_local + [1] * (n_players - n_local)
@@ -38,10 +39,10 @@ class CombinatorialExperiment(Experiment, ABC):
             self.n_models = self.n_players
             self._bidder2model: List[int] = list(range(self.n_players))
 
-        assert all(key in experiment_params for key in ['u_lo', 'u_hi']), \
-            """Missing prior information!"""
+        assert experiment_config.u_lo is not None, """Missing prior information!"""
+        assert experiment_config.u_hi is not None, """Missing prior information!"""
 
-        u_lo = experiment_params['u_lo']
+        u_lo = experiment_config.u_lo
         if isinstance(u_lo, Iterable):
             assert len(u_lo) == n_players
             u_lo = [float(l) for l in u_lo]
@@ -49,7 +50,7 @@ class CombinatorialExperiment(Experiment, ABC):
             u_lo = [float(u_lo)] * n_players
         self.u_lo = u_lo
 
-        u_hi = experiment_params['u_hi']
+        u_hi = experiment_config.u_hi
         assert isinstance(u_hi, Iterable)
         assert len(u_hi) == n_players
         assert u_hi[1:n_local] == u_hi[:n_local-1], "local bidders should be identical"
@@ -61,16 +62,13 @@ class CombinatorialExperiment(Experiment, ABC):
         self.plot_ymin = self.plot_xmin
         self.plot_ymax = self.plot_xmax * 1.05
 
-        super().__init__(experiment_params=experiment_params, gpu_config=gpu_config, l_config=l_config, known_bne=known_bne)
-
-
+        super().__init__(experiment_config,  learning_config, logging_config, gpu_config, known_bne)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0):
         # TODO: this probably isn't the right place...
         # The model should know who is using it # TODO: Stefan: In my oppinion, it shouldn't...
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
                               batch_size=batch_size, n_items = self.n_items)
-
     # Currently only working for LLG and LLLLGG.
     def _setup_bidders(self):
         print('Setting up bidders...')
@@ -83,25 +81,25 @@ class CombinatorialExperiment(Experiment, ABC):
             positive_output_point = torch.tensor([self.u_hi[b_id]]*self.n_items, dtype= torch.float)
 
             self.models[i] = NeuralNetStrategy(
-                self.l_config.input_length, hidden_nodes=self.l_config.hidden_nodes,
-                hidden_activations=self.l_config.hidden_activations,
+                self.learning_config.input_length, hidden_nodes=self.learning_config.hidden_nodes,
+                hidden_activations=self.learning_config.hidden_activations,
                 ensure_positive_output=positive_output_point,
                 output_length = self.n_items
             ).to(self.gpu_config.device)
 
         self.bidders = [
-            self._strat_to_bidder(self.models[m_id], batch_size=self.l_config.batch_size, player_position=i)
+            self._strat_to_bidder(self.models[m_id], batch_size=self.learning_config.batch_size, player_position=i)
             for i, m_id in enumerate(self._bidder2model)]
 
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
                              self.models]
 
-        if self.l_config.pretrain_iters > 0:
+        if self.learning_config.pretrain_iters > 0:
             print('\tpretraining...')
             #TODO: why is this on per bidder basis when everything else is on per model basis?
             for bidder in self.bidders:
-                bidder.strategy.pretrain(bidder.valuations, self.l_config.pretrain_iters)
+                bidder.strategy.pretrain(bidder.valuations, self.learning_config.pretrain_iters)
 
     def _setup_learners(self):
         # TODO: the current strat_to_player kwargs is weird. Cross-check this with how values are evaluated in learner.
@@ -111,16 +109,16 @@ class CombinatorialExperiment(Experiment, ABC):
         for m_id, model in enumerate(self.models):
             self.learners.append(ESPGLearner(model=model,
                                  environment=self.env,
-                                 hyperparams=self.l_config.learner_hyperparams,
-                                 optimizer_type=self.l_config.optimizer,
-                                 optimizer_hyperparams=self.l_config.optimizer_hyperparams,
+                                 hyperparams=self.learning_config.learner_hyperparams,
+                                 optimizer_type=self.learning_config.optimizer,
+                                 optimizer_hyperparams=self.learning_config.optimizer_hyperparams,
                                  strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
                                  ))
 
     def _setup_learning_environment(self):
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
-                                      batch_size=self.l_config.batch_size,
+                                      batch_size=self.learning_config.batch_size,
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
 
@@ -146,22 +144,22 @@ class CombinatorialExperiment(Experiment, ABC):
             logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
                                           u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
 
-
 class LLGExperiment(CombinatorialExperiment):
-    def __init__(self, experiment_params:dict, gpu_config: GPUController, l_config: LearningConfiguration):
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUController):
 
         # coupling between valuations only 0 implemented currently
         self.gamma = 0.0
         assert self.gamma == 0, "Gamma > 0 implemented yet!?"
         # Experiment specific parameters
-        experiment_params['n_players'] = 3
-        self.n_players = experiment_params['n_players'] # TODO: this will also be set in superclass but le'ts use it below
+        experiment_config.n_players = 3
+        self.n_players = experiment_config.n_players # TODO: this will also be set in superclass but le'ts use it below
         
-        #self.payment_rule =experiment_params['payment_rule']
+        #self.payment_rule =experiment_config.payment_rule
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known! (i.e. uniformity, bounds, etc)
-        known_bne = experiment_params['payment_rule'] in ['first_price', 'vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
+        known_bne = experiment_config.payment_rule in ['first_price', 'vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
         
-        super().__init__(3, 2, 1, experiment_params, gpu_config, l_config, known_bne)
+        super().__init__(3, 2, 1, experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
     def _setup_logger(self, base_dir):
         return LLGAuctionLogger(self, base_dir)
@@ -201,10 +199,10 @@ class LLGExperiment(CombinatorialExperiment):
 
         bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
-            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i, batch_size=self.l_config.eval_batch_size)
+            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i, batch_size=self.logging_config.eval_batch_size)
                     for i in range(self.n_players)],
             n_players=self.n_players,
-            batch_size=self.l_config.eval_batch_size,
+            batch_size=self.logging_config.eval_batch_size,
             strategy_to_player_closure=self._strat_to_bidder
         )
 
@@ -223,17 +221,17 @@ class LLGExperiment(CombinatorialExperiment):
         return os.path.join(*name)
 
 
-
 class LLLLGGExperiment(CombinatorialExperiment):
-    def __init__(self, experiment_params, gpu_config: GPUController, l_config: LearningConfiguration):
-        experiment_params['n_players'] = 6
+    def __init__(self, experiment_config, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUController):
+        experiment_config.n_players = 6
         self.n_items = 2
-        assert l_config.input_length == 2, "Learner config has to take 2 inputs!" #TODO: what does this mean? can we move it upstream?
+        assert learning_config.input_length == 2, "Learner config has to take 2 inputs!" #TODO: what does this mean? can we move it upstream?
         
         #TODO: BNE is known for vcg
         known_bne = False
 
-        super().__init__(6, 4, 2, experiment_params, gpu_config, l_config, known_bne)
+        super().__init__(6, 4, 2, experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
     def _setup_logger(self, base_dir):
         return LLLLGGAuctionLogger(self, base_dir)
