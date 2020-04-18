@@ -17,7 +17,7 @@ from bnelearn.learner import Learner
 
 from bnelearn.experiment.gpu_controller import GPUController
 from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
-from bnelearn.experiment.logger import Logger
+#from bnelearn.experiment.logger import Logger
 
 import matplotlib.pyplot as plt
 import sys
@@ -63,7 +63,6 @@ class Experiment(ABC):
             self.regret_grid_size = logging_config.regret_grid_size
 
         # Misc
-        self.base_dir = None
         self.models: Iterable[torch.nn.Module] = None
 
         # Inverse of bidder --> model lookup table
@@ -79,10 +78,10 @@ class Experiment(ABC):
 
         #LOGGING PARAMETERS
         # TODO: remove this? move all logging logic into experiment itself?
-        self.logger: Logger = None
         root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
         if root_path not in sys.path:
             sys.path.append(root_path)
+        self.log_root=os.path.join(root_path, 'experiments')
         
 
 
@@ -124,13 +123,6 @@ class Experiment(ABC):
         self._setup_bidders()
         self._setup_learning_environment()
         self._setup_learners()
-
-    @abstractmethod
-    def _setup_logger(self, base_dir):
-        """Creates logger for run.
-        THIS IS A TEMPORARY WORKAROUND TODO
-        """
-        pass
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -182,7 +174,7 @@ class Experiment(ABC):
             return 'other'
 
     @abstractmethod
-    def _training_loop(self, epoch, logger):
+    def _training_loop(self, epoch):
         """Main training loop to be executed in each iteration."""
         pass
 
@@ -201,17 +193,16 @@ class Experiment(ABC):
 
             self._setup_run()
 
-            log_dir = self._get_logdir()
-            logger = self._setup_logger(log_dir)
+            self.log_dir = self._get_logdir()
 
             # TODO: setup Writer here, or make logger an object that takes
             # with Logger ... : (especially, needs to be destroyed on end of run!)
 
-            logger.log_experiment(run_comment=run_comment, max_epochs=epochs)
+            self.log_experiment(run_comment=run_comment, max_epochs=epochs, run=run)
             # disable this to continue training?
             epoch = 0
             for epoch in range(epoch, epoch + epochs + 1):
-                self._training_loop(epoch=epoch, logger=logger)
+                self._training_loop(epoch=epoch)
 
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
@@ -308,7 +299,7 @@ class Experiment(ABC):
                         format='svg', dpi=1200)
         if writer:
             writer.add_figure(f'{group}/{figure_name}', fig, epoch)
-        if self.logging_config.show_plot_inline:
+        if self.logging_config.plot_show_inline:
             # display.display(plt.gcf())
             plt.show()
 
@@ -316,10 +307,24 @@ class Experiment(ABC):
     def _log_experimentparams(self):
         pass
 
-    @abstractmethod
+    #TODO: Delete after individual metric logging
     def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute,
                      L_2, L_inf, param_group_postfix = '', metric_prefix = ''):
-        pass
+
+        def log_metric(group, name, value):
+            writer.add_scalar(
+                f'{group}{param_group_postfix}/{metric_prefix}{name}',
+                value, epoch
+                )
+
+        log_metric('debug', 'update_norm', update_norm)
+
+        log_metric('eval', 'utility', utility)
+        log_metric('eval', 'utility_vs_bne', utility_vs_bne)
+        log_metric('eval', 'epsilon_relative', epsilon_relative)
+        log_metric('eval', 'epsilon_absolute', epsilon_absolute)
+        log_metric('eval', 'L_2', L_2)
+        log_metric('eval', 'L_inf', L_inf)
 
     def _log_hyperparams(self):
         """Everything that should be logged on every learning_rate updates"""
@@ -344,7 +349,7 @@ class Experiment(ABC):
         )
     #TODO: This comes from single_item, but is VERY similar to MultiUnit. Only self.n_units dimension missing. Adapt!
     #TODO: plot_xmin and xmax makes not sense since this might be outside the value function
-    def log_experiment(self, run_comment, max_epochs):
+    def log_experiment(self, run_comment, max_epochs, run=""):
         self.max_epochs = max_epochs
         # setting up plotting
         self.plot_points = min(self.logging_config.plot_points, self.learning_config.batch_size)
@@ -367,11 +372,11 @@ class Experiment(ABC):
 
         if os.name == 'nt':
             raise ValueError('The run_name may not contain : on Windows!')
-        run_name = self.logging_config.filename
+        run_name = self.logging_config.file_name + '_' + str(run)
         if run_comment:
             run_name = run_name + ' - ' + str(run_comment)
 
-        self.log_dir = os.path.join(self.logging_config.log_root, self.base_dir, run_name)
+        self.log_dir = os.path.join(self.log_root, self.log_dir, run_name)
         os.makedirs(self.log_dir, exist_ok=False)
         if self.logging_config.save_figure_to_disk_png:
             os.mkdir(os.path.join(self.log_dir, 'png'))
@@ -435,7 +440,7 @@ class Experiment(ABC):
                               epsilon_absolute=epsilon_absolute, L_2=L_2, L_inf=L_inf,
                               param_group_postfix=group_postfix, metric_prefix=metric_prefix)
 
-        if epoch % self.logging_config.plot_epoch == 0:
+        if epoch % self.logging_config.plot_frequency == 0:
             bidders = [strat_to_bidder(model, self.learning_config.batch_size, self._model2bidder[i][0])
                        for i, model in enumerate(self.models)]
             v = torch.stack([bidder.valuations for bidder in bidders], dim=1) # shape: n_batch, n_players, n_bundles

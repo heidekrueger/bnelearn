@@ -81,6 +81,9 @@ class LoggingConfiguration:
             self.save_figure_to_disk_svg = False
             self.save_figure_data_to_disk = False
 
+    def update_file_name(self, name=None):
+        if name is None:
+            self.file_name = time.strftime('%Y-%m-%d %a %H:%M:%S')
 @dataclass#(frozen=True)
 class LearningConfiguration:
     learner_hyperparams: dict = None
