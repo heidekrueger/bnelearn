@@ -12,6 +12,8 @@ import time
 import warnings
 from abc import ABC
 from itertools import product
+import bnelearn.util.metrics as metrics
+
 
 import torch
 import numpy as np
@@ -19,16 +21,21 @@ from scipy import integrate, interpolate
 
 from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.experiment import GPUController, Logger, Experiment
+from bnelearn.experiment import GPUController, Experiment
 from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import (
     MultiUnitVickreyAuction, MultiUnitUniformPriceAuction, MultiUnitDiscriminatoryAuction,
     FPSBSplitAwardAuction, Mechanism
 )
-from bnelearn.experiment.logger import MultiUnitAuctionLogger
+
 from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
-from bnelearn.util import metrics
+from bnelearn.util import metrics as metrics
+
+import matplotlib.pyplot as plt
+from timeit import default_timer as timer
+
+from torch.utils.tensorboard import SummaryWriter
 
 
 ########################################################################################################################
@@ -349,12 +356,6 @@ class MultiUnitExperiment(Experiment, ABC):
             for i in range(self.n_players)
         ]
 
-    def _setup_logger(self, base_dir):
-        """Creates logger for run.
-        THIS IS A TEMPORARY WORKAROUND TODO
-        """
-        return MultiUnitAuctionLogger(exp=self, base_dir=base_dir, plot_epoch=self.plot_frequency)
-
     def _setup_mechanism(self):
         self.mechanism = self.mechanism_type(cuda=self.gpu_config.cuda)
 
@@ -400,7 +401,7 @@ class MultiUnitExperiment(Experiment, ABC):
         name = ['MultiUnit', self.payment_rule, str(self.n_players) + 'players_' + str(self.n_units) + 'units']
         return os.path.join(*name)
 
-    def _training_loop(self, epoch, logger):
+    def _training_loop(self, epoch):
         start_time = time.time()
 
         # calculate utility vs BNE
@@ -455,14 +456,144 @@ class MultiUnitExperiment(Experiment, ABC):
             'against_bne_utilities': against_bne_utilities,
             'regret': regret
         }
-        logger.log_training_iteration(log_params=log_params, epoch=epoch, bidders=self.bidders)
+        self.log_training_iteration(log_params=log_params, epoch=epoch, bidders=self.bidders)
 
     @staticmethod
     def default_pretrain_transform(input_tensor):
         return torch.clone(input_tensor)
 
+    #TODO: This is identical to the one in experiment apart from n_units. @Nils: Adapt experiment and delete this one
+    def log_experiment(self, run_comment, max_epochs, run=""):
+        self.max_epochs = max_epochs
+        # setting up plotting
+            
+        if self.logging_config.log_metrics['opt']:
+            # TODO: apdapt interval to be model specific! (e.g. for LLG)
+            self.v_opt = torch.stack([
+                torch.linspace(self.plot_xmin, self.plot_xmax, self.plot_points,
+                               device=self.gpu_config.device)
+                ] * self.n_units,
+                dim = 1
+            )
+            self.b_opt = self._optimal_bid(self.v_opt) # only one sym. BNE supported
+
+        is_ipython = 'inline' in plt.get_backend()
+        if is_ipython:
+            from IPython import display
+        plt.rcParams['figure.figsize'] = [8, 5]
+
+        if os.name == 'nt':
+            raise ValueError('The run_name may not contain : on Windows!')
+        run_name = self.logging_config.file_name + '_' + str(run)
+        if run_comment:
+            run_name = run_name + ' - ' + str(run_comment)
+
+        self.log_dir = os.path.join(self.log_root, self.log_dir, run_name)
+        os.makedirs(self.log_dir, exist_ok=False)
+        if self.logging_config.save_figure_to_disk_png:
+            os.mkdir(os.path.join(self.log_dir, 'png'))
+        if self.logging_config.save_figure_to_disk_svg:
+            os.mkdir(os.path.join(self.log_dir, 'svg'))
+
+        print('Started run. Logging to {}'.format(self.log_dir))
+        self.fig = plt.figure()
+
+        self.writer = SummaryWriter(self.log_dir, flush_secs=30)
+        start_time = timer()
+        self._log_experimentparams() # TODO: what to use
+        self._log_hyperparams()
+        elapsed = timer() - start_time
+        self.overhead += elapsed
+
+    def log_training_iteration(self, epoch, bidders, log_params: dict):
+
+        valuations = list()
+        bids = list()
+        for bidder in bidders:
+            valuations.append(bidder.draw_valuations_())
+            bids.append(bidder.get_action())
+        valuations = torch.stack(valuations, dim=1)
+        bids = torch.stack(bids, dim=1)
+
+        if self.logging_config.log_metrics['opt']:
+            valuations = torch.cat([
+                valuations[:self.plot_points,:,:], self.v_opt[:,None,:],
+            ], dim=1)
+            bids = torch.cat([
+                bids[:self.plot_points,:,:], self.b_opt[:,None,:],
+            ], dim=1)
+
+        # plotting
+        if epoch % self.logging_config.plot_frequency == 0:
+            labels = ['NPGA'] * len(bidders)
+            fmts = ['bo'] * len(bidders)
+            if self.logging_config.log_metrics['opt']:
+                labels.append('BNE')
+                fmts.append('b--')
+            from bnelearn.experiment.multi_unit_experiment import SplitAwardExperiment
+            if isinstance(self, SplitAwardExperiment):
+                xlim = [
+                    [self.u_lo[0], self.u_hi[0]],
+                    [self.experiment_config.efficiency_parameter * self.u_lo[0],
+                     self.experiment_config.efficiency_parameter * self.u_hi[0]]
+                ]
+                ylim = [
+                    [0, 2 * self.u_hi[0]],
+                    [0, 2 * self.u_hi[0]]
+                ]
+            else:
+                xlim = ylim = None
+            super()._plot(fig=self.fig, plot_data=(valuations, bids), writer=self.writer, xlim=xlim, ylim=ylim,
+                          figure_name='bid_function', epoch=epoch, labels=labels, fmts=fmts)
+
+        # TODO: dim_of_interest for multiple BNE
+        log_params['rmse'] = {
+            'BNE1': torch.tensor(
+                [metrics.norm_actions(bids[:,i,:], self._optimal_bid(valuations[:,i,:]))
+                 for i, model in enumerate(self.models)]
+            )
+        }
+
+        log_params['rel_utility_loss'] = [
+            1 - u / bne_u for u, bne_u
+            in zip(log_params['against_bne_utilities'], log_params['bne_utilities'])
+        ]
+        self._log_metrics(epoch, log_params)
+
+        print('epoch {}:\t{}s'.format(epoch, round(log_params['elapsed'], 2)))
+
+        # TODO: unify model saving via switch
+        if epoch == self.max_epochs:
+            for i, model in enumerate(self.models):
+                torch.save(model.state_dict(), os.path.join(self.log_dir, 'saved_model_' + str(i) + '.pt'))
 
 
+    def _log_metrics(self, epoch, metrics_dict: dict):
+        """Log scalar for each player"""
+
+        agent_name_list = ['agent_{}'.format(i) for i in range(self.experiment_config.n_players)]
+
+        for metric_key, metric_val in metrics_dict.items():
+            if isinstance(metric_val, float):
+                self.writer.add_scalar('eval/' + str(metric_key), metric_val, epoch)
+            elif isinstance(metric_val, list):
+                self.writer.add_scalars(
+                    'eval/' + str(metric_key),
+                    dict(zip(agent_name_list, metric_val)),
+                    epoch
+                )
+            elif isinstance(metric_val, dict):
+                for key, val in metric_val.items():
+                    self.writer.add_scalars(
+                        'eval/' + str(metric_key),
+                        dict(zip([name + '/' + str(key) for name in agent_name_list], val)),
+                        epoch
+                    )
+
+        # log model parameters
+        model_paras = [torch.norm(torch.nn.utils.parameters_to_vector(model.parameters()), p=2)
+                       for model in self.models]
+        self.writer.add_scalars('eval/weight_norm', dict(zip(agent_name_list, model_paras)), epoch)
 # exp_no==6, two BNE types, BNE continua
 class SplitAwardExperiment(MultiUnitExperiment):
     """
