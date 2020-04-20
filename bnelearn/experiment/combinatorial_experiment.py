@@ -1,22 +1,19 @@
+import os
 from abc import ABC
-
-import numpy as np
-import scipy.integrate as integrate
 from functools import partial
 from typing import Iterable, List
+import numpy as np
 
+import torch
 
-from bnelearn.experiment import Experiment
-from bnelearn.mechanism.auctions_combinatorial import *
+from bnelearn.mechanism.auctions_combinatorial import LLGAuction, LLLLGGAuction
 
 from bnelearn.bidder import Bidder
-from bnelearn.environment import Environment, AuctionEnvironment
+from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment, GPUController
 from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
-#from bnelearn.experiment.logger import LLGAuctionLogger, LLLLGGAuctionLogger
 
 from bnelearn.learner import ESPGLearner
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
 
 import matplotlib.pyplot as plt
@@ -28,19 +25,15 @@ from matplotlib.ticker import LinearLocator, FormatStrFormatter
 # TODO: Currently only implemented for uniform val
 # TODO: Currently only implemented for LLG and LLLLGG
 class CombinatorialExperiment(Experiment, ABC):
-    payment_rule: str
-
-    def __init__(self, n_players, n_local, n_items, experiment_config, learning_config, logging_config, gpu_config, known_bne):
-        self.n_players = n_players
+    def __init__(self, n_local, n_items, experiment_config, learning_config, 
+                 logging_config, gpu_config, known_bne):
+        super().__init__(experiment_config,  learning_config, logging_config, gpu_config, known_bne)
         self.n_local = n_local
         self.n_items = n_items
-
-        self.payment_rule = experiment_config.payment_rule
-
         self.model_sharing = experiment_config.model_sharing
         if self.model_sharing:
             self.n_models = 2
-            self._bidder2model: List[int] = [0] * n_local + [1] * (n_players - n_local)
+            self._bidder2model: List[int] = [0] * n_local + [1] * (self.n_players - n_local)
         else:
             self.n_models = self.n_players
             self._bidder2model: List[int] = list(range(self.n_players))
@@ -48,17 +41,18 @@ class CombinatorialExperiment(Experiment, ABC):
         assert experiment_config.u_lo is not None, """Missing prior information!"""
         assert experiment_config.u_hi is not None, """Missing prior information!"""
 
+        #TODO: What is this good for? And why not for u_hi too then?
         u_lo = experiment_config.u_lo
         if isinstance(u_lo, Iterable):
-            assert len(u_lo) == n_players
+            assert len(u_lo) == self.n_players
             u_lo = [float(l) for l in u_lo]
         else:
-            u_lo = [float(u_lo)] * n_players
+            u_lo = [float(u_lo)] * self.n_players
         self.u_lo = u_lo
 
         u_hi = experiment_config.u_hi
         assert isinstance(u_hi, Iterable)
-        assert len(u_hi) == n_players
+        assert len(u_hi) == self.n_players
         assert u_hi[1:n_local] == u_hi[:n_local-1], "local bidders should be identical"
         assert u_hi[0] < u_hi[n_local], "local bidders must be weaker than global bidder"
         self.u_hi = [float(h) for h in u_hi]
@@ -67,8 +61,6 @@ class CombinatorialExperiment(Experiment, ABC):
         self.plot_xmax = max(u_hi)
         self.plot_ymin = self.plot_xmin
         self.plot_ymax = self.plot_xmax * 1.05
-
-        super().__init__(experiment_config,  learning_config, logging_config, gpu_config, known_bne)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0):
         # TODO: this probably isn't the right place...
@@ -153,20 +145,14 @@ class CombinatorialExperiment(Experiment, ABC):
 class LLGExperiment(CombinatorialExperiment):
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
-
-        # coupling between valuations only 0 implemented currently
-        self.gamma = 0.0
-        assert self.gamma == 0, "Gamma > 0 implemented yet!?"
-        # Experiment specific parameters
-        experiment_config.n_players = 3
-        self.n_players = experiment_config.n_players # TODO: this will also be set in superclass but le'ts use it below
-        
-        #self.payment_rule =experiment_config.payment_rule
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known! (i.e. uniformity, bounds, etc)
-        known_bne = experiment_config.payment_rule in ['first_price', 'vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
-
-        super().__init__(3, 2, 1, experiment_config, learning_config, logging_config, gpu_config, known_bne)
-
+        known_bne = experiment_config.payment_rule in \
+            ['first_price', 'vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
+        super().__init__(2, 1, experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        self.gamma = experiment_config.gamma
+        assert self.gamma == 0, "Gamma > 0 implemented yet!?"
+        assert self.n_players == 3, "Not correct number of players specified"
+        self._setup_mechanism_and_eval_environment()
 
     def _setup_mechanism(self):
         self.mechanism = LLGAuction(rule = self.payment_rule)
@@ -227,14 +213,12 @@ class LLGExperiment(CombinatorialExperiment):
 class LLLLGGExperiment(CombinatorialExperiment):
     def __init__(self, experiment_config, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
-        experiment_config.n_players = 6
-        self.n_items = 2
-        assert learning_config.input_length == 2, "Learner config has to take 2 inputs!" #TODO: what does this mean? can we move it upstream?
-        
-        #TODO: BNE is known for vcg
-        known_bne = False
+        known_bne = experiment_config.payment_rule in ['vcg']
+        super().__init__(4, 2, experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
-        super().__init__(6, 4, 2, experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        assert experiment_config.n_players == 6, "not right number of players for setting"
+        assert learning_config.input_length == 2, "Learner config has to take 2 inputs!"
+        self._setup_mechanism_and_eval_environment()
 
     def _setup_mechanism(self):
         self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver='NoCore', parallel=1, cuda=self.gpu_config.cuda)

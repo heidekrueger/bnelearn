@@ -47,66 +47,54 @@ class Experiment(ABC):
         self.logging_config = logging_config
         self.gpu_config = gpu_config
 
-        # Save locally
+        # Save locally - must haves
         self.n_players = experiment_config.n_players
-
-        # TODO: decouple --> logic should be in subclasses ?
-        #if 'valuation_prior' in experiment_config.keys():
-        #    self.valuation_prior = experiment_config['valuation_prior']
-        #if 'payment_rule' in experiment_config.keys():
-        #    self.mechanism_type = experiment_config.payment_rule
-
-        # TODO: these may possibly stay here, uncommented for now because of added complexity (due to separate regret logging implementation)
-        if logging_config.regret_batch_size is not None:
-            self.regret_batch_size = logging_config.regret_batch_size
-        if logging_config.regret_grid_size is not None:
-            self.regret_grid_size = logging_config.regret_grid_size
-
-        # Misc
+        self.payment_rule = experiment_config.payment_rule
         self.models: Iterable[torch.nn.Module] = None
-
-        # Inverse of bidder --> model lookup table
-        self._model2bidder: List[List[int]] = [[] for m in range(self.n_models)]
-        for b_id, m_id in enumerate(self._bidder2model):
-            self._model2bidder[m_id].append(b_id)
-
-
         self.mechanism: Mechanism = None
         self.bidders: Iterable[Bidder] = None
         self.env: Environment = None
         self.learners: Iterable[Learner] = None
-
-        #LOGGING PARAMETERS
+        
+        self.plot_frequency = LoggingConfiguration.plot_frequency
+        self.max_epochs = LoggingConfiguration.max_epochs
+        self.plot_points = LoggingConfiguration.plot_points
+        #TODO: Smells like redundancy
+        self.log_dir = None
         # TODO: remove this? move all logging logic into experiment itself?
         root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
         if root_path not in sys.path:
             sys.path.append(root_path)
         self.log_root=os.path.join(root_path, 'experiments')
-        
-
-
-        self.log_dir = None
         self.fig = None
         self.writer = None
         self.overhead = 0.0
         self.known_bne = known_bne
 
-        self.max_epochs = None
-        self.plot_points = None
+        ### Save locally - can haves
+        # Logging
+        if logging_config.regret_batch_size is not None:
+            self.regret_batch_size = logging_config.regret_batch_size
+        if logging_config.regret_grid_size is not None:
+            self.regret_grid_size = logging_config.regret_grid_size
+
+        #TODO: Add if logging bne once implemented
         self.v_opt = None
         self.b_opt = None
-
-        #The if statements can be removed if we set this None directly and set the super.init() at the beginnign
-        if not hasattr(self, 'plot_xmin'):
-            self.plot_xmin = None
-        if not hasattr(self, 'plot_xmax'):
-            self.plot_xmax = None
-        if not hasattr(self, 'plot_ymin'):
-            self.plot_ymin = None
-        if not hasattr(self, 'plot_ymax'):
-            self.plot_ymax = None
         self.bne_utilities = None
         self.bne_env = None
+
+        # Plotting
+        self.plot_xmin = None
+        self.plot_xmax = None
+        self.plot_ymin = None
+        self.plot_ymax = None
+
+    def _setup_mechanism_and_eval_environment(self):
+        # Inverse of bidder --> model lookup table
+        self._model2bidder: List[List[int]] = [[] for m in range(self.n_models)]
+        for b_id, m_id in enumerate(self._bidder2model):
+            self._model2bidder[m_id].append(b_id)
 
         # setup everything deterministic that is shared among runs
         self._setup_mechanism()

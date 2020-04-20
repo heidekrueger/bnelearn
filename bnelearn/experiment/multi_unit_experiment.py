@@ -45,7 +45,7 @@ def multiunit_bne(experiment_config, payment_rule):
     """
     Method that returns the known BNE strategy as callable if available and None otherwise.
     """
-    if payment_rule == 'vickrey':
+    if payment_rule == 'vcg':
         return lambda valuation: torch.clone(valuation)
 
     elif payment_rule == 'discriminatory':
@@ -245,24 +245,27 @@ class MultiUnitExperiment(Experiment, ABC):
     """
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
-
-        # ToDO How about to assigning expetiment parameters to the object and just using them from the dictionary?
-        self.n_players = experiment_config.n_players
-        self.n_units = experiment_config.n_units
-        self.payment_rule = experiment_config.payment_rule
-
+        # check for available BNE strategy
+        if not isinstance(self, SplitAwardExperiment):
+            self._optimal_bid = multiunit_bne(experiment_config, experiment_config.payment_rule)
+        else:
+            if ExperimentConfiguration.n_units == 2 and ExperimentConfiguration.n_players == 2:
+                self._optimal_bid = _optimal_bid_splitaward2x2_1(experiment_config)
+                self._optimal_bid_2 = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
+            else:
+                self._optimal_bid = None
+        known_bne = self._optimal_bid is not None
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
         self.u_lo = experiment_config.u_lo
         self.u_hi = experiment_config.u_hi
-
-        self.plot_frequency = logging_config.plot_frequency
+        self.n_units = experiment_config.n_units
         self.plot_xmin = self.plot_ymin = min(self.u_lo)
         self.plot_xmax = self.plot_ymax = max(self.u_hi)
-
         self.model_sharing = experiment_config.model_sharing
 
         if self.payment_rule in ('discriminatory', 'first_price'):
             self.mechanism_type = MultiUnitDiscriminatoryAuction
-        elif self.payment_rule == 'vickrey':
+        elif self.payment_rule == 'vcg':
             self.mechanism_type = MultiUnitVickreyAuction
         elif self.payment_rule == 'uniform':
             self.mechanism_type = MultiUnitUniformPriceAuction
@@ -284,16 +287,7 @@ class MultiUnitExperiment(Experiment, ABC):
         else:
             self.pretrain_transform = self.default_pretrain_transform
 
-        # check for available BNE strategy
-        if not isinstance(self, SplitAwardExperiment):
-            self._optimal_bid = multiunit_bne(experiment_config, self.payment_rule)
-        else:
-            if self.n_units == 2 and self.n_players == 2:
-                self._optimal_bid = _optimal_bid_splitaward2x2_1(experiment_config)
-                self._optimal_bid_2 = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
-            else:
-                self._optimal_bid = None
-        known_bne = self._optimal_bid is not None
+        
 
         self.input_length =  experiment_config.input_length
 
@@ -301,8 +295,7 @@ class MultiUnitExperiment(Experiment, ABC):
         for k in learning_config.learner_hyperparams.keys():
             print('{}: {}'.format(k, learning_config.learner_hyperparams[k]))
         print('=======================\n')
-
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        self._setup_mechanism_and_eval_environment()
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         """
@@ -602,23 +595,21 @@ class SplitAwardExperiment(MultiUnitExperiment):
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
 
-
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config)
         assert all(u_lo > 0 for u_lo in experiment_config.u_lo), \
             '100% Unit must be valued > 0'
 
         self.efficiency_parameter = experiment_config.efficiency_parameter
         self.input_length = experiment_config.input_length
-        self.payment_rule = experiment_config.payment_rule
         if self.payment_rule == 'first_price':
             self.mechanism_type = FPSBSplitAwardAuction
         else:
             raise NotImplementedError('for the split-award auction only the ' + \
                 'first-price payment rule is supported')
 
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config)
-
         self.plot_xmin = self.plot_ymin = 0
         self.plot_xmax = self.plot_ymax = 2 * max(self.u_hi)
+        self._setup_mechanism_and_eval_environment()
         self._setup_run()
 
     def default_pretrain_transform(self, input_tensor):

@@ -3,21 +3,17 @@
 import os
 import warnings
 from abc import ABC
-import torch
-import numpy as np
 from typing import Callable
 from functools import partial
-
+import torch
+import numpy as np
 from scipy import integrate
-
-from torch.distributions import Distribution
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import  AuctionEnvironment
 from bnelearn.experiment import Experiment, GPUController
-from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
+from bnelearn.experiment.configurations import LearningConfiguration, LoggingConfiguration
 
-import bnelearn
 from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
@@ -62,14 +58,13 @@ class SingleItemExperiment(Experiment, ABC):
 
     def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
                   logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne = False):
-
-        self.mechanism_type = experiment_config.payment_rule #TODO: Why here?
         super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        self.valuation_prior = None
 
     def _setup_mechanism(self):
-        if self.mechanism_type == 'first_price':
+        if self.payment_rule == 'first_price':
             self.mechanism = FirstPriceSealedBidAuction(cuda=self.gpu_config.cuda)
-        elif self.mechanism_type == 'second_price':
+        elif self.payment_rule == 'second_price':
             self.mechanism = VickreyAuction(cuda=self.gpu_config.cuda)
         else:
             raise ValueError('Invalid Mechanism type!')
@@ -96,19 +91,13 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
     """A Single Item Experiment that has the same valuation prior for all participating bidders.
     For risk-neutral agents, a unique BNE is known.
     """
-    def __init__(self, common_prior: Distribution,
-                 experiment_config: dict, learning_config: LearningConfiguration,
+    def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne = False):
-
-        self.common_prior = common_prior
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne=known_bne)
+        self.common_prior = None
         self.risk = float(experiment_config.risk)
         self.risk_profile = Experiment.get_risk_profile(self.risk)
-        # TODO: This probably shouldnt be here --> will come from subclass and/or builder.
-        #if 'valuation_prior' in experiment_config.keys():
-        #    self.valuation_prior = experiment_config['valuation_prior']
-        self.n_players = experiment_config.n_players
         self.model_sharing = experiment_config.model_sharing
-        
         if self.model_sharing:
             self.n_models = 1
             self._bidder2model = [0] * self.n_players
@@ -120,9 +109,6 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         known_bne = known_bne or \
             experiment_config.payment_rule == 'second_price' or \
             (experiment_config.payment_rule == 'first_price' and self.risk == 1.0)
-        
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne=known_bne)
-
 
     def _setup_bidders(self):
         print('Setting up bidders...')
@@ -158,10 +144,10 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
     def _set_symmetric_bne_closure(self):
         # set optimal_bid here, possibly overwritten by subclasses if more specific form is known
-        if self.mechanism_type == 'first_price' and  self.risk == 1:
+        if self.payment_rule == 'first_price' and  self.risk == 1:
             self._optimal_bid = partial(_optimal_bid_single_item_FPSB_generic_prior_risk_neutral,
                                     n_players = self.n_players, prior_cdf = self.common_prior.cdf)
-        elif self.mechanism_type == 'second_price':
+        elif self.payment_rule == 'second_price':
             self._optimal_bid = _truthful_bid
         else:
             # This should never happen due to check in init
@@ -169,7 +155,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
     def _get_analytical_bne_utility(self) -> torch.Tensor:
         """Calculates utility in BNE from known closed-form solution (possibly using numerical integration)"""
-        if self.mechanism_type == 'first_price':
+        if self.payment_rule == 'first_price':
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
                 # don't print scipy accuracy warnings
@@ -180,7 +166,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
                     lambda v: 0, lambda v: v)  # inner boundaries
                 if error_estimate > 1e-6:
                     warnings.warn('Error in optimal utility might not be negligible')
-        elif self.mechanism_type == 'second_price':
+        elif self.payment_rule == 'second_price':
             F = self.common_prior.cdf
             f = lambda x: self.common_prior.log_prob(torch.tensor(x)).exp()
             f1n = lambda x, n: n * F(x) ** (n - 1) * f(x)
@@ -204,7 +190,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         # TODO: parallelism should be taken from elsewhere
         # TODO: existence of valuation_prior not guaranteed
         n_processes_optimal_strategy = 44 if self.valuation_prior != 'uniform' and \
-                                             self.mechanism_type != 'second_price' else 0
+                                             self.payment_rule != 'second_price' else 0
         bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
 
         # define bne agents once then use them in all runs
@@ -239,7 +225,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions, risk=self.risk)
 
     def _get_logdir(self):
-        name = ['single_item', self.mechanism_type, self.valuation_prior,
+        name = ['single_item', self.payment_rule, self.valuation_prior,
                 'symmetric', self.risk_profile, str(self.n_players) + 'p']
         return os.path.join(*name)
 
@@ -270,43 +256,39 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
     def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
-
         known_bne = experiment_config.payment_rule in ('first_price', 'second_price')
-
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
         assert experiment_config.u_lo is not None, """Prior boundaries not specified!"""
         assert experiment_config.u_hi is not None, """Prior boundaries not specified!"""
-            
-        # TODO: do we really want to set this name here?
         self.valuation_prior = 'uniform'
         self.u_lo = float(experiment_config.u_lo)
         self.u_hi = float(experiment_config.u_hi)
-        common_prior = torch.distributions.uniform.Uniform(low = self.u_lo, high=self.u_hi)
-
-        super().__init__(common_prior, experiment_config, learning_config, logging_config, gpu_config, known_bne)
-
+        self.common_prior = torch.distributions.uniform.Uniform(low = self.u_lo, high=self.u_hi)
+        
         self.plot_xmin = self.u_lo
         self.plot_xmax = self.u_hi
         self.plot_ymin = 0
         self.plot_ymax = self.u_hi * 1.05
+        self._setup_mechanism_and_eval_environment()
 
     def _set_symmetric_bne_closure(self):
         # set optimal_bid here, possibly overwritten by subclasses if more specific form is known
-        if self.mechanism_type == 'first_price':
+        if self.payment_rule == 'first_price':
             self._optimal_bid = partial(_optimal_bid_FPSB_UniformSymmetricPriorSingleItem,
                                         n=self.n_players, r=self.risk, u_lo = self.u_lo, u_hi = self.u_hi)
-        elif self.mechanism_type == 'second_price':
+        elif self.payment_rule == 'second_price':
             self._optimal_bid = _truthful_bid
         else:
             raise ValueError('unknown mechanistm_type')
 
     def _get_analytical_bne_utility(self):
-        if self.mechanism_type == 'first_price':
+        if self.payment_rule == 'first_price':
             bne_utility = torch.tensor(
                 (self.risk * (self.u_hi - self.u_lo) / (self.n_players - 1 + self.risk)) **
                     self.risk / (self.n_players + self.risk),
                 device = self.gpu_config.device
                 )
-        elif self.mechanism_type == 'second_price':
+        elif self.payment_rule == 'second_price':
             F = self.common_prior.cdf
             f = lambda x: self.common_prior.log_prob(torch.tensor(x)).exp()
             f1n = lambda x, n: n * F(x) ** (n - 1) * f(x)
@@ -327,27 +309,23 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
     def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
-
+        
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config)
         assert experiment_config.valuation_mean is not None, """Valuation mean and/or std not specified!"""
         assert experiment_config.valuation_std is not None, """Valuation mean and/or std not specified!"""
-
         self.valuation_prior = 'normal'
         self.valuation_mean = experiment_config.valuation_mean
         self.valuation_std = experiment_config.valuation_std
-        common_prior = torch.distributions.normal.Normal(loc=self.valuation_mean, scale=self.valuation_std)
-
-        super().__init__(common_prior, experiment_config, learning_config, logging_config, gpu_config)
-
+        self.common_prior = torch.distributions.normal.Normal(loc=self.valuation_mean, scale=self.valuation_std)
         self.plot_xmin = int(max(0, self.valuation_mean - 3 * self.valuation_std))
         self.plot_xmax = int(self.valuation_mean + 3 * self.valuation_std)
         self.plot_ymin = 0
-        self.plot_ymax = 20 if self.mechanism_type == 'first_price' else self.plot_xmax
+        self.plot_ymax = 20 if self.payment_rule == 'first_price' else self.plot_xmax
+        self._setup_mechanism_and_eval_environment()
 
 class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
     def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
-
-
         super().__init__(experiment_config, learning_config, logging_config, gpu_config)
         #TODO: implement optimal bid etc
 
