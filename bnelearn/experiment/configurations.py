@@ -57,7 +57,7 @@ class LoggingConfiguration:
     cache_eval_actions: bool = True
     max_epochs: int = None
 
-    
+
     save_figure_to_disk_png: bool = True
     save_figure_to_disk_svg: bool = True
     save_figure_data_to_disk: bool = True

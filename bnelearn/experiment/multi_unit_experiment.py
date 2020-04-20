@@ -46,7 +46,9 @@ def multiunit_bne(experiment_config, payment_rule):
     Method that returns the known BNE strategy as callable if available and None otherwise.
     """
     if payment_rule == 'vickrey':
-        return lambda valuation: torch.clone(valuation)
+        def truthful(valuation, player_position=None):
+            return torch.clone(valuation)
+        return truthful
 
     elif payment_rule == 'discriminatory':
         if experiment_config.n_units == 2 and experiment_config.n_players == 2:
@@ -66,7 +68,7 @@ def multiunit_bne(experiment_config, payment_rule):
 
     return None
 
-def _optimal_bid_multidiscriminatory2x2(valuation):
+def _optimal_bid_multidiscriminatory2x2(valuation, player_position=None):
 
     def b_approx(v, s, t):
         b = torch.clone(v)
@@ -89,7 +91,7 @@ def _optimal_bid_multidiscriminatory2x2(valuation):
 def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
 
     if isinstance(valuation_cdf, torch.distributions.uniform.Uniform):
-        def _optimal_bid(valuation):
+        def _optimal_bid(valuation, player_position=None):
             return valuation / 2
 
     elif isinstance(valuation_cdf, torch.distributions.normal.Normal):
@@ -126,7 +128,7 @@ def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
         bidding = muda_tb_cmv_bne(lambda x: torch.exp(dist.log_prob(x)).cpu().numpy(),
                                   lambda x: dist.cdf(x).cpu().numpy())
 
-        def _optimal_bid(valuation): 
+        def _optimal_bid(valuation, player_position=None): 
             opt_bid = np.zeros_like(valuation.cpu().numpy())
             for agent in range(self.n_players):
                 opt_bid[agent] = bidding(valuation[agent,:])
@@ -134,18 +136,18 @@ def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
 
     return _optimal_bid
 
-def _optimal_bid_multiuniform2x2(valuation):
+def _optimal_bid_multiuniform2x2(valuation, player_position=None):
     opt_bid = torch.clone(valuation)
     opt_bid[:,1] = 0
     return opt_bid
 
-def _optimal_bid_multiuniform3x2limit2(valuation):
+def _optimal_bid_multiuniform3x2limit2(valuation, player_position=None):
     opt_bid = torch.clone(valuation)
     opt_bid[:,1] = opt_bid[:, 1] ** 2
     opt_bid[:,2] = 0
     return opt_bid
 
-def _optimal_bid_splitaward2x2_1(experiment_config):
+def _optimal_bid_splitaward2x2_1(experiment_config, player_position=None):
     """Pooling equilibrium as in Anton and Yao, 1992."""
 
     efficiency_parameter = experiment_config.efficiency_parameter
@@ -154,7 +156,7 @@ def _optimal_bid_splitaward2x2_1(experiment_config):
 
     value_cdf = torch.distributions.Uniform(u_lo[0], u_hi[0]).cdf
 
-    def _optimal_bid(valuation, return_payoff_dominant=True):
+    def _optimal_bid(valuation, player_position=None, return_payoff_dominant=True):
         sigma_bounds = torch.ones_like(valuation, device=valuation.device)
         sigma_bounds[:,0] = efficiency_parameter * u_hi[0]
         sigma_bounds[:,1] = (1 - efficiency_parameter) * u_lo[0]
@@ -223,7 +225,7 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
     ]
 
     # use interpolation of opt_bid done on first batch
-    def _optimal_bid(valuation):
+    def _optimal_bid(valuation, player_position=None):
         bid = torch.tensor([
                 opt_bid_function[0](valuation[:,0].cpu().numpy()),
                 opt_bid_function[1](valuation[:,0].cpu().numpy())
@@ -248,7 +250,7 @@ class MultiUnitExperiment(Experiment, ABC):
 
         # ToDO How about to assigning expetiment parameters to the object and just using them from the dictionary?
         self.n_players = experiment_config.n_players
-        self.n_units = experiment_config.n_units
+        self.n_units = self.n_items = experiment_config.n_units
         self.payment_rule = experiment_config.payment_rule
 
         self.u_lo = experiment_config.u_lo
@@ -323,18 +325,17 @@ class MultiUnitExperiment(Experiment, ABC):
     def _setup_bidders(self):
         epo_n = 2  # for ensure positive output of initialization
 
+        self.models = [None] * self.n_models
         for i in range(self.n_models):
             ensure_positive_output = torch.zeros(epo_n, self.input_length).uniform_(self.u_lo[i], self.u_hi[i]) \
                 .sort(dim=1, descending=True)[0]
-            self.models = [
-                NeuralNetStrategy(
-                    self.input_length,
-                    hidden_nodes=self.learning_config.hidden_nodes,
-                    hidden_activations=self.learning_config.hidden_activations,
-                    ensure_positive_output=ensure_positive_output,
-                    output_length=self.n_units
-                ).to(self.gpu_config.device)
-            ]
+            self.models[i] = NeuralNetStrategy(
+                self.input_length,
+                hidden_nodes=self.learning_config.hidden_nodes,
+                hidden_activations=self.learning_config.hidden_activations,
+                ensure_positive_output=ensure_positive_output,
+                output_length=self.n_units
+            ).to(self.gpu_config.device)
 
         # Pretrain
         pretrain_points = round(100 ** (1 / self.input_length))
@@ -462,65 +463,61 @@ class MultiUnitExperiment(Experiment, ABC):
     def default_pretrain_transform(input_tensor):
         return torch.clone(input_tensor)
 
-    #TODO: This is identical to the one in experiment apart from n_units. @Nils: Adapt experiment and delete this one
-    def log_experiment(self, run_comment, max_epochs, run=""):
-        self.max_epochs = max_epochs
-        # setting up plotting
+    # #TODO: This is identical to the one in experiment apart from n_units. @Nils: Adapt experiment and delete this one
+    # def log_experiment(self, run_comment, max_epochs, run=""):
+    #     self.max_epochs = max_epochs
+    #     # setting up plotting
             
-        if self.logging_config.log_metrics['opt']:
-            # TODO: apdapt interval to be model specific! (e.g. for LLG)
-            self.v_opt = torch.stack([
-                torch.linspace(self.plot_xmin, self.plot_xmax, self.plot_points,
-                               device=self.gpu_config.device)
-                ] * self.n_units,
-                dim = 1
-            )
-            self.b_opt = self._optimal_bid(self.v_opt) # only one sym. BNE supported
+    #     if self.logging_config.log_metrics['opt']:
+    #         # TODO: apdapt interval to be model specific! (e.g. for LLG)
+    #         self.v_opt = torch.stack([
+    #             torch.linspace(self.plot_xmin, self.plot_xmax, self.plot_points,
+    #                            device=self.gpu_config.device)
+    #             ] * self.n_units,
+    #             dim = 1
+    #         )
+    #         self.b_opt = self._optimal_bid(self.v_opt) # only one sym. BNE supported
 
-        is_ipython = 'inline' in plt.get_backend()
-        if is_ipython:
-            from IPython import display
-        plt.rcParams['figure.figsize'] = [8, 5]
+    #     is_ipython = 'inline' in plt.get_backend()
+    #     if is_ipython:
+    #         from IPython import display
+    #     plt.rcParams['figure.figsize'] = [8, 5]
 
-        if os.name == 'nt':
-            raise ValueError('The run_name may not contain : on Windows!')
-        run_name = self.logging_config.file_name + '_' + str(run)
-        if run_comment:
-            run_name = run_name + ' - ' + str(run_comment)
+    #     if os.name == 'nt':
+    #         raise ValueError('The run_name may not contain : on Windows!')
+    #     run_name = self.logging_config.file_name + '_' + str(run)
+    #     if run_comment:
+    #         run_name = run_name + ' - ' + str(run_comment)
 
-        self.log_dir = os.path.join(self.log_root, self.log_dir, run_name)
-        os.makedirs(self.log_dir, exist_ok=False)
-        if self.logging_config.save_figure_to_disk_png:
-            os.mkdir(os.path.join(self.log_dir, 'png'))
-        if self.logging_config.save_figure_to_disk_svg:
-            os.mkdir(os.path.join(self.log_dir, 'svg'))
+    #     self.log_dir = os.path.join(self.log_root, self.log_dir, run_name)
+    #     os.makedirs(self.log_dir, exist_ok=False)
+    #     if self.logging_config.save_figure_to_disk_png:
+    #         os.mkdir(os.path.join(self.log_dir, 'png'))
+    #     if self.logging_config.save_figure_to_disk_svg:
+    #         os.mkdir(os.path.join(self.log_dir, 'svg'))
 
-        print('Started run. Logging to {}'.format(self.log_dir))
-        self.fig = plt.figure()
+    #     print('Started run. Logging to {}'.format(self.log_dir))
+    #     self.fig = plt.figure()
 
-        self.writer = SummaryWriter(self.log_dir, flush_secs=30)
-        start_time = timer()
-        self._log_experimentparams() # TODO: what to use
-        self._log_hyperparams()
-        elapsed = timer() - start_time
-        self.overhead += elapsed
+    #     self.writer = SummaryWriter(self.log_dir, flush_secs=30)
+    #     start_time = timer()
+    #     self._log_experimentparams() # TODO: what to use
+    #     self._log_hyperparams()
+    #     elapsed = timer() - start_time
+    #     self.overhead += elapsed
 
     def log_training_iteration(self, epoch, bidders, log_params: dict):
 
-        valuations = list()
-        bids = list()
-        for bidder in bidders:
-            valuations.append(bidder.draw_valuations_())
-            bids.append(bidder.get_action())
-        valuations = torch.stack(valuations, dim=1)
-        bids = torch.stack(bids, dim=1)
+        valuations = torch.stack([b.draw_valuations_() for b in bidders], dim=1)
+        bids = torch.stack([b.get_action() for b in bidders], dim=1)
 
         if self.logging_config.log_metrics['opt']:
+            # TODO: only sym. case
             valuations = torch.cat([
-                valuations[:self.plot_points,:,:], self.v_opt[:,None,:],
+                valuations[:self.plot_points,:,:], self.v_opt[:,:1,:],
             ], dim=1)
             bids = torch.cat([
-                bids[:self.plot_points,:,:], self.b_opt[:,None,:],
+                bids[:self.plot_points,:,:], self.b_opt[:,:1,:],
             ], dim=1)
 
         # plotting
@@ -529,7 +526,7 @@ class MultiUnitExperiment(Experiment, ABC):
             fmts = ['bo'] * len(bidders)
             if self.logging_config.log_metrics['opt']:
                 labels.append('BNE')
-                fmts.append('b--')
+                fmts.append('.')
             from bnelearn.experiment.multi_unit_experiment import SplitAwardExperiment
             if isinstance(self, SplitAwardExperiment):
                 xlim = [
