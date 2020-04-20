@@ -49,7 +49,7 @@ class Experiment(ABC):
 
         # Save locally - must haves
         self.n_players = experiment_config.n_players
-        self.mechanism_type = experiment_config.payment_rule
+        self.payment_rule = experiment_config.payment_rule
         self.models: Iterable[torch.nn.Module] = None
         self.mechanism: Mechanism = None
         self.bidders: Iterable[Bidder] = None
@@ -254,7 +254,7 @@ class Experiment(ABC):
                 if n_players < 10 and labels is not None:
                     axs[plot_idx].legend(loc='upper left')
             if xlim is not None:
-                axs[plot_idx].set_xlim(xlim[plot_idx][0], xlim[plot_idx][1])
+                axs[plot_idx].set_xlim(xlim[0], xlim[1])
             elif hasattr(self, 'plot_xmin'):
                 axs[plot_idx].set_xlim(self.plot_xmin, self.plot_xmax)
             if ylim is not None:

@@ -29,6 +29,9 @@ class ExperimentConfiguration:
     u_lo: list = None
     u_hi: list = None
 
+    # LLG
+    gamma: float = 0.0
+
     # Multi-Unit
     n_units: int = None
     pretrain_transform: callable = None
