@@ -212,7 +212,7 @@ class Experiment(ABC):
 ####################################### Moved logging to here ##########################################
 ########################################################################################################
 
-    # TODO: Could be moved outside as a static method
+    # TODO: Could be moved outside as a static method -- Not if we overwrite it in LLLLGG
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list=None, ylim: list=None, labels: list=None,
               x_label="valuation", y_label="bid", fmts=['o'],
@@ -315,15 +315,20 @@ class Experiment(ABC):
                 f'{group}{param_group_postfix}/{metric_prefix}{name}',
                 value, epoch
                 )
-
-        log_metric('debug', 'update_norm', update_norm)
-
-        log_metric('eval', 'utility', utility)
-        log_metric('eval', 'utility_vs_bne', utility_vs_bne)
-        log_metric('eval', 'epsilon_relative', epsilon_relative)
-        log_metric('eval', 'epsilon_absolute', epsilon_absolute)
-        log_metric('eval', 'L_2', L_2)
-        log_metric('eval', 'L_inf', L_inf)
+        if update_norm is not None:
+            log_metric('debug', 'update_norm', update_norm)
+        if utility is not None:
+            log_metric('eval', 'utility', utility)
+        if utility_vs_bne is not None:
+            log_metric('eval', 'utility_vs_bne', utility_vs_bne)
+        if epsilon_relative is not None:
+            log_metric('eval', 'epsilon_relative', epsilon_relative)
+        if epsilon_absolute is not None:
+            log_metric('eval', 'epsilon_absolute', epsilon_absolute)
+        if L_2 is not None:
+            log_metric('eval', 'L_2', L_2)
+        if L_inf is not None:
+            log_metric('eval', 'L_inf', L_inf)
 
     def _log_hyperparams(self):
         """Everything that should be logged on every learning_rate updates"""
@@ -445,8 +450,11 @@ class Experiment(ABC):
             v = torch.stack([bidder.valuations for bidder in bidders], dim=1) # shape: n_batch, n_players, n_bundles
             b = torch.stack([bidder.get_action() for bidder in bidders], dim=1)
             print(
-                "Epoch {}: \tcurrent utility: {:.3f},\t vs BNE: {:.3f}, \tepsilon (abs/rel): ({:.5f}, {:.5f})".format(
-                    epoch, utilities[i], utility_vs_bne, epsilon_absolute, epsilon_relative))
+                "Epoch {}: \tcurrent utility: {:.3f}".format(
+                    epoch, utilities[i]))
+            if self.known_bne:
+                print(",\t vs BNE: {:.3f}, \tepsilon (abs/rel): ({:.5f}, {:.5f})".format(
+                utility_vs_bne, epsilon_absolute, epsilon_relative))
 
             labels = ['NPGA']
             fmts = ['bo']
@@ -512,7 +520,7 @@ class Experiment(ABC):
         valuations = torch.stack(valuations, dim=1)
         regrets = torch.stack(regrets, dim=1)[:,:,None]
 
-        self.fig = self._plot(
+        self._plot(
             fig=self.fig, plot_data=(valuations, regrets), writer=self.writer,
             epoch=epoch, xlim=[self.plot_xmin, self.plot_xmax],
             ylim=[0, max_regret.detach().cpu().numpy()],
