@@ -140,6 +140,35 @@ class Bidder(Player):
         # TODO: this will break action caching if it is being used! Consider redesigning this interface
         self.valuations = self.value_distribution.rsample(torch.Size([batch_size, self.valuations.size()[1]])).to(self.device).relu()
 
+    def draw_valuations_grid_(self, batch_size):
+        """ Returns a batch of valuations equally distributed within the actual range
+            and NOT accordiing to the actual destribution.
+
+            Args
+            ----
+                batch_size: int, upper bound of returned batch size
+        """
+        if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
+            batch_size_per_dim = int(batch_size ** (1/self.n_items))
+            lin = torch.linspace(self.value_distribution.low, self.value_distribution.high,
+                                 batch_size_per_dim, device=self.device)
+            grid_valuations = torch.stack([x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()
+
+            if isinstance(self.item_interest_limit, int):
+                grid_valuations[:,self.item_interest_limit:] = 0
+
+            if self.constant_marginal_values:
+               grid_valuations.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
+                                           grid_valuations[:,0:1].repeat(1, self.n_items-1))
+
+            if self.descending_valuations:
+                grid_valuations = grid_valuations.sort(dim=1, descending=True)[0].unique(dim=0)
+
+        else:
+            NotImplementedError('how to draw grid valuations?')
+
+        return grid_valuations
+
     def draw_valuations_(self):
         """ Sample a new batch of valuations from the Bidder's prior. Negative
             draws will be clipped at 0.0!
@@ -281,6 +310,14 @@ class ReverseBidder(Bidder):
         """Constructs a bidder with Gaussian valuation prior."""
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
+
+    def draw_valuations_grid_(self, batch_size):
+        """ Extends `Bidder.draw_valuations_grid_` with efiiciency parameter
+        """
+        grid_valuations = super().draw_valuations_grid_(batch_size)
+        grid_valuations[:,1] = self.efficiency_parameter * grid_valuations[:,0]
+
+        return grid_valuations
 
     def draw_valuations_(self):
         """ Extends `Bidder.draw_valuations_` with efiiciency parameter

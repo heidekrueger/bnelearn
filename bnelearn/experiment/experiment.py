@@ -149,7 +149,6 @@ class Experiment(ABC):
         # i.e. erroneously assuming a known BNE exists when it doesn't.
         raise NotImplementedError("This Experiment has no implemented BNE!")
 
-
     # TODO: why?
     @staticmethod
     def get_risk_profile(risk) -> str:
@@ -353,22 +352,10 @@ class Experiment(ABC):
         self.plot_points = min(self.logging_config.plot_points, self.learning_config.batch_size)
 
         if self.logging_config.log_metrics['opt']:
-            # TODO: simple ´linspace´ not practical for multi-unit ...
-            # plot_points_per_dim = int(self.plot_points ** (1/self.n_items))
-            # self.v_opt = torch.zeros((plot_points_per_dim**self.n_items, len(self.models), self.n_items),
-            #                          device=self.gpu_config.device)
-            # for i in range(len(self.models)):
-            #     # ----
-            #     # TODO: apdapt interval to be model specific! (e.g. for LLG).
-            #     # dim 1 of v_opt is only needed when player at different positions have different
-            #     # BNE strategies, e.g., in asym. case
-            #     lin = torch.linspace(self.plot_xmin, self.plot_xmax, plot_points_per_dim,
-            #                          device=self.gpu_config.device)
-            #     self.v_opt[:,i,:] = torch.stack([x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()
             self.v_opt = torch.stack(
-                [b.draw_valuations_() for b in self.bidders][:len(self.models)], dim=1) \
-                [:self.plot_points,...]
-
+                [b.draw_valuations_grid_(self.plot_points) for b in self.bidders[:len(self.models)]],
+                dim=1
+            )
             self.b_opt = torch.stack(
                 [self._optimal_bid(self.v_opt[:,i,:], player_position=self._model2bidder[i][0])
                  for i in range(len(self.models))],
@@ -459,7 +446,7 @@ class Experiment(ABC):
                     epoch, utilities[i]))
             if self.known_bne:
                 print(",\t vs BNE: {:.3f}, \tepsilon (abs/rel): ({:.5f}, {:.5f})".format(
-                utility_vs_bne, epsilon_absolute, epsilon_relative))
+                      utility_vs_bne, epsilon_absolute, epsilon_relative))
 
             labels = ['NPGA']
             fmts = ['bo']
@@ -469,15 +456,14 @@ class Experiment(ABC):
                 b = torch.cat([b[:self.plot_points,:,:], self.b_opt], dim=1)
                 labels.append('BNE')
                 fmts.append('b--')
-                
+
             self._plot(fig=self.fig, plot_data=(v, b), writer=self.writer, figure_name='bid_function',
-                       epoch=epoch, labels=labels, fmts=fmts)
+                       epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         elapsed = timer() - start_time
         self.overhead = self.overhead + elapsed
         self.writer.add_scalar('debug/overhead_hours', self.overhead/3600, epoch)
 
-        
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
         start_time = timer()
 

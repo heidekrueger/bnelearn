@@ -92,7 +92,7 @@ def run_multiunit(
         n_players: list=[2],
         payment_rule: str='vickrey',
         n_units=2,
-        model_sharing=False,
+        model_sharing=True,
         u_lo=[0,0], u_hi=[1,1],
         risk=1.0,
         constant_marginal_values: bool=False,
@@ -110,6 +110,7 @@ def run_multiunit(
         log_metrics=['opt', 'rmse'],
         regret_batch_size=regret_batch_size,
         regret_grid_size=regret_grid_size,
+        plot_points=1000,
         max_epochs=n_epochs
     )
     experiment_configuration = ExperimentConfiguration(
@@ -178,9 +179,9 @@ if __name__ == '__main__':
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = run_single_item_uniform_symmetric(2,110, [2,3], 'first_price')
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = run_single_item_gaussian_symmetric(1,20, [2], 'second_price')
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = run_llg(1,20,'vcg')
-    running_configuration, logging_configuration, experiment_configuration, experiment_class = run_llllgg(1,20,'firstprice')
+    # running_configuration, logging_configuration, experiment_configuration, experiment_class = run_llllgg(1,20,'firstprice')
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = run_multiunit(1, 500, [2], 'vickrey')
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = run_splitaward(1, 500, [2])
+    running_configuration, logging_configuration, experiment_configuration, experiment_class = run_splitaward(1, 500, [2])
 
     gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
     learning_configuration = LearningConfiguration(input_length=1)
