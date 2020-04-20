@@ -272,7 +272,16 @@ class LLLLGGExperiment(CombinatorialExperiment):
                 valuations[:,model_idx,1] = yv[model_idx].reshape(plot_points**2)
             models_print[model_idx] = self.models[model_idx].play(valuations[:,model_idx,:])
             models_print_wf[model_idx] = models_print[model_idx].view(plot_points,plot_points,input_length)
-        fig, plt = self._plot_3d([valuations, models_print], epoch, [self.plot_xmin, self.plot_xmax],
+
+        #TODO: This is a very ugly and temporary solution. Clean up! Also not even working yet!
+        if figure_name == "regret":
+            #plot_data[0] = plot_data[0].permute(1,0,2)
+            #test = torch.tensor([t.cpu().numpy() for t in regrets]).view(len(learners), regret_batch_size, 1)
+            plot_data = [plot_data[0],[plot_data[1][:,0,:],plot_data[1][:,1,:]]]
+            fig, plt = self._plot_3d(plot_data, epoch, [self.plot_xmin, self.plot_xmax],
+                                [self.plot_ymin, self.plot_ymax], ylim, input_length=1)   
+        else: 
+            fig, plt = self._plot_3d([valuations, models_print], epoch, [self.plot_xmin, self.plot_xmax],
                                 [self.plot_ymin, self.plot_ymax], [self.plot_ymin, self.plot_ymax])
 
         self._process_figure(fig, writer, epoch, figure_name=figure_name)
@@ -282,6 +291,7 @@ class LLLLGGExperiment(CombinatorialExperiment):
     def _plot_3d(self, plot_data, epoch, xlim: list, ylim: list, zlim:list=[None,None],
                  input_length=2, x_label="valuation_0", y_label="valuation_1", z_label="bid"):
         """This implements plotting simple 2d data"""
+
         batch_size, n_models, n_items = plot_data[0].shape
         valuations = plot_data[0]
         bids = plot_data[1]
