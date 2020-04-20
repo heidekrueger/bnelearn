@@ -66,9 +66,6 @@ class SingleItemExperiment(Experiment, ABC):
         self.mechanism_type = experiment_config.payment_rule #TODO: Why here?
         super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
-    def _setup_logger(self, base_dir):
-        return bnelearn.experiment.logger.SingleItemAuctionLogger(exp = self, base_dir = base_dir)
-
     def _setup_mechanism(self):
         if self.mechanism_type == 'first_price':
             self.mechanism = FirstPriceSealedBidAuction(cuda=self.gpu_config.cuda)
@@ -246,7 +243,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
                 'symmetric', self.risk_profile, str(self.n_players) + 'p']
         return os.path.join(*name)
 
-    def _training_loop(self, epoch, logger):
+    def _training_loop(self, epoch):
         # do in every iteration
         # save current params to calculate update norm
         #TODO: Doesn't make sense to track for bidders instead of models but for consistency in logging for now. Change later
@@ -260,7 +257,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
         # everything after this is logging --> measure overhead
         log_params = {} # TODO Stefan: what does this do?
-        logger.log_training_iteration(prev_params=prev_params, epoch=epoch,
+        self.log_training_iteration(prev_params=prev_params, epoch=epoch,
                                       strat_to_bidder=self._strat_to_bidder,
                                       utilities=utilities, log_params=log_params)
         # TODO Stefan: this should be part of logger, not be called here explicitly!
@@ -370,5 +367,5 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
 
 
 
-    def _training_loop(self, epoch, logger):
+    def _training_loop(self, epoch):
         pass

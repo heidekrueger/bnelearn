@@ -17,7 +17,16 @@ from bnelearn.learner import Learner
 
 from bnelearn.experiment.gpu_controller import GPUController
 from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
-from bnelearn.experiment.logger import Logger
+#from bnelearn.experiment.logger import Logger
+
+import matplotlib.pyplot as plt
+import sys
+import os
+import time
+from timeit import default_timer as timer
+from matplotlib import colors as mcolors
+from mpl_toolkits.mplot3d import Axes3D
+import bnelearn.util.metrics as metrics
 
 
 
@@ -54,7 +63,6 @@ class Experiment(ABC):
             self.regret_grid_size = logging_config.regret_grid_size
 
         # Misc
-        self.base_dir = None
         self.models: Iterable[torch.nn.Module] = None
 
         # Inverse of bidder --> model lookup table
@@ -68,11 +76,37 @@ class Experiment(ABC):
         self.env: Environment = None
         self.learners: Iterable[Learner] = None
 
+        #LOGGING PARAMETERS
         # TODO: remove this? move all logging logic into experiment itself?
-        self.logger: Logger = None
+        root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
+        if root_path not in sys.path:
+            sys.path.append(root_path)
+        self.log_root=os.path.join(root_path, 'experiments')
+        
 
+
+        self.log_dir = None
+        self.fig = None
+        self.writer = None
+        self.overhead = 0.0
         self.known_bne = known_bne
 
+        self.max_epochs = None
+        self.plot_points = None
+        self.v_opt = None
+        self.b_opt = None
+
+        #The if statements can be removed if we set this None directly and set the super.init() at the beginnign
+        if not hasattr(self, 'plot_xmin'):
+            self.plot_xmin = None
+        if not hasattr(self, 'plot_xmax'):
+            self.plot_xmax = None
+        if not hasattr(self, 'plot_ymin'):
+            self.plot_ymin = None
+        if not hasattr(self, 'plot_ymax'):
+            self.plot_ymax = None
+        self.bne_utilities = None
+        self.bne_env = None
 
         # setup everything deterministic that is shared among runs
         self._setup_mechanism()
@@ -88,13 +122,6 @@ class Experiment(ABC):
         self._setup_bidders()
         self._setup_learning_environment()
         self._setup_learners()
-
-    @abstractmethod
-    def _setup_logger(self, base_dir):
-        """Creates logger for run.
-        THIS IS A TEMPORARY WORKAROUND TODO
-        """
-        pass
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -146,7 +173,7 @@ class Experiment(ABC):
             return 'other'
 
     @abstractmethod
-    def _training_loop(self, epoch, logger):
+    def _training_loop(self, epoch):
         """Main training loop to be executed in each iteration."""
         pass
 
@@ -165,19 +192,369 @@ class Experiment(ABC):
 
             self._setup_run()
 
-            log_dir = self._get_logdir()
-            logger = self._setup_logger(log_dir)
+            self.log_dir = self._get_logdir()
 
             # TODO: setup Writer here, or make logger an object that takes
             # with Logger ... : (especially, needs to be destroyed on end of run!)
 
-            logger.log_experiment(run_comment=run_comment, max_epochs=epochs)
+            self.log_experiment(run_comment=run_comment, max_epochs=epochs, run=run)
             # disable this to continue training?
             epoch = 0
             for epoch in range(epoch, epoch + epochs + 1):
-                self._training_loop(epoch=epoch, logger=logger)
+                self._training_loop(epoch=epoch)
 
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
             # if torch.cuda.memory_allocated() > 0:
             #    warnings.warn('Theres a memory leak')
+
+########################################################################################################
+####################################### Moved logging to here ##########################################
+########################################################################################################
+
+    # TODO: Could be moved outside as a static method -- Not if we overwrite it in LLLLGG
+    def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
+              xlim: list=None, ylim: list=None, labels: list=None,
+              x_label="valuation", y_label="bid", fmts=['o'],
+              figure_name: str='bid_function', plot_points=100):
+        """
+        This implements plotting simple 2D data.
+
+        Args
+            fig: matplotlib.figure, TODO might not be needed
+            plot_data: tuple of two pytorch tensors first beeing for x axis, second for y.
+                Both of dimensions (batch_size, n_strategies, n_bundles)
+            writer: could be replaced by self.writer
+            epoch: int, epoch or iteration number
+            xlim: list of floats, x axis limits for all n_bundles dimensions
+            ylim: list of floats, y axis limits for all n_bundles dimensions
+            labels: list of str lables for legend
+            fmts: list of str for matplotlib markers and lines
+            figure_name: str, for seperate plot saving of e.g. bids and regret,
+            plot_point: int of number of ploting points for each strategy in each subplot
+        """
+
+        x = plot_data[0].detach().cpu().numpy()
+        y = plot_data[1].detach().cpu().numpy()
+        n_batch, n_players, n_bundles = y.shape
+
+        n_batch = min(plot_points, n_batch)
+        x = x[:n_batch,:,:]
+        y = y[:n_batch,:,:]
+
+        # create the plot
+        fig, axs = plt.subplots(nrows=1, ncols=n_bundles, sharey=True)
+        plt.cla()
+        if not isinstance(axs, np.ndarray):
+            axs = [axs] # one plot only
+
+        cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+        # actual plotting
+        for plot_idx in range(n_bundles):
+            for agent_idx in range(n_players):
+                axs[plot_idx].plot(
+                    x[:,agent_idx,plot_idx], y[:,agent_idx,plot_idx],
+                    fmts[agent_idx % len(fmts)],
+                    label=None if labels is None else labels[agent_idx % len(labels)],
+                    color=cycle[agent_idx],
+                )
+
+            # formating
+            axs[plot_idx].set_xlabel(x_label)
+            if plot_idx == 0:
+                axs[plot_idx].set_ylabel(y_label)
+                if n_players < 10 and labels is not None:
+                    axs[plot_idx].legend(loc='upper left')
+            if xlim is not None:
+                axs[plot_idx].set_xlim(xlim[0], xlim[1])
+            elif hasattr(self, 'plot_xmin'):
+                axs[plot_idx].set_xlim(self.plot_xmin, self.plot_xmax)
+            if ylim is not None:
+                axs[plot_idx].set_ylim(ylim[0], ylim[1])
+            elif hasattr(self, 'plot_xmin'):
+                axs[plot_idx].set_ylim(self.plot_ymin, self.plot_ymax)
+
+            axs[plot_idx].locator_params(axis='x', nbins=5)
+        title = plt.title if n_bundles == 1 else plt.suptitle
+        title('iteration {}'.format(epoch))
+
+        self._process_figure(fig, writer=writer, epoch=epoch, figure_name=figure_name)
+
+        return fig
+
+    #TODO: when adding log_dir and logging_config as arguments this could be static as well
+    def _process_figure(self, fig, writer=None, epoch=None, figure_name='plot', group ='eval', filename=None):
+        """displays, logs and/or saves figure built in plot method"""
+
+        if not filename:
+            filename = figure_name
+
+        if self.logging_config.save_figure_to_disk_png:
+            plt.savefig(os.path.join(self.log_dir, 'png', f'{filename}_{epoch:05}.png'))
+
+        if self.logging_config.save_figure_to_disk_svg:
+            plt.savefig(os.path.join(self.log_dir, 'svg', f'{filename}_{epoch:05}.svg'),
+                        format='svg', dpi=1200)
+        if writer:
+            writer.add_figure(f'{group}/{figure_name}', fig, epoch)
+        if self.logging_config.plot_show_inline:
+            # display.display(plt.gcf())
+            plt.show()
+
+    @abstractmethod
+    def _log_experimentparams(self):
+        pass
+
+    #TODO: Delete after individual metric logging
+    def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute,
+                     L_2, L_inf, param_group_postfix = '', metric_prefix = ''):
+
+        def log_metric(group, name, value):
+            writer.add_scalar(
+                f'{group}{param_group_postfix}/{metric_prefix}{name}',
+                value, epoch
+                )
+        if update_norm is not None:
+            log_metric('debug', 'update_norm', update_norm)
+        if utility is not None:
+            log_metric('eval', 'utility', utility)
+        if utility_vs_bne is not None:
+            log_metric('eval', 'utility_vs_bne', utility_vs_bne)
+        if epsilon_relative is not None:
+            log_metric('eval', 'epsilon_relative', epsilon_relative)
+        if epsilon_absolute is not None:
+            log_metric('eval', 'epsilon_absolute', epsilon_absolute)
+        if L_2 is not None:
+            log_metric('eval', 'L_2', L_2)
+        if L_inf is not None:
+            log_metric('eval', 'L_inf', L_inf)
+
+    def _log_hyperparams(self):
+        """Everything that should be logged on every learning_rate updates"""
+        epoch = 0
+        #TODO: what is n_parameters?
+        #n_parameters = self.experiment_config['n_parameters']
+        #for agent in range(len(self.exp.models)):
+        #    self.writer.add_scalar('hyperparameters/p{}_model_parameters'.format(agent),
+        #                           n_parameters[agent], epoch)
+        #self.writer.add_scalar('hyperparameters/model_parameters', sum(n_parameters), epoch)
+
+        for i, model in enumerate(self.models):
+            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)
+            self.writer.add_graph(model, self.env.agents[i].valuations)
+
+        self.writer.add_scalar('hyperparameters/batch_size', self.learning_config.batch_size, epoch)
+        self.writer.add_scalar('hyperparameters/epochs', self.logging_config.max_epochs, epoch)
+        self.writer.add_scalar(
+            'hyperparameters/pretrain_iters',
+            self.learning_config.pretrain_iters,
+            epoch
+        )
+    #TODO: This comes from single_item, but is VERY similar to MultiUnit. Only self.n_units dimension missing. Adapt!
+    #TODO: plot_xmin and xmax makes not sense since this might be outside the value function
+    def log_experiment(self, run_comment, max_epochs, run=""):
+        self.max_epochs = max_epochs
+        # setting up plotting
+        self.plot_points = min(self.logging_config.plot_points, self.learning_config.batch_size)
+
+        if self.logging_config.log_metrics['opt']:
+            # TODO: apdapt interval to be model specific! (e.g. for LLG)
+            self.v_opt = torch.stack(
+                [torch.linspace(self.plot_xmin, self.plot_xmax, self.plot_points,
+                 device=self.gpu_config.device) for i in self.models],
+                dim=1)[:,:,None]
+            self.b_opt = torch.stack(
+                [self._optimal_bid(self.v_opt[:,i,:], player_position=self._model2bidder[i][0])
+                 for i in range(len(self.models))],
+                dim=1)
+
+        is_ipython = 'inline' in plt.get_backend()
+        if is_ipython:
+            from IPython import display
+        plt.rcParams['figure.figsize'] = [8, 5]
+
+        if os.name == 'nt':
+            raise ValueError('The run_name may not contain : on Windows!')
+        run_name = self.logging_config.file_name + '_' + str(run)
+        if run_comment:
+            run_name = run_name + ' - ' + str(run_comment)
+
+        self.log_dir = os.path.join(self.log_root, self.log_dir, run_name)
+        os.makedirs(self.log_dir, exist_ok=False)
+        if self.logging_config.save_figure_to_disk_png:
+            os.mkdir(os.path.join(self.log_dir, 'png'))
+        if self.logging_config.save_figure_to_disk_svg:
+            os.mkdir(os.path.join(self.log_dir, 'svg'))
+
+        print('Started run. Logging to {}'.format(self.log_dir))
+        self.fig = plt.figure()
+
+        self.writer = SummaryWriter(self.log_dir, flush_secs=30)
+        start_time = timer()
+        self._log_experimentparams() # TODO: what to use
+        self._log_hyperparams()
+        elapsed = timer() - start_time
+        self.overhead += elapsed
+
+    #TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
+    #TODO: Create one method per metric and check which ones to compute
+    def log_training_iteration(self, prev_params, epoch, strat_to_bidder,
+                               utilities, log_params: dict):
+        # TODO It is by no means nice that there is so much specific logic in here
+        start_time = timer()
+        plot_data = []
+
+
+        model_is_global = len(self.models) == 1
+
+        # TODO: a lot of overhead is currently not counted correctly!
+        # TODO: update logging to follow following strategy:
+        #       1. calculate ALL updates (if we have multiple models)
+        #       2. caclulate ALL metrics as lists
+        #       3. log everything (using a single function call)
+
+        # TODO: this logic does not work for LLG model
+        for i, model in enumerate(self.models):
+            group_postfix = '' if model_is_global else f'_p{i}'
+            metric_prefix = ''
+
+            ## TODO: no knowledge of bneenve should be assumed here! Might have settings without bne
+
+            # calculate infinity-norm of update step
+            new_params = torch.nn.utils.parameters_to_vector(model.parameters())
+            update_norm = (new_params - prev_params[i]).norm(float('inf'))
+
+            if self.known_bne:
+                # calculate utility vs bne
+                utility_vs_bne = self.bne_env.get_reward(
+                    strat_to_bidder(model, batch_size=self.logging_config.eval_batch_size),
+                    draw_valuations=False)  # False because expensive for normal priors
+                epsilon_relative = 1 - utility_vs_bne / self.bne_utilities[i]
+                epsilon_absolute = self.bne_utilities[i] - utility_vs_bne
+                L_2 = metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
+                                                        self.bne_env.agents[i].valuations, 2)
+                L_inf = metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
+                                                          self.bne_env.agents[i].valuations, float('inf'))
+            else:
+                utility_vs_bne, epsilon_relative, epsilon_absolute, L_2, L_inf = None,None,None,None,None
+
+            self._log_metrics(writer=self.writer, epoch=epoch, utility=utilities[i], update_norm=update_norm,
+                              utility_vs_bne=utility_vs_bne, epsilon_relative=epsilon_relative,
+                              epsilon_absolute=epsilon_absolute, L_2=L_2, L_inf=L_inf,
+                              param_group_postfix=group_postfix, metric_prefix=metric_prefix)
+
+        if epoch % self.logging_config.plot_frequency == 0:
+            bidders = [strat_to_bidder(model, self.learning_config.batch_size, self._model2bidder[i][0])
+                       for i, model in enumerate(self.models)]
+            v = torch.stack([bidder.valuations for bidder in bidders], dim=1) # shape: n_batch, n_players, n_bundles
+            b = torch.stack([bidder.get_action() for bidder in bidders], dim=1)
+            print(
+                "Epoch {}: \tcurrent utility: {:.3f}".format(
+                    epoch, utilities[i]))
+            if self.known_bne:
+                print(",\t vs BNE: {:.3f}, \tepsilon (abs/rel): ({:.5f}, {:.5f})".format(
+                utility_vs_bne, epsilon_absolute, epsilon_relative))
+
+            labels = ['NPGA']
+            fmts = ['bo']
+            if self.logging_config.log_metrics['opt']:
+                # TODO: handle case of no opt strategy
+                v = torch.cat([v[:self.plot_points,:,:], self.v_opt], dim=1)
+                b = torch.cat([b[:self.plot_points,:,:], self.b_opt], dim=1)
+                labels.append('BNE')
+                fmts.append('b--')
+                
+            self._plot(fig=self.fig, plot_data=(v, b), writer=self.writer, figure_name='bid_function',
+                       epoch=epoch, labels=labels, fmts=fmts)
+
+        elapsed = timer() - start_time
+        self.overhead = self.overhead + elapsed 
+        self.writer.add_scalar('debug/overhead_hours', self.overhead/3600, epoch)
+
+        
+    def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
+        start_time = timer()
+
+        original_batch_size = env.agents[0].batch_size
+        bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
+                                  dtype=env.agents[0].valuations.dtype, device = env.mechanism.device)
+        for agent in env.agents:
+            agent.batch_size = regret_batch_size
+            agent.draw_valuations_new_batch_(regret_batch_size)
+            bid_profile[:, agent.player_position, :] = agent.get_action()
+
+        regrets = []
+        valuations = []
+        max_regret = 0
+        for learner in learners:
+            player_position = learner.strat_to_player_kwargs['player_position']
+
+            regret_grid = torch.linspace(u_lo[player_position], u_hi[player_position], regret_grid_size)
+
+            #print("Calculating regret...")
+            torch.cuda.empty_cache()
+            regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position,
+                                               env.agents[player_position].valuations, regret_grid)
+
+            print("agent {} ex ante/ex interim regrat: avg: {:.3f}, max: {:.3f}".format(player_position,
+                                                                 torch.mean(regret),
+                                                                 torch.max(regret)))
+
+            self.writer.add_scalar('eval/max_ex_interim_regret', torch.max(regret), epoch)
+            self.writer.add_scalar('eval/ex_ante_regret', torch.mean(regret), epoch)
+            regrets.append(regret)
+
+            valuations.append(env.agents[player_position].valuations)
+
+            max_regret = max(max_regret, torch.max(regret))
+
+        # if isinstance(self, LLLLGGAuctionLogger):
+        #     valuations_tensor = torch.tensor([t.cpu().numpy() for t in valuations]).permute(1,0,2)
+        #     regrets_tensor = torch.tensor([t.cpu().numpy() for t in regrets]).view(len(learners), regret_batch_size, 1)
+        #     fig, _ = self._plot_3d((valuations_tensor, regrets_tensor), epoch, [self.plot_xmin, self.plot_xmax], [self.plot_ymin, self.plot_ymax],
+        #                         [0, max_regret.detach().cpu().numpy()], input_length=1, x_label="valuation", y_label="regret")
+        # else:
+
+        # TODO: as tensors in first place?
+        valuations = torch.stack(valuations, dim=1)
+        regrets = torch.stack(regrets, dim=1)[:,:,None]
+
+        self._plot(
+            fig=self.fig, plot_data=(valuations, regrets), writer=self.writer,
+            epoch=epoch, xlim=[self.plot_xmin, self.plot_xmax],
+            ylim=[0, max_regret.detach().cpu().numpy()],
+            x_label="valuation", y_label="regret", figure_name='regret'
+        )
+
+        # TODO: why? don't we redraw valuations at beginning of loop anyway.
+        for agent in env.agents:
+            agent.batch_size = original_batch_size
+            agent.draw_valuations_new_batch_(original_batch_size)
+
+        elapsed = timer() - start_time
+        self.overhead += elapsed
+
+    def _log_experimentparams(self):
+        #TODO: write out all experiment params (complete dict)
+        pass
+
+    def _log_trained_model(self):
+        #TODO: write out the trained model at the end of training @Stefan
+        pass
+
+    def _log_metrics_opt(self):
+        #TODO: Compute and log the utility_vs_bne, epsilon_relative, epsilon_absolute
+        pass
+
+    def _log_metrics_l2(self):
+        #TODO: Compute and log the L2 and L inf?
+        pass
+
+    def _log_metrics_rmse(self):
+        #TODO: Compute and log the rmse
+        pass
+
+    def _log_metrics_regret(self):
+        #TODO: Compute and log the regret
+        pass
