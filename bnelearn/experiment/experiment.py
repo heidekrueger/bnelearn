@@ -56,8 +56,9 @@ class Experiment(ABC):
         self.env: Environment = None
         self.learners: Iterable[Learner] = None
         
-        self.max_epochs = None
-        self.plot_points = None
+        self.plot_frequency = LoggingConfiguration.plot_frequency
+        self.max_epochs = LoggingConfiguration.max_epochs
+        self.plot_points = LoggingConfiguration.plot_points
         #TODO: Smells like redundancy
         self.log_dir = None
         # TODO: remove this? move all logging logic into experiment itself?
