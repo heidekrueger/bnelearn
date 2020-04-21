@@ -138,6 +138,7 @@ class Bidder(Player):
     def draw_valuations_new_batch_(self, batch_size):
         # Lets you sample valuations of a new batch size (e.g. for regret)
         # TODO: this will break action caching if it is being used! Consider redesigning this interface
+        # TODO Nils: doesn't work for MultiUnit nor SplitAward
         self.valuations = self.value_distribution.rsample(torch.Size([batch_size, self.valuations.size()[1]])).to(self.device).relu()
 
     def draw_valuations_grid_(self, batch_size):

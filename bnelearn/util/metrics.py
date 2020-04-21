@@ -178,19 +178,18 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
         grid = grid.half()
     bid_profile_origin = bid_profile
 
-    # TODO: Generalize these dimensions
+    #TODO: Generalize these dimensions
+    #TODO Nils: same in ex_post, should be unified
     batch_size, n_players, n_items = bid_profile.shape # pylint: disable=unused-variable
     grid_size = grid.shape[0] #TODO: update this
     # Create multidimensional bid tensor if required
     if n_items == 1:
         grid = grid.view(grid_size, 1).to(bid_profile.device)
-    elif n_items == 2:
-        grid = torch.combinations(grid, with_replacement=True).to(bid_profile.device) #grid_size**2 x 2
+    elif n_items >= 2:
+        if len(grid.shape) == 1:
+            grid = torch.combinations(grid, r=n_items, with_replacement=True).to(bid_profile.device) #grid_size**n_items x n_items
             #TODO Stefan: this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
-    elif n_items > 2:
-        raise NotImplementedError("Regret for >2 items not implemented yet!")
     grid_size, _ = grid.shape #TODO this _new_ grid size refers to all combinations, whereas the previous one was 1D only
-
 
     ### Evaluate alternative bids on grid
     bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile_origin) # grid_size x n_players x n_items 

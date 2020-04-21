@@ -444,7 +444,6 @@ class MultiUnitExperiment(Experiment, ABC):
 
         log_params = {
             'elapsed': elapsed,
-            'optimal_bid': self._optimal_bid,
             'bne_utilities': bne_utilities,
             'utilities': utilities,
             'against_bne_utilities': against_bne_utilities,
@@ -458,6 +457,7 @@ class MultiUnitExperiment(Experiment, ABC):
 
     def log_training_iteration(self, epoch, bidders, log_params: dict):
 
+        # TODO Nils: upgrade to super().log_training_iteration
         valuations = torch.stack([b.draw_valuations_() for b in bidders], dim=1)
         bids = torch.stack([b.get_action() for b in bidders], dim=1)
 
@@ -503,43 +503,9 @@ class MultiUnitExperiment(Experiment, ABC):
             1 - u / bne_u for u, bne_u
             in zip(log_params['against_bne_utilities'], log_params['bne_utilities'])
         ]
-        self._log_metrics(epoch, log_params)
+        self._log_metrics(log_params, epoch=epoch)
 
         print('epoch {}:\t{}s'.format(epoch, round(log_params['elapsed'], 2)))
-
-        # TODO: unify model saving via switch
-        if epoch == self.max_epochs:
-            for i, model in enumerate(self.models):
-                torch.save(model.state_dict(), os.path.join(self.log_dir, 'saved_model_' + str(i) + '.pt'))
-
-
-    def _log_metrics(self, epoch, metrics_dict: dict):
-        """Log scalar for each player"""
-
-        agent_name_list = ['agent_{}'.format(i) for i in range(self.experiment_config.n_players)]
-
-        for metric_key, metric_val in metrics_dict.items():
-            if isinstance(metric_val, float):
-                self.writer.add_scalar('eval/' + str(metric_key), metric_val, epoch)
-            elif isinstance(metric_val, list):
-                self.writer.add_scalars(
-                    'eval/' + str(metric_key),
-                    dict(zip(agent_name_list, metric_val)),
-                    epoch
-                )
-            elif isinstance(metric_val, dict):
-                for key, val in metric_val.items():
-                    self.writer.add_scalars(
-                        'eval/' + str(metric_key),
-                        dict(zip([name + '/' + str(key) for name in agent_name_list], val)),
-                        epoch
-                    )
-
-        # log model parameters
-        model_paras = [torch.norm(torch.nn.utils.parameters_to_vector(model.parameters()), p=2)
-                       for model in self.models]
-        self.writer.add_scalars('eval/weight_norm', dict(zip(agent_name_list, model_paras)), epoch)
-
 
 
 class SplitAwardExperiment(MultiUnitExperiment):

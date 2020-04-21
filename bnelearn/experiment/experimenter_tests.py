@@ -13,7 +13,7 @@ from bnelearn.experiment.gpu_controller import *
 
 #TODO: Make nice testing!
 def test_auction(create_auction_function, input_length):
-    learning_configuration = LearningConfiguration(input_length=input_length)
+    learning_configuration = LearningConfiguration(input_length=input_length, pretrain_iters=20)
     running_configuration, logging_configuration, experiment_configuration, experiment_class = create_auction_function
     experiment_configuration.n_players = running_configuration.n_players[0]
     experiment = experiment_class(experiment_configuration, learning_configuration,
@@ -23,7 +23,7 @@ def test_auction(create_auction_function, input_length):
 gpu_configuration = GPUController(specific_gpu=2)
 # test_auction(run_single_item_uniform_symmetric(2,110, [2], 'first_price'),1)
 # test_auction(run_single_item_gaussian_symmetric(1,110, [2], 'second_price', log_metrics = []),1)
-test_auction(run_llg(1,110,'nearest_vcg'),1)
+# test_auction(run_llg(1,300,'nearest_vcg'),1)
 # test_auction(run_llllgg(1,110,'first_price'),2)
-# test_auction(run_multiunit(1, 110, [2], 'vcg'), input_length=2)
+test_auction(run_multiunit(1, 400, [2], 'vcg'), input_length=2)
 # test_auction(run_splitaward(1, 110, [2]),2)

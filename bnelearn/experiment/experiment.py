@@ -55,7 +55,7 @@ class Experiment(ABC):
         self.bidders: Iterable[Bidder] = None
         self.env: Environment = None
         self.learners: Iterable[Learner] = None
-        
+
         self.plot_frequency = LoggingConfiguration.plot_frequency
         self.max_epochs = LoggingConfiguration.max_epochs
         self.plot_points = LoggingConfiguration.plot_points
@@ -101,7 +101,6 @@ class Experiment(ABC):
 
         if self.known_bne:
             self._setup_eval_environment()
-
 
     # TODO: rename this
     def _setup_run(self):
@@ -159,10 +158,24 @@ class Experiment(ABC):
         else:
             return 'other'
 
-    @abstractmethod
     def _training_loop(self, epoch):
-        """Main training loop to be executed in each iteration."""
-        pass
+        """Actual training in each iteration."""
+        #TODO: Doesn't make sense to track for bidders instead of models but for consistency in
+        #      logging for now. Change later
+        # save current params to calculate update norm
+        prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
+                       for model in self.models]
+
+        # update model
+        utilities = torch.tensor([
+            learner.update_strategy_and_evaluate_utility()
+            for learner in self.learners
+        ])
+
+        # everything after this is logging --> measure overhead
+
+        log_params = {'utilities': utilities, 'prev_params': prev_params}
+        self.log_training_iteration(log_params=log_params, epoch=epoch)
 
     def run(self, epochs, n_runs: int = 1, run_comment: str=None, seeds: Iterable[int] = None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
@@ -199,7 +212,6 @@ class Experiment(ABC):
 ####################################### Moved logging to here ##########################################
 ########################################################################################################
 
-    # TODO: Could be moved outside as a static method -- Not if we overwrite it in LLLLGG
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list=None, ylim: list=None, labels: list=None,
               x_label="valuation", y_label="bid", fmts=['o'],
@@ -298,39 +310,8 @@ class Experiment(ABC):
     def _log_experimentparams(self):
         pass
 
-    #TODO: Delete after individual metric logging
-    def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute,
-                     L_2, L_inf, param_group_postfix = '', metric_prefix = ''):
-
-        def log_metric(group, name, value):
-            writer.add_scalar(
-                f'{group}{param_group_postfix}/{metric_prefix}{name}',
-                value, epoch
-                )
-        if update_norm is not None:
-            log_metric('debug', 'update_norm', update_norm)
-        if utility is not None:
-            log_metric('eval', 'utility', utility)
-        if utility_vs_bne is not None:
-            log_metric('eval', 'utility_vs_bne', utility_vs_bne)
-        if epsilon_relative is not None:
-            log_metric('eval', 'epsilon_relative', epsilon_relative)
-        if epsilon_absolute is not None:
-            log_metric('eval', 'epsilon_absolute', epsilon_absolute)
-        if L_2 is not None:
-            log_metric('eval', 'L_2', L_2)
-        if L_inf is not None:
-            log_metric('eval', 'L_inf', L_inf)
-
-    def _log_hyperparams(self):
-        """Everything that should be logged on every learning_rate updates"""
-        epoch = 0
-        #TODO: what is n_parameters?
-        #n_parameters = self.experiment_config['n_parameters']
-        #for agent in range(len(self.exp.models)):
-        #    self.writer.add_scalar('hyperparameters/p{}_model_parameters'.format(agent),
-        #                           n_parameters[agent], epoch)
-        #self.writer.add_scalar('hyperparameters/model_parameters', sum(n_parameters), epoch)
+    def _log_hyperparams(self, epoch=0):
+        """Everything that should be logged on every learning_rate update"""
 
         for i, model in enumerate(self.models):
             self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)
@@ -391,64 +372,47 @@ class Experiment(ABC):
 
     #TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
     #TODO: Create one method per metric and check which ones to compute
-    def log_training_iteration(self, prev_params, epoch, strat_to_bidder,
-                               utilities, log_params: dict):
+    def log_training_iteration(self, log_params: dict, epoch: int):
         # TODO It is by no means nice that there is so much specific logic in here
         start_time = timer()
-        #TODO, P: This plot_data might make sense for the regret plotting
-        plot_data = []
 
+        #TODO, P: This plot_data might make sense for the regret plotting
+        # plot_data = []
 
         model_is_global = len(self.models) == 1
 
-        # TODO: a lot of overhead is currently not counted correctly!
-        # TODO: update logging to follow following strategy:
-        #       1. calculate ALL updates (if we have multiple models)
-        #       2. caclulate ALL metrics as lists
-        #       3. log everything (using a single function call)
+        # calculate infinity-norm of update step
+        new_params = [torch.nn.utils.parameters_to_vector(model.parameters())
+                      for model in self.models]
+        log_params['update_norm'] = [(new_params[i] - log_params['prev_params'][i]).norm(float('inf'))
+                                     for i in range(self.n_models)]
+        del log_params['prev_params']
 
-        # TODO: this logic does not work for LLG model
-        for i, model in enumerate(self.models):
-            group_postfix = '' if model_is_global else f'_p{i}'
-            metric_prefix = ''
-            utility_vs_bne, epsilon_relative, epsilon_absolute, L_2, L_inf, rmse, regret = \
-                None,None,None,None,None,None,None
+        # logging metrics
+        if self.logging_config.log_metrics['opt']:
+            log_params['utility_vs_bne'], log_params['epsilon_relative'], log_params['epsilon_absolute'] = \
+                self._log_metric_opt()
 
-            ## TODO: no knowledge of bneenve should be assumed here! Might have settings without bne
+        if self.logging_config.log_metrics['l2']:
+            log_params['L_2'], log_params['L_inf'] = self._log_metric_l()
 
-            # calculate infinity-norm of update step
-            new_params = torch.nn.utils.parameters_to_vector(model.parameters())
-            update_norm = (new_params - prev_params[i]).norm(float('inf'))
+        if self.logging_config.log_metrics['rmse']:
+            #TODO: implement
+            self._log_metric_rmse()
 
-            # Logging metrics
-            if self.logging_config.log_metric['opt']:
-                utility_vs_bne, epsilon_relative, epsilon_absolute = \
-                    self._log_metric_opt(i, model, strat_to_bidder)
-            if self.logging_config.log_metric['l2']:
-                L_2, L_inf = self._log_metric_l2(i, model)
-            if self.logging_config.log_metric['rmse']:
-                #TODO:implement
-                self._log_metric_rmse(model)
-            if self.logging_config.log_metric['regret'] and (epoch%self.logging_config.regret_frequency)==0:
-                regret = self._log_metric_regret(i, model)
-
-            #TODO, P:@Nils change log metrics to yours and log all metrics from above
-            self._log_metrics(writer=self.writer, epoch=epoch, utility=utilities[i], update_norm=update_norm,
-                              utility_vs_bne=utility_vs_bne, epsilon_relative=epsilon_relative,
-                              epsilon_absolute=epsilon_absolute, L_2=L_2, L_inf=L_inf,
-                              param_group_postfix=group_postfix, metric_prefix=metric_prefix)
+        if self.logging_config.log_metrics['regret'] and (epoch % self.logging_config.regret_frequency) == 0:
+            log_params['regret'] = self._log_metric_regret()
 
         if epoch % self.logging_config.plot_frequency == 0:
-            bidders = [strat_to_bidder(model, self.learning_config.batch_size, self._model2bidder[i][0])
+            bidders = [self._strat_to_bidder(model, self.learning_config.batch_size, self._model2bidder[i][0])
                        for i, model in enumerate(self.models)]
             v = torch.stack([bidder.valuations for bidder in bidders], dim=1) # shape: n_batch, n_players, n_bundles
             b = torch.stack([bidder.get_action() for bidder in bidders], dim=1)
-            print(
-                "Epoch {}: \tcurrent utility: {:.3f}".format(
-                    epoch, utilities[i]))
-            if self.known_bne:
-                print(",\t vs BNE: {:.3f}, \tepsilon (abs/rel): ({:.5f}, {:.5f})".format(
-                      utility_vs_bne, epsilon_absolute, epsilon_relative))
+            print("epoch {}: \tcurrent utilities: ".format(epoch) + str(log_params['utilities'].tolist()))
+            if self.known_bne and self.logging_config.log_metrics['opt']:
+                print(",\t vs BNE: {}, \tepsilon (abs/rel): ({}, {})".format(
+                      log_params['utility_vs_bne'], log_params['epsilon_relative'],
+                      log_params['epsilon_absolute']))
 
             labels = ['NPGA']
             fmts = ['bo']
@@ -459,14 +423,46 @@ class Experiment(ABC):
                 labels.append('BNE')
                 fmts.append('b--')
             #TODO, P: What is plotted here? opt or normal?
+            # Nils: both in one. If there is a BNE, it's cat to v, b resp.
             self._plot(fig=self.fig, plot_data=(v, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         elapsed = timer() - start_time
         self.overhead = self.overhead + elapsed
-        self.writer.add_scalar('debug/overhead_hours', self.overhead/3600, epoch)
+        log_params['overhead_hours'] = self.overhead / 3600
 
-    def _log_metric_opt(self, i, model, strat_to_bidder):
+        self._log_metrics(log_params, epoch=epoch)
+
+    def _log_metrics(self, metrics_dict: dict, epoch: int, prefix: str='eval',
+                     param_group_postfix: str='', metric_prefix: str=''):
+        """ Writes everthing from ´metrics_dict´ to disk via the ´self.writer´.
+            keys in ´metrics_dict´ represent the metric name, values should be of type
+            float, list, dict, or torch.Tensor.
+        """
+        name_list = ['agent_{}'.format(i) for i in range(self.experiment_config.n_players)]
+
+        for metric_key, metric_val in metrics_dict.items():
+            tag = prefix + param_group_postfix + '/' + metric_prefix + str(metric_key)
+
+            if isinstance(metric_val, float):
+                self.writer.add_scalar(tag, metric_val, epoch)
+
+            elif isinstance(metric_val, list):
+                self.writer.add_scalars(tag, dict(zip(name_list, metric_val)), epoch)
+
+            elif isinstance(metric_val, dict):
+                for key, val in metric_val.items():
+                    self.writer.add_scalars(
+                        tag, dict(zip([name + '/' + str(key) for name in name_list], val)), epoch
+                    )
+
+            elif torch.is_tensor(metric_val):
+                self.writer.add_scalars(tag, dict(zip(name_list, metric_val.tolist())), epoch)
+
+            else:
+                raise TypeError('metric type {} cannot be saved'.format(type(metric_val)))
+
+    def _log_metric_opt(self):
         """
         Compare performance to BNE and log:
         utility_vs_bne
@@ -474,26 +470,33 @@ class Experiment(ABC):
         epsilon_absolute
         """
         assert self.known_bne, "BNE not known, can't compute opt metric"
-        assert self.known_bne, "BNE not known, can't compute l2 metric"
-        utility_vs_bne = self.bne_env.get_reward(
-                    strat_to_bidder(model, batch_size=self.logging_config.eval_batch_size),
-                    draw_valuations=False)  # False because expensive for normal priors
-        epsilon_relative = 1 - utility_vs_bne / self.bne_utilities[i]
-        epsilon_absolute = self.bne_utilities[i] - utility_vs_bne
+
+        utility_vs_bne = [self.bne_env.get_reward(
+            self._strat_to_bidder(model, batch_size=self.logging_config.eval_batch_size),
+            draw_valuations=False
+        ) for model in self.models] # False because expensive for normal priors
+        epsilon_relative = [1 - utility_vs_bne[i] / self.bne_utilities[i]
+                            for i, model in enumerate(self.models)]
+        epsilon_absolute = [self.bne_utilities[i] - utility_vs_bne[i] for i, model in enumerate(self.models)]
+
         return utility_vs_bne, epsilon_relative, epsilon_absolute
-    def _log_metric_l2(self, i, model):
+
+    def _log_metric_l(self):
         """
         Compare action to BNE and log:
         l2 (TODO: add formular)
         l_inf (TODO: add formular)
         """
         assert self.known_bne, "BNE not known, can't compute l2 metric"
-        L_2 = metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
-                                                self.bne_env.agents[i].valuations, 2)
-        L_inf = metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
-                                                  self.bne_env.agents[i].valuations, float('inf'))
+        L_2 = [metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
+                                                 self.bne_env.agents[i].valuations, 2)
+               for i, model in enumerate(self.models)]
+        L_inf = [metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
+                                                   self.bne_env.agents[i].valuations, float('inf'))
+                 for i, model in enumerate(self.models)]
         return L_2, L_inf
-    def _log_metric_rmse(self,model):
+
+    def _log_metric_rmse(self):
         """
         TODO: Difference to l2?
         Compare action to BNE and log:
@@ -503,38 +506,42 @@ class Experiment(ABC):
         #TODO: Fill
         pass
 
-    def _log_metric_regret(self, i, model):
-        #TODO, P: Calculating regret individually per model. Not sure this is better
+    def _log_metric_regret(self):
         """
-        Compute regret of current policy and return
+        Compute mean regret of current policy and return
         ex interim regret (ex ante regret is the average of that tensor)
         """
+        # TODO Nils: @Paul please check logic here. Major changes: (1) use original draw_valuations,
+        # as its logic is needed, (2) trying to calculate for all models at once.
+
         env = self.env
         regret_batch_size = self.logging_config.regret_batch_size
         regret_grid_size = self.logging_config.regret_grid_size
-        original_batch_size = env.agents[i].batch_size
-        bid_profile = torch.zeros(self.logging_config.regret_batch_size, env.n_players, env.agents[i].n_items,
-                                  dtype=env.agents[i].valuations.dtype, device = env.mechanism.device)
-        # Adjust batch size for all agents to regret_batch_size
-        for agent in env.agents:
-            agent.batch_size = regret_batch_size
-            agent.draw_valuations_new_batch_(regret_batch_size)
-            bid_profile[:, agent.player_position, :] = agent.get_action()
 
-        player_position = model.strat_to_player_kwargs['player_position']
-        regret_grid = torch.linspace(self.u_lo[player_position], self.u_hi[player_position], regret_grid_size)
-        #print("Calculating regret...")
+        bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
+                                  dtype=env.agents[0].valuations.dtype, device=env.mechanism.device)
+        regret_grid = torch.zeros(regret_grid_size, env.n_players, dtype=env.agents[0].valuations.dtype,
+                                  device=env.mechanism.device)
+
+        for agent in env.agents:
+            i = agent.player_position
+            
+            # TODO Nils: downward compatible: u_lo/hi should always be of same type: list
+            u_lo = self.u_lo[i] if isinstance(self.u_lo, list) else self.u_lo
+            u_hi = self.u_hi[i] if isinstance(self.u_hi, list) else self.u_hi
+
+            # TODO Nils: only supports regret_batch_size <= batch_size
+            bid_profile[:,i,:] = agent.get_action()[:regret_batch_size,...]
+            regret_grid[:,i] = torch.linspace(u_lo, u_hi, regret_grid_size,
+                                              device=env.mechanism.device)
+
         torch.cuda.empty_cache()
-        #TODO: return a torch (regret,valation_1, valuation_2,..)?
-        regret = metrics.ex_interim_regret(self.mechanism, bid_profile, player_position,
-                                               env.agents[player_position].valuations, regret_grid)
-        # Set back original batch size for all agents
-        for agent in env.agents:
-            agent.batch_size = original_batch_size
-            agent.draw_valuations_new_batch_(original_batch_size)
+        regret = [metrics.ex_interim_regret(env.mechanism, bid_profile, agent.player_position,
+                                            agent.valuations[:regret_batch_size,...],
+                                            regret_grid[:,agent.player_position])
+                  for agent in env.agents[:self.n_models]]
 
-        return regret
-
+        return [r.mean() for r in regret]
 
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
         start_time = timer()
@@ -604,20 +611,7 @@ class Experiment(ABC):
 
     def _log_trained_model(self):
         #TODO: write out the trained model at the end of training @Stefan
-        pass
-
-    def _log_metrics_opt(self):
-        #TODO: Compute and log the utility_vs_bne, epsilon_relative, epsilon_absolute
-        pass
-
-    def _log_metrics_l2(self):
-        #TODO: Compute and log the L2 and L inf?
-        pass
-
-    def _log_metrics_rmse(self):
-        #TODO: Compute and log the rmse
-        pass
-
-    def _log_metrics_regret(self):
-        #TODO: Compute and log the regret
-        pass
+        # Proposal Nils:
+        for i, model in enumerate(self.models):
+            name = 'saved_model_' + str(i) + '.pt'
+            torch.save(model.state_dict(), os.path.join(self.log_dir, name))
