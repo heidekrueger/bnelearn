@@ -395,6 +395,7 @@ class Experiment(ABC):
                                utilities, log_params: dict):
         # TODO It is by no means nice that there is so much specific logic in here
         start_time = timer()
+        #TODO, P: This plot_data might make sense for the regret plotting
         plot_data = []
 
 
@@ -410,6 +411,8 @@ class Experiment(ABC):
         for i, model in enumerate(self.models):
             group_postfix = '' if model_is_global else f'_p{i}'
             metric_prefix = ''
+            utility_vs_bne, epsilon_relative, epsilon_absolute, L_2, L_inf, rmse, regret = \
+                None,None,None,None,None,None,None
 
             ## TODO: no knowledge of bneenve should be assumed here! Might have settings without bne
 
@@ -417,20 +420,19 @@ class Experiment(ABC):
             new_params = torch.nn.utils.parameters_to_vector(model.parameters())
             update_norm = (new_params - prev_params[i]).norm(float('inf'))
 
-            if self.known_bne:
-                # calculate utility vs bne
-                utility_vs_bne = self.bne_env.get_reward(
-                    strat_to_bidder(model, batch_size=self.logging_config.eval_batch_size),
-                    draw_valuations=False)  # False because expensive for normal priors
-                epsilon_relative = 1 - utility_vs_bne / self.bne_utilities[i]
-                epsilon_absolute = self.bne_utilities[i] - utility_vs_bne
-                L_2 = metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
-                                                        self.bne_env.agents[i].valuations, 2)
-                L_inf = metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
-                                                          self.bne_env.agents[i].valuations, float('inf'))
-            else:
-                utility_vs_bne, epsilon_relative, epsilon_absolute, L_2, L_inf = None,None,None,None,None
+            # Logging metrics
+            if self.logging_config.log_metric['opt']:
+                utility_vs_bne, epsilon_relative, epsilon_absolute = \
+                    self._log_metric_opt(i, model, strat_to_bidder)
+            if self.logging_config.log_metric['l2']:
+                L_2, L_inf = self._log_metric_l2(i, model)
+            if self.logging_config.log_metric['rmse']:
+                #TODO:implement
+                self._log_metric_rmse(model)
+            if self.logging_config.log_metric['regret'] and (epoch%self.logging_config.regret_frequency)==0:
+                regret = self._log_metric_regret(i, model)
 
+            #TODO, P:@Nils change log metrics to yours and log all metrics from above
             self._log_metrics(writer=self.writer, epoch=epoch, utility=utilities[i], update_norm=update_norm,
                               utility_vs_bne=utility_vs_bne, epsilon_relative=epsilon_relative,
                               epsilon_absolute=epsilon_absolute, L_2=L_2, L_inf=L_inf,
@@ -456,13 +458,83 @@ class Experiment(ABC):
                 b = torch.cat([b[:self.plot_points,:,:], self.b_opt], dim=1)
                 labels.append('BNE')
                 fmts.append('b--')
-
+            #TODO, P: What is plotted here? opt or normal?
             self._plot(fig=self.fig, plot_data=(v, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         elapsed = timer() - start_time
         self.overhead = self.overhead + elapsed
         self.writer.add_scalar('debug/overhead_hours', self.overhead/3600, epoch)
+
+    def _log_metric_opt(self, i, model, strat_to_bidder):
+        """
+        Compare performance to BNE and log:
+        utility_vs_bne
+        epsilon_relative
+        epsilon_absolute
+        """
+        assert self.known_bne, "BNE not known, can't compute opt metric"
+        assert self.known_bne, "BNE not known, can't compute l2 metric"
+        utility_vs_bne = self.bne_env.get_reward(
+                    strat_to_bidder(model, batch_size=self.logging_config.eval_batch_size),
+                    draw_valuations=False)  # False because expensive for normal priors
+        epsilon_relative = 1 - utility_vs_bne / self.bne_utilities[i]
+        epsilon_absolute = self.bne_utilities[i] - utility_vs_bne
+        return utility_vs_bne, epsilon_relative, epsilon_absolute
+    def _log_metric_l2(self, i, model):
+        """
+        Compare action to BNE and log:
+        l2 (TODO: add formular)
+        l_inf (TODO: add formular)
+        """
+        assert self.known_bne, "BNE not known, can't compute l2 metric"
+        L_2 = metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
+                                                self.bne_env.agents[i].valuations, 2)
+        L_inf = metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
+                                                  self.bne_env.agents[i].valuations, float('inf'))
+        return L_2, L_inf
+    def _log_metric_rmse(self,model):
+        """
+        TODO: Difference to l2?
+        Compare action to BNE and log:
+        rmse (TODO: add formular)
+        """
+        assert self.known_bne, "BNE not known, can't compute rmse metric"
+        #TODO: Fill
+        pass
+
+    def _log_metric_regret(self, i, model):
+        #TODO, P: Calculating regret individually per model. Not sure this is better
+        """
+        Compute regret of current policy and return
+        ex interim regret (ex ante regret is the average of that tensor)
+        """
+        env = self.env
+        regret_batch_size = self.logging_config.regret_batch_size
+        regret_grid_size = self.logging_config.regret_grid_size
+        original_batch_size = env.agents[i].batch_size
+        bid_profile = torch.zeros(self.logging_config.regret_batch_size, env.n_players, env.agents[i].n_items,
+                                  dtype=env.agents[i].valuations.dtype, device = env.mechanism.device)
+        # Adjust batch size for all agents to regret_batch_size
+        for agent in env.agents:
+            agent.batch_size = regret_batch_size
+            agent.draw_valuations_new_batch_(regret_batch_size)
+            bid_profile[:, agent.player_position, :] = agent.get_action()
+
+        player_position = model.strat_to_player_kwargs['player_position']
+        regret_grid = torch.linspace(self.u_lo[player_position], self.u_hi[player_position], regret_grid_size)
+        #print("Calculating regret...")
+        torch.cuda.empty_cache()
+        #TODO: return a torch (regret,valation_1, valuation_2,..)?
+        regret = metrics.ex_interim_regret(self.mechanism, bid_profile, player_position,
+                                               env.agents[player_position].valuations, regret_grid)
+        # Set back original batch size for all agents
+        for agent in env.agents:
+            agent.batch_size = original_batch_size
+            agent.draw_valuations_new_batch_(original_batch_size)
+
+        return regret
+
 
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
         start_time = timer()
