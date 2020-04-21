@@ -149,7 +149,6 @@ class Experiment(ABC):
         # i.e. erroneously assuming a known BNE exists when it doesn't.
         raise NotImplementedError("This Experiment has no implemented BNE!")
 
-
     # TODO: why?
     @staticmethod
     def get_risk_profile(risk) -> str:
@@ -254,14 +253,19 @@ class Experiment(ABC):
                 axs[plot_idx].set_ylabel(y_label)
                 if n_players < 10 and labels is not None:
                     axs[plot_idx].legend(loc='upper left')
-            if xlim is not None:
-                axs[plot_idx].set_xlim(xlim[0], xlim[1])
-            elif hasattr(self, 'plot_xmin'):
-                axs[plot_idx].set_xlim(self.plot_xmin, self.plot_xmax)
-            if ylim is not None:
-                axs[plot_idx].set_ylim(ylim[0], ylim[1])
-            elif hasattr(self, 'plot_xmin'):
-                axs[plot_idx].set_ylim(self.plot_ymin, self.plot_ymax)
+
+            lims = (xlim, ylim)
+            set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
+            str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
+            for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
+                if lim is not None:
+                    if isinstance(lim[0], list):
+                        set_lim(lim[plot_idx][0], lim[plot_idx][1])
+                    else:
+                        set_lim(lim[0], lim[1])
+                elif hasattr(self, str_lim[0]):
+                    set_lim(eval('self.' + str(str_lim[0])),
+                            eval('self.' + str(str_lim[1])))
 
             axs[plot_idx].locator_params(axis='x', nbins=5)
         title = plt.title if n_bundles == 1 else plt.suptitle
@@ -339,19 +343,19 @@ class Experiment(ABC):
             self.learning_config.pretrain_iters,
             epoch
         )
-    #TODO: This comes from single_item, but is VERY similar to MultiUnit. Only self.n_units dimension missing. Adapt!
+
     #TODO: plot_xmin and xmax makes not sense since this might be outside the value function
     def log_experiment(self, run_comment, max_epochs, run=""):
         self.max_epochs = max_epochs
+
         # setting up plotting
         self.plot_points = min(self.logging_config.plot_points, self.learning_config.batch_size)
 
         if self.logging_config.log_metrics['opt']:
-            # TODO: apdapt interval to be model specific! (e.g. for LLG)
             self.v_opt = torch.stack(
-                [torch.linspace(self.plot_xmin, self.plot_xmax, self.plot_points,
-                 device=self.gpu_config.device) for i in self.models],
-                dim=1)[:,:,None]
+                [b.draw_valuations_grid_(self.plot_points) for b in self.bidders[:len(self.models)]],
+                dim=1
+            )
             self.b_opt = torch.stack(
                 [self._optimal_bid(self.v_opt[:,i,:], player_position=self._model2bidder[i][0])
                  for i in range(len(self.models))],
@@ -442,7 +446,7 @@ class Experiment(ABC):
                     epoch, utilities[i]))
             if self.known_bne:
                 print(",\t vs BNE: {:.3f}, \tepsilon (abs/rel): ({:.5f}, {:.5f})".format(
-                utility_vs_bne, epsilon_absolute, epsilon_relative))
+                      utility_vs_bne, epsilon_absolute, epsilon_relative))
 
             labels = ['NPGA']
             fmts = ['bo']
@@ -452,15 +456,14 @@ class Experiment(ABC):
                 b = torch.cat([b[:self.plot_points,:,:], self.b_opt], dim=1)
                 labels.append('BNE')
                 fmts.append('b--')
-                
+
             self._plot(fig=self.fig, plot_data=(v, b), writer=self.writer, figure_name='bid_function',
-                       epoch=epoch, labels=labels, fmts=fmts)
+                       epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         elapsed = timer() - start_time
-        self.overhead = self.overhead + elapsed 
+        self.overhead = self.overhead + elapsed
         self.writer.add_scalar('debug/overhead_hours', self.overhead/3600, epoch)
 
-        
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
         start_time = timer()
 
