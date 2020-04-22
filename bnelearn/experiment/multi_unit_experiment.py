@@ -390,18 +390,20 @@ class MultiUnitExperiment(Experiment, ABC):
         self.bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
             agents=[
-                self._strat_to_bidder(bne_strategy, self.learning_config.batch_size, i)
+                self._strat_to_bidder(bne_strategy, self.logging_config.eval_batch_size, i)
                 for i, bne_strategy in enumerate(self.bne_strategies)
             ],
             n_players=self.n_players,
-            batch_size=self.learning_config.batch_size,
+            batch_size=self.logging_config.eval_batch_size,
             strategy_to_player_closure=self._strat_to_bidder
         )
+
+        self.bne_utilities = [self.bne_env.get_reward(agent, draw_valuations=True)
+                              for agent in self.bne_env.agents]
 
     def _get_logdir(self):
         name = ['MultiUnit', self.payment_rule, str(self.n_players) + 'players_' + str(self.n_units) + 'units']
         return os.path.join(*name)
-
 
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
                 xlim: list=None, ylim: list=None, labels: list=None,
@@ -413,116 +415,9 @@ class MultiUnitExperiment(Experiment, ABC):
 
         super()._plot_3d(plot_data, writer, epoch, figure_name)
 
-    def _training_loop(self, epoch):
-        start_time = time.time()
-
-        # calculate utility vs BNE
-        bne_utilities = list()
-        for agent in self.bne_env.agents:
-            u = self.bne_env.get_reward(agent, draw_valuations=True)
-            bne_utilities.append(u)
-
-        torch.cuda.empty_cache()
-        self.env.prepare_iteration()
-
-        # record utilities and do optimizer step
-        utilities = [learner.update_strategy_and_evaluate_utility()
-                     for learner in self.learners]
-
-        # log relative utility loss induced by not playing the BNE
-        against_bne_utilities = list()
-        for i, model in enumerate(self.models):
-            u = self.bne_env.get_strategy_reward(model, player_position=i, draw_valuations=True)
-            against_bne_utilities.append(u)
-
-        # calculate regret
-        grid = torch.linspace(
-            0, self.u_hi[0],
-            round((self.logging_config.regret_batch_size) ** (1 / self.n_units)),
-            device = self.gpu_config.device
-        )
-        bid_profile = torch.zeros(self.learning_config.batch_size, self.n_players, self.n_units,
-                                  device=self.gpu_config.device)
-        for pos, bid in self.env._generate_agent_actions():
-            bid_profile[:, pos, :] = bid
-        regret = [None] * len(self.models)
-        for i in range(len(self.models)):
-            regret[i] = metrics.ex_post_regret(
-                self.mechanism,
-                bid_profile.detach(),
-                self.bidders[i],
-                grid, half_precision=True,
-                player_position = i
-            ).mean()
-        # print('regret:', regret)
-
-        elapsed = time.time() - start_time
-
-        log_params = {
-            'elapsed': elapsed,
-            'bne_utilities': bne_utilities,
-            'utilities': utilities,
-            'against_bne_utilities': against_bne_utilities,
-            'regret': regret
-        }
-        self.log_training_iteration(log_params=log_params, epoch=epoch, bidders=self.bidders)
-
     @staticmethod
     def default_pretrain_transform(input_tensor):
         return torch.clone(input_tensor)
-
-    def log_training_iteration(self, epoch, bidders, log_params: dict):
-
-        # TODO Nils: upgrade to super().log_training_iteration
-        valuations = torch.stack([b.draw_valuations_() for b in bidders], dim=1)
-        bids = torch.stack([b.get_action() for b in bidders], dim=1)
-
-        if self.logging_config.log_metrics['opt']:
-            # TODO: only sym. case
-            plot_points = self.v_opt.shape[0]
-            valuations = torch.cat([valuations[:plot_points,:,:], self.v_opt[:,:1,:]], dim=1)
-            bids = torch.cat([bids[:plot_points,:,:], self.b_opt[:,:1,:]], dim=1)
-
-        # plotting
-        if epoch % self.logging_config.plot_frequency == 0:
-            labels = ['NPGA'] * len(bidders)
-            fmts = ['bo'] * len(bidders)
-            if self.logging_config.log_metrics['opt']:
-                labels.append('BNE')
-                fmts.append('.')
-            from bnelearn.experiment.multi_unit_experiment import SplitAwardExperiment
-            if isinstance(self, SplitAwardExperiment):
-                xlim = [
-                    [self.u_lo[0], self.u_hi[0]],
-                    [self.experiment_config.efficiency_parameter * self.u_lo[0],
-                     self.experiment_config.efficiency_parameter * self.u_hi[0]]
-                ]
-                ylim = [
-                    [0, 2 * self.u_hi[0]],
-                    [0, 2 * self.u_hi[0]]
-                ]
-            else:
-                xlim = ylim = None
-            self._plot(fig=self.fig, plot_data=(valuations, bids), writer=self.writer,
-                          xlim=xlim, ylim=ylim, figure_name='bid_function', epoch=epoch,
-                          labels=labels, fmts=fmts, plot_points=self.plot_points)
-
-        # TODO: dim_of_interest for multiple BNE
-        log_params['rmse'] = {
-            'BNE1': torch.tensor(
-                [metrics.norm_actions(bids[:,i,:], self._optimal_bid(valuations[:,i,:]))
-                 for i, model in enumerate(self.models)]
-            )
-        }
-
-        log_params['rel_utility_loss'] = [
-            1 - u / bne_u for u, bne_u
-            in zip(log_params['against_bne_utilities'], log_params['bne_utilities'])
-        ]
-        self._log_metrics(log_params, epoch=epoch)
-
-        print('epoch {}:\t{}s'.format(epoch, round(log_params['elapsed'], 2)))
-
 
 class SplitAwardExperiment(MultiUnitExperiment):
     """
@@ -545,8 +440,11 @@ class SplitAwardExperiment(MultiUnitExperiment):
             raise NotImplementedError('for the split-award auction only the ' + \
                 'first-price payment rule is supported')
 
-        self.plot_xmin = self.plot_ymin = 0
-        self.plot_xmax = self.plot_ymax = 2 * max(self.u_hi)
+        self.plot_xmin = [self.u_lo[0], self.u_hi[0]]
+        self.plot_xmax = [self.experiment_config.efficiency_parameter * self.u_lo[0],
+                          self.experiment_config.efficiency_parameter * self.u_hi[0]]
+        self.plot_ymin = [0, 2 * self.u_hi[0]]
+        self.plot_ymax = [0, 2 * self.u_hi[0]]
 
     def default_pretrain_transform(self, input_tensor):
         temp = input_tensor.clone().detach()

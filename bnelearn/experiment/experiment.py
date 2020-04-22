@@ -167,6 +167,7 @@ class Experiment(ABC):
 
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
+
         # save current params to calculate update norm
         prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
                        for model in self.models]
@@ -177,10 +178,11 @@ class Experiment(ABC):
             for learner in self.learners
         ])
 
-        # everything after this is logging --> measure overhead
-
+        #TODO: everything after this is logging --> measure overhead
         log_params = {'utilities': utilities, 'prev_params': prev_params}
         self.log_training_iteration(log_params=log_params, epoch=epoch)
+
+        print('epoch {}:\t{}s'.format(epoch, round(self.overhead, 2)))
 
     def run(self, epochs, n_runs: int = 1, run_comment: str=None, seeds: Iterable[int] = None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
@@ -275,14 +277,20 @@ class Experiment(ABC):
             set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
+                a, b = None, None
                 if lim is not None:
                     if isinstance(lim[0], list):
-                        set_lim(lim[plot_idx][0], lim[plot_idx][1])
+                        a, b = lim[plot_idx][0], lim[plot_idx][1]
                     else:
-                        set_lim(lim[0], lim[1])
+                        a, b = lim[0], lim[1]
                 elif hasattr(self, str_lim[0]):
-                    set_lim(eval('self.' + str(str_lim[0])),
-                            eval('self.' + str(str_lim[1])))
+                    if isinstance(eval('self.' + str(str_lim[0])), list):
+                        a = eval('self.' + str(str_lim[plot_idx]))[0]
+                        b = eval('self.' + str(str_lim[plot_idx]))[1]
+                    else:
+                        a, b = eval('self.' + str(str_lim[0])), eval('self.' + str(str_lim[1]))
+                if a is not None:
+                    set_lim(a, b)
 
             axs[plot_idx].locator_params(axis='x', nbins=5)
         title = plt.title if n_bundles == 1 else plt.suptitle
@@ -375,13 +383,18 @@ class Experiment(ABC):
 
         if self.logging_config.log_metrics['opt']:
             self.v_opt = torch.stack(
-                [b.draw_valuations_grid_(self.plot_points) for b in self.bidders[:len(self.models)]],
+                [b.draw_valuations_grid_(self.plot_points)
+                 for b in [self.bne_env.agents[i[0]] for i in self._model2bidder]],
                 dim=1
             )
             self.b_opt = torch.stack(
-                [self._optimal_bid(self.v_opt[:,i,:], player_position=self._model2bidder[i][0])
-                 for i in range(len(self.models))],
-                dim=1)
+                [self._optimal_bid(self.v_opt[:,m,:], player_position=b[0])
+                 for m, b in enumerate(self._model2bidder)],
+                dim=1
+            )
+            if self.v_opt.shape[0] != self.plot_points:
+                print('´plot_points´ changed due to ´draw_valuations_grid_´')
+                self.plot_points = self.v_opt.shape[0]
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
@@ -440,38 +453,41 @@ class Experiment(ABC):
             log_params['regret_ex_ante'], log_params['regret_ex_interim'] = \
                 self._log_metric_regret(create_plot_output, epoch)
 
+        # plotting
         if epoch % self.logging_config.plot_frequency == 0:
-            bidders = [self._strat_to_bidder(model, self.learning_config.batch_size, self._model2bidder[i][0])
-                       for i, model in enumerate(self.models)]
-            v = torch.stack([bidder.valuations for bidder in bidders], dim=1) # shape: n_batch, n_players, n_bundles
-            b = torch.stack([bidder.get_action() for bidder in bidders], dim=1)
-            print("epoch {}: \tcurrent utilities: ".format(epoch) + str(log_params['utilities'].tolist()))
+            print("\tcurrent utilities: " + str(log_params['utilities'].tolist()))
+
+            unique_bidders = [self.env.agents[i[0]] for i in self._model2bidder]
+            v = torch.stack(
+                [b.valuations[:self.plot_points,...]
+                 for b in unique_bidders],
+                dim=1
+            )
+            b = torch.stack([b.get_action()[:self.plot_points,...]
+                             for b in unique_bidders], dim=1)
+
+            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
+            fmts = ['bo'] * len(self.models)
             if self.logging_config.log_metrics['opt']:
-                print(",\t vs BNE: {}, \tepsilon (abs/rel): ({}, {})".format(
-                      log_params['utility_vs_bne'], log_params['epsilon_relative'],
-                      log_params['epsilon_absolute']))
-            labels = ['NPGA']
-            fmts = ['bo']
-            if self.logging_config.log_metrics['opt']:
-                # sequentially adding opt
-                batch_size, n_models, n_items = self.v_opt.shape
-                v_ = torch.cat([v[:self.plot_points,0:1,:], self.v_opt[:self.plot_points,0:1,:]], dim=1)
-                b_ = torch.cat([b[:self.plot_points,0:1,:], self.b_opt[:self.plot_points,0:1,:]], dim=1)
-                for model in range(n_models-1):
-                    v_ = torch.cat([v_, v[:self.plot_points,model+1:model+2,:], \
-                                    self.v_opt[:,model+1:model+2,:]], dim=1)
-                    b_ = torch.cat([b_, b[:self.plot_points,model+1:model+2,:], \
-                                    self.b_opt[:,model+1:model+2,:]], dim=1)
-                labels.append('BNE')
-                fmts.append('b--')
-                v, b = v_, b_
+                print("\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})" \
+                    .format(
+                        log_params['utility_vs_bne'].tolist(),
+                        log_params['epsilon_relative'].tolist(),
+                        log_params['epsilon_absolute'].tolist()
+                    )
+                )
+                # TODO: handle case of no opt strategy
+                v = torch.cat([v, self.v_opt], dim=1)
+                b = torch.cat([b, self.b_opt], dim=1)
+                labels += ['BNE_{}'.format(i) for i in range(len(self.models))]
+                fmts += ['b--'] * len(self.models)
+
             #TODO, P: What is plotted here? opt or normal?
             # Nils: both in one. If there is a BNE, it's cat to v, b resp.
             self._plot(fig=self.fig, plot_data=(v, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
-        elapsed = timer() - start_time
-        self.overhead = self.overhead + elapsed
+        self.overhead = self.overhead + timer() - start_time
         log_params['overhead_hours'] = self.overhead / 3600
 
         self._log_metrics(log_params, epoch=epoch)
@@ -513,13 +529,19 @@ class Experiment(ABC):
         epsilon_absolute
         """
 
-        utility_vs_bne = [self.bne_env.get_reward(
-            self._strat_to_bidder(model, batch_size=self.logging_config.eval_batch_size),
-            draw_valuations=False
-        ) for model in self.models] # False because expensive for normal priors
-        epsilon_relative = [1 - utility_vs_bne[i] / self.bne_utilities[i]
-                            for i, model in enumerate(self.models)]
-        epsilon_absolute = [self.bne_utilities[i] - utility_vs_bne[i] for i, model in enumerate(self.models)]
+        utility_vs_bne = torch.tensor([
+            self.bne_env.get_reward(
+                self._strat_to_bidder(
+                    model, player_position=i,
+                    batch_size=self.logging_config.eval_batch_size
+                ),
+                draw_valuations=False
+            ) for i, model in enumerate(self.models)
+        ]) #TODO: False because expensive for normal priors
+        epsilon_relative = torch.tensor([1 - utility_vs_bne[i] / self.bne_utilities[i]
+                                         for i, model in enumerate(self.models)])
+        epsilon_absolute = torch.tensor([self.bne_utilities[i] - utility_vs_bne[i]
+                                         for i, model in enumerate(self.models)])
 
         return utility_vs_bne, epsilon_relative, epsilon_absolute
 

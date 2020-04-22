@@ -56,7 +56,7 @@ def run_single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
 def run_llg(n_runs: int, n_epochs: int, 
             payment_rule: str, model_sharing=True, u_lo=[0,0,0], u_hi=[1,1,2], 
             risk=1.0, 
-            log_metrics = ['regret'], regret_batch_size=2**8, regret_grid_size=2**8,
+            log_metrics = ['opt', 'regret'], regret_batch_size=2**8, regret_grid_size=2**8,
             specific_gpu=1):
 
     n_players = [3]
@@ -73,7 +73,7 @@ def run_llg(n_runs: int, n_epochs: int,
 def run_llllgg(n_runs: int, n_epochs: int, 
             payment_rule: str, model_sharing=True, u_lo=[0,0,0,0,0,0], u_hi=[1,1,1,1,2,2], 
             risk=1.0, 
-            log_metrics = ['regret'], regret_batch_size=2**8, regret_grid_size=2**8,
+            log_metrics = ['opt', 'regret'], regret_batch_size=2**8, regret_grid_size=2**8,
             specific_gpu=1):
     
     n_players = [6]
@@ -107,7 +107,7 @@ def run_multiunit(
         specific_gpu=specific_gpu, n_players=[2]
     )
     logging_configuration = LoggingConfiguration(
-        log_metrics=['opt', 'rmse'],
+        log_metrics=['opt', 'l2'],
         regret_batch_size=regret_batch_size,
         regret_grid_size=regret_grid_size,
         plot_points=1000,
@@ -144,7 +144,7 @@ def run_splitaward(
         specific_gpu=specific_gpu, n_players=[2]
     )
     logging_configuration = LoggingConfiguration(
-        log_metrics=['opt', 'rmse'],
+        log_metrics=['opt', 'l2'],
         regret_batch_size=regret_batch_size,
         regret_grid_size=regret_grid_size,
         max_epochs=n_epochs
