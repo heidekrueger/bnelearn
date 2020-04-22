@@ -69,7 +69,6 @@ class LoggingConfiguration:
     def __post_init__(self):
         metrics = self.log_metrics
         self.log_metrics = {'opt': False,
-                            'rmse': False,
                             'l2': False,
                             'regret': False}
         if metrics is not None:

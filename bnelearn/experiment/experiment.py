@@ -72,7 +72,7 @@ class Experiment(ABC):
         self.known_bne = known_bne
 
         # Cannot lot 'opt' without known bne
-        if logging_config.log_metrics['opt'] or logging_config.log_metrics['l2'] or logging_config.log_metrics['rmse']:
+        if logging_config.log_metrics['opt'] or logging_config.log_metrics['l2']:
             assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
 
         ### Save locally - can haves
@@ -164,8 +164,6 @@ class Experiment(ABC):
 
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
-        #TODO: Doesn't make sense to track for bidders instead of models but for consistency in
-        #      logging for now. Change later
         # save current params to calculate update norm
         prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
                        for model in self.models]
@@ -377,14 +375,9 @@ class Experiment(ABC):
     #TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
     #TODO: Create one method per metric and check which ones to compute
     def log_training_iteration(self, log_params: dict, epoch: int):
-        # TODO, Paul: Does it make sense to handover log_params instead of initializing that here?
         start_time = timer()
 
-
-        #TODO, P: This plot_data might make sense for the regret plotting
-        # plot_data = []
-
-        model_is_global = len(self.models) == 1
+        #TODO, Paul: Can delete?: model_is_global = len(self.models) == 1
 
         # calculate infinity-norm of update step
         new_params = [torch.nn.utils.parameters_to_vector(model.parameters())
@@ -401,13 +394,9 @@ class Experiment(ABC):
         if self.logging_config.log_metrics['l2']:
             log_params['L_2'], log_params['L_inf'] = self._log_metric_l()
 
-        if self.logging_config.log_metrics['rmse']:
-            #TODO: implement
-            self._log_metric_rmse()
-
-        if True:#self.logging_config.log_metrics['regret'] and (epoch % self.logging_config.regret_frequency) == 0:
+        if self.logging_config.log_metrics['regret'] and (epoch % self.logging_config.regret_frequency) == 0:
             create_plot_output = False
-            if True:#epoch % self.logging_config.plot_frequency == 0:
+            if epoch % self.logging_config.plot_frequency == 0:
                 create_plot_output = True
             log_params['regret_ex_ante'], log_params['regret_ex_interim'] = \
                 self._log_metric_regret(create_plot_output, epoch)
@@ -422,7 +411,6 @@ class Experiment(ABC):
                 print(",\t vs BNE: {}, \tepsilon (abs/rel): ({}, {})".format(
                       log_params['utility_vs_bne'], log_params['epsilon_relative'],
                       log_params['epsilon_absolute']))
-
             labels = ['NPGA']
             fmts = ['bo']
             if self.logging_config.log_metrics['opt']:
@@ -502,15 +490,6 @@ class Experiment(ABC):
                                                    self.bne_env.agents[i].valuations, float('inf'))
                  for i, model in enumerate(self.models)]
         return L_2, L_inf
-
-    def _log_metric_rmse(self):
-        """
-        TODO: Difference to l2?
-        Compare action to BNE and log:
-        rmse (TODO: add formular)
-        """
-        #TODO: Fill
-        pass
 
     def _log_metric_regret(self, create_plot_output: bool, epoch: int = None):
         """

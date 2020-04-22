@@ -120,28 +120,6 @@ class CombinatorialExperiment(Experiment, ABC):
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
 
-    # def _training_loop(self, epoch):
-    #     # do in every iteration
-    #     # save current params to calculate update norm
-    #     prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
-    #                    for model in self.models]
-    #     # update models
-    #     utilities = torch.tensor([
-    #         learner.update_strategy_and_evaluate_utility()
-    #         for learner in self.learners
-    #     ])
-    #     log_params = {}
-    #     self.log_training_iteration(prev_params=prev_params, epoch=epoch,
-    #                                        strat_to_bidder=self._strat_to_bidder,                                           
-    #                                        utilities=utilities, 
-    #                                        log_params=log_params)
-    #     if epoch % 10 == 0:
-    #         print("epoch {}, utilities: ".format(epoch))
-    #         for i in range(len(utilities)):
-    #             print("{}: {:.5f}".format(i, utilities[i]))
-    #         self.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners, 
-    #                                       u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
-
 class LLGExperiment(CombinatorialExperiment):
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
@@ -156,7 +134,6 @@ class LLGExperiment(CombinatorialExperiment):
 
     def _setup_mechanism(self):
         self.mechanism = LLGAuction(rule = self.payment_rule)
-
 
     def _optimal_bid(self, valuation, player_position):
         if not isinstance(valuation, torch.Tensor):
