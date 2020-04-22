@@ -528,10 +528,11 @@ class Experiment(ABC):
                                               device=env.mechanism.device)
 
         torch.cuda.empty_cache()
-        regret = [metrics.ex_interim_regret(env.mechanism, bid_profile, agent.player_position,
-                                            agent.valuations[:regret_batch_size,...],
-                                            regret_grid[:,agent.player_position])
-                  for agent in env.agents[:self.n_models]]
+        regret = [metrics.ex_interim_regret(env.mechanism, bid_profile, 
+                                            learner.strat_to_player_kwargs['player_position'],
+                                            env.agents[learner.strat_to_player_kwargs['player_position']].valuations[:regret_batch_size,...],
+                                            regret_grid[:,learner.strat_to_player_kwargs['player_position']])
+                  for learner in self.learners]
         ex_ante_regret = [model_tuple[0].mean() for model_tuple in regret]
         ex_interim_max_regret = [model_tuple[0].max() for model_tuple in regret]
         if create_plot_output:
