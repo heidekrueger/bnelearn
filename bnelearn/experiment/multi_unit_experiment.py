@@ -37,6 +37,11 @@ from timeit import default_timer as timer
 
 from torch.utils.tensorboard import SummaryWriter
 
+import matplotlib.pyplot as plt
+from torch.utils.tensorboard import SummaryWriter
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.ticker import LinearLocator, FormatStrFormatter
+
 
 ########################################################################################################################
 ###                                                 BNE STRATEGIES                                                   ###
@@ -397,6 +402,17 @@ class MultiUnitExperiment(Experiment, ABC):
         name = ['MultiUnit', self.payment_rule, str(self.n_players) + 'players_' + str(self.n_units) + 'units']
         return os.path.join(*name)
 
+
+    def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
+                xlim: list=None, ylim: list=None, labels: list=None,
+                x_label="valuation", y_label="bid", fmts=['o'],
+                figure_name: str='bid_function', plot_points=100):
+
+        super()._plot(fig, plot_data, writer, epoch, xlim, ylim, labels,
+                    x_label, y_label, fmts, figure_name, plot_points)
+
+        super()._plot_3d(plot_data, writer, epoch, figure_name)
+
     def _training_loop(self, epoch):
         start_time = time.time()
 
@@ -487,7 +503,7 @@ class MultiUnitExperiment(Experiment, ABC):
                 ]
             else:
                 xlim = ylim = None
-            super()._plot(fig=self.fig, plot_data=(valuations, bids), writer=self.writer,
+            self._plot(fig=self.fig, plot_data=(valuations, bids), writer=self.writer,
                           xlim=xlim, ylim=ylim, figure_name='bid_function', epoch=epoch,
                           labels=labels, fmts=fmts, plot_points=self.plot_points)
 
@@ -562,3 +578,11 @@ class SplitAwardExperiment(MultiUnitExperiment):
         name = ['SplitAward', self.payment_rule, str(self.n_players) + 'players_' +
                 str(self.n_units) + 'units']
         return os.path.join(*name)
+
+    def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
+                xlim: list=None, ylim: list=None, labels: list=None,
+                x_label="valuation", y_label="bid", fmts=['o'],
+                figure_name: str='bid_function', plot_points=100):
+
+        super()._plot(fig, plot_data, writer, epoch, xlim, ylim, labels,
+                    x_label, y_label, fmts, figure_name, plot_points)

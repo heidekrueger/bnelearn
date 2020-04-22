@@ -186,7 +186,6 @@ class LLGExperiment(CombinatorialExperiment):
         name = ['LLG', self.payment_rule]
         return os.path.join(*name)
 
-
 class LLLLGGExperiment(CombinatorialExperiment):
     def __init__(self, experiment_config, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
@@ -205,10 +204,16 @@ class LLLLGGExperiment(CombinatorialExperiment):
         self.base_dir = os.path.join(*name)  # ToDo Redundant?
         return os.path.join(*name)
 
-    # def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
-    #             xlim: list=None, ylim: list=None, labels: list=None,
-    #             x_label="valuation", y_label="bid", fmts=['o'],
-    #             figure_name: str='bid_function', plot_points=100):
+    def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
+                xlim: list=None, ylim: list=None, labels: list=None,
+                x_label="valuation", y_label="bid", fmts=['o'],
+                figure_name: str='bid_function', plot_points=100):
+
+        super()._plot(fig, plot_data, writer, epoch, xlim, ylim, labels,
+                    x_label, y_label, fmts, figure_name, plot_points)
+        super()._plot_3d(plot_data, writer, epoch, figure_name)
+
+    
 
     #     input_length = 2
     #     plot_points = self.plot_points

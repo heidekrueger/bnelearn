@@ -28,7 +28,10 @@ from matplotlib import colors as mcolors
 from mpl_toolkits.mplot3d import Axes3D
 import bnelearn.util.metrics as metrics
 
-
+import matplotlib.pyplot as plt
+from torch.utils.tensorboard import SummaryWriter
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.ticker import LinearLocator, FormatStrFormatter
 
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
@@ -287,6 +290,42 @@ class Experiment(ABC):
 
         self._process_figure(fig, writer=writer, epoch=epoch, figure_name=figure_name)
 
+        return fig
+
+    def _plot_3d(self, plot_data, writer, epoch, figure_name):
+        """
+        Creating 3d plots. Provide grid if no plot_data is provided
+        Args
+            plot_data: tuple of two pytorch tensors first beeing the independent, the second the dependent
+                Dimensions of first (batch_size, n_models, n_bundles)
+                Dimensions of second (batch_size, n_models, 1 or n_bundles), 1 if regret
+        """
+        independent_var = plot_data[0]
+        dependent_var = plot_data[1]
+        batch_size, n_models, n_bundles = independent_var.shape
+        assert n_bundles==2, "cannot plot != 2 bundles"
+        n_plots = dependent_var.shape[2]
+        # create the plot
+        fig = plt.figure()
+        for model in range(n_models):
+            for plot in range(n_plots):
+                ax = fig.add_subplot(n_models, n_plots, model*n_plots+plot+1, projection='3d')
+                ax.plot_trisurf(
+                    independent_var[:,model,0].detach().cpu().numpy(),
+                    independent_var[:,model,1].detach().cpu().numpy(),
+                    dependent_var[:,model,plot].reshape(batch_size).detach().cpu().numpy(),
+                    color = 'yellow',
+                    linewidth = 0.2,
+                    antialiased = True
+                )
+                ax.zaxis.set_major_locator(LinearLocator(10))
+                ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
+                ax.set_title('model {}, bundle {}'.format(model, plot))
+                ax.view_init(20, -135)
+        fig.suptitle('iteration {}'.format(epoch), size=16)
+        fig.tight_layout()
+
+        self._process_figure(fig, writer=writer, epoch=epoch, figure_name=figure_name+"_3d")
         return fig
 
     #TODO: when adding log_dir and logging_config as arguments this could be static as well
