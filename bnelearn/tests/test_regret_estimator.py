@@ -147,7 +147,7 @@ def test_ex_interim_regret_estimator_truthful(rule, mechanism, bid_profile, bids
         agents[i].valuations = bid_profile[:,i,:].to(device)
 
     for i in range(n_bidders):
-        regret = metrics.ex_interim_regret(mechanism, bid_profile.to(device), 
+        regret,_ = metrics.ex_interim_regret(mechanism, bid_profile.to(device), 
                                            i, agents[i].valuations,
                                            bids_i.squeeze().to(device))
         assert torch.allclose(regret.mean(), expected_regret[i,0], atol = 0.001), "Unexpected avg regret"
@@ -185,7 +185,7 @@ def test_ex_interim_regret_estimator_fpsb_bne():
     for i,a in enumerate(agents):
         bid_profile[:,i,:] = a.get_action()
     # assert first player has (near) zero regret
-    regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position = 0,
+    regret,_ = metrics.ex_interim_regret(mechanism, bid_profile, player_position = 0,
                                        agent_valuation = agents[0].valuations,
                                        grid = grid
                                        )
