@@ -527,8 +527,8 @@ class Experiment(ABC):
                   for agent in env.agents[:self.n_models]]
         if create_plot_output:
             #TODO, Paul: Transform to output with dim(batch_size, n_models, n_bundle)
-            regrets = torch.stack([regret[r][0] for r in [0,1]], dim=1)[:,:,None]
-            valuations = torch.stack([regret[r][1] for r in [0,1]], dim=1)
+            regrets = torch.stack([regret[r][0] for r in range(len(regret))], dim=1)[:,:,None]
+            valuations = torch.stack([regret[r][1] for r in range(len(regret))], dim=1)
             plot_output = (valuations,regrets)
             self._plot(fig=self.fig, plot_data=plot_output, writer=self.writer, 
                        figure_name='regret_function', epoch=epoch, plot_points=self.plot_points)

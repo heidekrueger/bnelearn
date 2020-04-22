@@ -23,7 +23,7 @@ from dataclasses import dataclass, field, asdict
 def run_single_item_uniform_symmetric(n_runs: int, n_epochs: int, 
                                       n_players: [int], payment_rule: str, model_sharing=True, u_lo=0, u_hi=1, 
                                       risk=1.0, 
-                                      log_metrics = ['opt','l2','rmse','regret'], regret_batch_size=2**8, regret_grid_size=2**8,
+                                      log_metrics = ['opt','l2','regret'], regret_batch_size=2**8, regret_grid_size=2**8,
                                       specific_gpu=1):
 
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
@@ -39,7 +39,7 @@ def run_single_item_uniform_symmetric(n_runs: int, n_epochs: int,
 def run_single_item_gaussian_symmetric(n_runs: int, n_epochs: int, 
                                       n_players: [int], payment_rule: str, model_sharing=True, valuation_mean=15, valuation_std=10, 
                                       risk=1.0, eval_batch_size = 2**16,
-                                      log_metrics = ['opt','l2','rmse','regret'], regret_batch_size=2**8, regret_grid_size=2**8,
+                                      log_metrics = ['opt','l2','regret'], regret_batch_size=2**8, regret_grid_size=2**8,
                                       specific_gpu=1):
 
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
@@ -90,7 +90,7 @@ def run_llllgg(n_runs: int, n_epochs: int,
 def run_multiunit(
         n_runs: int, n_epochs: int,
         n_players: list=[2],
-        payment_rule: str='vickrey',
+        payment_rule: str='vcg',
         n_units=2,
         model_sharing=True,
         u_lo=[0,0], u_hi=[1,1],
@@ -176,12 +176,18 @@ if __name__ == '__main__':
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_llg(1,20,'vcg')
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_single_item_uniform_symmetric(1,20, 2, 'first_price')
     
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = run_single_item_uniform_symmetric(2,110, [2,3], 'first_price')
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = run_single_item_gaussian_symmetric(1,20, [2], 'second_price')
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = run_llg(1,20,'vcg')
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = run_llllgg(1,20,'firstprice')
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = run_multiunit(1, 500, [2], 'vickrey')
-    running_configuration, logging_configuration, experiment_configuration, experiment_class = run_splitaward(1, 500, [2])
+    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+         run_single_item_uniform_symmetric(2,110, [2], 'first_price')
+    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+    #     run_single_item_gaussian_symmetric(1,20, [2], 'second_price')
+    #running_configuration, logging_configuration, experiment_configuration, experiment_class =\
+    #    run_llg(1,20,'vcg')
+    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+    #     run_llllgg(1,110,'first_price')
+    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+    #   run_multiunit(1, 500, [2], 'vcg')
+    #running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+    #   run_splitaward(1, 500, [2])
 
     gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
     learning_configuration = LearningConfiguration(input_length=1)

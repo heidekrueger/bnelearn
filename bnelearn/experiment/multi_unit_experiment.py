@@ -271,7 +271,7 @@ class MultiUnitExperiment(Experiment, ABC):
 
         if self.payment_rule in ('discriminatory', 'first_price'):
             self.mechanism_type = MultiUnitDiscriminatoryAuction
-        elif self.payment_rule in ('vcg', 'vickrey', 'second_price'):
+        elif self.payment_rule in ('vcg', 'second_price'):
             self.mechanism_type = MultiUnitVickreyAuction
         elif self.payment_rule == 'uniform':
             self.mechanism_type = MultiUnitUniformPriceAuction
