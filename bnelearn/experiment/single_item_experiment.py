@@ -229,29 +229,6 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
                 'symmetric', self.risk_profile, str(self.n_players) + 'p']
         return os.path.join(*name)
 
-    def _training_loop(self, epoch):
-        # do in every iteration
-        # save current params to calculate update norm
-        #TODO: Doesn't make sense to track for bidders instead of models but for consistency in logging for now. Change later
-        prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
-                       for model in self.models]
-        # update model
-        utilities = torch.tensor([
-            learner.update_strategy_and_evaluate_utility()
-            for learner in self.learners
-        ])
-
-        # everything after this is logging --> measure overhead
-        log_params = {} # TODO Stefan: what does this do?
-        self.log_training_iteration(prev_params=prev_params, epoch=epoch,
-                                      strat_to_bidder=self._strat_to_bidder,
-                                      utilities=utilities, log_params=log_params)
-        # TODO Stefan: this should be part of logger, not be called here explicitly!
-        # TODO: add regret back later, disable for now
-        #if epoch%10 == 0:
-        #    self.logger.log_ex_interim_regret(epoch=epoch, mechanism=self.mechanism, env=self.env, learners=self.learners,
-        #                                  u_lo=self.u_lo, u_hi=self.u_hi, regret_batch_size=self.regret_batch_size, regret_grid_size=self.regret_grid_size)
-
 class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
 
     def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,

@@ -28,7 +28,10 @@ from matplotlib import colors as mcolors
 from mpl_toolkits.mplot3d import Axes3D
 import bnelearn.util.metrics as metrics
 
-
+import matplotlib.pyplot as plt
+from torch.utils.tensorboard import SummaryWriter
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.ticker import LinearLocator, FormatStrFormatter
 
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
@@ -55,7 +58,7 @@ class Experiment(ABC):
         self.bidders: Iterable[Bidder] = None
         self.env: Environment = None
         self.learners: Iterable[Learner] = None
-        
+
         self.plot_frequency = LoggingConfiguration.plot_frequency
         self.max_epochs = LoggingConfiguration.max_epochs
         self.plot_points = LoggingConfiguration.plot_points
@@ -70,6 +73,10 @@ class Experiment(ABC):
         self.writer = None
         self.overhead = 0.0
         self.known_bne = known_bne
+
+        # Cannot lot 'opt' without known bne
+        if logging_config.log_metrics['opt'] or logging_config.log_metrics['l2']:
+            assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
 
         ### Save locally - can haves
         # Logging
@@ -101,7 +108,6 @@ class Experiment(ABC):
 
         if self.known_bne:
             self._setup_eval_environment()
-
 
     # TODO: rename this
     def _setup_run(self):
@@ -159,10 +165,24 @@ class Experiment(ABC):
         else:
             return 'other'
 
-    @abstractmethod
     def _training_loop(self, epoch):
-        """Main training loop to be executed in each iteration."""
-        pass
+        """Actual training in each iteration."""
+
+        # save current params to calculate update norm
+        prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
+                       for model in self.models]
+
+        # update model
+        utilities = torch.tensor([
+            learner.update_strategy_and_evaluate_utility()
+            for learner in self.learners
+        ])
+
+        #TODO: everything after this is logging --> measure overhead
+        log_params = {'utilities': utilities, 'prev_params': prev_params}
+        self.log_training_iteration(log_params=log_params, epoch=epoch)
+
+        print('epoch {}:\t{}s'.format(epoch, round(self.overhead, 2)))
 
     def run(self, epochs, n_runs: int = 1, run_comment: str=None, seeds: Iterable[int] = None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
@@ -198,8 +218,7 @@ class Experiment(ABC):
 ########################################################################################################
 ####################################### Moved logging to here ##########################################
 ########################################################################################################
-
-    # TODO: Could be moved outside as a static method -- Not if we overwrite it in LLLLGG
+# Generalize as much as possible to avoid code overload and too much individualism
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list=None, ylim: list=None, labels: list=None,
               x_label="valuation", y_label="bid", fmts=['o'],
@@ -210,7 +229,7 @@ class Experiment(ABC):
         Args
             fig: matplotlib.figure, TODO might not be needed
             plot_data: tuple of two pytorch tensors first beeing for x axis, second for y.
-                Both of dimensions (batch_size, n_strategies, n_bundles)
+                Both of dimensions (batch_size, n_models, n_bundles)
             writer: could be replaced by self.writer
             epoch: int, epoch or iteration number
             xlim: list of floats, x axis limits for all n_bundles dimensions
@@ -258,14 +277,20 @@ class Experiment(ABC):
             set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
+                a, b = None, None
                 if lim is not None:
                     if isinstance(lim[0], list):
-                        set_lim(lim[plot_idx][0], lim[plot_idx][1])
+                        a, b = lim[plot_idx][0], lim[plot_idx][1]
                     else:
-                        set_lim(lim[0], lim[1])
+                        a, b = lim[0], lim[1]
                 elif hasattr(self, str_lim[0]):
-                    set_lim(eval('self.' + str(str_lim[0])),
-                            eval('self.' + str(str_lim[1])))
+                    if isinstance(eval('self.' + str(str_lim[0])), list):
+                        a = eval('self.' + str(str_lim[plot_idx]))[0]
+                        b = eval('self.' + str(str_lim[plot_idx]))[1]
+                    else:
+                        a, b = eval('self.' + str(str_lim[0])), eval('self.' + str(str_lim[1]))
+                if a is not None:
+                    set_lim(a, b)
 
             axs[plot_idx].locator_params(axis='x', nbins=5)
         title = plt.title if n_bundles == 1 else plt.suptitle
@@ -273,6 +298,42 @@ class Experiment(ABC):
 
         self._process_figure(fig, writer=writer, epoch=epoch, figure_name=figure_name)
 
+        return fig
+
+    def _plot_3d(self, plot_data, writer, epoch, figure_name):
+        """
+        Creating 3d plots. Provide grid if no plot_data is provided
+        Args
+            plot_data: tuple of two pytorch tensors first beeing the independent, the second the dependent
+                Dimensions of first (batch_size, n_models, n_bundles)
+                Dimensions of second (batch_size, n_models, 1 or n_bundles), 1 if regret
+        """
+        independent_var = plot_data[0]
+        dependent_var = plot_data[1]
+        batch_size, n_models, n_bundles = independent_var.shape
+        assert n_bundles==2, "cannot plot != 2 bundles"
+        n_plots = dependent_var.shape[2]
+        # create the plot
+        fig = plt.figure()
+        for model in range(n_models):
+            for plot in range(n_plots):
+                ax = fig.add_subplot(n_models, n_plots, model*n_plots+plot+1, projection='3d')
+                ax.plot_trisurf(
+                    independent_var[:,model,0].detach().cpu().numpy(),
+                    independent_var[:,model,1].detach().cpu().numpy(),
+                    dependent_var[:,model,plot].reshape(batch_size).detach().cpu().numpy(),
+                    color = 'yellow',
+                    linewidth = 0.2,
+                    antialiased = True
+                )
+                ax.zaxis.set_major_locator(LinearLocator(10))
+                ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
+                ax.set_title('model {}, bundle {}'.format(model, plot))
+                ax.view_init(20, -135)
+        fig.suptitle('iteration {}'.format(epoch), size=16)
+        fig.tight_layout()
+
+        self._process_figure(fig, writer=writer, epoch=epoch, figure_name=figure_name+"_3d")
         return fig
 
     #TODO: when adding log_dir and logging_config as arguments this could be static as well
@@ -298,39 +359,8 @@ class Experiment(ABC):
     def _log_experimentparams(self):
         pass
 
-    #TODO: Delete after individual metric logging
-    def _log_metrics(self, writer, epoch, utility, update_norm, utility_vs_bne, epsilon_relative, epsilon_absolute,
-                     L_2, L_inf, param_group_postfix = '', metric_prefix = ''):
-
-        def log_metric(group, name, value):
-            writer.add_scalar(
-                f'{group}{param_group_postfix}/{metric_prefix}{name}',
-                value, epoch
-                )
-        if update_norm is not None:
-            log_metric('debug', 'update_norm', update_norm)
-        if utility is not None:
-            log_metric('eval', 'utility', utility)
-        if utility_vs_bne is not None:
-            log_metric('eval', 'utility_vs_bne', utility_vs_bne)
-        if epsilon_relative is not None:
-            log_metric('eval', 'epsilon_relative', epsilon_relative)
-        if epsilon_absolute is not None:
-            log_metric('eval', 'epsilon_absolute', epsilon_absolute)
-        if L_2 is not None:
-            log_metric('eval', 'L_2', L_2)
-        if L_inf is not None:
-            log_metric('eval', 'L_inf', L_inf)
-
-    def _log_hyperparams(self):
-        """Everything that should be logged on every learning_rate updates"""
-        epoch = 0
-        #TODO: what is n_parameters?
-        #n_parameters = self.experiment_config['n_parameters']
-        #for agent in range(len(self.exp.models)):
-        #    self.writer.add_scalar('hyperparameters/p{}_model_parameters'.format(agent),
-        #                           n_parameters[agent], epoch)
-        #self.writer.add_scalar('hyperparameters/model_parameters', sum(n_parameters), epoch)
+    def _log_hyperparams(self, epoch=0):
+        """Everything that should be logged on every learning_rate update"""
 
         for i, model in enumerate(self.models):
             self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)
@@ -353,13 +383,18 @@ class Experiment(ABC):
 
         if self.logging_config.log_metrics['opt']:
             self.v_opt = torch.stack(
-                [b.draw_valuations_grid_(self.plot_points) for b in self.bidders[:len(self.models)]],
+                [b.draw_valuations_grid_(self.plot_points)
+                 for b in [self.bne_env.agents[i[0]] for i in self._model2bidder]],
                 dim=1
             )
             self.b_opt = torch.stack(
-                [self._optimal_bid(self.v_opt[:,i,:], player_position=self._model2bidder[i][0])
-                 for i in range(len(self.models))],
-                dim=1)
+                [self._optimal_bid(self.v_opt[:,m,:], player_position=b[0])
+                 for m, b in enumerate(self._model2bidder)],
+                dim=1
+            )
+            if self.v_opt.shape[0] != self.plot_points:
+                print('´plot_points´ changed due to ´draw_valuations_grid_´')
+                self.plot_points = self.v_opt.shape[0]
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
@@ -391,78 +426,185 @@ class Experiment(ABC):
 
     #TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
     #TODO: Create one method per metric and check which ones to compute
-    def log_training_iteration(self, prev_params, epoch, strat_to_bidder,
-                               utilities, log_params: dict):
-        # TODO It is by no means nice that there is so much specific logic in here
+    def log_training_iteration(self, log_params: dict, epoch: int):
         start_time = timer()
-        plot_data = []
 
+        #TODO, Paul: Can delete?: model_is_global = len(self.models) == 1
 
-        model_is_global = len(self.models) == 1
+        # calculate infinity-norm of update step
+        new_params = [torch.nn.utils.parameters_to_vector(model.parameters())
+                      for model in self.models]
+        log_params['update_norm'] = [(new_params[i] - log_params['prev_params'][i]).norm(float('inf'))
+                                     for i in range(self.n_models)]
+        del log_params['prev_params']
 
-        # TODO: a lot of overhead is currently not counted correctly!
-        # TODO: update logging to follow following strategy:
-        #       1. calculate ALL updates (if we have multiple models)
-        #       2. caclulate ALL metrics as lists
-        #       3. log everything (using a single function call)
+        # logging metrics
+        if self.logging_config.log_metrics['opt']:
+            log_params['utility_vs_bne'], log_params['epsilon_relative'], log_params['epsilon_absolute'] = \
+                self._log_metric_opt()
 
-        # TODO: this logic does not work for LLG model
-        for i, model in enumerate(self.models):
-            group_postfix = '' if model_is_global else f'_p{i}'
-            metric_prefix = ''
+        if self.logging_config.log_metrics['l2']:
+            log_params['L_2'], log_params['L_inf'] = self._log_metric_l()
 
-            ## TODO: no knowledge of bneenve should be assumed here! Might have settings without bne
+        if self.logging_config.log_metrics['regret'] and (epoch % self.logging_config.regret_frequency) == 0:
+            create_plot_output = False
+            if epoch % self.logging_config.plot_frequency == 0:
+                create_plot_output = True
+            log_params['regret_ex_ante'], log_params['regret_ex_interim'] = \
+                self._log_metric_regret(create_plot_output, epoch)
 
-            # calculate infinity-norm of update step
-            new_params = torch.nn.utils.parameters_to_vector(model.parameters())
-            update_norm = (new_params - prev_params[i]).norm(float('inf'))
-
-            if self.known_bne:
-                # calculate utility vs bne
-                utility_vs_bne = self.bne_env.get_reward(
-                    strat_to_bidder(model, batch_size=self.logging_config.eval_batch_size),
-                    draw_valuations=False)  # False because expensive for normal priors
-                epsilon_relative = 1 - utility_vs_bne / self.bne_utilities[i]
-                epsilon_absolute = self.bne_utilities[i] - utility_vs_bne
-                L_2 = metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
-                                                        self.bne_env.agents[i].valuations, 2)
-                L_inf = metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
-                                                          self.bne_env.agents[i].valuations, float('inf'))
-            else:
-                utility_vs_bne, epsilon_relative, epsilon_absolute, L_2, L_inf = None,None,None,None,None
-
-            self._log_metrics(writer=self.writer, epoch=epoch, utility=utilities[i], update_norm=update_norm,
-                              utility_vs_bne=utility_vs_bne, epsilon_relative=epsilon_relative,
-                              epsilon_absolute=epsilon_absolute, L_2=L_2, L_inf=L_inf,
-                              param_group_postfix=group_postfix, metric_prefix=metric_prefix)
-
+        # plotting
         if epoch % self.logging_config.plot_frequency == 0:
-            bidders = [strat_to_bidder(model, self.learning_config.batch_size, self._model2bidder[i][0])
-                       for i, model in enumerate(self.models)]
-            v = torch.stack([bidder.valuations for bidder in bidders], dim=1) # shape: n_batch, n_players, n_bundles
-            b = torch.stack([bidder.get_action() for bidder in bidders], dim=1)
-            print(
-                "Epoch {}: \tcurrent utility: {:.3f}".format(
-                    epoch, utilities[i]))
-            if self.known_bne:
-                print(",\t vs BNE: {:.3f}, \tepsilon (abs/rel): ({:.5f}, {:.5f})".format(
-                      utility_vs_bne, epsilon_absolute, epsilon_relative))
+            print("\tcurrent utilities: " + str(log_params['utilities'].tolist()))
 
-            labels = ['NPGA']
-            fmts = ['bo']
+            unique_bidders = [self.env.agents[i[0]] for i in self._model2bidder]
+            v = torch.stack(
+                [b.valuations[:self.plot_points,...]
+                 for b in unique_bidders],
+                dim=1
+            )
+            b = torch.stack([b.get_action()[:self.plot_points,...]
+                             for b in unique_bidders], dim=1)
+
+            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
+            fmts = ['bo'] * len(self.models)
             if self.logging_config.log_metrics['opt']:
+                print("\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})" \
+                    .format(
+                        log_params['utility_vs_bne'].tolist(),
+                        log_params['epsilon_relative'].tolist(),
+                        log_params['epsilon_absolute'].tolist()
+                    )
+                )
                 # TODO: handle case of no opt strategy
-                v = torch.cat([v[:self.plot_points,:,:], self.v_opt], dim=1)
-                b = torch.cat([b[:self.plot_points,:,:], self.b_opt], dim=1)
-                labels.append('BNE')
-                fmts.append('b--')
+                v = torch.cat([v, self.v_opt], dim=1)
+                b = torch.cat([b, self.b_opt], dim=1)
+                labels += ['BNE_{}'.format(i) for i in range(len(self.models))]
+                fmts += ['b--'] * len(self.models)
 
+            #TODO, P: What is plotted here? opt or normal?
+            # Nils: both in one. If there is a BNE, it's cat to v, b resp.
             self._plot(fig=self.fig, plot_data=(v, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
-        elapsed = timer() - start_time
-        self.overhead = self.overhead + elapsed
-        self.writer.add_scalar('debug/overhead_hours', self.overhead/3600, epoch)
+        self.overhead = self.overhead + timer() - start_time
+        log_params['overhead_hours'] = self.overhead / 3600
+
+        self._log_metrics(log_params, epoch=epoch)
+
+    def _log_metrics(self, metrics_dict: dict, epoch: int, prefix: str='eval',
+                     param_group_postfix: str='', metric_prefix: str=''):
+        """ Writes everthing from ´metrics_dict´ to disk via the ´self.writer´.
+            keys in ´metrics_dict´ represent the metric name, values should be of type
+            float, list, dict, or torch.Tensor.
+        """
+        name_list = ['agent_{}'.format(i) for i in range(self.experiment_config.n_players)]
+
+        for metric_key, metric_val in metrics_dict.items():
+            tag = prefix + param_group_postfix + '/' + metric_prefix + str(metric_key)
+
+            if isinstance(metric_val, float):
+                self.writer.add_scalar(tag, metric_val, epoch)
+
+            elif isinstance(metric_val, list):
+                self.writer.add_scalars(tag, dict(zip(name_list, metric_val)), epoch)
+
+            elif isinstance(metric_val, dict):
+                for key, val in metric_val.items():
+                    self.writer.add_scalars(
+                        tag, dict(zip([name + '/' + str(key) for name in name_list], val)), epoch
+                    )
+
+            elif torch.is_tensor(metric_val):
+                self.writer.add_scalars(tag, dict(zip(name_list, metric_val.tolist())), epoch)
+
+            else:
+                raise TypeError('metric type {} cannot be saved'.format(type(metric_val)))
+
+    def _log_metric_opt(self):
+        """
+        Compare performance to BNE and log:
+        utility_vs_bne
+        epsilon_relative
+        epsilon_absolute
+        """
+
+        utility_vs_bne = torch.tensor([
+            self.bne_env.get_reward(
+                self._strat_to_bidder(
+                    model, player_position=i,
+                    batch_size=self.logging_config.eval_batch_size
+                ),
+                draw_valuations=False
+            ) for i, model in enumerate(self.models)
+        ]) #TODO: False because expensive for normal priors
+        epsilon_relative = torch.tensor([1 - utility_vs_bne[i] / self.bne_utilities[i]
+                                         for i, model in enumerate(self.models)])
+        epsilon_absolute = torch.tensor([self.bne_utilities[i] - utility_vs_bne[i]
+                                         for i, model in enumerate(self.models)])
+
+        return utility_vs_bne, epsilon_relative, epsilon_absolute
+
+    def _log_metric_l(self):
+        """
+        Compare action to BNE and log:
+        l2 (TODO: add formular)
+        l_inf (TODO: add formular)
+        """
+        L_2 = [metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
+                                                 self.bne_env.agents[i].valuations, 2)
+               for i, model in enumerate(self.models)]
+        L_inf = [metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
+                                                   self.bne_env.agents[i].valuations, float('inf'))
+                 for i, model in enumerate(self.models)]
+        return L_2, L_inf
+
+    def _log_metric_regret(self, create_plot_output: bool, epoch: int = None):
+        """
+        Compute mean regret of current policy and return
+        ex interim regret (ex ante regret is the average of that tensor)
+        """
+        # TODO Nils: @Paul please check logic here. Major changes: (1) use original draw_valuations,
+        # as its logic is needed, (2) trying to calculate for all models at once.
+
+        env = self.env
+        regret_batch_size = self.logging_config.regret_batch_size
+        regret_grid_size = self.logging_config.regret_grid_size
+
+        bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
+                                  dtype=env.agents[0].valuations.dtype, device=env.mechanism.device)
+        regret_grid = torch.zeros(regret_grid_size, env.n_players, dtype=env.agents[0].valuations.dtype,
+                                  device=env.mechanism.device)
+
+        for agent in env.agents:
+            i = agent.player_position
+            
+            # TODO Nils: downward compatible: u_lo/hi should always be of same type: list
+            u_lo = self.u_lo[i] if isinstance(self.u_lo, list) else self.u_lo
+            u_hi = self.u_hi[i] if isinstance(self.u_hi, list) else self.u_hi
+
+            # TODO Nils: only supports regret_batch_size <= batch_size
+            bid_profile[:,i,:] = agent.get_action()[:regret_batch_size,...]
+            regret_grid[:,i] = torch.linspace(u_lo, u_hi, regret_grid_size,
+                                              device=env.mechanism.device)
+
+        torch.cuda.empty_cache()
+        regret = [metrics.ex_interim_regret(env.mechanism, bid_profile, 
+                                            learner.strat_to_player_kwargs['player_position'],
+                                            env.agents[learner.strat_to_player_kwargs['player_position']].valuations[:regret_batch_size,...],
+                                            regret_grid[:,learner.strat_to_player_kwargs['player_position']])
+                  for learner in self.learners]
+        ex_ante_regret = [model_tuple[0].mean() for model_tuple in regret]
+        ex_interim_max_regret = [model_tuple[0].max() for model_tuple in regret]
+        if create_plot_output:
+            #TODO, Paul: Transform to output with dim(batch_size, n_models, n_bundle)
+            regrets = torch.stack([regret[r][0] for r in range(len(regret))], dim=1)[:,:,None]
+            valuations = torch.stack([regret[r][1] for r in range(len(regret))], dim=1)
+            plot_output = (valuations,regrets)
+            self._plot(fig=self.fig, plot_data=plot_output, writer=self.writer, ylim=[0,max(ex_interim_max_regret).cpu()],
+                       figure_name='regret_function', epoch=epoch, plot_points=self.plot_points)
+            #TODO, Paul: Check in detail if correct!?
+        return ex_ante_regret, ex_interim_max_regret
 
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
         start_time = timer()
@@ -532,20 +674,7 @@ class Experiment(ABC):
 
     def _log_trained_model(self):
         #TODO: write out the trained model at the end of training @Stefan
-        pass
-
-    def _log_metrics_opt(self):
-        #TODO: Compute and log the utility_vs_bne, epsilon_relative, epsilon_absolute
-        pass
-
-    def _log_metrics_l2(self):
-        #TODO: Compute and log the L2 and L inf?
-        pass
-
-    def _log_metrics_rmse(self):
-        #TODO: Compute and log the rmse
-        pass
-
-    def _log_metrics_regret(self):
-        #TODO: Compute and log the regret
-        pass
+        # Proposal Nils:
+        for i, model in enumerate(self.models):
+            name = 'saved_model_' + str(i) + '.pt'
+            torch.save(model.state_dict(), os.path.join(self.log_dir, name))
