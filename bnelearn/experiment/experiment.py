@@ -414,11 +414,18 @@ class Experiment(ABC):
             labels = ['NPGA']
             fmts = ['bo']
             if self.logging_config.log_metrics['opt']:
-                # TODO: handle case of no opt strategy
-                v = torch.cat([v[:self.plot_points,:,:], self.v_opt], dim=1)
-                b = torch.cat([b[:self.plot_points,:,:], self.b_opt], dim=1)
+                # sequentially adding opt
+                batch_size, n_models, n_items = self.v_opt.shape
+                v_ = torch.cat([v[:self.plot_points,0:1,:], self.v_opt[:self.plot_points,0:1,:]], dim=1)
+                b_ = torch.cat([b[:self.plot_points,0:1,:], self.b_opt[:self.plot_points,0:1,:]], dim=1)
+                for model in range(n_models-1):
+                    v_ = torch.cat([v_, v[:self.plot_points,model+1:model+2,:], \
+                                    self.v_opt[:,model+1:model+2,:]], dim=1)
+                    b_ = torch.cat([b_, b[:self.plot_points,model+1:model+2,:], \
+                                    self.b_opt[:,model+1:model+2,:]], dim=1)
                 labels.append('BNE')
                 fmts.append('b--')
+                v, b = v_, b_
             #TODO, P: What is plotted here? opt or normal?
             # Nils: both in one. If there is a BNE, it's cat to v, b resp.
             self._plot(fig=self.fig, plot_data=(v, b), writer=self.writer, figure_name='bid_function',
@@ -525,15 +532,17 @@ class Experiment(ABC):
                                             agent.valuations[:regret_batch_size,...],
                                             regret_grid[:,agent.player_position])
                   for agent in env.agents[:self.n_models]]
+        ex_ante_regret = [model_tuple[0].mean() for model_tuple in regret]
+        ex_interim_max_regret = [model_tuple[0].max() for model_tuple in regret]
         if create_plot_output:
             #TODO, Paul: Transform to output with dim(batch_size, n_models, n_bundle)
             regrets = torch.stack([regret[r][0] for r in range(len(regret))], dim=1)[:,:,None]
             valuations = torch.stack([regret[r][1] for r in range(len(regret))], dim=1)
             plot_output = (valuations,regrets)
-            self._plot(fig=self.fig, plot_data=plot_output, writer=self.writer, 
+            self._plot(fig=self.fig, plot_data=plot_output, writer=self.writer, ylim=[0,max(ex_interim_max_regret).cpu()],
                        figure_name='regret_function', epoch=epoch, plot_points=self.plot_points)
             #TODO, Paul: Check in detail if correct!?
-        return [r.mean() for r in regret[:][0]], [r.max() for r in regret[:][0]]
+        return ex_ante_regret, ex_interim_max_regret
 
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
         start_time = timer()
