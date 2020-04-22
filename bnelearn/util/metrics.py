@@ -270,4 +270,4 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     regret = torch.tensor((u_i_alternative - u_i_actual).relu(), requires_grad=False)
 
     # Explicitaly cleanup TODO:?
-    return regret
+    return regret, agent_valuation

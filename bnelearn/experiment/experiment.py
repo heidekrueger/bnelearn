@@ -71,6 +71,10 @@ class Experiment(ABC):
         self.overhead = 0.0
         self.known_bne = known_bne
 
+        # Cannot lot 'opt' without known bne
+        if logging_config.log_metrics['opt'] or logging_config.log_metrics['l2'] or logging_config.log_metrics['rmse']:
+            assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
+
         ### Save locally - can haves
         # Logging
         if logging_config.regret_batch_size is not None:
@@ -211,7 +215,7 @@ class Experiment(ABC):
 ########################################################################################################
 ####################################### Moved logging to here ##########################################
 ########################################################################################################
-
+# Generalize as much as possible to avoid code overload and too much individualism
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list=None, ylim: list=None, labels: list=None,
               x_label="valuation", y_label="bid", fmts=['o'],
@@ -222,7 +226,7 @@ class Experiment(ABC):
         Args
             fig: matplotlib.figure, TODO might not be needed
             plot_data: tuple of two pytorch tensors first beeing for x axis, second for y.
-                Both of dimensions (batch_size, n_strategies, n_bundles)
+                Both of dimensions (batch_size, n_models, n_bundles)
             writer: could be replaced by self.writer
             epoch: int, epoch or iteration number
             xlim: list of floats, x axis limits for all n_bundles dimensions
@@ -373,8 +377,9 @@ class Experiment(ABC):
     #TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
     #TODO: Create one method per metric and check which ones to compute
     def log_training_iteration(self, log_params: dict, epoch: int):
-        # TODO It is by no means nice that there is so much specific logic in here
+        # TODO, Paul: Does it make sense to handover log_params instead of initializing that here?
         start_time = timer()
+
 
         #TODO, P: This plot_data might make sense for the regret plotting
         # plot_data = []
@@ -400,8 +405,12 @@ class Experiment(ABC):
             #TODO: implement
             self._log_metric_rmse()
 
-        if self.logging_config.log_metrics['regret'] and (epoch % self.logging_config.regret_frequency) == 0:
-            log_params['regret'] = self._log_metric_regret()
+        if True:#self.logging_config.log_metrics['regret'] and (epoch % self.logging_config.regret_frequency) == 0:
+            create_plot_output = False
+            if True:#epoch % self.logging_config.plot_frequency == 0:
+                create_plot_output = True
+            log_params['regret_ex_ante'], log_params['regret_ex_interim'] = \
+                self._log_metric_regret(create_plot_output, epoch)
 
         if epoch % self.logging_config.plot_frequency == 0:
             bidders = [self._strat_to_bidder(model, self.learning_config.batch_size, self._model2bidder[i][0])
@@ -409,7 +418,7 @@ class Experiment(ABC):
             v = torch.stack([bidder.valuations for bidder in bidders], dim=1) # shape: n_batch, n_players, n_bundles
             b = torch.stack([bidder.get_action() for bidder in bidders], dim=1)
             print("epoch {}: \tcurrent utilities: ".format(epoch) + str(log_params['utilities'].tolist()))
-            if self.known_bne and self.logging_config.log_metrics['opt']:
+            if self.logging_config.log_metrics['opt']:
                 print(",\t vs BNE: {}, \tepsilon (abs/rel): ({}, {})".format(
                       log_params['utility_vs_bne'], log_params['epsilon_relative'],
                       log_params['epsilon_absolute']))
@@ -469,7 +478,6 @@ class Experiment(ABC):
         epsilon_relative
         epsilon_absolute
         """
-        assert self.known_bne, "BNE not known, can't compute opt metric"
 
         utility_vs_bne = [self.bne_env.get_reward(
             self._strat_to_bidder(model, batch_size=self.logging_config.eval_batch_size),
@@ -487,7 +495,6 @@ class Experiment(ABC):
         l2 (TODO: add formular)
         l_inf (TODO: add formular)
         """
-        assert self.known_bne, "BNE not known, can't compute l2 metric"
         L_2 = [metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
                                                  self.bne_env.agents[i].valuations, 2)
                for i, model in enumerate(self.models)]
@@ -502,11 +509,10 @@ class Experiment(ABC):
         Compare action to BNE and log:
         rmse (TODO: add formular)
         """
-        assert self.known_bne, "BNE not known, can't compute rmse metric"
         #TODO: Fill
         pass
 
-    def _log_metric_regret(self):
+    def _log_metric_regret(self, create_plot_output: bool, epoch: int = None):
         """
         Compute mean regret of current policy and return
         ex interim regret (ex ante regret is the average of that tensor)
@@ -540,8 +546,15 @@ class Experiment(ABC):
                                             agent.valuations[:regret_batch_size,...],
                                             regret_grid[:,agent.player_position])
                   for agent in env.agents[:self.n_models]]
-
-        return [r.mean() for r in regret]
+        if create_plot_output:
+            #TODO, Paul: Transform to output with dim(batch_size, n_models, n_bundle)
+            regrets = torch.stack([regret[r][0] for r in [0,1]], dim=1)[:,:,None]
+            valuations = torch.stack([regret[r][1] for r in [0,1]], dim=1)
+            plot_output = (valuations,regrets)
+            self._plot(fig=self.fig, plot_data=plot_output, writer=self.writer, 
+                       figure_name='regret_function', epoch=epoch, plot_points=self.plot_points)
+            #TODO, Paul: Check in detail if correct!?
+        return [r.mean() for r in regret[:][0]], [r.max() for r in regret[:][0]]
 
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
         start_time = timer()
