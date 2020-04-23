@@ -56,7 +56,7 @@ class LoggingConfiguration:
     regret_batch_size: int = None
     regret_grid_size: int = None
     regret_frequency: int = 100
-    eval_batch_size: int = 2**12
+    eval_batch_size: int = 2**22
     cache_eval_actions: bool = True
     max_epochs: int = None
 

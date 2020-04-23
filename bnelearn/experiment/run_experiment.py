@@ -41,7 +41,8 @@ def run_single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
                                       risk=1.0, eval_batch_size = 2**16,
                                       log_metrics = ['opt','l2','regret'], regret_batch_size=2**8, regret_grid_size=2**8,
                                       specific_gpu=1):
-
+    if eval_batch_size == 2**16:
+        print("Using eval_batch_size of 2**16. Use at least 2**22 for proper experiment runs!")
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
@@ -58,12 +59,12 @@ def run_single_item_asymmetric_uniform(n_runs: int, n_epochs: int,
                                       risk=1.0, eval_batch_size = 2**22,
                                       log_metrics = ['opt','l2','regret'], regret_batch_size=2**8, regret_grid_size=2**8,
                                       specific_gpu=1):
-
     n_players = [2]
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
+                                                 eval_batch_size=eval_batch_size,
                                                  max_epochs=n_epochs)
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        u_lo=u_lo, u_hi=u_hi, risk=risk)
@@ -89,7 +90,7 @@ def run_llg(n_runs: int, n_epochs: int,
 
 def run_llllgg(n_runs: int, n_epochs: int, 
             payment_rule: str, model_sharing=True, u_lo=[0,0,0,0,0,0], u_hi=[1,1,1,1,2,2], 
-            risk=1.0, 
+            risk=1.0,  eval_batch_size = 2**12,
             log_metrics = ['regret'], regret_batch_size=2**8, regret_grid_size=2**8,
             specific_gpu=1):
     
@@ -98,6 +99,7 @@ def run_llllgg(n_runs: int, n_epochs: int,
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
+                                                 eval_batch_size=eval_batch_size,
                                                  max_epochs=n_epochs)
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        u_lo=u_lo, u_hi=u_hi, risk=risk)

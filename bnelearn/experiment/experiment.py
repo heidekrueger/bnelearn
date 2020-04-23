@@ -22,8 +22,7 @@ from bnelearn.experiment.configurations import ExperimentConfiguration, Learning
 import matplotlib.pyplot as plt
 import sys
 import os
-import time
-from timeit import default_timer as timer
+from time import perf_counter as timer
 from matplotlib import colors as mcolors
 from mpl_toolkits.mplot3d import Axes3D
 import bnelearn.util.metrics as metrics
@@ -224,7 +223,7 @@ class Experiment(ABC):
 
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
-
+        tic = timer()
         # save current params to calculate update norm
         prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
                        for model in self.models]
@@ -237,9 +236,9 @@ class Experiment(ABC):
 
         #TODO: everything after this is logging --> measure overhead
         log_params = {'utilities': utilities, 'prev_params': prev_params}
-        self.log_training_iteration(log_params=log_params, epoch=epoch)
+        elapsed_overhead = self.log_training_iteration(log_params=log_params, epoch=epoch)
 
-        print('epoch {}:\t{}s'.format(epoch, round(self.overhead, 2)))
+        print('epoch {}:\t elapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer()-tic, elapsed_overhead)) #TODO: this prints TOTAL overhead, not time in current iteration
 
     def run(self, epochs, n_runs: int = 1, run_comment: str=None, seeds: Iterable[int] = None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
@@ -484,7 +483,8 @@ class Experiment(ABC):
 
     #TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
     #TODO: Create one method per metric and check which ones to compute
-    def log_training_iteration(self, log_params: dict, epoch: int):
+    def log_training_iteration(self, log_params: dict, epoch: int) -> float:
+        """Returns elapsed time in seconds"""
         start_time = timer()
 
         #TODO, Paul: Can delete?: model_is_global = len(self.models) == 1
@@ -547,8 +547,8 @@ class Experiment(ABC):
 
         self.overhead = self.overhead + timer() - start_time
         log_params['overhead_hours'] = self.overhead / 3600
-
         self._log_metrics(log_params, epoch=epoch)
+        return timer() - start_time
 
     def _log_metrics(self, metrics_dict: dict, epoch: int, prefix: str='eval',
                      param_group_postfix: str='', metric_prefix: str=''):
