@@ -369,19 +369,6 @@ class MultiUnitExperiment(Experiment, ABC):
             strategy_to_player_closure=self._strat_to_bidder
         )
 
-    def _setup_learners(self):
-        self.learners = [
-            ESPGLearner(
-                model=model,
-                environment=self.env,
-                hyperparams=self.learning_config.learner_hyperparams,
-                optimizer_type=self.learning_config.optimizer,
-                optimizer_hyperparams=self.learning_config.optimizer_hyperparams,
-                strat_to_player_kwargs={"player_position": i}
-            )
-            for i, model in enumerate(self.models)
-        ]
-
     def _setup_eval_environment(self):
         self.bne_strategies = [
             ClosureStrategy(self._optimal_bid) for i in range(self.n_players)

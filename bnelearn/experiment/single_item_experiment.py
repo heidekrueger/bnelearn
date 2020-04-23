@@ -69,19 +69,6 @@ class SingleItemExperiment(Experiment, ABC):
         else:
             raise ValueError('Invalid Mechanism type!')
 
-    def _setup_learners(self):
-        self.learners = []
-        for i in range(len(self.models)):
-            self.learners.append(
-                ESPGLearner(model=self.models[i], #(known pylint issue for typing.Iterable) pylint: disable=unsubscriptable-object
-                            environment=self.env,
-                            hyperparams=self.learning_config.learner_hyperparams,
-                            optimizer_type=self.learning_config.optimizer,
-                            optimizer_hyperparams=self.learning_config.optimizer_hyperparams,
-                            strat_to_player_kwargs={"player_position": i}
-                            )
-                )
-
     def _setup_learning_environment(self):
         self.env = AuctionEnvironment(self.mechanism, agents=self.bidders,
                                       batch_size=self.learning_config.batch_size, n_players=self.n_players,

@@ -99,20 +99,6 @@ class CombinatorialExperiment(Experiment, ABC):
             for bidder in self.bidders:
                 bidder.strategy.pretrain(bidder.valuations, self.learning_config.pretrain_iters)
 
-    def _setup_learners(self):
-        # TODO: the current strat_to_player kwargs is weird. Cross-check this with how values are evaluated in learner.
-        # ideally, we can abstract this function away and move the functionality to the base Experiment class.
-        # Implementation in SingleItem case is identical except for player position argument below.
-        self.learners = []
-        for m_id, model in enumerate(self.models):
-            self.learners.append(ESPGLearner(model=model,
-                                 environment=self.env,
-                                 hyperparams=self.learning_config.learner_hyperparams,
-                                 optimizer_type=self.learning_config.optimizer,
-                                 optimizer_hyperparams=self.learning_config.optimizer_hyperparams,
-                                 strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
-                                 ))
-
     def _setup_learning_environment(self):
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,

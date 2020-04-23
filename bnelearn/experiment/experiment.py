@@ -33,6 +33,8 @@ from torch.utils.tensorboard import SummaryWriter
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
 
+from bnelearn.learner import ESPGLearner
+
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
 
@@ -142,10 +144,20 @@ class Experiment(ABC):
         """This method should set up the environment that is used for learning. """
         pass
 
-    @abstractmethod
     def _setup_learners(self):
-        """This method should set up learners for each of the models that are learnable."""
-        pass
+        # TODO: the current strat_to_player kwargs is weird. Cross-check this with 
+        # how values are evaluated in learner.
+        # ideally, we can abstract this function away and move the functionality to the base Experiment class.
+        # Implementation in SingleItem case is identical except for player position argument below.
+        self.learners = []
+        for m_id, model in enumerate(self.models):
+            self.learners.append(ESPGLearner(model=model,
+                                 environment=self.env,
+                                 hyperparams=self.learning_config.learner_hyperparams,
+                                 optimizer_type=self.learning_config.optimizer,
+                                 optimizer_hyperparams=self.learning_config.optimizer_hyperparams,
+                                 strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
+                                 ))
 
     def _setup_eval_environment(self):
         """Overwritten by subclasses with known BNE.
