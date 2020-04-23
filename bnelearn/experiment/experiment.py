@@ -439,6 +439,7 @@ class Experiment(ABC):
         self.plot_points = min(self.logging_config.plot_points, self.learning_config.batch_size)
 
         if self.logging_config.log_metrics['opt']:
+            # dim: [points, bidders, items]
             self.v_opt = torch.stack(
                 [b.draw_valuations_grid_(self.plot_points)
                  for b in [self.bne_env.agents[i[0]] for i in self._model2bidder]],
@@ -589,7 +590,7 @@ class Experiment(ABC):
         utility_vs_bne = torch.tensor([
             self.bne_env.get_reward(
                 self._strat_to_bidder(
-                    model, player_position=i,
+                    model, player_position=i, # TODO: shouldn't this be model_2_bidder i[0]
                     batch_size=self.logging_config.eval_batch_size
                 ),
                 draw_valuations=False

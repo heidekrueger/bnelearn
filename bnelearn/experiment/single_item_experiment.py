@@ -64,7 +64,7 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral(valuation: torch.Tensor or f
     
     c = 1 / (u_hi[0] - u_lo)**2 - 1 / (u_hi[1] - u_lo)**2
     factor = 2*player_position -1 # -1 for 0 (weak player), +1 for 1 (strong player)
-    denominator = 1.0 + factor * torch.sqrt(1 + c*(valuation - u_lo)**2)
+    denominator = 1.0 + torch.sqrt(1 + factor * c*(valuation - u_lo)**2)
     bid = u_lo + (valuation - u_lo)  / denominator
     return torch.max(bid, torch.zeros_like(bid))
 
@@ -350,6 +350,13 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
 
         print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
         print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
+
+        print('Debug: eval_batch size:{}'.format(self.bne_env.batch_size))
+        if self.u_lo ==5. and self.u_hi[0] ==15. and self.u_hi[1] ==25. and self.bne_env.batch_size <= 2*22:
+        # replace by known optimum with higher precision
+            bne_utilities_sampled = torch.tensor([0.9694, 5.0688]) # calculated using 100x batch size above
+            print("\tReplacing sampled bne utilities by precalculated utilities with higher precision: {}".format(bne_utilities_sampled))
+        
         # TODO: possibly redraw bne-env valuations over time to eliminate bias
         self.bne_utilities = bne_utilities_sampled
 
