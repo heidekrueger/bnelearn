@@ -26,6 +26,9 @@ from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
 # These are called millions of times, so each implementation should be
 # setting specific, i.e. there should be NO setting checks at runtime.
 
+# TODO: I believe it might be possible to move these back into the sublasses, maybe even when they have to be pickled.
+#       That would make this file a bit more readible. Make low-prio issue after merging to master
+
 def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(
         valuation: torch.Tensor or np.ndarray or float, n_players: int, prior_cdf: Callable, **kwargs) -> torch.Tensor:
     if not isinstance(valuation, torch.Tensor):
@@ -48,6 +51,21 @@ def _optimal_bid_FPSB_UniformSymmetricPriorSingleItem(valuation: torch.Tensor, n
 
 def _truthful_bid(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
     return valuation
+
+def _optimal_bid_2P_asymmetric_uniform_risk_neutral(valuation: torch.Tensor or float, player_position: int,
+                                                   u_lo, u_his: List):
+    """Source: https://link.springer.com/article/10.1007/BF01271133"""
+
+    if not isinstance(valuation, torch.Tensor):
+        valuation = torch.tensor(valuation, dtype=torch.float)
+    #unsqueeze if simple float
+    if valuation.dim() == 0:
+        valuation.unsqueeze_(0)
+    
+    c = 1 / (u_hi[0] - u_lo)**2 - 1 / (u_hi[1] - u_lo)**2
+    factor = 2*player_position -1 # -1 for 0 (weak player), +1 for 1 (strong player)
+    denominator = 1.0 + factor * torch.sqrt(1 + c*(valuation - u_lo)**2)
+    return u_lo + (valuation - u_lo)  / denominator
 
 
 # TODO: single item experiment should not be abstract and hold all logic for learning. Only bne needs to go into subclass
