@@ -73,13 +73,6 @@ class CombinatorialExperiment(Experiment, ABC):
                               batch_size=batch_size, n_items = self.n_items)
 
 
-    def _setup_learning_environment(self):
-        self.env = AuctionEnvironment(self.mechanism,
-                                      agents=self.bidders,
-                                      batch_size=self.learning_config.batch_size,
-                                      n_players=self.n_players,
-                                      strategy_to_player_closure=self._strat_to_bidder)
-
 class LLGExperiment(CombinatorialExperiment):
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):

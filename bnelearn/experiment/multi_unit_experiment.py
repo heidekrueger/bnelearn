@@ -360,15 +360,6 @@ class MultiUnitExperiment(Experiment, ABC):
     def _setup_mechanism(self):
         self.mechanism = self.mechanism_type(cuda=self.gpu_config.cuda)
 
-    def _setup_learning_environment(self):
-        self.env = AuctionEnvironment(
-            mechanism=self.mechanism,
-            agents=self.bidders,
-            n_players=self.n_players,
-            batch_size=self.learning_config.batch_size,
-            strategy_to_player_closure=self._strat_to_bidder
-        )
-
     def _setup_eval_environment(self):
         self.bne_strategies = [
             ClosureStrategy(self._optimal_bid) for i in range(self.n_players)

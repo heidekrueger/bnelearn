@@ -204,6 +204,12 @@ class Experiment(ABC):
         # i.e. erroneously assuming a known BNE exists when it doesn't.
         raise NotImplementedError("This Experiment has no implemented BNE!")
 
+    def _setup_learning_environment(self):
+        self.env = AuctionEnvironment(self.mechanism,
+                                      agents=self.bidders,
+                                      batch_size=self.learning_config.batch_size,
+                                      n_players=self.n_players,
+                                      strategy_to_player_closure=self._strat_to_bidder)
     # TODO: why?
     @staticmethod
     def get_risk_profile(risk) -> str:
