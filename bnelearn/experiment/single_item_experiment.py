@@ -352,7 +352,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
 
         print('Debug: eval_batch size:{}'.format(self.bne_env.batch_size))
-        if self.u_lo ==5. and self.u_hi[0] ==15. and self.u_hi[1] ==25. and self.bne_env.batch_size <= 2*22:
+        if self.u_lo ==5. and self.u_hi[0] ==15. and self.u_hi[1] ==25. and self.bne_env.batch_size <= 2**22:
         # replace by known optimum with higher precision
             bne_utilities_sampled = torch.tensor([0.9694, 5.0688]) # calculated using 100x batch size above
             print("\tReplacing sampled bne utilities by precalculated utilities with higher precision: {}".format(bne_utilities_sampled))
