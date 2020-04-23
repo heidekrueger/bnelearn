@@ -41,7 +41,7 @@ class CombinatorialExperiment(Experiment, ABC):
         assert experiment_config.u_lo is not None, """Missing prior information!"""
         assert experiment_config.u_hi is not None, """Missing prior information!"""
 
-        #TODO: What is this good for? And why not for u_hi too then?
+        # Frontend could either provide single number u_lo that is shared or a list for each player.
         u_lo = experiment_config.u_lo
         if isinstance(u_lo, Iterable):
             assert len(u_lo) == self.n_players

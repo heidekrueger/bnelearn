@@ -9,7 +9,7 @@ from bnelearn.experiment.gpu_controller import GPUController
 from bnelearn.experiment.configurations import *
 #from bnelearn.experiment.logger import LLGAuctionLogger, LLLLGGAuctionLogger, SingleItemAuctionLogger
 from bnelearn.experiment.single_item_experiment import UniformSymmetricPriorSingleItemExperiment, \
-    GaussianSymmetricPriorSingleItemExperiment
+    GaussianSymmetricPriorSingleItemExperiment, TwoPlayerAsymmetricUniformPriorSingleItemExperiment
 
 from bnelearn.experiment.combinatorial_experiment import LLGExperiment, LLLLGGExperiment
 from bnelearn.experiment.multi_unit_experiment import MultiUnitExperiment, SplitAwardExperiment
@@ -51,6 +51,23 @@ def run_single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        valuation_mean=valuation_mean, valuation_std=valuation_std, risk=risk)
     experiment_class = GaussianSymmetricPriorSingleItemExperiment
+    return running_configuration, logging_configuration, experiment_configuration, experiment_class
+
+def run_single_item_asymmetric_uniform(n_runs: int, n_epochs: int, 
+                                      payment_rule: str, model_sharing=True, u_lo=0, u_hi=[15,25], 
+                                      risk=1.0, eval_batch_size = 2**22,
+                                      log_metrics = ['opt','l2','regret'], regret_batch_size=2**8, regret_grid_size=2**8,
+                                      specific_gpu=1):
+
+    n_players = [2]
+    running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
+    logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
+                                                 regret_batch_size=regret_batch_size,
+                                                 regret_grid_size=regret_grid_size,
+                                                 max_epochs=n_epochs)
+    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
+                                                       u_lo=u_lo, u_hi=u_hi, risk=risk)
+    experiment_class = TwoPlayerAsymmetricUniformPriorSingleItemExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 def run_llg(n_runs: int, n_epochs: int, 

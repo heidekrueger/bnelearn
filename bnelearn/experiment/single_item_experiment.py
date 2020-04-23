@@ -3,7 +3,7 @@
 import os
 import warnings
 from abc import ABC
-from typing import Callable
+from typing import Callable, List
 from functools import partial
 import torch
 import numpy as np
@@ -95,13 +95,19 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
     def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne = False):
         # if not given by subclass, implement generic optimal_bid if known
-        known_bne = known_bne or \
-            experiment_config.payment_rule == 'second_price' or \
-            (experiment_config.payment_rule == 'first_price' and self.risk == 1.0)
+        # TODO: this is now broken, because risk must be set after super init...
+        # known_bne = known_bne or \
+        #     experiment_config.payment_rule == 'second_price' or \
+        #     (experiment_config.payment_rule == 'first_price' and self.risk == 1.0)
         super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne=known_bne)
+
         self.common_prior = None
         self.risk = float(experiment_config.risk)
         self.risk_profile = Experiment.get_risk_profile(self.risk)
+
+        known_bne = known_bne or \
+            experiment_config.payment_rule == 'second_price' or \
+            (experiment_config.payment_rule == 'first_price' and self.risk == 1.0)
         self.model_sharing = experiment_config.model_sharing
         if self.model_sharing:
             self.n_models = 1
@@ -278,24 +284,69 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
 class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
     def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config)
-        #TODO: implement optimal bid etc
 
-        raise NotImplementedError()
+
+        if experiment_config.model_sharing is not None:
+            assert not experiment_config.model_sharing, "Model sharing not available in this setting!"
+        self.model_sharing = False
+        n_players = 2
+        self.n_models = self.n_players
+        self._bidder2model: List[int] = list(range(self.n_players))
+
+        self.u_lo = float(experiment_config.u_lo)
+        self.u_hi: List[float] = [float(experiment_config.u_hi[i]) for i in range(n_players)]
+        assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
+
+        self.risk = float(experiment_config.risk)
+        self.risk_profile = Experiment.get_risk_profile(self.risk)
+
+        assert self.get_risk_profile == 1.0, "BNE only known for risk neutral bidders."
+        
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config)
+
+        self.positive_output_point = min(self.u_hi)
+
+        self.plot_xmin = self.u_lo
+        self.plot_xmax = max(self.u_hi)
+        self.plot_ymin = self.plot_xmin
+        self.plot_ymax = self.plot_xmax * 1.05
+
 
     def _get_logdir(self):
-        NotImplemented
+        name = ['single_item', self.payment_rule, self.valuation_prior,
+                'asymmetric', self.risk_profile, str(self.n_players) + 'p']
+        return os.path.join(*name)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
-        pass
-
-    def _setup_bidders(self):
-        pass
+        return Bidder.uniform(self.u_lo, self.u_hi[player_position], strategy, player_position=player_position,
+                              batch_size = batch_size)
 
     def _setup_eval_environment(self):
-        pass
+        bne_strategies = [
+            ClosureStrategy(partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral,
+                                    player_position=i, u_lo=self.u_lo, u_his = self.u_hi))
+            for i in range(self.n_players) 
+        ]
+
+        bne_env = AuctionEnvironment(
+            mechanism=self.mechanism,
+            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i, batch_size=self.logging_config.eval_batch_size)
+                    for i in range(self.n_players)],
+            n_players=self.n_players,
+            batch_size=self.logging_config.eval_batch_size,
+            strategy_to_player_closure=self._strat_to_bidder
+        )
+
+        bne_utilities_sampled = torch.tensor(
+            [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
+
+        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
+        print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
+        # TODO: possibly redraw bne-env valuations over time to eliminate bias
+        self.bne_utilities = bne_utilities_sampled
 
 
 
-    def _training_loop(self, epoch):
-        pass
+
+
+
