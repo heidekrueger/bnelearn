@@ -1,10 +1,12 @@
 """
-In this file multi-unit experiments and their analytical BNEs (if known) are defiened.
+In this file multi-unit experiments ´MultiUnitExperiment´ and their analytical
+BNEs (if known) are defiened. Also, the ´SplitAwardExperiment´ is implemented as well,
+as it shares most its properties.
 
 TODO:
     - support for multiple BNE
     - valuations of plotiing BNE _optimal_bid_multidiscriminatory2x2 are wrong
-    - base FPSBSplitAwardAuction2x2 on MultiUnitExperiment
+
 """
 
 import os
@@ -48,7 +50,8 @@ from matplotlib.ticker import LinearLocator, FormatStrFormatter
 ########################################################################################################################
 def multiunit_bne(experiment_config, payment_rule):
     """
-    Method that returns the known BNE strategy as callable if available and None otherwise.
+    Method that returns the known BNE strategy for the standard multi-unit auctions
+    (split-award is NOT one of the) as callable if available and None otherwise.
     """
 
     if payment_rule == 'vcg':
@@ -75,6 +78,7 @@ def multiunit_bne(experiment_config, payment_rule):
     return None
 
 def _optimal_bid_multidiscriminatory2x2(valuation, player_position=None):
+    """BNE strategy in the multi-unit discriminatory price auction 2 players and 2 units"""
 
     def b_approx(v, s, t):
         b = torch.clone(v)
@@ -95,6 +99,9 @@ def _optimal_bid_multidiscriminatory2x2(valuation, player_position=None):
     return opt_bid
 
 def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
+    """ BNE strategy in the multi-unit discriminatory price auction 2 players and 2 units
+        with constant marginal valuations
+    """
 
     if isinstance(valuation_cdf, torch.distributions.uniform.Uniform):
         def _optimal_bid(valuation, player_position=None):
@@ -143,18 +150,26 @@ def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
     return _optimal_bid
 
 def _optimal_bid_multiuniform2x2(valuation, player_position=None):
+    """ One of the BNE strategies in the multi-unit uniform price auction
+        2 players and 2 units
+    """
     opt_bid = torch.clone(valuation)
     opt_bid[:,1] = 0
     return opt_bid
 
 def _optimal_bid_multiuniform3x2limit2(valuation, player_position=None):
+    """ BNE strategy in the multi-unit uniform price auction with 3 units and
+        2 palyers that are both only interested in 2 units
+    """
     opt_bid = torch.clone(valuation)
     opt_bid[:,1] = opt_bid[:, 1] ** 2
     opt_bid[:,2] = 0
     return opt_bid
 
 def _optimal_bid_splitaward2x2_1(experiment_config):
-    """Pooling equilibrium as in Anton and Yao, 1992."""
+    """ BNE pooling equilibrium in the split-award auction with 2 players and
+        2 lots (as in Anton and Yao, 1992)
+    """
 
     efficiency_parameter = experiment_config.efficiency_parameter
     u_lo = experiment_config.u_lo
@@ -179,8 +194,7 @@ def _optimal_bid_splitaward2x2_1(experiment_config):
 
         if return_payoff_dominant:
             return torch.cat(
-                (wta_bounds[:,1].unsqueeze(0).t_(),
-                    sigma_bounds[:,1].unsqueeze(0).t_()),
+                (wta_bounds[:,1].unsqueeze(0).t_(), sigma_bounds[:,1].unsqueeze(0).t_()),
                 axis=1
             )
         return {'sigma_bounds': sigma_bounds, 'wta_bounds': wta_bounds}
@@ -188,7 +202,9 @@ def _optimal_bid_splitaward2x2_1(experiment_config):
     return _optimal_bid
 
 def _optimal_bid_splitaward2x2_2(experiment_config):
-    """WTA equilibrium as in Anton and Yao, 1992: Proposition 4."""
+    """ BNE WTA equilibrium in the split-award auction with 2 players and
+        2 lots (as in Anton and Yao Proposition 4, 1992)
+    """
 
     efficiency_parameter = experiment_config.efficiency_parameter
     u_lo = experiment_config.u_lo
@@ -248,8 +264,7 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
 
 
 class MultiUnitExperiment(Experiment, ABC):
-    """
-    Experiment for the standard multi-unit auctions.
+    """ Experiment class for the standard multi-unit auctions.
     """
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
@@ -365,6 +380,7 @@ class MultiUnitExperiment(Experiment, ABC):
         self.mechanism = self.mechanism_type(cuda=self.gpu_config.cuda)
 
     def _setup_eval_environment(self):
+        """Setup the BNE envierment for later evaluation of the learned strategies"""
         self.bne_strategies = [
             ClosureStrategy(self._optimal_bid) for i in range(self.n_players)
         ]
@@ -388,22 +404,24 @@ class MultiUnitExperiment(Experiment, ABC):
         return os.path.join(*name)
 
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
-                xlim: list=None, ylim: list=None, labels: list=None,
-                x_label="valuation", y_label="bid", fmts=['o'],
-                figure_name: str='bid_function', plot_points=100):
+              xlim: list=None, ylim: list=None, labels: list=None,
+              x_label="valuation", y_label="bid", fmts=['o'],
+              figure_name: str='bid_function', plot_points=100):
 
         super()._plot(fig, plot_data, writer, epoch, xlim, ylim, labels,
-                    x_label, y_label, fmts, figure_name, plot_points)
+                      x_label, y_label, fmts, figure_name, plot_points)
 
         super()._plot_3d(plot_data, writer, epoch, figure_name)
 
     @staticmethod
     def default_pretrain_transform(input_tensor):
+        """Default pretrain transformation: truthful bidding"""
         return torch.clone(input_tensor)
+
 
 class SplitAwardExperiment(MultiUnitExperiment):
     """
-    Experiment of the first-price sealed bid split-award auction.
+    Experiment class of the first-price sealed bid split-award auction.
     """
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
@@ -429,6 +447,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
         self.plot_ymax = [0, 2 * self.u_hi[0]]
 
     def default_pretrain_transform(self, input_tensor):
+        """Pretrain transformation for this setting"""
         temp = input_tensor.clone().detach()
         if input_tensor.shape[1] == 1:
             output_tensor = torch.cat((
@@ -460,9 +479,9 @@ class SplitAwardExperiment(MultiUnitExperiment):
         return os.path.join(*name)
 
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
-                xlim: list=None, ylim: list=None, labels: list=None,
-                x_label="valuation", y_label="bid", fmts=['o'],
-                figure_name: str='bid_function', plot_points=100):
+              xlim: list=None, ylim: list=None, labels: list=None,
+              x_label="valuation", y_label="bid", fmts=['o'],
+              figure_name: str='bid_function', plot_points=100):
 
         super()._plot(fig, plot_data, writer, epoch, xlim, ylim, labels,
-                    x_label, y_label, fmts, figure_name, plot_points)
+                      x_label, y_label, fmts, figure_name, plot_points)
