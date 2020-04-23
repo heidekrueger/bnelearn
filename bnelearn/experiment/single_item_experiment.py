@@ -53,7 +53,7 @@ def _truthful_bid(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
     return valuation
 
 def _optimal_bid_2P_asymmetric_uniform_risk_neutral(valuation: torch.Tensor or float, player_position: int,
-                                                   u_lo, u_his: List):
+                                                   u_lo, u_hi: List):
     """Source: https://link.springer.com/article/10.1007/BF01271133"""
 
     if not isinstance(valuation, torch.Tensor):
@@ -65,7 +65,8 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral(valuation: torch.Tensor or f
     c = 1 / (u_hi[0] - u_lo)**2 - 1 / (u_hi[1] - u_lo)**2
     factor = 2*player_position -1 # -1 for 0 (weak player), +1 for 1 (strong player)
     denominator = 1.0 + factor * torch.sqrt(1 + c*(valuation - u_lo)**2)
-    return u_lo + (valuation - u_lo)  / denominator
+    bid = u_lo + (valuation - u_lo)  / denominator
+    return torch.max(bid, torch.zeros_like(bid))
 
 
 # TODO: single item experiment should not be abstract and hold all logic for learning. Only bne needs to go into subclass
@@ -116,6 +117,8 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
         self._model_2_bidders()
+
+        # TODO: what about eval environment if it exists? THIS IS NOT AN ABSTACT CLASS, PAUL!!!!111!1oneeleven
 
     def _set_symmetric_bne_closure(self):
         # set optimal_bid here, possibly overwritten by subclasses if more specific form is known
@@ -289,27 +292,31 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         if experiment_config.model_sharing is not None:
             assert not experiment_config.model_sharing, "Model sharing not available in this setting!"
         self.model_sharing = False
-        n_players = 2
-        self.n_models = self.n_players
-        self._bidder2model: List[int] = list(range(self.n_players))
+        known_bne = True # TODO: check additional requirements, i.e. risk
 
-        self.u_lo = float(experiment_config.u_lo)
-        self.u_hi: List[float] = [float(experiment_config.u_hi[i]) for i in range(n_players)]
-        assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
-
+        
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        
+        self.valuation_prior = 'uniform'
         self.risk = float(experiment_config.risk)
         self.risk_profile = Experiment.get_risk_profile(self.risk)
-
-        assert self.get_risk_profile == 1.0, "BNE only known for risk neutral bidders."
-        
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config)
-
-        self.positive_output_point = min(self.u_hi)
+        assert self.risk == 1.0, "BNE only known for risk neutral bidders."
+        self.n_players = 2
+        self.n_models = self.n_players
+        self._bidder2model: List[int] = list(range(self.n_players))
+        self.u_lo = float(experiment_config.u_lo)
+        self.u_hi: List[float] = [float(experiment_config.u_hi[i]) for i in range(self.n_players)]
+        assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
+        self.positive_output_point = torch.tensor([min(self.u_hi)] * self.n_items)
 
         self.plot_xmin = self.u_lo
         self.plot_xmax = max(self.u_hi)
         self.plot_ymin = self.plot_xmin
         self.plot_ymax = self.plot_xmax * 1.05
+
+        # TODO: meh
+        self._model_2_bidders()
+        self._setup_mechanism_and_eval_environment()
 
 
     def _get_logdir(self):
@@ -322,13 +329,14 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                               batch_size = batch_size)
 
     def _setup_eval_environment(self):
-        bne_strategies = [
-            ClosureStrategy(partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral,
-                                    player_position=i, u_lo=self.u_lo, u_his = self.u_hi))
-            for i in range(self.n_players) 
-        ]
 
-        bne_env = AuctionEnvironment(
+        self._optimal_bid = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral,
+                                     u_lo=self.u_lo, u_hi = self.u_hi)
+
+        bne_strategies = [ClosureStrategy(partial(self._optimal_bid, player_position=i))
+                          for i in range(self.n_players)]
+
+        self.bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
             agents=[self._strat_to_bidder(bne_strategies[i], player_position=i, batch_size=self.logging_config.eval_batch_size)
                     for i in range(self.n_players)],
@@ -338,7 +346,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         )
 
         bne_utilities_sampled = torch.tensor(
-            [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
+            [self.bne_env.get_reward(a, draw_valuations=True) for a in self.bne_env.agents])
 
         print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
         print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
