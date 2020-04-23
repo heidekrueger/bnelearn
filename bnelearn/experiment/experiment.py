@@ -35,6 +35,7 @@ from matplotlib.ticker import LinearLocator, FormatStrFormatter
 
 from bnelearn.learner import ESPGLearner
 from bnelearn.strategy import Strategy, NeuralNetStrategy
+from bnelearn.environment import AuctionEnvironment
 
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
@@ -193,8 +194,9 @@ class Experiment(ABC):
             if self.learning_config.pretrain_iters > 0:
                 print('\tpretraining...')
                 #TODO: why is this on per bidder basis when everything else is on per model basis?
-                for bidder in self.bidders:
-                    bidder.strategy.pretrain(bidder.valuations, self.learning_config.pretrain_iters)
+                for i, model in enumerate(self.models):
+                    model.pretrain(self.bidders[self._model2bidder[i][0]].valuations, 
+                    self.learning_config.pretrain_iters)
 
     def _setup_eval_environment(self):
         """Overwritten by subclasses with known BNE.

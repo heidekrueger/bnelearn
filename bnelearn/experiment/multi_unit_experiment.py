@@ -289,6 +289,10 @@ class MultiUnitExperiment(Experiment, ABC):
         else:
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
+        self._model_2_bidders()
+        for i in range(self.n_models):
+            b_id = self._model2bidder[i][0]
+            self.positive_output_point = torch.tensor([self.u_hi]*self.n_items, dtype= torch.float)
 
         self.constant_marginal_values = experiment_config.constant_marginal_values
         self.item_interest_limit = experiment_config.item_interest_limit
@@ -322,40 +326,40 @@ class MultiUnitExperiment(Experiment, ABC):
             cache_actions=cache_actions
         )
 
-    def _setup_bidders(self):
-        epo_n = 2  # for ensure positive output of initialization
+    # def _setup_bidders(self):
+    #     epo_n = 2  # for ensure positive output of initialization
 
-        self.models = [None] * self.n_models
-        for i in range(self.n_models):
-            ensure_positive_output = torch.zeros(epo_n, self.input_length).uniform_(self.u_lo[i], self.u_hi[i]) \
-                .sort(dim=1, descending=True)[0]
-            self.models[i] = NeuralNetStrategy(
-                self.input_length,
-                hidden_nodes=self.learning_config.hidden_nodes,
-                hidden_activations=self.learning_config.hidden_activations,
-                ensure_positive_output=ensure_positive_output,
-                output_length=self.n_units
-            ).to(self.gpu_config.device)
+    #     self.models = [None] * self.n_models
+    #     for i in range(self.n_models):
+    #         ensure_positive_output = torch.zeros(epo_n, self.input_length).uniform_(self.u_lo[i], self.u_hi[i]) \
+    #             .sort(dim=1, descending=True)[0]
+    #         self.models[i] = NeuralNetStrategy(
+    #             self.input_length,
+    #             hidden_nodes=self.learning_config.hidden_nodes,
+    #             hidden_activations=self.learning_config.hidden_activations,
+    #             ensure_positive_output=ensure_positive_output,
+    #             output_length=self.n_units
+    #         ).to(self.gpu_config.device)
 
-        # Pretrain
-        pretrain_points = round(100 ** (1 / self.input_length))
-        # pretrain_valuations = multi_unit_valuations(
-        #     device = device,
-        #     bounds = [param_dict["u_lo"], param_dict["u_hi"][0]],
-        #     dim = param_dict["n_units"],
-        #     batch_size = pretrain_points,
-        #     selection = 'random' if param_dict["exp_no"] != 6 else split_award_dict
-        # )
-        pretrain_valuations = self._strat_to_bidder(
-            ClosureStrategy(lambda x: x), self.learning_config.batch_size, 0).draw_valuations_()[:pretrain_points, :]
+    #     # Pretrain
+    #     pretrain_points = round(100 ** (1 / self.input_length))
+    #     # pretrain_valuations = multi_unit_valuations(
+    #     #     device = device,
+    #     #     bounds = [param_dict["u_lo"], param_dict["u_hi"][0]],
+    #     #     dim = param_dict["n_units"],
+    #     #     batch_size = pretrain_points,
+    #     #     selection = 'random' if param_dict["exp_no"] != 6 else split_award_dict
+    #     # )
+    #     pretrain_valuations = self._strat_to_bidder(
+    #         ClosureStrategy(lambda x: x), self.learning_config.batch_size, 0).draw_valuations_()[:pretrain_points, :]
 
-        for model in self.models:
-            model.pretrain(pretrain_valuations, self.learning_config.pretrain_iters,
-                           self.pretrain_transform)
-        self.bidders = [
-            self._strat_to_bidder(self.models[0 if self.model_sharing else i], self.learning_config.batch_size, i)
-            for i in range(self.n_players)
-        ]
+    #     for model in self.models:
+    #         model.pretrain(pretrain_valuations, self.learning_config.pretrain_iters,
+    #                        self.pretrain_transform)
+    #     self.bidders = [
+    #         self._strat_to_bidder(self.models[0 if self.model_sharing else i], self.learning_config.batch_size, i)
+    #         for i in range(self.n_players)
+    #     ]
 
     def _setup_mechanism(self):
         self.mechanism = self.mechanism_type(cuda=self.gpu_config.cuda)
