@@ -56,7 +56,7 @@ def run_single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
 def run_llg(n_runs: int, n_epochs: int, 
             payment_rule: str, model_sharing=True, u_lo=[0,0,0], u_hi=[1,1,2], 
             risk=1.0, 
-            log_metrics = ['opt', 'regret'], regret_batch_size=2**8, regret_grid_size=2**8,
+            log_metrics = ['opt','l2','regret'], regret_batch_size=2**8, regret_grid_size=2**8,
             specific_gpu=1):
 
     n_players = [3]
@@ -73,7 +73,7 @@ def run_llg(n_runs: int, n_epochs: int,
 def run_llllgg(n_runs: int, n_epochs: int, 
             payment_rule: str, model_sharing=True, u_lo=[0,0,0,0,0,0], u_hi=[1,1,1,1,2,2], 
             risk=1.0, 
-            log_metrics = ['opt', 'regret'], regret_batch_size=2**8, regret_grid_size=2**8,
+            log_metrics = ['regret'], regret_batch_size=2**8, regret_grid_size=2**8,
             specific_gpu=1):
     
     n_players = [6]
@@ -92,6 +92,7 @@ def run_multiunit(
         n_players: list=[2],
         payment_rule: str='vcg',
         n_units=2,
+        log_metrics = ['opt','l2','regret'],
         model_sharing=True,
         u_lo=[0,0], u_hi=[1,1],
         risk=1.0,
@@ -107,7 +108,7 @@ def run_multiunit(
         specific_gpu=specific_gpu, n_players=[2]
     )
     logging_configuration = LoggingConfiguration(
-        log_metrics=['opt', 'l2'],
+        log_metrics=log_metrics,
         regret_batch_size=regret_batch_size,
         regret_grid_size=regret_grid_size,
         plot_points=1000,
@@ -129,6 +130,7 @@ def run_splitaward(
         payment_rule: str='first_price',
         n_units=2,
         model_sharing=True,
+        log_metrics = ['opt','l2','regret'],
         u_lo=[1,1], u_hi=[1.4,1.4],
         risk=1.0,
         constant_marginal_values: bool=False,
@@ -144,7 +146,7 @@ def run_splitaward(
         specific_gpu=specific_gpu, n_players=[2]
     )
     logging_configuration = LoggingConfiguration(
-        log_metrics=['opt', 'l2'],
+        log_metrics=log_metrics,
         regret_batch_size=regret_batch_size,
         regret_grid_size=regret_grid_size,
         max_epochs=n_epochs
@@ -176,21 +178,21 @@ if __name__ == '__main__':
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_llg(1,20,'vcg')
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_single_item_uniform_symmetric(1,20, 2, 'first_price')
     
-    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-         run_single_item_uniform_symmetric(2,110, [2], 'first_price')
+    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+    #      run_single_item_uniform_symmetric(2,110, [2], 'first_price', model_sharing=False)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     run_single_item_gaussian_symmetric(1,20, [2], 'second_price')
     #running_configuration, logging_configuration, experiment_configuration, experiment_class =\
-    #    run_llg(1,20,'vcg')
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     run_llllgg(1,110,'first_price')
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #   run_multiunit(1, 500, [2], 'vcg')
+    #    run_llg(1,110,'nearest_zero',specific_gpu=1)
+    #running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+    #    run_llllgg(1,310,'first_price')#,model_sharing=False)
+    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+        run_multiunit(1, 500, [2], 'vcg')
     #running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #   run_splitaward(1, 500, [2])
 
     gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
-    learning_configuration = LearningConfiguration(input_length=1)
+    learning_configuration = LearningConfiguration(input_length=2)
 
 
     for i in running_configuration.n_players:
