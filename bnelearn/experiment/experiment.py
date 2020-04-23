@@ -34,6 +34,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
 
 from bnelearn.learner import ESPGLearner
+from bnelearn.strategy import Strategy, NeuralNetStrategy
 
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
@@ -55,11 +56,13 @@ class Experiment(ABC):
         # Save locally - must haves
         self.n_players = experiment_config.n_players
         self.payment_rule = experiment_config.payment_rule
+        self.n_items = None
         self.models: Iterable[torch.nn.Module] = None
         self.mechanism: Mechanism = None
         self.bidders: Iterable[Bidder] = None
         self.env: Environment = None
         self.learners: Iterable[Learner] = None
+        self.positive_output_point = None
 
         self.plot_frequency = LoggingConfiguration.plot_frequency
         self.max_epochs = LoggingConfiguration.max_epochs
@@ -99,12 +102,13 @@ class Experiment(ABC):
         self.plot_ymin = None
         self.plot_ymax = None
 
-    def _setup_mechanism_and_eval_environment(self):
+    def _model_2_bidders(self):
         # Inverse of bidder --> model lookup table
         self._model2bidder: List[List[int]] = [[] for m in range(self.n_models)]
         for b_id, m_id in enumerate(self._bidder2model):
             self._model2bidder[m_id].append(b_id)
 
+    def _setup_mechanism_and_eval_environment(self):
         # setup everything deterministic that is shared among runs
         self._setup_mechanism()
 
@@ -158,6 +162,39 @@ class Experiment(ABC):
                                  optimizer_hyperparams=self.learning_config.optimizer_hyperparams,
                                  strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
                                  ))
+
+    def _setup_bidders(self):
+            #TODO, Paul: Consolidate with the others. If not possible for all
+            # split in setup_bidders, setup
+            """
+            1. Create and save the models and bidders
+            2. Save the model parameters (#TODO, Paul: For everyone)
+            """
+            print('Setting up bidders...')
+            # TODO: this seems tightly coupled with setup learners... can we change this?
+            self.models = [None] * self.n_models
+
+            for i in range(len(self.models)):
+                self.models[i] = NeuralNetStrategy(
+                    self.learning_config.input_length, hidden_nodes=self.learning_config.hidden_nodes,
+                    hidden_activations=self.learning_config.hidden_activations,
+                    ensure_positive_output=self.positive_output_point,
+                    output_length = self.n_items
+                ).to(self.gpu_config.device)
+
+            self.bidders = [
+                self._strat_to_bidder(self.models[m_id], batch_size=self.learning_config.batch_size, player_position=i)
+                for i, m_id in enumerate(self._bidder2model)]
+
+
+            self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
+                                self.models]
+
+            if self.learning_config.pretrain_iters > 0:
+                print('\tpretraining...')
+                #TODO: why is this on per bidder basis when everything else is on per model basis?
+                for bidder in self.bidders:
+                    bidder.strategy.pretrain(bidder.valuations, self.learning_config.pretrain_iters)
 
     def _setup_eval_environment(self):
         """Overwritten by subclasses with known BNE.

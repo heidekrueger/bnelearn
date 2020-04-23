@@ -37,7 +37,7 @@ class CombinatorialExperiment(Experiment, ABC):
         else:
             self.n_models = self.n_players
             self._bidder2model: List[int] = list(range(self.n_players))
-
+        self._model_2_bidders()
         assert experiment_config.u_lo is not None, """Missing prior information!"""
         assert experiment_config.u_hi is not None, """Missing prior information!"""
 
@@ -57,6 +57,10 @@ class CombinatorialExperiment(Experiment, ABC):
         assert u_hi[0] < u_hi[n_local], "local bidders must be weaker than global bidder"
         self.u_hi = [float(h) for h in u_hi]
 
+        for i in range(self.n_models):
+            b_id = self._model2bidder[i][0]
+            self.positive_output_point = torch.tensor([self.u_hi[b_id]]*self.n_items, dtype= torch.float)
+
         self.plot_xmin = min(u_lo)
         self.plot_xmax = max(u_hi)
         self.plot_ymin = self.plot_xmin
@@ -67,37 +71,7 @@ class CombinatorialExperiment(Experiment, ABC):
         # The model should know who is using it # TODO: Stefan: In my oppinion, it shouldn't...
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
                               batch_size=batch_size, n_items = self.n_items)
-    # Currently only working for LLG and LLLLGG.
-    def _setup_bidders(self):
-        print('Setting up bidders...')
-        # TODO: this seems tightly coupled with setup learners... can we change this?
-        self.models = [None] * self.n_models
 
-        for i in range(len(self.models)):
-            # get id of canonical bidder for this model
-            b_id = self._model2bidder[i][0]
-            positive_output_point = torch.tensor([self.u_hi[b_id]]*self.n_items, dtype= torch.float)
-
-            self.models[i] = NeuralNetStrategy(
-                self.learning_config.input_length, hidden_nodes=self.learning_config.hidden_nodes,
-                hidden_activations=self.learning_config.hidden_activations,
-                ensure_positive_output=positive_output_point,
-                output_length = self.n_items
-            ).to(self.gpu_config.device)
-
-        self.bidders = [
-            self._strat_to_bidder(self.models[m_id], batch_size=self.learning_config.batch_size, player_position=i)
-            for i, m_id in enumerate(self._bidder2model)]
-
-
-        self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
-                             self.models]
-
-        if self.learning_config.pretrain_iters > 0:
-            print('\tpretraining...')
-            #TODO: why is this on per bidder basis when everything else is on per model basis?
-            for bidder in self.bidders:
-                bidder.strategy.pretrain(bidder.valuations, self.learning_config.pretrain_iters)
 
     def _setup_learning_environment(self):
         self.env = AuctionEnvironment(self.mechanism,

@@ -78,6 +78,7 @@ class SingleItemExperiment(Experiment, ABC):
                   logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne = False):
         super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
         self.valuation_prior = None
+        self.n_items = 1
 
     def _setup_mechanism(self):
         if self.payment_rule == 'first_price':
@@ -98,6 +99,10 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
     """
     def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne = False):
+        # if not given by subclass, implement generic optimal_bid if known
+        known_bne = known_bne or \
+            experiment_config.payment_rule == 'second_price' or \
+            (experiment_config.payment_rule == 'first_price' and self.risk == 1.0)
         super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne=known_bne)
         self.common_prior = None
         self.risk = float(experiment_config.risk)
@@ -109,43 +114,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         else:
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
-
-        # if not given by subclass, implement generic optimal_bid if known
-        known_bne = known_bne or \
-            experiment_config.payment_rule == 'second_price' or \
-            (experiment_config.payment_rule == 'first_price' and self.risk == 1.0)
-
-    def _setup_bidders(self):
-        print('Setting up bidders...')
-
-        # Ensure nonnegative output somewhere on relevatn domain to avoid degenerate initializations
-        positive_output_point = self.common_prior.mean
-
-        self.models = []
-
-        if self.model_sharing:
-            self.models.append(NeuralNetStrategy(
-                self.learning_config.input_length, hidden_nodes=self.learning_config.hidden_nodes,
-                hidden_activations=self.learning_config.hidden_activations,
-                ensure_positive_output=positive_output_point.unsqueeze(0)
-            ).to(self.gpu_config.device))
-
-            self.bidders = [self._strat_to_bidder(self.models[0], self.learning_config.batch_size, i)
-                            for i in range(self.n_players)]
-        else:
-            self.bidders = []
-            for i in range(self.n_players):
-                self.models.append(NeuralNetStrategy(
-                    self.learning_config.input_length, hidden_nodes=self.learning_config.hidden_nodes,
-                    hidden_activations=self.learning_config.hidden_activations,
-                    ensure_positive_output=positive_output_point.unsqueeze(0)
-                ).to(self.gpu_config.device))
-                self.bidders.append(self._strat_to_bidder(self.models[i], self.learning_config.batch_size, i))
-
-        if self.learning_config.pretrain_iters > 0:
-            print('\tpretraining...')
-            for i in range(len(self.models)):
-                self.models[i].pretrain(self.bidders[i].valuations, self.learning_config.pretrain_iters)
+        self._model_2_bidders()
 
     def _set_symmetric_bne_closure(self):
         # set optimal_bid here, possibly overwritten by subclasses if more specific form is known
@@ -246,7 +215,9 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         self.u_lo = float(experiment_config.u_lo)
         self.u_hi = float(experiment_config.u_hi)
         self.common_prior = torch.distributions.uniform.Uniform(low = self.u_lo, high=self.u_hi)
-        
+        for i in range(self.n_models):
+            b_id = self._model2bidder[i][0]
+            self.positive_output_point = torch.tensor([self.u_hi]*self.n_items, dtype= torch.float)
         self.plot_xmin = self.u_lo
         self.plot_xmax = self.u_hi
         self.plot_ymin = 0
@@ -299,6 +270,10 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
         self.valuation_mean = experiment_config.valuation_mean
         self.valuation_std = experiment_config.valuation_std
         self.common_prior = torch.distributions.normal.Normal(loc=self.valuation_mean, scale=self.valuation_std)
+        for i in range(self.n_models):
+            b_id = self._model2bidder[i][0]
+            self.positive_output_point = torch.tensor([self.valuation_mean]*self.n_items, dtype= torch.float)
+        
         self.plot_xmin = int(max(0, self.valuation_mean - 3 * self.valuation_std))
         self.plot_xmax = int(self.valuation_mean + 3 * self.valuation_std)
         self.plot_ymin = 0
