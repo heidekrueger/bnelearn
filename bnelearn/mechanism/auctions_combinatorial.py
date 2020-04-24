@@ -232,10 +232,10 @@ class LLLLGGAuction(Mechanism):
         from bnelearn.util import large_lists_LLLLGG  # pylint:disable=import-outside-toplevel
         super().__init__(cuda)
 
-        if rule not in ['nearest-vcg', 'vcg', 'first_price']:
+        if rule not in ['nearest_vcg', 'vcg', 'first_price']:
             raise NotImplementedError(':(')
 
-        if rule == 'nearest-vcg':
+        if rule == 'nearest_vcg':
             if core_solver not in ['gurobi', 'cvxpy', 'qpth']:
                 raise NotImplementedError(':/')
         # 'nearest_zero' and 'proxy' are aliases
@@ -683,7 +683,7 @@ class LLLLGGAuction(Mechanism):
             payments = self._calculate_payments_vcg(bids, allocation, welfare)
         elif self.rule == 'first_price':
             payments = self._calculate_payments_first_price(bids, allocation)
-        elif self.rule == 'nearest-vcg':
+        elif self.rule == 'nearest_vcg':
             payments = self._calculate_payments_nearest_vcg_core(bids, allocation, welfare)
         else:
             raise ValueError('Invalid Pricing rule!')
