@@ -39,13 +39,46 @@ from bnelearn.environment import AuctionEnvironment
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
 
-    # abstract fields that must be set in subclass init
-    _bidder2model: List[int] = NotImplemented
-    n_models: int = NotImplemented
-    # TODO: make all fields that MUST be set in subclass abstract members
+    # READ THIS BEFORE TOUCHING THIS SECTION:
+    # We are abusing CLASS attributes here to trick the IDE into thinking that INSTANCE attributes exist in the base
+    # class. In reality, we set these as INSTANCE attributes in the subclass __init__s or during runtime and our
+    # logic guarantees that they will always exist as instance attributes when required.
+    # This greatly simplifies readability of the __init__ implementations as it allows simplification of order of calls
+    # reduces numbers of passed parameters and avoids repitition of similar concepts in subclasses.
+    # DO NOT PUT MUTABLE fields (i.e. instantiated Lists here), otherwise mutating them will hold for all objects
+    # of experiment.
+    # Make sure everything set here is set to NotImplemented. The actual CLASS attributes should never be accessed!
+
+    # attributes required for general setup logic
+
+
+    _bidder2model: List[int]# a list matching each bidder to their Strategy
+    n_models: int
+    mechanism: Mechanism
+    positive_output_point: torch.Tensor # TODO: check type and dimensions
+
+    ## Fields required for plotting
+    plot_xmin: float
+    plot_xmax: float
+    plot_ymin: float
+    plot_ymax: float
+    ## Optional - set only in some settings
+
+    ## Equilibrium environment
+    bne_utilities: torch.Tensor or List[float] # TODO: check if type hint correct
+    bne_env: AuctionEnvironment
+    _optimal_bid: callable
+
 
     def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne=False):
+
+        # Stuff that shuld go somewhere else completely :-D
+        # TODO: Stefan: This should not be here, maybe set in frontend and pass?
+        root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
+        if root_path not in sys.path:
+            sys.path.append(root_path)
+        self.log_root=os.path.join(root_path, 'experiments')
 
         # Configs
         self.experiment_config = experiment_config
@@ -53,36 +86,38 @@ class Experiment(ABC):
         self.logging_config = logging_config
         self.gpu_config = gpu_config
 
-        # Save locally - must haves
-        self.n_players = experiment_config.n_players
-        self.payment_rule = experiment_config.payment_rule
-        self.n_items = None
-        self.models: Iterable[torch.nn.Module] = None
-        self.mechanism: Mechanism = None
-        self.bidders: Iterable[Bidder] = None
-        self.env: Environment = None
-        self.learners: Iterable[Learner] = None
-        self.positive_output_point = None
-
+        # Global Stuff that should be initiated here
         self.plot_frequency = LoggingConfiguration.plot_frequency
         self.max_epochs = LoggingConfiguration.max_epochs
         self.plot_points = LoggingConfiguration.plot_points
-        #TODO: Smells like redundancy
-        self.log_dir = None
-        # TODO: Stefan: This should not be here, maybe set in frontend and pass?
-        root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
-        if root_path not in sys.path:
-            sys.path.append(root_path)
-        self.log_root=os.path.join(root_path, 'experiments')
+
+        # Everything that will be set up per run initioated with none
+        self.log_dir = None #TODO: is this redundant? someone said it smells
         self.fig = None
         self.writer = None
         self.overhead = 0.0
-        self.known_bne = known_bne
 
+        self.models: Iterable[torch.nn.Module] = None
+        self.bidders: Iterable[Bidder] = None
+        self.env: Environment = None
+        self.learners: Iterable[Learner] = None
+
+        # Stuff that comes from subclasses and could often be moved
+        # but should be made abstract field
+        self.n_players = experiment_config.n_players # --> usually required in subclass inits in some way
+        self.n_items = None # same for mechanism setup
+        self.payment_rule = experiment_config.payment_rule # same, for mechanism setup
+        
+        # actual logic
+        self.known_bne = known_bne # needs to be set in subclass and either specified as input or set there
         # Cannot lot 'opt' without known bne
         # TODO: Stefan: currently it's not always possible to infer if known bne exists before calling this (super) init
         if logging_config.log_metrics['opt'] or logging_config.log_metrics['l2']:
             assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
+        
+        # These are set on first _log_experiment
+        self.v_opt: torch.Tensor = None
+        self.b_opt: torch.Tensor = None
 
         ### Save locally - can haves
         # Logging
@@ -90,18 +125,8 @@ class Experiment(ABC):
             self.regret_batch_size = logging_config.regret_batch_size
         if logging_config.regret_grid_size is not None:
             self.regret_grid_size = logging_config.regret_grid_size
+        
 
-        #TODO: Add if logging bne once implemented
-        self.v_opt = None
-        self.b_opt = None
-        self.bne_utilities = None
-        self.bne_env = None
-
-        # Plotting
-        self.plot_xmin = None
-        self.plot_xmax = None
-        self.plot_ymin = None
-        self.plot_ymax = None
 
     def _model_2_bidders(self):
         # Inverse of bidder --> model lookup table
@@ -333,6 +358,7 @@ class Experiment(ABC):
             lims = (xlim, ylim)
             set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
+            # TODO: Stefan: können wir hier ein paar comments dazu haben, was da passiert?
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
                 a, b = None, None
                 if lim is not None:
@@ -638,6 +664,7 @@ class Experiment(ABC):
         for agent in env.agents:
             i = agent.player_position
             
+            # TODO: this fails if there's no u_lo, u_hi
             # TODO Nils: downward compatible: u_lo/hi should always be of same type: list
             u_lo = self.u_lo[i] if isinstance(self.u_lo, list) else self.u_lo
             u_hi = self.u_hi[i] if isinstance(self.u_hi, list) else self.u_hi
