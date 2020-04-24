@@ -641,8 +641,6 @@ class Experiment(ABC):
         Compute mean regret of current policy and return
         ex interim regret (ex ante regret is the average of that tensor)
         """
-        # TODO Nils: @Paul please check logic here. Major changes: (1) use original draw_valuations,
-        # as its logic is needed, (2) trying to calculate for all models at once.
 
         env = self.env
         regret_batch_size = self.logging_config.regret_batch_size
@@ -655,13 +653,10 @@ class Experiment(ABC):
 
         for agent in env.agents:
             i = agent.player_position
-            
-            # TODO: this fails if there's no u_lo, u_hi
-            # TODO Nils: downward compatible: u_lo/hi should always be of same type: list
             v_lb = agent.grid_lb
             v_ub = agent.grid_ub
 
-            # TODO Nils: only supports regret_batch_size <= batch_size
+            # Oonly supports regret_batch_size <= batch_size
             bid_profile[:,i,:] = agent.get_action()[:regret_batch_size,...]
             regret_grid[:,i] = torch.linspace(v_lb, v_ub, regret_grid_size,
                                               device=env.mechanism.device)
@@ -683,69 +678,6 @@ class Experiment(ABC):
                        figure_name='regret_function', epoch=epoch, plot_points=self.plot_points)
             #TODO, Paul: Check in detail if correct!?
         return ex_ante_regret, ex_interim_max_regret
-
-    def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
-        #TODO Stefan: Is this still used anywhere?
-        start_time = timer()
-
-        original_batch_size = env.agents[0].batch_size
-        bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
-                                  dtype=env.agents[0].valuations.dtype, device = env.mechanism.device)
-        for agent in env.agents:
-            agent.batch_size = regret_batch_size
-            agent.draw_valuations_new_batch_(regret_batch_size)
-            bid_profile[:, agent.player_position, :] = agent.get_action()
-
-        regrets = []
-        valuations = []
-        max_regret = 0
-        for learner in learners:
-            player_position = learner.strat_to_player_kwargs['player_position']
-
-            regret_grid = torch.linspace(u_lo[player_position], u_hi[player_position], regret_grid_size)
-
-            #print("Calculating regret...")
-            torch.cuda.empty_cache()
-            regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position,
-                                               env.agents[player_position].valuations, regret_grid)
-
-            print("agent {} ex ante/ex interim regrat: avg: {:.3f}, max: {:.3f}".format(player_position,
-                                                                 torch.mean(regret),
-                                                                 torch.max(regret)))
-
-            self.writer.add_scalar('eval/max_ex_interim_regret', torch.max(regret), epoch)
-            self.writer.add_scalar('eval/ex_ante_regret', torch.mean(regret), epoch)
-            regrets.append(regret)
-
-            valuations.append(env.agents[player_position].valuations)
-
-            max_regret = max(max_regret, torch.max(regret))
-
-        # if isinstance(self, LLLLGGAuctionLogger):
-        #     valuations_tensor = torch.tensor([t.cpu().numpy() for t in valuations]).permute(1,0,2)
-        #     regrets_tensor = torch.tensor([t.cpu().numpy() for t in regrets]).view(len(learners), regret_batch_size, 1)
-        #     fig, _ = self._plot_3d((valuations_tensor, regrets_tensor), epoch, [self.plot_xmin, self.plot_xmax], [self.plot_ymin, self.plot_ymax],
-        #                         [0, max_regret.detach().cpu().numpy()], input_length=1, x_label="valuation", y_label="regret")
-        # else:
-
-        # TODO: as tensors in first place?
-        valuations = torch.stack(valuations, dim=1)
-        regrets = torch.stack(regrets, dim=1)[:,:,None]
-
-        self._plot(
-            fig=self.fig, plot_data=(valuations, regrets), writer=self.writer,
-            epoch=epoch, xlim=[self.plot_xmin, self.plot_xmax],
-            ylim=[0, max_regret.detach().cpu().numpy()],
-            x_label="valuation", y_label="regret", figure_name='regret'
-        )
-
-        # TODO: why? don't we redraw valuations at beginning of loop anyway.
-        for agent in env.agents:
-            agent.batch_size = original_batch_size
-            agent.draw_valuations_new_batch_(original_batch_size)
-
-        elapsed = timer() - start_time
-        self.overhead += elapsed
 
     def _log_experimentparams(self):
         #TODO: write out all experiment params (complete dict)

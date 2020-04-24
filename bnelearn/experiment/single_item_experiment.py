@@ -293,7 +293,6 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
         super().__init__(experiment_config, learning_config, logging_config, gpu_config, common_prior)
 
 
-
 class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
     def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
