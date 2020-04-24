@@ -32,8 +32,8 @@
 #     ])
 # ids_local_global, testdata_local_global = zip(*[
 #     # LLG
-#     ['LLG-fp', (run_llg(2,3,'first_price'),1)],
-#     ['LLG-fp-no_model_sharing', (run_llg(2,3,'first_price', model_sharing=False),1)],
+#     ['LLG-fp', (run_llg(2,3,'first_price',log_metrics=['regret']),1)],
+#     ['LLG-fp-no_model_sharing', (run_llg(2,3,'first_price', model_sharing=False,log_metrics=['regret']),1)],
 #     ['LLG-vcg', (run_llg(2,3,'vcg'),1)],
 #     ['LLG-nearest_bid', (run_llg(2,3,'nearest_bid'),1)],
 #     ['LLG-nearest_zero', (run_llg(2,3,'nearest_zero'),1)],
@@ -46,9 +46,10 @@
 #     ])
 # ids_multi_unit, testdata_multi_unit = zip(*[
 #     # MultiUnit
-#     ['MultiUnit-fp', (run_multiunit(2, 3, [2], 'first_price'),2)],
-#     ['MultiUnit-fp-no_model_sharing', (run_multiunit(2, 3, [2], 'first_price',model_sharing=False),2)],
-#     ['MultiUnit-vcg', (run_multiunit(2, 3, [2], 'second_price'),2)],
+#     ['MultiUnit-discr', (run_multiunit(2, 3, [2], 'discriminatory'),2)],
+#     ['MultiUnit-discr-no_model_sharing', (run_multiunit(2, 3, [2], 'discriminatory',model_sharing=False),2)],
+#     ['MultiUnit-vcg', (run_multiunit(2, 3, [2], 'vcg'),2)],
+#     ['MultiUnit-vcg', (run_multiunit(2, 3, [2], 'uniform'),2)],
 #     ['SplitAward-fp', (run_splitaward(2, 3, [2]),2)],
 #     ['SplitAward-fp-no_model_sharing', (run_splitaward(2, 3, [2], model_sharing=False),2)]
 #     ])

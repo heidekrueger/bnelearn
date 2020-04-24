@@ -98,6 +98,8 @@ class Bidder(Player):
         if self._cache_actions:
             self.actions = torch.zeros(batch_size, n_items, device=self.device)
         self.draw_valuations_()
+        self.grid_lb = max(0,self.value_distribution.icdf(torch.tensor(0.001)))
+        self.grid_ub = self.value_distribution.icdf(torch.tensor(0.999))
 
     ### Alternative Constructors #############
     @classmethod
@@ -149,24 +151,17 @@ class Bidder(Player):
             ----
                 batch_size: int, upper bound of returned batch size
         """
-        if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
-            batch_size_per_dim = int(batch_size ** (1/self.n_items))
-            lin = torch.linspace(self.value_distribution.low, self.value_distribution.high,
-                                 batch_size_per_dim, device=self.device)
-            grid_valuations = torch.stack([x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()
-
-            if isinstance(self.item_interest_limit, int):
-                grid_valuations[:,self.item_interest_limit:] = 0
-
-            if self.constant_marginal_values:
-               grid_valuations.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
-                                           grid_valuations[:,0:1].repeat(1, self.n_items-1))
-
-            if self.descending_valuations:
-                grid_valuations = grid_valuations.sort(dim=1, descending=True)[0].unique(dim=0)
-
-        else:
-            NotImplementedError('how to draw grid valuations?')
+        batch_size_per_dim = int(batch_size ** (1/self.n_items))
+        lin = torch.linspace(self.grid_lb, self.grid_ub,
+                             batch_size_per_dim, device=self.device)
+        grid_valuations = torch.stack([x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()
+        if isinstance(self.item_interest_limit, int):
+            grid_valuations[:,self.item_interest_limit:] = 0
+        if self.constant_marginal_values:
+           grid_valuations.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
+                                       grid_valuations[:,0:1].repeat(1, self.n_items-1))
+        if self.descending_valuations:
+            grid_valuations = grid_valuations.sort(dim=1, descending=True)[0].unique(dim=0)
 
         return grid_valuations
 

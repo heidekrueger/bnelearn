@@ -10,10 +10,10 @@ bids_1 = torch.rand([2**5,6,2], dtype = torch.float)
 # Console: pytest bnelearn/tests/test_llllgg_core_solver_comp.py -s
 # (parallel, payment rule, bids, device)
 ids, testdata = zip(*[
-    ['nearest vcg - single - cpu', (1,'nearest-vcg', bids_1, 'cpu')],
-    ['nearest vcg - multi - cpu', (8,'nearest-vcg', bids_1, 'cpu')],
-    ['nearest vcg - single - gpu', (1,'nearest-vcg', bids_1, 'cuda')],
-    ['nearest vcg - multi - gpu', (8,'nearest-vcg', bids_1, 'cuda')],
+    ['nearest vcg - single - cpu', (1,'nearest_vcg', bids_1, 'cpu')],
+    ['nearest vcg - multi - cpu', (8,'nearest_vcg', bids_1, 'cpu')],
+    ['nearest vcg - single - gpu', (1,'nearest_vcg', bids_1, 'cuda')],
+    ['nearest vcg - multi - gpu', (8,'nearest_vcg', bids_1, 'cuda')],
 ])
 
 def run_LLLLGG_test(parallel, rule, bids, device):

@@ -50,8 +50,6 @@ class Experiment(ABC):
     # Make sure everything set here is set to NotImplemented. The actual CLASS attributes should never be accessed!
 
     # attributes required for general setup logic
-
-
     _bidder2model: List[int]# a list matching each bidder to their Strategy
     n_models: int
     mechanism: Mechanism
@@ -209,7 +207,6 @@ class Experiment(ABC):
             self.bidders = [
                 self._strat_to_bidder(self.models[m_id], batch_size=self.learning_config.batch_size, player_position=i)
                 for i, m_id in enumerate(self._bidder2model)]
-
 
             self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
                                 self.models]
@@ -661,12 +658,12 @@ class Experiment(ABC):
             
             # TODO: this fails if there's no u_lo, u_hi
             # TODO Nils: downward compatible: u_lo/hi should always be of same type: list
-            u_lo = self.u_lo[i] if isinstance(self.u_lo, list) else self.u_lo
-            u_hi = self.u_hi[i] if isinstance(self.u_hi, list) else self.u_hi
+            v_lb = agent.grid_lb
+            v_ub = agent.grid_ub
 
             # TODO Nils: only supports regret_batch_size <= batch_size
             bid_profile[:,i,:] = agent.get_action()[:regret_batch_size,...]
-            regret_grid[:,i] = torch.linspace(u_lo, u_hi, regret_grid_size,
+            regret_grid[:,i] = torch.linspace(v_lb, v_ub, regret_grid_size,
                                               device=env.mechanism.device)
 
         torch.cuda.empty_cache()
