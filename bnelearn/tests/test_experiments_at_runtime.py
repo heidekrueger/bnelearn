@@ -21,9 +21,9 @@ from bnelearn.experiment.gpu_controller import GPUController
 ids_single_item, testdata_single_item = zip(*[
     # Single item
     ['single_item-symmetric-uniform-fp', (run_single_item_uniform_symmetric(2,3, [2], 'first_price'),1)],
+    ['single_item-symmetric-uniform-fp-no_model_sharing',
+        (run_single_item_uniform_symmetric(2,3, [3], 'first_price',model_sharing=False),1)],
     ['single_item-symmetric-uniform-vcg', (run_single_item_uniform_symmetric(2,3, [3], 'second_price'),1)],
-    ['single_item-symmetric-uniform-vcg-no_model_sharing',
-        (run_single_item_uniform_symmetric(2,3, [3], 'second_price',model_sharing=False),1)],
     ['single_item-symmetric-gaussian-fp', (run_single_item_gaussian_symmetric(2,3, [4], 'first_price'),1)],
     ['single_item-symmetric-gaussian-vcg', (run_single_item_gaussian_symmetric(2,3, [5], 'second_price'),1)],
     ['single_item-asymmetric-uniform-fp', (run_single_item_asymmetric_uniform(2,3, 'first_price'),1)],
