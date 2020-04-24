@@ -102,19 +102,6 @@ class Experiment(ABC):
         self.env: Environment = None
         self.learners: Iterable[Learner] = None
 
-        # Stuff that comes from subclasses and could often be moved
-        # but should be made abstract field
-        self.n_players = experiment_config.n_players # --> usually required in subclass inits in some way
-        self.n_items = None # same for mechanism setup
-        self.payment_rule = experiment_config.payment_rule # same, for mechanism setup
-        
-        # actual logic
-        self.known_bne = known_bne # needs to be set in subclass and either specified as input or set there
-        # Cannot lot 'opt' without known bne
-        # TODO: Stefan: currently it's not always possible to infer if known bne exists before calling this (super) init
-        if logging_config.log_metrics['opt'] or logging_config.log_metrics['l2']:
-            assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
-        
         # These are set on first _log_experiment
         self.v_opt: torch.Tensor = None
         self.b_opt: torch.Tensor = None
@@ -125,21 +112,32 @@ class Experiment(ABC):
             self.regret_batch_size = logging_config.regret_batch_size
         if logging_config.regret_grid_size is not None:
             self.regret_grid_size = logging_config.regret_grid_size
+
+        # The following required attrs have already been set in many subclasses in earlier logic.
+        # Only set here if they haven't. Don't overwrite.
+        if not hasattr(self, 'n_players'):
+            self.n_players =  experiment_config.n_players
+        if not hasattr(self, 'payment_rule'):
+            self.payment_rule = experiment_config.payment_rule
         
-
-
-    def _model_2_bidders(self):
+        ### actual logic
         # Inverse of bidder --> model lookup table
         self._model2bidder: List[List[int]] = [[] for m in range(self.n_models)]
         for b_id, m_id in enumerate(self._bidder2model):
             self._model2bidder[m_id].append(b_id)
 
-    def _setup_mechanism_and_eval_environment(self):
-        # setup everything deterministic that is shared among runs
         self._setup_mechanism()
 
+
+        self.known_bne = known_bne # needs to be set in subclass and either specified as input or set there
+        # Cannot lot 'opt' without known bne
+        # TODO: Stefan: currently it's not always possible to infer if known bne exists before calling this (super) init
+        if logging_config.log_metrics['opt'] or logging_config.log_metrics['l2']:
+            assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
+        
         if self.known_bne:
             self._setup_eval_environment()
+
 
     # TODO: rename this
     def _setup_run(self):
@@ -226,9 +224,6 @@ class Experiment(ABC):
     def _setup_eval_environment(self):
         """Overwritten by subclasses with known BNE.
         Sets up an environment used for evaluation of learning agents (e.g.) vs known BNE"""
-
-        # this base class method should never be called, otherwise something is wrong in subclass logic.
-        # i.e. erroneously assuming a known BNE exists when it doesn't.
         raise NotImplementedError("This Experiment has no implemented BNE!")
 
     def _setup_learning_environment(self):

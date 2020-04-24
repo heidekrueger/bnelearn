@@ -81,8 +81,8 @@ class LLGExperiment(CombinatorialExperiment):
             ['first_price', 'vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
         super().__init__(2, 1, experiment_config, learning_config, logging_config, gpu_config, known_bne)
         self.gamma = experiment_config.gamma
-        assert self.gamma == 0, "Gamma > 0 implemented yet!?"
-        assert self.n_players == 3, "Not correct number of players specified"
+        assert self.gamma == 0, "Gamma > 0 implemented yet."
+        assert self.n_players == 3, "Incorrect number of players specified."
         self._setup_mechanism_and_eval_environment()
 
     def _setup_mechanism(self):
