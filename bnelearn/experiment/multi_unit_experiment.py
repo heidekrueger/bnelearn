@@ -269,6 +269,24 @@ class MultiUnitExperiment(Experiment, ABC):
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
 
+
+        self.n_units = self.n_items = experiment_config.n_units
+        self.n_players =  experiment_config.n_players
+        self.payment_rule = experiment_config.payment_rule
+
+        self.u_lo = experiment_config.u_lo
+        self.u_hi = experiment_config.u_hi
+
+        self.model_sharing = experiment_config.model_sharing
+        if self.model_sharing:
+            self.n_models = 1
+            self._bidder2model = [0] * self.n_players
+        else:
+            self.n_models = self.n_players
+            self._bidder2model = list(range(self.n_players))
+
+        self.positive_output_point = torch.tensor([self.u_hi]*self.n_items, dtype= torch.float)
+
         # check for available BNE strategy
         if not isinstance(self, SplitAwardExperiment):
             self._optimal_bid = multiunit_bne(experiment_config, experiment_config.payment_rule)
@@ -280,35 +298,6 @@ class MultiUnitExperiment(Experiment, ABC):
                 self._optimal_bid = None
         known_bne = self._optimal_bid is not None
 
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
-        self.n_units = self.n_items = experiment_config.n_units
-
-        self.u_lo = experiment_config.u_lo
-        self.u_hi = experiment_config.u_hi
-        self.plot_xmin = self.plot_ymin = min(self.u_lo)
-        self.plot_xmax = self.plot_ymax = max(self.u_hi)
-        self.model_sharing = experiment_config.model_sharing
-
-        if self.payment_rule in ('discriminatory', 'first_price'):
-            self.mechanism_type = MultiUnitDiscriminatoryAuction
-        elif self.payment_rule in ('vcg', 'second_price'):
-            self.mechanism_type = MultiUnitVickreyAuction
-        elif self.payment_rule == 'uniform':
-            self.mechanism_type = MultiUnitUniformPriceAuction
-        else:
-            raise ValueError('payment rule unknown')
-
-        if self.model_sharing:
-            self.n_models = 1
-            self._bidder2model = [0] * self.n_players
-        else:
-            self.n_models = self.n_players
-            self._bidder2model = list(range(self.n_players))
-        self._model_2_bidders()
-        for i in range(self.n_models):
-            b_id = self._model2bidder[i][0]
-            self.positive_output_point = torch.tensor([self.u_hi]*self.n_items, dtype= torch.float)
-
         self.constant_marginal_values = experiment_config.constant_marginal_values
         self.item_interest_limit = experiment_config.item_interest_limit
 
@@ -319,11 +308,16 @@ class MultiUnitExperiment(Experiment, ABC):
 
         self.input_length =  experiment_config.input_length
 
+
+        self.plot_xmin = self.plot_ymin = min(self.u_lo)
+        self.plot_xmax = self.plot_ymax = max(self.u_hi)
+
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        
         print('\n=== Hyperparameters ===')
         for k in learning_config.learner_hyperparams.keys():
             print('{}: {}'.format(k, learning_config.learner_hyperparams[k]))
         print('=======================\n')
-        self._setup_mechanism_and_eval_environment()
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         """
@@ -377,6 +371,16 @@ class MultiUnitExperiment(Experiment, ABC):
     #     ]
 
     def _setup_mechanism(self):
+
+        if self.payment_rule in ('discriminatory', 'first_price'):
+            self.mechanism_type = MultiUnitDiscriminatoryAuction
+        elif self.payment_rule in ('vcg', 'second_price'):
+            self.mechanism_type = MultiUnitVickreyAuction
+        elif self.payment_rule == 'uniform':
+            self.mechanism_type = MultiUnitUniformPriceAuction
+        else:
+            raise ValueError('payment rule unknown')
+
         self.mechanism = self.mechanism_type(cuda=self.gpu_config.cuda)
 
     def _setup_eval_environment(self):
@@ -434,17 +438,19 @@ class SplitAwardExperiment(MultiUnitExperiment):
         assert all(u_lo > 0 for u_lo in experiment_config.u_lo), \
             '100% Unit must be valued > 0'
 
-        if self.payment_rule == 'first_price':
-            self.mechanism_type = FPSBSplitAwardAuction
-        else:
-            raise NotImplementedError('for the split-award auction only the ' + \
-                'first-price payment rule is supported')
 
         self.plot_xmin = [self.u_lo[0], self.u_hi[0]]
         self.plot_xmax = [self.experiment_config.efficiency_parameter * self.u_lo[0],
                           self.experiment_config.efficiency_parameter * self.u_hi[0]]
         self.plot_ymin = [0, 2 * self.u_hi[0]]
         self.plot_ymax = [0, 2 * self.u_hi[0]]
+
+    def _setup_mechanism(self):
+        if self.payment_rule == 'first_price':
+            self.mechanism = FPSBSplitAwardAuction(cuda=self.gpu_config.cuda)
+        else:
+            raise NotImplementedError('for the split-award auction only the ' + \
+                'first-price payment rule is supported')
 
     def default_pretrain_transform(self, input_tensor):
         """Pretrain transformation for this setting"""

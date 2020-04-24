@@ -301,8 +301,7 @@ class FPSBSplitAwardAuction(Mechanism):
         allocation: torch.Tensor(batch_size, b_bundles=2), values = {0,1}
         """
 
-        print(bids)
-        print()
+
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
