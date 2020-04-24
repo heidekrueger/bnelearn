@@ -69,7 +69,7 @@ class Experiment(ABC):
         self.plot_points = LoggingConfiguration.plot_points
         #TODO: Smells like redundancy
         self.log_dir = None
-        # TODO: remove this? move all logging logic into experiment itself?
+        # TODO: Stefan: This should not be here, maybe set in frontend and pass?
         root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
         if root_path not in sys.path:
             sys.path.append(root_path)
@@ -80,6 +80,7 @@ class Experiment(ABC):
         self.known_bne = known_bne
 
         # Cannot lot 'opt' without known bne
+        # TODO: Stefan: currently it's not always possible to infer if known bne exists before calling this (super) init
         if logging_config.log_metrics['opt'] or logging_config.log_metrics['l2']:
             assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
 
@@ -665,6 +666,7 @@ class Experiment(ABC):
         return ex_ante_regret, ex_interim_max_regret
 
     def log_ex_interim_regret(self, epoch, mechanism, env, learners, u_lo, u_hi, regret_batch_size, regret_grid_size):
+        #TODO Stefan: Is this still used anywhere?
         start_time = timer()
 
         original_batch_size = env.agents[0].batch_size
@@ -732,6 +734,8 @@ class Experiment(ABC):
 
     def _log_trained_model(self):
         #TODO: write out the trained model at the end of training @Stefan
+        # Stefan: Looks good to me. 
+        # TODO: maybe we should also log out all pointwise regrets in the ending-epoch to disk to use it to make nicer plots for a publication?
         # Proposal Nils:
         for i, model in enumerate(self.models):
             name = 'saved_model_' + str(i) + '.pt'
