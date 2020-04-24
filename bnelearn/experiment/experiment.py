@@ -259,7 +259,7 @@ class Experiment(ABC):
         log_params = {'utilities': utilities, 'prev_params': prev_params}
         elapsed_overhead = self.log_training_iteration(log_params=log_params, epoch=epoch)
 
-        print('epoch {}:\t elapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer()-tic, elapsed_overhead)) #TODO: this prints TOTAL overhead, not time in current iteration
+        print('epoch {}:\t elapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer()-tic, elapsed_overhead))
 
     def run(self, epochs, n_runs: int = 1, run_comment: str=None, seeds: Iterable[int] = None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
