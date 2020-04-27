@@ -19,7 +19,8 @@ from dataclasses import dataclass, field, asdict
 
 #TODO: Using locals() to directly create the dict 
 # (https://stackoverflow.com/questions/2521901/get-a-list-tuple-dict-of-the-arguments-passed-to-a-function)
-# fine with you? 
+# fine with you?
+
 def run_single_item_uniform_symmetric(n_runs: int, n_epochs: int, 
                                       n_players: [int], payment_rule: str, model_sharing=True, u_lo=0, u_hi=1, 
                                       risk=1.0, 
@@ -54,13 +55,23 @@ def run_single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
     experiment_class = GaussianSymmetricPriorSingleItemExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
-def run_single_item_asymmetric_uniform(n_runs: int, n_epochs: int, 
-                                      payment_rule = 'first_price', model_sharing=False, u_lo=5, u_hi=[15,25], 
-                                      risk=1.0, eval_batch_size = 2**22,
-                                      log_metrics = ['opt','l2','regret'], regret_batch_size=2**8, regret_grid_size=2**8,
-                                      specific_gpu=1):
+def run_single_item_asymmetric_uniform(
+        n_runs: int,
+        n_epochs: int,
+        payment_rule = 'first_price',
+        model_sharing=False,
+        u_lo=[0, 6], # [5, 5],     [0, 6]
+        u_hi=[5, 7], # [15, 25],   [5, 7]
+        risk=1.0,
+        eval_batch_size = 2**18,
+        log_metrics = ['opt','l2','regret'],
+        regret_batch_size=2**8,
+        regret_grid_size=2**8,
+        specific_gpu=1
+    ):
     n_players = [2]
-    running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
+    running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs,
+                                                 specific_gpu=specific_gpu, n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
@@ -195,7 +206,8 @@ if __name__ == '__main__':
     '''
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = fire.Fire()
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_llg(1,20,'vcg')
-    #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_single_item_uniform_symmetric(1,20, 2, 'first_price')
+    #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = \
+    #       run_single_item_uniform_symmetric(1,20, 2, 'first_price')
 
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #      run_single_item_uniform_symmetric(1,20, [2], 'first_price', model_sharing=False)
@@ -205,15 +217,20 @@ if __name__ == '__main__':
     #    run_llg(1,110,'nearest_zero',specific_gpu=1)
     #running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #    run_llllgg(1,310,'first_price')#,model_sharing=False)
-    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-       run_multiunit(n_runs=1, n_epochs=4000, n_players=[2], payment_rule='vcg', n_units=1)
+    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+    #    run_multiunit(n_runs=1, n_epochs=4000, n_players=[2], payment_rule='vcg', n_units=1)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #   run_splitaward(1, 500, [2])
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #    run_single_item_asymmetric_uniform(n_runs = 1, n_epochs=20)
+    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+       run_single_item_asymmetric_uniform(n_runs=1, n_epochs=4000)
 
     gpu_configuration = GPUController(specific_gpu=7)
-    learning_configuration = LearningConfiguration(input_length=experiment_configuration.n_units)
+    input_length = experiment_configuration.n_units \
+        if experiment_configuration.n_units is not None else 1
+    learning_configuration = LearningConfiguration(
+        input_length=input_length,
+        pretrain_iters=100
+    )
 
 
     for i in running_configuration.n_players:

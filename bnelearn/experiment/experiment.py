@@ -201,10 +201,11 @@ class Experiment(ABC):
 
         for i in range(len(self.models)):
             self.models[i] = NeuralNetStrategy(
-                self.learning_config.input_length, hidden_nodes=self.learning_config.hidden_nodes,
+                self.learning_config.input_length,
+                hidden_nodes=self.learning_config.hidden_nodes,
                 hidden_activations=self.learning_config.hidden_activations,
                 ensure_positive_output=self.positive_output_point,
-                output_length = self.n_items
+                output_length=self.n_items
             ).to(self.gpu_config.device)
 
         self.bidders = [
@@ -212,15 +213,14 @@ class Experiment(ABC):
             for i, m_id in enumerate(self._bidder2model)]
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
-                            self.models]
+                             self.models]
 
         if self.learning_config.pretrain_iters > 0:
             print('\tpretraining...')
             #TODO: why is this on per bidder basis when everything else is on per model basis?
             for i, model in enumerate(self.models):
-                tansform = (lambda x: torch.ones_like(x)) if i == 0 else (lambda x: torch.zeros_like(x))
                 model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
-                               self.learning_config.pretrain_iters, transformation=tansform)
+                               self.learning_config.pretrain_iters)
 
     def _setup_eval_environment(self):
         """Overwritten by subclasses with known BNE.
@@ -460,7 +460,7 @@ class Experiment(ABC):
         # setting up plotting
         self.plot_points = min(self.logging_config.plot_points, self.learning_config.batch_size)
 
-        if self.logging_config.log_metrics['opt']:
+        if self.logging_config.log_metrics['opt'] and hasattr(self, 'bne_env'):
             # dim: [points, bidders, items]
             self.v_opt = torch.stack(
                 [b.draw_valuations_grid_(self.plot_points)
