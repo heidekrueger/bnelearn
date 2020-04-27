@@ -285,7 +285,7 @@ class MultiUnitExperiment(Experiment, ABC):
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
 
-        self.positive_output_point = torch.tensor([self.u_hi]*self.n_items, dtype= torch.float)
+        self.positive_output_point = None # TODO unused
 
         # check for available BNE strategy
         if not isinstance(self, SplitAwardExperiment):
@@ -308,12 +308,11 @@ class MultiUnitExperiment(Experiment, ABC):
 
         self.input_length =  experiment_config.input_length
 
-
         self.plot_xmin = self.plot_ymin = min(self.u_lo)
         self.plot_xmax = self.plot_ymax = max(self.u_hi)
 
         super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
-        
+
         print('\n=== Hyperparameters ===')
         for k in learning_config.learner_hyperparams.keys():
             print('{}: {}'.format(k, learning_config.learner_hyperparams[k]))
@@ -336,7 +335,7 @@ class MultiUnitExperiment(Experiment, ABC):
         )
 
     def _setup_mechanism(self):
-
+        """Setup the mechanism"""
         if self.payment_rule in ('discriminatory', 'first_price'):
             self.mechanism_type = MultiUnitDiscriminatoryAuction
         elif self.payment_rule in ('vcg', 'second_price'):
@@ -380,7 +379,8 @@ class MultiUnitExperiment(Experiment, ABC):
         super()._plot(fig, plot_data, writer, epoch, xlim, ylim, labels,
                       x_label, y_label, fmts, figure_name, plot_points)
 
-        super()._plot_3d(plot_data, writer, epoch, figure_name)
+        if self.n_units == 2:
+            super()._plot_3d(plot_data, writer, epoch, figure_name)
 
     @staticmethod
     def default_pretrain_transform(input_tensor):

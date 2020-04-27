@@ -117,7 +117,7 @@ class Experiment(ABC):
             self.n_players =  experiment_config.n_players
         if not hasattr(self, 'payment_rule'):
             self.payment_rule = experiment_config.payment_rule
-        
+
         ### actual logic
         # Inverse of bidder --> model lookup table
         self._model2bidder: List[List[int]] = [[] for m in range(self.n_models)]
@@ -177,46 +177,50 @@ class Experiment(ABC):
         # Implementation in SingleItem case is identical except for player position argument below.
         self.learners = []
         for m_id, model in enumerate(self.models):
-            self.learners.append(ESPGLearner(model=model,
-                                 environment=self.env,
-                                 hyperparams=self.learning_config.learner_hyperparams,
-                                 optimizer_type=self.learning_config.optimizer,
-                                 optimizer_hyperparams=self.learning_config.optimizer_hyperparams,
-                                 strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
-                                 ))
+            self.learners.append(
+                ESPGLearner(
+                    model=model,
+                    environment=self.env,
+                    hyperparams=self.learning_config.learner_hyperparams,
+                    optimizer_type=self.learning_config.optimizer,
+                    optimizer_hyperparams=self.learning_config.optimizer_hyperparams,
+                    strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
+                )
+            )
 
     def _setup_bidders(self):
-            #TODO, Paul: Consolidate with the others. If not possible for all
-            # split in setup_bidders, setup
-            """
-            1. Create and save the models and bidders
-            2. Save the model parameters (#TODO, Paul: For everyone)
-            """
-            print('Setting up bidders...')
-            # TODO: this seems tightly coupled with setup learners... can we change this?
-            self.models = [None] * self.n_models
+        #TODO, Paul: Consolidate with the others. If not possible for all
+        # split in setup_bidders, setup
+        """
+        1. Create and save the models and bidders
+        2. Save the model parameters (#TODO, Paul: For everyone)
+        """
+        print('Setting up bidders...')
+        # TODO: this seems tightly coupled with setup learners... can we change this?
+        self.models = [None] * self.n_models
 
-            for i in range(len(self.models)):
-                self.models[i] = NeuralNetStrategy(
-                    self.learning_config.input_length, hidden_nodes=self.learning_config.hidden_nodes,
-                    hidden_activations=self.learning_config.hidden_activations,
-                    ensure_positive_output=self.positive_output_point,
-                    output_length = self.n_items
-                ).to(self.gpu_config.device)
+        for i in range(len(self.models)):
+            self.models[i] = NeuralNetStrategy(
+                self.learning_config.input_length, hidden_nodes=self.learning_config.hidden_nodes,
+                hidden_activations=self.learning_config.hidden_activations,
+                ensure_positive_output=self.positive_output_point,
+                output_length = self.n_items
+            ).to(self.gpu_config.device)
 
-            self.bidders = [
-                self._strat_to_bidder(self.models[m_id], batch_size=self.learning_config.batch_size, player_position=i)
-                for i, m_id in enumerate(self._bidder2model)]
+        self.bidders = [
+            self._strat_to_bidder(self.models[m_id], batch_size=self.learning_config.batch_size, player_position=i)
+            for i, m_id in enumerate(self._bidder2model)]
 
-            self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
-                                self.models]
+        self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
+                            self.models]
 
-            if self.learning_config.pretrain_iters > 0:
-                print('\tpretraining...')
-                #TODO: why is this on per bidder basis when everything else is on per model basis?
-                for i, model in enumerate(self.models):
-                    model.pretrain(self.bidders[self._model2bidder[i][0]].valuations, 
-                    self.learning_config.pretrain_iters)
+        if self.learning_config.pretrain_iters > 0:
+            print('\tpretraining...')
+            #TODO: why is this on per bidder basis when everything else is on per model basis?
+            for i, model in enumerate(self.models):
+                tansform = (lambda x: torch.ones_like(x)) if i == 0 else (lambda x: torch.zeros_like(x))
+                model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
+                               self.learning_config.pretrain_iters, transformation=tansform)
 
     def _setup_eval_environment(self):
         """Overwritten by subclasses with known BNE.

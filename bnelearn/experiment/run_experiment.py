@@ -112,7 +112,7 @@ def run_multiunit(
         payment_rule: str='vcg',
         n_units=2,
         log_metrics = ['opt','l2','regret'],
-        model_sharing=True,
+        model_sharing=False,
         u_lo=[0,0], u_hi=[1,1],
         risk=1.0,
         constant_marginal_values: bool=False,
@@ -196,7 +196,7 @@ if __name__ == '__main__':
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = fire.Fire()
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_llg(1,20,'vcg')
     #n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_single_item_uniform_symmetric(1,20, 2, 'first_price')
-    
+
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #      run_single_item_uniform_symmetric(1,20, [2], 'first_price', model_sharing=False)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
@@ -205,15 +205,15 @@ if __name__ == '__main__':
     #    run_llg(1,110,'nearest_zero',specific_gpu=1)
     #running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #    run_llllgg(1,310,'first_price')#,model_sharing=False)
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #    run_multiunit(1, 500, [2], 'vcg')
+    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+       run_multiunit(n_runs=1, n_epochs=4000, n_players=[2], payment_rule='vcg', n_units=1)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #   run_splitaward(1, 500, [2])
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #    run_single_item_asymmetric_uniform(n_runs = 1, n_epochs=20)
 
-    gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
-    learning_configuration = LearningConfiguration(input_length=1)
+    gpu_configuration = GPUController(specific_gpu=7)
+    learning_configuration = LearningConfiguration(input_length=experiment_configuration.n_units)
 
 
     for i in running_configuration.n_players:
