@@ -285,7 +285,7 @@ class MultiUnitExperiment(Experiment, ABC):
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
 
-        self.positive_output_point = None # TODO unused
+        self.positive_output_point = torch.tensor([[self.u_hi] * self.n_units], dtype=torch.float)
 
         # check for available BNE strategy
         if not isinstance(self, SplitAwardExperiment):

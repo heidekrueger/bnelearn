@@ -243,7 +243,6 @@ class Bidder(Player):
         if self._cache_actions and not self._valuations_changed:
             return self.actions
         inputs = self.valuations.view(self.batch_size, -1)
-
         # for cases when n_itmes != input_length (e.g. Split-Award Auctions, combinatorial auctions with bid languages)
         # TODO: generalize this, see #82. https://gitlab.lrz.de/heidekrueger/bnelearn/issues/82
         if hasattr(self.strategy, 'input_length') and self.strategy.input_length != self.n_items:

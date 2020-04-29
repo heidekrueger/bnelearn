@@ -357,7 +357,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
                transformation (optional): Callable. Defaulting to identity function if input_length == output_length
            returns: Nothing
         """
-    
+
         desired_output = input_tensor
         if transformation is not None:
             desired_output = transformation(input_tensor)
@@ -397,4 +397,3 @@ class TruthfulStrategy(Strategy, nn.Module):
 
     def play(self, inputs):
         return self.forward(inputs)
- 

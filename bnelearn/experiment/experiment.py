@@ -132,7 +132,7 @@ class Experiment(ABC):
         # TODO: Stefan: currently it's not always possible to infer if known bne exists before calling this (super) init
         if logging_config.log_metrics['opt'] or logging_config.log_metrics['l2']:
             assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
-        
+
         if self.known_bne:
             self._setup_eval_environment()
 
@@ -217,7 +217,6 @@ class Experiment(ABC):
 
         if self.learning_config.pretrain_iters > 0:
             print('\tpretraining...')
-            #TODO: why is this on per bidder basis when everything else is on per model basis?
             for i, model in enumerate(self.models):
                 model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
                                self.learning_config.pretrain_iters)
@@ -540,8 +539,7 @@ class Experiment(ABC):
 
             unique_bidders = [self.env.agents[i[0]] for i in self._model2bidder]
             v = torch.stack(
-                [b.valuations[:self.plot_points,...]
-                 for b in unique_bidders],
+                [b.valuations[:self.plot_points,...] for b in unique_bidders],
                 dim=1
             )
             b = torch.stack([b.get_action()[:self.plot_points,...]

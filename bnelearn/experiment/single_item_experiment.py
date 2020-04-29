@@ -123,6 +123,29 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(u_lo: List, u_hi
 
     return _optimal_bid
 
+def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2(
+        valuation: torch.Tensor or float, player_position: int,
+        u_lo: List, u_hi: List
+    ):
+    """
+    Optimal bid in this experiment when bidders do NOT share same lower bound.
+    Source: Equilibrium 2 of https://link.springer.com/article/10.1007/s40505-014-0049-1
+    """
+    if not isinstance(valuation, torch.Tensor):
+        valuation = torch.tensor(valuation, dtype=torch.float)
+    #unsqueeze if simple float
+    if valuation.dim() == 0:
+        valuation.unsqueeze_(0)
+
+    if player_position == 0:
+        bids = torch.zeros_like(valuation)
+        bids[valuation > 4] = valuation[valuation > 4]/2 + 2
+        bids[valuation <= 4] = valuation[valuation <= 4]/4 + 3
+    else:
+        bids = valuation/2 + 1
+
+    return bids
+
 
 
 # TODO: single item experiment should not be abstract and hold all logic for learning. Only bne needs to go into subclass
@@ -398,9 +421,15 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
     def _setup_eval_environment(self):
 
         if len(set(self.u_lo)) != 1: # BNE for differnt u_lo for each player
-            self._optimal_bid = _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
-                u_lo=self.u_lo, u_hi=self.u_hi
-            )
+            print('Warning: only one of multiple BNE selected!') # TODO
+            # BNE 1
+            # # self._optimal_bid = _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
+            #     u_lo=self.u_lo, u_hi=self.u_hi
+            # )
+
+            # BNE 2
+            self._optimal_bid = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2,
+                                        u_lo=self.u_lo, u_hi=self.u_hi)
 
         else: # BNE for fixed u_lo for all players
             self._optimal_bid = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral,
