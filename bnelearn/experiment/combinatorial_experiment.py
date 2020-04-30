@@ -1,30 +1,34 @@
+"""
+This module implements combinatorial experiments. Currently, this is only Local Global experiments as
+considered by Bosshard et al. (2018). 
+
+Limitations and comments:
+    - Currently implemented for only uniform valuations
+    - Strictly speaking Split Award might belong here (however, implmentation closer to multi-unit)
+
+TODO:
+    - Check if truthful bidding is BNE in LLLLGG with VCG
+"""
 import os
 from abc import ABC
 from functools import partial
 from typing import Iterable, List
 import numpy as np
-
+from torch.utils.tensorboard import SummaryWriter
 import torch
 
 from bnelearn.mechanism.auctions_combinatorial import LLGAuction, LLLLGGAuction
-
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment, GPUController
 from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
+from bnelearn.strategy import Strategy, ClosureStrategy
 
-from bnelearn.learner import ESPGLearner
-from bnelearn.strategy import Strategy, NeuralNetStrategy, ClosureStrategy
-
-import matplotlib.pyplot as plt
-from torch.utils.tensorboard import SummaryWriter
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.ticker import LinearLocator, FormatStrFormatter
-
-
-# TODO: Currently only implemented for uniform val
-# TODO: Currently only implemented for LLG and LLLLGG
-class CombinatorialExperiment(Experiment, ABC):
+class LocalGlobalExperiment(Experiment, ABC):
+    """
+    This class represents Local Global experiments in general as considered by Bosshard et al. (2018).
+    It serves only to provide common logic and parameters for LLG and LLLLGG.
+    """
     def __init__(self, n_players, n_local, n_items, experiment_config, learning_config, 
                  logging_config, gpu_config, known_bne):
         self.n_players = n_players
@@ -72,8 +76,12 @@ class CombinatorialExperiment(Experiment, ABC):
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
                               batch_size=batch_size, n_items = self.n_items)
 
-
-class LLGExperiment(CombinatorialExperiment):
+class LLGExperiment(LocalGlobalExperiment):
+    """
+    A combinatorial experiment with 2 local and 1 global bidder and 2 items; but each bidders bids on 1 bundle only.
+    Local bidder 1 bids only on the first item, the second only on the second and global only on both.
+    Ausubel and Baranov (2018) provide closed form solutions for the 3 core selecting rules.
+    """
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
        
@@ -84,7 +92,7 @@ class LLGExperiment(CombinatorialExperiment):
 
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known! (i.e. uniformity, bounds, etc)
         known_bne = experiment_config.payment_rule in \
-            ['first_price', 'vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
+            ['vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
         super().__init__(3,2, 1, experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
     def _setup_mechanism(self):
@@ -141,14 +149,27 @@ class LLGExperiment(CombinatorialExperiment):
         name = ['LLG', self.payment_rule]
         return os.path.join(*name)
 
-class LLLLGGExperiment(CombinatorialExperiment):
+class LLLLGGExperiment(LocalGlobalExperiment):
+    """
+    A combinatorial experiment with 4 local and 2 global bidder and 6 items; but each bidders bids on 2 bundles only.
+        Local bidder 1 bids on the bundles {(item_1,item_2),(item_2,item_3)}
+        Local bidder 2 bids on the bundles {(item_3,item_4),(item_4,item_5)}
+        ...
+        Gloabl bidder 1 bids on the bundles {(item_1,item_2,item_3,item_4), (item_5,item_6,item_7,item_8)}
+        Gloabl bidder 1 bids on the bundles {(item_3,item_4,item_5,item_6), (item_1,item_2,item_7,item_8)}
+    No BNE are known (but VCG).
+    Bosshard et al. (2018) consider this setting with nearest-vcg and first-price payments.
+
+    TODO:
+        - Implement eval_env for VCG
+    """
     def __init__(self, experiment_config, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
 
         assert experiment_config.n_players == 6, "not right number of players for setting"
         assert learning_config.input_length == 2, "Learner config has to take 2 inputs!"
 
-        known_bne = False #experiment_config.payment_rule in ['vcg'] #TODO: while no eval_env is defined, we also shouldn't set this
+        known_bne = False
         super().__init__(6, 4, 2, experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
     def _setup_mechanism(self):
