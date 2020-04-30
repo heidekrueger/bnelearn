@@ -103,8 +103,8 @@ def run_llllgg(n_runs: int, n_epochs: int,
             payment_rule: str, model_sharing=True, u_lo=[0,0,0,0,0,0], u_hi=[1,1,1,1,2,2], 
             risk=1.0,  eval_batch_size = 2**12,
             log_metrics = ['regret'], regret_batch_size=2**8, regret_grid_size=2**8,
-            specific_gpu=1):
-    
+            core_solver = "NoCore", specific_gpu=1):
+
     n_players = [6]
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu, n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
@@ -113,7 +113,7 @@ def run_llllgg(n_runs: int, n_epochs: int,
                                                  eval_batch_size=eval_batch_size,
                                                  max_epochs=n_epochs)
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
-                                                       u_lo=u_lo, u_hi=u_hi, risk=risk)
+                                                       u_lo=u_lo, u_hi=u_hi, risk=risk, core_solver=core_solver)
     experiment_class = LLLLGGExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 

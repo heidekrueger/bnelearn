@@ -42,9 +42,14 @@ class ExperimentConfiguration:
     efficiency_parameter: float = None
     input_length: int = None
 
+    # LLLLGG
+    core_solver: str = 'NoCore'
+
     def __post_init__(self):
         if self.input_length is None:
             self.input_length = self.n_units
+    
+    
 
 @dataclass#(frozen=True) TODO: frozen not possible with post_init
 class LoggingConfiguration:

@@ -22,7 +22,7 @@ from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment, GPUController
 from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
-from bnelearn.strategy import Strategy, ClosureStrategy
+from bnelearn.strategy import ClosureStrategy
 
 class LocalGlobalExperiment(Experiment, ABC):
     """
@@ -163,7 +163,7 @@ class LLLLGGExperiment(LocalGlobalExperiment):
     TODO:
         - Implement eval_env for VCG
     """
-    def __init__(self, experiment_config, learning_config: LearningConfiguration,
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
 
         assert experiment_config.n_players == 6, "not right number of players for setting"
@@ -173,7 +173,7 @@ class LLLLGGExperiment(LocalGlobalExperiment):
         super().__init__(6, 4, 2, experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
     def _setup_mechanism(self):
-        self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver='NoCore', parallel=1, cuda=self.gpu_config.cuda)
+        self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver=self.experiment_config.core_solver, parallel=1, cuda=self.gpu_config.cuda)
 
     def _get_logdir(self):
         name = ['LLLLGG', self.payment_rule, str(self.n_players) + 'p']

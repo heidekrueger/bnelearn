@@ -1,6 +1,12 @@
-"""Defines experiment class"""
+"""
+This module defines an experiment. It includes logging and plotting since they 
+can often be shared by specific experiments.
 
-
+TODO:
+    -...
+"""
+import sys
+import os
 from abc import ABC, abstractmethod
 from typing import Iterable, List
 
@@ -8,33 +14,22 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
+from time import perf_counter as timer
+import matplotlib.pyplot as plt
+from matplotlib.ticker import LinearLocator, FormatStrFormatter
+from mpl_toolkits.mplot3d import Axes3D
+
 # pylint: disable=unnecessary-pass,unused-argument
 
 from bnelearn.bidder import Bidder
-from bnelearn.environment import Environment
+from bnelearn.environment import Environment, AuctionEnvironment
 from bnelearn.mechanism import Mechanism
-from bnelearn.learner import Learner
+from bnelearn.learner import Learner, ESPGLearner
+from bnelearn.strategy import NeuralNetStrategy
+import bnelearn.util.metrics as metrics
 
 from bnelearn.experiment.gpu_controller import GPUController
 from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
-#from bnelearn.experiment.logger import Logger
-
-import matplotlib.pyplot as plt
-import sys
-import os
-from time import perf_counter as timer
-from matplotlib import colors as mcolors
-from mpl_toolkits.mplot3d import Axes3D
-import bnelearn.util.metrics as metrics
-
-import matplotlib.pyplot as plt
-from torch.utils.tensorboard import SummaryWriter
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.ticker import LinearLocator, FormatStrFormatter
-
-from bnelearn.learner import ESPGLearner
-from bnelearn.strategy import Strategy, NeuralNetStrategy
-from bnelearn.environment import AuctionEnvironment
 
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
@@ -68,7 +63,7 @@ class Experiment(ABC):
     _optimal_bid: callable
 
 
-    def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne=False):
 
         # Stuff that shuld go somewhere else completely :-D
@@ -189,14 +184,11 @@ class Experiment(ABC):
             )
 
     def _setup_bidders(self):
-        #TODO, Paul: Consolidate with the others. If not possible for all
-        # split in setup_bidders, setup
         """
         1. Create and save the models and bidders
         2. Save the model parameters (#TODO, Paul: For everyone)
         """
         print('Setting up bidders...')
-        # TODO: this seems tightly coupled with setup learners... can we change this?
         self.models = [None] * self.n_models
 
         for i in range(len(self.models)):
@@ -433,10 +425,6 @@ class Experiment(ABC):
             # display.display(plt.gcf())
             plt.show()
 
-    @abstractmethod
-    def _log_experimentparams(self):
-        pass
-
     def _log_hyperparams(self, epoch=0):
         """Everything that should be logged on every learning_rate update"""
 
@@ -503,10 +491,14 @@ class Experiment(ABC):
         elapsed = timer() - start_time
         self.overhead += elapsed
 
-    #TODO: Have to get bne_utilities for all models instead of bne_utoility of only one!?
-    #TODO: Create one method per metric and check which ones to compute
     def log_training_iteration(self, log_params: dict, epoch: int) -> float:
-        """Returns elapsed time in seconds"""
+        """
+        Checks which metrics have to be logged and performs logging and plotting.
+        Returns:
+            - elapsed time in seconds
+        TODO:
+            - Currently we get bne_utility of only one model. Change to avg of all?
+        """
         start_time = timer()
 
         #TODO, Paul: Can delete?: model_is_global = len(self.models) == 1
@@ -560,8 +552,6 @@ class Experiment(ABC):
                 labels += ['BNE_{}'.format(i) for i in range(len(self.models))]
                 fmts += ['b--'] * len(self.models)
 
-            #TODO, P: What is plotted here? opt or normal?
-            # Nils: both in one. If there is a BNE, it's cat to v, b resp.
             self._plot(fig=self.fig, plot_data=(v, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
