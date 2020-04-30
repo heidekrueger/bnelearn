@@ -644,20 +644,25 @@ class Experiment(ABC):
 
         for agent in env.agents:
             i = agent.player_position
+            # TODO Nils: wrong bounds for split-award
             v_lb = agent.grid_lb
             v_ub = agent.grid_ub
 
-            # Oonly supports regret_batch_size <= batch_size
+            # Only supports regret_batch_size <= batch_size
             bid_profile[:,i,:] = agent.get_action()[:regret_batch_size,...]
             regret_grid[:,i] = torch.linspace(v_lb, v_ub, regret_grid_size,
                                               device=env.mechanism.device)
 
         torch.cuda.empty_cache()
-        regret = [metrics.ex_interim_regret(env.mechanism, bid_profile, 
-                                            learner.strat_to_player_kwargs['player_position'],
-                                            env.agents[learner.strat_to_player_kwargs['player_position']].valuations[:regret_batch_size,...],
-                                            regret_grid[:,learner.strat_to_player_kwargs['player_position']])
-                  for learner in self.learners]
+        regret = [
+            metrics.ex_interim_regret(
+                env.mechanism, bid_profile, 
+                learner.strat_to_player_kwargs['player_position'],
+                env.agents[learner.strat_to_player_kwargs['player_position']].valuations[:regret_batch_size,...],
+                regret_grid[:,learner.strat_to_player_kwargs['player_position']]
+            )
+            for learner in self.learners
+        ]
         ex_ante_regret = [model_tuple[0].mean() for model_tuple in regret]
         ex_interim_max_regret = [model_tuple[0].max() for model_tuple in regret]
         if create_plot_output:
