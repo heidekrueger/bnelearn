@@ -10,14 +10,10 @@ TODO:
 """
 
 import os
-import time
-import warnings
 from abc import ABC
-from itertools import product
-import bnelearn.util.metrics as metrics
-
 
 import torch
+from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 from scipy import integrate, interpolate
 
@@ -25,25 +21,11 @@ from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import GPUController, Experiment
 from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
-from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import (
     MultiUnitVickreyAuction, MultiUnitUniformPriceAuction, MultiUnitDiscriminatoryAuction,
-    FPSBSplitAwardAuction, Mechanism
+    FPSBSplitAwardAuction
 )
-
-from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
-from bnelearn.util import metrics as metrics
-
-import matplotlib.pyplot as plt
-from timeit import default_timer as timer
-
-from torch.utils.tensorboard import SummaryWriter
-
-import matplotlib.pyplot as plt
-from torch.utils.tensorboard import SummaryWriter
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.ticker import LinearLocator, FormatStrFormatter
-
+from bnelearn.strategy import ClosureStrategy
 
 ########################################################################################################################
 ###                                                 BNE STRATEGIES                                                   ###

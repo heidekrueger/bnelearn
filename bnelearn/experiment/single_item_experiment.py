@@ -13,11 +13,10 @@ from scipy import optimize
 from bnelearn.bidder import Bidder
 from bnelearn.environment import  AuctionEnvironment
 from bnelearn.experiment import Experiment, GPUController
-from bnelearn.experiment.configurations import LearningConfiguration, LoggingConfiguration
+from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
 
-from bnelearn.learner import ESPGLearner
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
-from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
+from bnelearn.strategy import ClosureStrategy
 
 
 ###############################################################################
@@ -154,7 +153,7 @@ class SingleItemExperiment(Experiment, ABC):
     # known issue: pylint doesn't recognize this class as abstract: https://github.com/PyCQA/pylint/commit/4024949f6caf5eff5f3da7ab2b4c3cf2e296472b
     # pylint: disable=abstract-method
 
-    def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne = False):
 
         if not hasattr(self, 'payment_rule'):
@@ -175,7 +174,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
     """A Single Item Experiment that has the same valuation prior for all participating bidders.
     For risk-neutral agents, a unique BNE is known.
     """
-    def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController, common_prior: torch.distributions.Distribution,
                  known_bne = False):
 
@@ -202,9 +201,6 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
             self._bidder2model = list(range(self.n_players))
 
         super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne=known_bne)
-
-
-
 
     def _set_symmetric_bne_closure(self):
         # set optimal_bid here, possibly overwritten by subclasses if more specific form is known
@@ -278,9 +274,9 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         print('Utility in BNE (sampled): \t{:.5f}'.format(bne_utility_sampled))
         print('Utility in BNE (analytic): \t{:.5f}'.format(bne_utility_analytical))
         # TODO: make atol dynamic based on batch size
-        assert torch.allclose(bne_utility_analytical, bne_utility_sampled, atol=5e-2), \
-            "Analytical BNE Utility does not match sampled utility from parent class! \n\t sampled {}, analytic {}".format(
-                bne_utility_sampled, bne_utility_analytical)
+        if not torch.allclose(bne_utility_analytical, bne_utility_sampled, atol=5e-2):
+            warnings.warn("Analytical BNE Utility does not match sampled utility from parent class! \n\t sampled {}, analytic {}".format(
+                          bne_utility_sampled, bne_utility_analytical))
         print('Using analytical BNE utility.')
         self.bne_utility = bne_utility_analytical
         self.bne_utilities = [self.bne_utility]*self.n_models
@@ -295,7 +291,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
 class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
 
-    def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
 
         assert experiment_config.u_lo is not None, """Prior boundaries not specified!"""
@@ -371,7 +367,7 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
 
 
 class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
-    def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
 
 

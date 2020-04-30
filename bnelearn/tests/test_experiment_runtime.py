@@ -42,7 +42,7 @@
 #     ['LLLLGG-fp', (run_llllgg(2,3,'first_price'),2)],
 #     ['LLLLGG-fp-no_model_sharing', (run_llllgg(2,3,'first_price',model_sharing=False),2)],
 #     ['LLLLGG-vcg', (run_llllgg(2,3,'vcg'),2)],
-#     ['LLLLGG-nearest_vcg', (run_llllgg(2,3,'nearest_vcg'),2)]
+#     ['LLLLGG-nearest_vcg', (run_llllgg(2,3,'nearest_vcg',core_solver='gurobi'),2)]
 #     ])
 # ids_multi_unit, testdata_multi_unit = zip(*[
 #     # MultiUnit
@@ -63,6 +63,7 @@
 #     logging_configuration.plot_points=10
 #     logging_configuration.regret_batch_size = 2**2
 #     logging_configuration.regret_grid_size = 2**2
+#     learning_configuration.batch_size = 2**2
 #     experiment_configuration.n_players = running_configuration.n_players[0]
 #     experiment_configuration.test_run = True
 #     # Create and run the experiment

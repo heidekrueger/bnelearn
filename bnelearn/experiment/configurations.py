@@ -42,9 +42,14 @@ class ExperimentConfiguration:
     efficiency_parameter: float = None
     input_length: int = None
 
+    # LLLLGG
+    core_solver: str = 'NoCore'
+
     def __post_init__(self):
         if self.input_length is None:
             self.input_length = self.n_units
+    
+    
 
 @dataclass#(frozen=True) TODO: frozen not possible with post_init
 class LoggingConfiguration:
@@ -94,13 +99,13 @@ class LearningConfiguration:
     hidden_nodes: list = None 
     hidden_activations: list = None 
     pretrain_iters: int = 500
-    batch_size: int = 2**13
+    batch_size: int = 2**18
     input_length: int = 1 #TODO: To be removed later
 
     def __post_init__(self):
         self.optimizer: Type[Optimizer] = self._set_optimizer(self.optimizer_type)
         if self.learner_hyperparams is None:
-            self.learner_hyperparams = {'population_size': 128,
+            self.learner_hyperparams = {'population_size': 64,
                                         'sigma': 1.,
                                         'scale_sigma_by_model_size': True}
         if self.optimizer_hyperparams is None:
