@@ -122,8 +122,8 @@ def run_multiunit(
         n_players: list=[2],
         payment_rule: str='vcg',
         n_units=2,
-        log_metrics = ['opt','l2','regret'],
-        model_sharing=False,
+        log_metrics = ['opt','l2', 'regret'],
+        model_sharing=True,
         u_lo=[0,0], u_hi=[1,1],
         risk=1.0,
         constant_marginal_values: bool=False,
@@ -218,7 +218,7 @@ if __name__ == '__main__':
     #running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #    run_llllgg(1,310,'first_price')#,model_sharing=False)
     running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-       run_multiunit(n_runs=1, n_epochs=4000, n_players=[2], payment_rule='vcg', n_units=2)
+       run_multiunit(n_runs=3, n_epochs=4000, n_players=[2], n_units=2, payment_rule='first_price')
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #   run_splitaward(1, 500, [2])
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
@@ -232,11 +232,15 @@ if __name__ == '__main__':
         pretrain_iters=100
     )
 
+    try:
+        for i in running_configuration.n_players:
+            experiment_configuration.n_players = i
+            #TODO: filename needs a smarter solution.
+            logging_configuration.update_file_name()
+            experiment = experiment_class(experiment_configuration, learning_configuration,
+                                          logging_configuration, gpu_configuration)
+            experiment.run(epochs=running_configuration.n_epochs, n_runs=running_configuration.n_runs)
 
-    for i in running_configuration.n_players:
-        experiment_configuration.n_players = i
-        #TODO: filename needs a smarter solution.
-        logging_configuration.update_file_name()
-        experiment = experiment_class(experiment_configuration, learning_configuration,
-                                      logging_configuration, gpu_configuration)
-        experiment.run(epochs=running_configuration.n_epochs, n_runs=running_configuration.n_runs)
+    except KeyboardInterrupt:
+        print('\nKeyboardInterrupt: released memory after interruption')
+        torch.cuda.empty_cache()

@@ -54,12 +54,12 @@ def multiunit_bne(experiment_config, payment_rule):
     (split-award is NOT one of the) as callable if available and None otherwise.
     """
 
-    if payment_rule == 'vcg':
+    if payment_rule in ('vcg', 'vickrey'):
         def truthful(valuation, player_position=None):
             return torch.clone(valuation)
         return truthful
 
-    elif payment_rule == 'discriminatory':
+    elif payment_rule in ('first_price', 'discriminatory'):
         if experiment_config.n_units == 2 and experiment_config.n_players == 2:
             if not experiment_config.constant_marginal_values:
                 print('BNE is only approximated roughly!')
@@ -92,7 +92,7 @@ def _optimal_bid_multidiscriminatory2x2(valuation, player_position=None):
     b1 = lambda v: b_approx(v, s=0.42, t=0.90)
     b2 = lambda v: b_approx(v, s=0.35, t=0.55)
 
-    opt_bid = valuation
+    opt_bid = torch.clone(valuation)
     opt_bid[:,0] = b1(opt_bid[:,0])
     opt_bid[:,1] = b2(opt_bid[:,1])
     opt_bid = opt_bid.sort(dim=1, descending=True)[0]
@@ -102,6 +102,7 @@ def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
     """ BNE strategy in the multi-unit discriminatory price auction 2 players and 2 units
         with constant marginal valuations
     """
+    n_players = 2
 
     if isinstance(valuation_cdf, torch.distributions.uniform.Uniform):
         def _optimal_bid(valuation, player_position=None):
@@ -114,7 +115,7 @@ def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
                 value_cdf: callable = None,
                 lower_bound: int = 0,
                 epsabs=1e-3
-        ):
+            ):
             if value_cdf is None:
                 def _value_cdf(x):
                     return integrate.quad(value_pdf, lower_bound, x, epsabs=epsabs)[0]
@@ -137,13 +138,12 @@ def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
 
             return bidding
 
-        dist = self._strat_to_bidder(None, 1, None).value_distribution
-        bidding = muda_tb_cmv_bne(lambda x: torch.exp(dist.log_prob(x)).cpu().numpy(),
-                                  lambda x: dist.cdf(x).cpu().numpy())
+        bidding = muda_tb_cmv_bne(lambda x: torch.exp(valuation_cdf.log_prob(x)).cpu().numpy(),
+                                  lambda x: valuation_cdf.cdf(x).cpu().numpy())
 
         def _optimal_bid(valuation, player_position=None): 
             opt_bid = np.zeros_like(valuation.cpu().numpy())
-            for agent in range(self.n_players):
+            for agent in range(n_players):
                 opt_bid[agent] = bidding(valuation[agent,:])
             return torch.tensor(opt_bid)
 
@@ -288,14 +288,13 @@ class MultiUnitExperiment(Experiment, ABC):
         self.positive_output_point = torch.tensor([[self.u_hi] * self.n_units], dtype=torch.float)
 
         # check for available BNE strategy
+        self._optimal_bid = None
         if not isinstance(self, SplitAwardExperiment):
             self._optimal_bid = multiunit_bne(experiment_config, experiment_config.payment_rule)
         else:
             if experiment_config.n_units == 2 and experiment_config.n_players == 2:
                 self._optimal_bid = _optimal_bid_splitaward2x2_1(experiment_config)
                 self._optimal_bid_2 = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
-            else:
-                self._optimal_bid = None
         known_bne = self._optimal_bid is not None
 
         self.constant_marginal_values = experiment_config.constant_marginal_values

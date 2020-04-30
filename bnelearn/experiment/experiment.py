@@ -555,7 +555,6 @@ class Experiment(ABC):
                         log_params['epsilon_absolute'].tolist()
                     )
                 )
-                # TODO: handle case of no opt strategy
                 v = torch.cat([v, self.v_opt], dim=1)
                 b = torch.cat([b, self.b_opt], dim=1)
                 labels += ['BNE_{}'.format(i) for i in range(len(self.models))]
