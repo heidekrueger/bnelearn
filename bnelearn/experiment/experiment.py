@@ -11,8 +11,10 @@ from abc import ABC, abstractmethod
 from typing import Iterable, List
 
 import torch
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
+import pandas as pd
 
 from time import perf_counter as timer
 import matplotlib.pyplot as plt
@@ -279,6 +281,8 @@ class Experiment(ABC):
             for epoch in range(epoch, epoch + epochs + 1):
                 self._training_loop(epoch=epoch)
 
+            self.log_tb_events()
+
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
             # if torch.cuda.memory_allocated() > 0:
@@ -287,6 +291,34 @@ class Experiment(ABC):
 ########################################################################################################
 ####################################### Moved logging to here ##########################################
 ########################################################################################################
+    # based on https://stackoverflow.com/a/57411105/4755970
+    # output_dir must be the directory immediately above the runs and each run must have the same shape. No aggregation of multiple subdirectories for now.
+    def log_tb_events(self, format: str = 'csv'):
+        output_dir = self.log_dir
+
+        # runs are all subdirectories that don't start with '.' (exclude '.ipython_checkpoints')
+        # add more filters as needed
+        runs = [x.name for x in os.scandir(output_dir) if
+                x.is_dir() and not x.name.startswith('.') and not x.name == 'alternative']
+
+        d = {'run': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []}
+        for run in runs:
+            ea = EventAccumulator(os.path.join(output_dir, run)).Reload()
+            tags = ea.Tags()['scalars']
+
+            for tag in tags:
+                for event in ea.Scalars(tag):
+                    d['run'].append(run)
+                    d['tag'].append(tag)
+                    d['value'].append(event.value)
+                    d['wall_time'].append(event.wall_time)
+                    d['epoch'].append(event.step)
+
+        df = pd.DataFrame(d)
+        df.to_csv(os.path.join(output_dir, f'all_results.csv'))
+
+
+
 # Generalize as much as possible to avoid code overload and too much individualism
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list=None, ylim: list=None, labels: list=None,
