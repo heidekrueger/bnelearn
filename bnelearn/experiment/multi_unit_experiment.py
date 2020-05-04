@@ -157,6 +157,9 @@ def _optimal_bid_splitaward2x2_1(experiment_config):
     u_lo = experiment_config.u_lo
     u_hi = experiment_config.u_hi
 
+    # cut off bids at top
+    cut_off = 4 * u_hi[0]
+
     value_cdf = torch.distributions.Uniform(u_lo[0], u_hi[0]).cdf
 
     def _optimal_bid(valuation, player_position=None, return_payoff_dominant=True):
@@ -174,11 +177,14 @@ def _optimal_bid_splitaward2x2_1(experiment_config):
         wta_bounds = 2 * sigma_bounds
         wta_bounds[:,1] = G(valuation[:,0])
 
+        payoff_dominant_bid = torch.cat(
+            (wta_bounds[:,1].unsqueeze(0).t_(), sigma_bounds[:,1].unsqueeze(0).t_()),
+            axis=1
+        )
+        payoff_dominant_bid[payoff_dominant_bid > cut_off] = cut_off
+
         if return_payoff_dominant:
-            return torch.cat(
-                (wta_bounds[:,1].unsqueeze(0).t_(), sigma_bounds[:,1].unsqueeze(0).t_()),
-                axis=1
-            )
+            return payoff_dominant_bid
         return {'sigma_bounds': sigma_bounds, 'wta_bounds': wta_bounds}
 
     return _optimal_bid
@@ -384,7 +390,6 @@ class SplitAwardExperiment(MultiUnitExperiment):
         assert all(u_lo > 0 for u_lo in experiment_config.u_lo), \
             '100% Unit must be valued > 0'
 
-
         self.plot_xmin = [self.u_lo[0], self.u_hi[0]]
         self.plot_xmax = [self.experiment_config.efficiency_parameter * self.u_lo[0],
                           self.experiment_config.efficiency_parameter * self.u_hi[0]]
@@ -400,7 +405,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
 
     def default_pretrain_transform(self, input_tensor):
         """Pretrain transformation for this setting"""
-        temp = input_tensor.clone().detach()
+        temp = torch.clone(input_tensor)
         if input_tensor.shape[1] == 1:
             output_tensor = torch.cat((
                 temp,

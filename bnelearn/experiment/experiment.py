@@ -212,13 +212,14 @@ class Experiment(ABC):
         if self.learning_config.pretrain_iters > 0:
             print('\tpretraining...')
 
-            transform = None
-            if hasattr(self, 'default_pretrain_transform'):
-                transform = self.default_pretrain_transform
+            if hasattr(self, 'pretrain_transform'):
+                pretrain_transform = self.pretrain_transform
+            else:
+                pretrain_transform = None
 
             for i, model in enumerate(self.models):
                 model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
-                               self.learning_config.pretrain_iters, transform)
+                               self.learning_config.pretrain_iters, pretrain_transform)
 
     def _setup_eval_environment(self):
         """Overwritten by subclasses with known BNE.
