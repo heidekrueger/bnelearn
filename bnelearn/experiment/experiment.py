@@ -364,7 +364,7 @@ class Experiment(ABC):
                     x[:,agent_idx,plot_idx], y[:,agent_idx,plot_idx],
                     fmts[agent_idx % len(fmts)],
                     label=None if labels is None else labels[agent_idx % len(labels)],
-                    color=cycle[agent_idx],
+                    color=cycle[agent_idx % len(set(fmts))],
                 )
 
             # formating
@@ -688,7 +688,7 @@ class Experiment(ABC):
         torch.cuda.empty_cache()
         regret = [
             metrics.ex_interim_regret(
-                env.mechanism, bid_profile, 
+                env.mechanism, bid_profile,
                 learner.strat_to_player_kwargs['player_position'],
                 env.agents[learner.strat_to_player_kwargs['player_position']].valuations[:regret_batch_size,...],
                 regret_grid[:,learner.strat_to_player_kwargs['player_position']]

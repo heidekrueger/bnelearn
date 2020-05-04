@@ -145,6 +145,26 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2(
 
     return bids
 
+def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3(
+        valuation: torch.Tensor or float, player_position: int,
+        u_lo: List, u_hi: List
+    ):
+    """
+    Optimal bid in this experiment when bidders do NOT share same lower bound.
+    Source: Equilibrium 3 of https://link.springer.com/article/10.1007/s40505-014-0049-1
+    """
+    if not isinstance(valuation, torch.Tensor):
+        valuation = torch.tensor(valuation, dtype=torch.float)
+    #unsqueeze if simple float
+    if valuation.dim() == 0:
+        valuation.unsqueeze_(0)
+
+    if player_position == 0:
+        bids = valuation/5 + 4
+    else:
+        bids = 5 * torch.ones_like(valuation)
+
+    return bids
 
 
 # TODO: single item experiment should not be abstract and hold all logic for learning. Only bne needs to go into subclass
@@ -411,8 +431,8 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         return os.path.join(*name)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
-        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
-                              batch_size = batch_size)
+        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
+                              player_position=player_position, batch_size = batch_size)
 
     def _setup_eval_environment(self):
 
@@ -426,6 +446,10 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
             # BNE 2
             self._optimal_bid = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2,
                                         u_lo=self.u_lo, u_hi=self.u_hi)
+
+            # # BNE 3
+            # self._optimal_bid = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3,
+            #                             u_lo=self.u_lo, u_hi=self.u_hi)
 
         else: # BNE for fixed u_lo for all players
             self._optimal_bid = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral,
