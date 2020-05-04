@@ -211,9 +211,14 @@ class Experiment(ABC):
 
         if self.learning_config.pretrain_iters > 0:
             print('\tpretraining...')
+
+            transform = None
+            if hasattr(self, 'default_pretrain_transform'):
+                transform = self.default_pretrain_transform
+
             for i, model in enumerate(self.models):
                 model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
-                               self.learning_config.pretrain_iters)
+                               self.learning_config.pretrain_iters, transform)
 
     def _setup_eval_environment(self):
         """Overwritten by subclasses with known BNE.
@@ -551,9 +556,7 @@ class Experiment(ABC):
             log_params['L_2'], log_params['L_inf'] = self._log_metric_l()
 
         if self.logging_config.log_metrics['regret'] and (epoch % self.logging_config.regret_frequency) == 0:
-            create_plot_output = False
-            if epoch % self.logging_config.plot_frequency == 0:
-                create_plot_output = True
+            create_plot_output = epoch % self.logging_config.plot_frequency == 0
             log_params['regret_ex_ante'], log_params['regret_ex_interim'] = \
                 self._log_metric_regret(create_plot_output, epoch)
 
@@ -572,7 +575,8 @@ class Experiment(ABC):
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
             if self.logging_config.log_metrics['opt']:
-                print("\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})" \
+                print(
+                    "\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})" \
                     .format(
                         log_params['utility_vs_bne'].tolist(),
                         log_params['epsilon_relative'].tolist(),
@@ -676,9 +680,14 @@ class Experiment(ABC):
 
         for agent in env.agents:
             i = agent.player_position
-            # TODO Nils: wrong bounds for split-award
-            v_lb = agent.grid_lb
-            v_ub = agent.grid_ub
+
+            # TODO Nils: ugly work-around for split-award: needs seperate plot and regret bounds
+            if hasattr(agent, 'grid_lb_regret'):
+                v_lb = agent.grid_lb_regret
+                v_ub = agent.grid_ub_regret
+            else:
+                v_lb = agent.grid_lb
+                v_ub = agent.grid_ub
 
             # Only supports regret_batch_size <= batch_size
             bid_profile[:,i,:] = agent.get_action()[:regret_batch_size,...]

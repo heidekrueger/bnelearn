@@ -293,6 +293,8 @@ class ReverseBidder(Bidder):
             item_interest_limit,
             constant_marginal_values
         )
+        self.grid_lb_regret = 0
+        self.grid_ub_regret = float(2*self.grid_ub)
 
     @classmethod
     def uniform(cls, lower, upper, strategy, **kwargs):
