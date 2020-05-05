@@ -47,6 +47,7 @@ class Experiment(ABC):
     # attributes required for general setup logic
     _bidder2model: List[int]  # a list matching each bidder to their Strategy
     n_models: int
+    n_items: int
     mechanism: Mechanism
     positive_output_point: torch.Tensor # shape must be valid model input
 
@@ -197,7 +198,7 @@ class Experiment(ABC):
             print('\tpretraining...')
 
             if hasattr(self, 'pretrain_transform'):
-                pretrain_transform = self.pretrain_transform
+                pretrain_transform = self.pretrain_transform # pylint: disable=no-member
             else:
                 pretrain_transform = None
 

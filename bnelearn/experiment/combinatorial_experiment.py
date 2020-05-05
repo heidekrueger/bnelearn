@@ -120,7 +120,7 @@ class LLGExperiment(LocalGlobalExperiment):
 
     def _setup_eval_environment(self):
         bne_strategies = [
-            ClosureStrategy(partial(self._optimal_bid, player_position=i))
+            ClosureStrategy(partial(self._optimal_bid, player_position=i)) # pylint: disable=no-member
             for i in range(self.n_players)
         ]
 
