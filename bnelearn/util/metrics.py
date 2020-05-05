@@ -32,7 +32,7 @@ def norm_strategies(strategy1: Strategy, strategy2: Strategy, valuations: torch.
     With Monte-Carlo Integration this is approximated by
      (|V|/n * \\sum_i^n(|s1(v) - s2(v)|^p) )^(1/p)  where |V| is the volume of the set V.
 
-    Here, we ignore the volume. This givses us the RMSE for L2, supremum for Linfty, etc.
+    Here, we ignore the volume. This gives us the RMSE for L2, supremum for Linfty, etc.
     """
     b1 = strategy1.play(valuations)
     b2 = strategy2.play(valuations)
@@ -64,10 +64,10 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.tensor, bid_prof
     # version with size checks: (slower)
     # batch_size, _, n_items = bid_profile.shape #batch x player x item
     # n_candidates, n_items = candidate_bids.shape # candidates x item
-    #assert n_items == n_items2, "input tensors don't match" 
+    #assert n_items == n_items2, "input tensors don't match"
 
     batch_size, _, _ = bid_profile.shape #batch x player x item
-    n_candidates, _ = grid.shape # candidates x item 
+    n_candidates, _ = grid.shape # candidates x item
 
     bid_profile = bid_profile.repeat(n_candidates, 1, 1)
     bid_profile[:, bidder_position, :] = grid.repeat_interleave(repeats = batch_size, dim=0)
@@ -77,6 +77,9 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.tensor, bid_prof
 def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidder,
            grid: torch.Tensor, half_precision = False, player_position: int = None):
     """
+    # TODO: do we really need this or can we delete it in general?
+    # If we decide to keep it, check implementation in detail! (Removing many many todos in the body)
+
     Estimates a bidder's ex post regret in the current bid_profile vs a potential grid,
         i.e. the potential benefit of having deviated from the current strategy, as:
         regret = max(0, BR(v_i, b_-i) - u_i(b_i, b_-i))
@@ -86,7 +89,7 @@ def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidd
         bidder: a Bidder (used to retrieve valuations and utilities)
         grid:
             option 1: 1d tensor with length grid_size
-                TODO for n_items > 1, all grid_size**n_items combination will be used. Should be
+                todo for n_items > 1, all grid_size**n_items combination will be used. Should be
                 replaced by e.g. torch.meshgrid
             option 2: tensor with shape (grid_size, n_items)
         player_position (optional): specific position in which the player will be evaluated
@@ -94,7 +97,6 @@ def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidd
         half_precision: (optional, bool) Whether to use half precision tensors. default: false
     Output:
         regret (batch_size)
-    #TODO: move grid_creation out of regret
 
     Useful: To get the memory used by a tensor (in MB): (tensor.element_size() * tensor.nelement())/(1024*1024)
     """
@@ -108,27 +110,27 @@ def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidd
         agent_valuation = agent_valuation.half()
         grid = grid.half()
 
-    # TODO: Generalize these dimensions
+    #Generalize these dimensions
     batch_size, n_players, n_items = bid_profile.shape # pylint: disable=unused-variable
-    grid_size = grid.shape[0] #TODO: update this
+    grid_size = grid.shape[0] #update this
     # Create multidimensional bid tensor if required
     if n_items == 1:
         grid = grid.view(grid_size, 1).to(bid_profile.device)
     elif n_items >= 2:
         if len(grid.shape) == 1:
             grid = torch.combinations(grid, r=n_items, with_replacement=True).to(bid_profile.device) #grid_size**n_items x n_items
-            #TODO Stefan: this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
-    grid_size, _ = grid.shape #TODO this _new_ grid size refers to all combinations, whereas the previous one was 1D only
+            # Stefan: this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
+    grid_size, _ = grid.shape # this _new_ grid size refers to all combinations, whereas the previous one was 1D only
 
 
     ### Evaluate alternative bids on grid
-    grid_bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile) # (grid_size*batch_size) x n_players x n_items 
+    grid_bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile) # (grid_size*batch_size) x n_players x n_items
     ## Calculate allocation and payments for alternative bids given opponents bids
     allocation, payments = mechanism.play(grid_bid_profile)
 
     # we only need the specific player's allocation and can get rid of the rest.
     a_i = allocation[:,player_position,:]
-    p_i = payments[:,player_position] # 1D tensor of length (grid * batch) 
+    p_i = payments[:,player_position] # 1D tensor of length (grid * batch)
 
     counterfactual_valuations = bidder.valuations.repeat(grid_size, 1) # grid*batch x n_items
     utility_grid = bidder.get_counterfactual_utility(a_i, p_i, counterfactual_valuations).view(grid_size, batch_size)
@@ -147,10 +149,9 @@ def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidd
 def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
                       player_position: int, agent_valuation: torch.Tensor,
                       grid: torch.Tensor, half_precision = False):
-    #TODO: 1. Implement individual evaluation batch und bid size -> large batch for training, smaller for eval
-    #TODO: 2. Implement logging for evaluations ins tensor and for printing
-    #TODO: 3. Implement printing plotting of evaluation
     """
+    TODO: Update docstring @Paul and check entire function implementation TODOS with Nils
+
     Estimates a bidder's regret in the current bid_profile, i.e. the potential benefit of deviating from the current strategy, as:
         regret(v_i) = Max_(b_i)[ E_(b_(-i))[u(v_i,b_i,b_(-i))] ] #TODO Stefan: shouldn't there be a  - u(v_i, b) here?
         regret_max = Max_(v_i)[ regret(v_i) ]
@@ -162,7 +163,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
         agent_valuation: (batch_size x n_items)
         grid: #TODO: currently (1d with length grid_size #Currently, for n_items == 2, all grid_size**2 combination will be used. Should be replaced by e.g. torch.meshgrid
     Output:
-        regret (grid_size) (?) #TODO Stefan: If bid is multidimensional, shouldn't this be bid_size ** n_items? 
+        regret (grid_size) (?) #TODO Stefan: If bid is multidimensional, shouldn't this be bid_size ** n_items?
     #TODO: move grid_creation out of regret
 
     TODO: Only applicable to independent valuations. (Stefan: because we take the cross product over valuations)
@@ -192,7 +193,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     grid_size, _ = grid.shape #TODO this _new_ grid size refers to all combinations, whereas the previous one was 1D only
 
     ### Evaluate alternative bids on grid
-    bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile_origin) # grid_size x n_players x n_items 
+    bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile_origin) # grid_size x n_players x n_items
 
     ## Calculate allocation and payments for alternative bids given opponents bids
     allocation, payments = mechanism.play(bid_profile)
@@ -212,7 +213,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
         # valuation is batch x items
         v_i = agent_valuation.repeat(1,grid_size * batch_size).view(batch_size, grid_size, batch_size, n_items)
         # Semantic of the next line: (calculated directly, less readible but faster and robust to different types (e.g. bools/int))
-        #v_i = torch.einsum('hijk,ijk->hij', v_i, a_i) 
+        #v_i = torch.einsum('hijk,ijk->hij', v_i, a_i)
         v_i = v_i.mul_(a_i).sum(3) # allocated value. batch x bid_eval x batch (why 2 batch_sizes?)
         ## Calculate utilities
         u_i_alternative = v_i - p_i.repeat(batch_size,1,1) #(batch x grid x batch)
@@ -236,7 +237,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
                 # max per valuations
                 u_i_alternative[v], _ = torch.max(u_i_alternative_v,0)
                 tmp = int(batch_size/100)
-                
+
                 if v % tmp == 0:
                     print('Stefan: this (regret) printed huge tensors, I disabled it :-P')
                 #     print('{} %'.format(v*100/batch_size))

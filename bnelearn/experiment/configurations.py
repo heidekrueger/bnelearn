@@ -14,7 +14,7 @@ class RunningConfiguration:
     specific_gpu: int = 1
     n_players: list = None
 
-@dataclass#(frozen=True)
+@dataclass
 class ExperimentConfiguration:
     payment_rule: str
     n_players: int = None
@@ -48,10 +48,10 @@ class ExperimentConfiguration:
     def __post_init__(self):
         if self.input_length is None:
             self.input_length = self.n_units
-    
-    
 
-@dataclass#(frozen=True) TODO: frozen not possible with post_init
+
+
+@dataclass
 class LoggingConfiguration:
     logging: bool = False
     file_name: str = time.strftime('%Y-%m-%d %a %H:%M:%S')
@@ -93,16 +93,17 @@ class LoggingConfiguration:
     def update_file_name(self, name=None):
         if name is None:
             self.file_name = time.strftime('%Y-%m-%d %a %H:%M:%S')
-@dataclass#(frozen=True)
+
+@dataclass
 class LearningConfiguration:
     learner_hyperparams: dict = None
     optimizer_type: str or Type[Optimizer] = 'adam'
     optimizer_hyperparams: dict = None
-    hidden_nodes: list = None 
-    hidden_activations: list = None 
+    hidden_nodes: list = None
+    hidden_activations: list = None
     pretrain_iters: int = 500
     batch_size: int = 2**18
-    input_length: int = 1 #TODO: To be removed later
+    input_length: int = 1 #TODO: Stefan: remove here. @Paul
 
     def __post_init__(self):
         self.optimizer: Type[Optimizer] = self._set_optimizer(self.optimizer_type)

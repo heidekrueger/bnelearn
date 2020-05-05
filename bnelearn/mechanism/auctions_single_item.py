@@ -33,7 +33,6 @@ class VickreyAuction(Mechanism):
                         allocation in that batch.
         """
 
-        # ToDO Duplicated code
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 

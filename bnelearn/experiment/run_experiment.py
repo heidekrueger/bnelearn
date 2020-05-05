@@ -1,3 +1,6 @@
+# TODO: essentially move this file into /scripts, this will require moving the run.... functions into bnelearn.experiment.presets or similar. Assigned @Paul
+
+
 import sys
 import os
 
@@ -18,10 +21,6 @@ import warnings
 
 from dataclasses import dataclass, field, asdict
 
-
-# TODO: Using locals() to directly create the dict
-# (https://stackoverflow.com/questions/2521901/get-a-list-tuple-dict-of-the-arguments-passed-to-a-function)
-# fine with you?
 
 def run_single_item_uniform_symmetric(n_runs: int, n_epochs: int,
                                       n_players: [int], payment_rule: str, model_sharing=True,
@@ -267,7 +266,7 @@ if __name__ == '__main__':
     try:
         for i in running_configuration.n_players:
             experiment_configuration.n_players = i
-            # TODO: filename needs a smarter solution.
+            # TODO: filename needs a smarter solution. # Assigned @Stefan Logging files (after Paul moves this)
             logging_configuration.update_file_name()
             experiment = experiment_class(experiment_configuration, learning_configuration,
                                           logging_configuration, gpu_configuration)

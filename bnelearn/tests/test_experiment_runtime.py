@@ -3,11 +3,11 @@
 # It chooses only 2 runs, with 3 epochs but plots and logs every period. Logging and plotting is not written to disc.
 # It considers each implemented experiment with each payment rule. Fo each experiment no model_sharing is tested once.
 # TODO:
-#     - Paul: InputLength should become obsolete Stefan: yes!
-#     - Paul: Disable logging (by a variable that is checked just before writing)
+#     - Paul: InputLength should become obsolete Stefan: yes! @assigned Paul
+#     - Paul: Disable logging (by a variable that is checked just before writing) @Stefan
 #     - Paul: Maybe later: Add bne metric to LLLLGG and test for failure
 #     - Stefan: Later: gaussian with fpsb and regret
-#     - Stefan: some experiments fail with too low batch size (utility mismatch), what to do with those
+#     - TODO: use the bnelearn.experiment.presets once they have been created @Paul
 # """
 # import pytest
 # import sys
