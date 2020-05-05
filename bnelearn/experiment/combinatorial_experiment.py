@@ -1,6 +1,6 @@
 """
 This module implements combinatorial experiments. Currently, this is only Local Global experiments as
-considered by Bosshard et al. (2018). 
+considered by Bosshard et al. (2018).
 
 Limitations and comments:
     - Currently implemented for only uniform valuations
@@ -29,7 +29,7 @@ class LocalGlobalExperiment(Experiment, ABC):
     This class represents Local Global experiments in general as considered by Bosshard et al. (2018).
     It serves only to provide common logic and parameters for LLG and LLLLGG.
     """
-    def __init__(self, n_players, n_local, n_items, experiment_config, learning_config, 
+    def __init__(self, n_players, n_local, n_items, experiment_config, learning_config,
                  logging_config, gpu_config, known_bne):
         self.n_players = n_players
         self.n_local = n_local
@@ -37,7 +37,7 @@ class LocalGlobalExperiment(Experiment, ABC):
 
         assert experiment_config.u_lo is not None, """Missing prior information!"""
         assert experiment_config.u_hi is not None, """Missing prior information!"""
-        u_lo = experiment_config.u_lo        
+        u_lo = experiment_config.u_lo
         # Frontend could either provide single number u_lo that is shared or a list for each player.
         if isinstance(u_lo, Iterable):
             assert len(u_lo) == self.n_players
@@ -82,9 +82,9 @@ class LLGExperiment(LocalGlobalExperiment):
     """
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
-       
+
         assert experiment_config.n_players == 3, "Incorrect number of players specified."
-        
+
         self.gamma = experiment_config.gamma
         assert self.gamma == 0, "Gamma > 0 implemented yet."
 
@@ -140,7 +140,6 @@ class LLGExperiment(LocalGlobalExperiment):
 
         print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
         print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
-        # TODO: possibly redraw bne-env valuations over time to eliminate bias
         self.bne_utilities = bne_utilities_sampled
 
     def _get_logdir(self):
@@ -175,7 +174,6 @@ class LLLLGGExperiment(LocalGlobalExperiment):
 
     def _get_logdir(self):
         name = ['LLLLGG', self.payment_rule, str(self.n_players) + 'p']
-        self.base_dir = os.path.join(*name)  # ToDo Redundant?
         return os.path.join(*name)
 
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
