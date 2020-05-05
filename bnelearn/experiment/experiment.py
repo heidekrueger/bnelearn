@@ -33,6 +33,7 @@ import bnelearn.util.metrics as metrics
 from bnelearn.experiment.gpu_controller import GPUController
 from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
 
+
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
 
@@ -41,16 +42,16 @@ class Experiment(ABC):
     # class. In reality, we set these as INSTANCE attributes in the subclass __init__s or during runtime and our
     # logic guarantees that they will always exist as instance attributes when required.
     # This greatly simplifies readability of the __init__ implementations as it allows simplification of order of calls
-    # reduces numbers of passed parameters and avoids repitition of similar concepts in subclasses.
+    # reduces numbers of passed parameters and avoids repetition of similar concepts in subclasses.
     # DO NOT PUT MUTABLE fields (i.e. instantiated Lists here), otherwise mutating them will hold for all objects
     # of experiment.
     # Make sure everything set here is set to NotImplemented. The actual CLASS attributes should never be accessed!
 
     # attributes required for general setup logic
-    _bidder2model: List[int]# a list matching each bidder to their Strategy
+    _bidder2model: List[int]  # a list matching each bidder to their Strategy
     n_models: int
     mechanism: Mechanism
-    positive_output_point: torch.Tensor # TODO: check type and dimensions
+    positive_output_point: torch.Tensor  # TODO: check type and dimensions
 
     ## Fields required for plotting
     plot_xmin: float
@@ -60,10 +61,9 @@ class Experiment(ABC):
     ## Optional - set only in some settings
 
     ## Equilibrium environment
-    bne_utilities: torch.Tensor or List[float] # TODO: check if type hint correct
+    bne_utilities: torch.Tensor or List[float]  # TODO: check if type hint correct
     bne_env: AuctionEnvironment
     _optimal_bid: callable
-
 
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne=False):
@@ -73,7 +73,7 @@ class Experiment(ABC):
         root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
         if root_path not in sys.path:
             sys.path.append(root_path)
-        self.log_root=os.path.join(root_path, 'experiments')
+        self.log_root = os.path.join(root_path, 'experiments')
 
         # Configs
         self.experiment_config = experiment_config
@@ -87,7 +87,7 @@ class Experiment(ABC):
         self.plot_points = LoggingConfiguration.plot_points
 
         # Everything that will be set up per run initioated with none
-        self.log_dir = None #TODO: is this redundant? someone said it smells
+        self.log_dir = None  # TODO: is this redundant? someone said it smells
         self.fig = None
         self.writer = None
         self.overhead = 0.0
@@ -111,7 +111,7 @@ class Experiment(ABC):
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
         if not hasattr(self, 'n_players'):
-            self.n_players =  experiment_config.n_players
+            self.n_players = experiment_config.n_players
         if not hasattr(self, 'payment_rule'):
             self.payment_rule = experiment_config.payment_rule
 
@@ -123,8 +123,7 @@ class Experiment(ABC):
 
         self._setup_mechanism()
 
-
-        self.known_bne = known_bne # needs to be set in subclass and either specified as input or set there
+        self.known_bne = known_bne  # needs to be set in subclass and either specified as input or set there
         # Cannot lot 'opt' without known bne
         # TODO: Stefan: currently it's not always possible to infer if known bne exists before calling this (super) init
         if logging_config.log_metrics['opt'] or logging_config.log_metrics['l2']:
@@ -132,7 +131,6 @@ class Experiment(ABC):
 
         if self.known_bne:
             self._setup_eval_environment()
-
 
     # TODO: rename this
     def _setup_run(self):
@@ -232,6 +230,7 @@ class Experiment(ABC):
                                       batch_size=self.learning_config.batch_size,
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
+
     # TODO: why?
     @staticmethod
     def get_risk_profile(risk) -> str:
@@ -255,13 +254,15 @@ class Experiment(ABC):
             for learner in self.learners
         ])
 
-        #TODO: everything after this is logging --> measure overhead
-        log_params = {'utilities': utilities, 'prev_params': prev_params}
-        elapsed_overhead = self.log_training_iteration(log_params=log_params, epoch=epoch)
+        # TODO: everything after this is logging --> measure overhead
+        if self.logging_config.logging:
+            log_params = {'utilities': utilities, 'prev_params': prev_params}
+            elapsed_overhead = self.log_training_iteration(log_params=log_params, epoch=epoch)
+            print('epoch {}:\t elapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead))
+        else:
+            print('epoch {}:\t elapsed {:.2f}s'.format(epoch, timer() - tic))
 
-        print('epoch {}:\t elapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer()-tic, elapsed_overhead))
-
-    def run(self, epochs, n_runs: int = 1, run_comment: str=None, seeds: Iterable[int] = None):
+    def run(self, epochs, n_runs: int = 1, run_comment: str = None, seeds: Iterable[int] = None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
 
         if not seeds:
@@ -280,26 +281,28 @@ class Experiment(ABC):
 
             # TODO: setup Writer here, or make logger an object that takes
             # with Logger ... : (especially, needs to be destroyed on end of run!)
-
-            self.log_experiment(run_comment=run_comment, max_epochs=epochs, run=run)
+            if self.logging_config.logging:
+                self.log_experiment(run_comment=run_comment, max_epochs=epochs, run=run)
             # disable this to continue training?
             epoch = 0
             for epoch in range(epoch, epoch + epochs + 1):
                 self._training_loop(epoch=epoch)
 
-            self.log_tb_events()
+            if self.logging_config.logging and self.logging_config.save_tb_events_to_csv:
+                self.log_tb_events()
 
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
             # if torch.cuda.memory_allocated() > 0:
             #    warnings.warn('Theres a memory leak')
 
-########################################################################################################
-####################################### Moved logging to here ##########################################
-########################################################################################################
+    ########################################################################################################
+    ####################################### Moved logging to here ##########################################
+    ########################################################################################################
     # based on https://stackoverflow.com/a/57411105/4755970
-    # output_dir must be the directory immediately above the runs and each run must have the same shape. No aggregation of multiple subdirectories for now.
-    def log_tb_events(self, format: str = 'csv'):
+    # output_dir must be the directory immediately above the runs and each run must have the same shape.
+    # No aggregation of multiple subdirectories for now.
+    def log_tb_events(self):
         output_dir = self.log_dir
 
         # runs are all subdirectories that don't start with '.' (exclude '.ipython_checkpoints')
@@ -323,13 +326,11 @@ class Experiment(ABC):
         df = pd.DataFrame(d)
         df.to_csv(os.path.join(output_dir, f'all_results.csv'))
 
-
-
-# Generalize as much as possible to avoid code overload and too much individualism
+    # Generalize as much as possible to avoid code overload and too much individualism
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
-              xlim: list=None, ylim: list=None, labels: list=None,
+              xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts=['o'],
-              figure_name: str='bid_function', plot_points=100):
+              figure_name: str = 'bid_function', plot_points=100):
         """
         This implements plotting simple 2D data.
 
@@ -352,14 +353,14 @@ class Experiment(ABC):
         n_batch, n_players, n_bundles = y.shape
 
         n_batch = min(plot_points, n_batch)
-        x = x[:n_batch,:,:]
-        y = y[:n_batch,:,:]
+        x = x[:n_batch, :, :]
+        y = y[:n_batch, :, :]
 
         # create the plot
         fig, axs = plt.subplots(nrows=1, ncols=n_bundles, sharey=True)
         plt.cla()
         if not isinstance(axs, np.ndarray):
-            axs = [axs] # one plot only
+            axs = [axs]  # one plot only
 
         cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
@@ -367,7 +368,7 @@ class Experiment(ABC):
         for plot_idx in range(n_bundles):
             for agent_idx in range(n_players):
                 axs[plot_idx].plot(
-                    x[:,agent_idx,plot_idx], y[:,agent_idx,plot_idx],
+                    x[:, agent_idx, plot_idx], y[:, agent_idx, plot_idx],
                     fmts[agent_idx % len(fmts)],
                     label=None if labels is None else labels[agent_idx % len(labels)],
                     color=cycle[agent_idx % len(set(fmts))],
@@ -419,20 +420,20 @@ class Experiment(ABC):
         independent_var = plot_data[0]
         dependent_var = plot_data[1]
         batch_size, n_models, n_bundles = independent_var.shape
-        assert n_bundles==2, "cannot plot != 2 bundles"
+        assert n_bundles == 2, "cannot plot != 2 bundles"
         n_plots = dependent_var.shape[2]
         # create the plot
         fig = plt.figure()
         for model in range(n_models):
             for plot in range(n_plots):
-                ax = fig.add_subplot(n_models, n_plots, model*n_plots+plot+1, projection='3d')
+                ax = fig.add_subplot(n_models, n_plots, model * n_plots + plot + 1, projection='3d')
                 ax.plot_trisurf(
-                    independent_var[:,model,0].detach().cpu().numpy(),
-                    independent_var[:,model,1].detach().cpu().numpy(),
-                    dependent_var[:,model,plot].reshape(batch_size).detach().cpu().numpy(),
-                    color = 'yellow',
-                    linewidth = 0.2,
-                    antialiased = True
+                    independent_var[:, model, 0].detach().cpu().numpy(),
+                    independent_var[:, model, 1].detach().cpu().numpy(),
+                    dependent_var[:, model, plot].reshape(batch_size).detach().cpu().numpy(),
+                    color='yellow',
+                    linewidth=0.2,
+                    antialiased=True
                 )
                 ax.zaxis.set_major_locator(LinearLocator(10))
                 ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
@@ -441,11 +442,11 @@ class Experiment(ABC):
         fig.suptitle('iteration {}'.format(epoch), size=16)
         fig.tight_layout()
 
-        self._process_figure(fig, writer=writer, epoch=epoch, figure_name=figure_name+"_3d")
+        self._process_figure(fig, writer=writer, epoch=epoch, figure_name=figure_name + "_3d")
         return fig
 
-    #TODO: when adding log_dir and logging_config as arguments this could be static as well
-    def _process_figure(self, fig, writer=None, epoch=None, figure_name='plot', group ='eval', filename=None):
+    # TODO: when adding log_dir and logging_config as arguments this could be static as well
+    def _process_figure(self, fig, writer=None, epoch=None, figure_name='plot', group='eval', filename=None):
         """displays, logs and/or saves figure built in plot method"""
 
         if not filename:
@@ -478,7 +479,7 @@ class Experiment(ABC):
             epoch
         )
 
-    #TODO: plot_xmin and xmax makes not sense since this might be outside the value function
+    # TODO: plot_xmin and xmax makes not sense since this might be outside the value function
     def log_experiment(self, run_comment, max_epochs, run=""):
         self.max_epochs = max_epochs
 
@@ -493,7 +494,7 @@ class Experiment(ABC):
                 dim=1
             )
             self.b_opt = torch.stack(
-                [self._optimal_bid(self.v_opt[:,m,:], player_position=b[0])
+                [self._optimal_bid(self.v_opt[:, m, :], player_position=b[0])
                  for m, b in enumerate(self._model2bidder)],
                 dim=1
             )
@@ -524,7 +525,7 @@ class Experiment(ABC):
 
         self.writer = SummaryWriter(self.log_dir, flush_secs=30)
         start_time = timer()
-        self._log_experimentparams() # TODO: what to use
+        self._log_experimentparams()  # TODO: what to use
         self._log_hyperparams()
         elapsed = timer() - start_time
         self.overhead += elapsed
@@ -539,7 +540,7 @@ class Experiment(ABC):
         """
         start_time = timer()
 
-        #TODO, Paul: Can delete?: model_is_global = len(self.models) == 1
+        # TODO, Paul: Can delete?: model_is_global = len(self.models) == 1
 
         # calculate infinity-norm of update step
         new_params = [torch.nn.utils.parameters_to_vector(model.parameters())
@@ -567,10 +568,10 @@ class Experiment(ABC):
 
             unique_bidders = [self.env.agents[i[0]] for i in self._model2bidder]
             v = torch.stack(
-                [b.valuations[:self.plot_points,...] for b in unique_bidders],
+                [b.valuations[:self.plot_points, ...] for b in unique_bidders],
                 dim=1
             )
-            b = torch.stack([b.get_action()[:self.plot_points,...]
+            b = torch.stack([b.get_action()[:self.plot_points, ...]
                              for b in unique_bidders], dim=1)
 
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
@@ -578,7 +579,7 @@ class Experiment(ABC):
             if self.logging_config.log_metrics['opt']:
                 print(
                     "\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})" \
-                    .format(
+                        .format(
                         log_params['utility_vs_bne'].tolist(),
                         log_params['epsilon_relative'].tolist(),
                         log_params['epsilon_absolute'].tolist()
@@ -597,8 +598,8 @@ class Experiment(ABC):
         self._log_metrics(log_params, epoch=epoch)
         return timer() - start_time
 
-    def _log_metrics(self, metrics_dict: dict, epoch: int, prefix: str='eval',
-                     param_group_postfix: str='', metric_prefix: str=''):
+    def _log_metrics(self, metrics_dict: dict, epoch: int, prefix: str = 'eval',
+                     param_group_postfix: str = '', metric_prefix: str = ''):
         """ Writes everthing from ´metrics_dict´ to disk via the ´self.writer´.
             keys in ´metrics_dict´ represent the metric name, values should be of type
             float, list, dict, or torch.Tensor.
@@ -637,12 +638,12 @@ class Experiment(ABC):
         utility_vs_bne = torch.tensor([
             self.bne_env.get_reward(
                 self._strat_to_bidder(
-                    model, player_position=i, # TODO: shouldn't this be model_2_bidder i[0]
+                    model, player_position=i,  # TODO: shouldn't this be model_2_bidder i[0]
                     batch_size=self.logging_config.eval_batch_size
                 ),
                 draw_valuations=False
             ) for i, model in enumerate(self.models)
-        ]) #TODO: False because expensive for normal priors
+        ])  # TODO: False because expensive for normal priors
         epsilon_relative = torch.tensor([1 - utility_vs_bne[i] / self.bne_utilities[i]
                                          for i, model in enumerate(self.models)])
         epsilon_absolute = torch.tensor([self.bne_utilities[i] - utility_vs_bne[i]
@@ -691,38 +692,39 @@ class Experiment(ABC):
                 v_ub = agent.grid_ub
 
             # Only supports regret_batch_size <= batch_size
-            bid_profile[:,i,:] = agent.get_action()[:regret_batch_size,...]
-            regret_grid[:,i] = torch.linspace(v_lb, v_ub, regret_grid_size,
-                                              device=env.mechanism.device)
+            bid_profile[:, i, :] = agent.get_action()[:regret_batch_size, ...]
+            regret_grid[:, i] = torch.linspace(v_lb, v_ub, regret_grid_size,
+                                               device=env.mechanism.device)
 
         torch.cuda.empty_cache()
         regret = [
             metrics.ex_interim_regret(
                 env.mechanism, bid_profile,
                 learner.strat_to_player_kwargs['player_position'],
-                env.agents[learner.strat_to_player_kwargs['player_position']].valuations[:regret_batch_size,...],
-                regret_grid[:,learner.strat_to_player_kwargs['player_position']]
+                env.agents[learner.strat_to_player_kwargs['player_position']].valuations[:regret_batch_size, ...],
+                regret_grid[:, learner.strat_to_player_kwargs['player_position']]
             )
             for learner in self.learners
         ]
         ex_ante_regret = [model_tuple[0].mean() for model_tuple in regret]
         ex_interim_max_regret = [model_tuple[0].max() for model_tuple in regret]
         if create_plot_output:
-            #TODO, Paul: Transform to output with dim(batch_size, n_models, n_bundle)
-            regrets = torch.stack([regret[r][0] for r in range(len(regret))], dim=1)[:,:,None]
+            # TODO, Paul: Transform to output with dim(batch_size, n_models, n_bundle)
+            regrets = torch.stack([regret[r][0] for r in range(len(regret))], dim=1)[:, :, None]
             valuations = torch.stack([regret[r][1] for r in range(len(regret))], dim=1)
-            plot_output = (valuations,regrets)
-            self._plot(fig=self.fig, plot_data=plot_output, writer=self.writer, ylim=[0,max(ex_interim_max_regret).cpu()],
+            plot_output = (valuations, regrets)
+            self._plot(fig=self.fig, plot_data=plot_output, writer=self.writer,
+                       ylim=[0, max(ex_interim_max_regret).cpu()],
                        figure_name='regret_function', epoch=epoch, plot_points=self.plot_points)
-            #TODO, Paul: Check in detail if correct!?
+            # TODO, Paul: Check in detail if correct!?
         return ex_ante_regret, ex_interim_max_regret
 
     def _log_experimentparams(self):
-        #TODO: write out all experiment params (complete dict)
+        # TODO: write out all experiment params (complete dict)
         pass
 
     def _log_trained_model(self):
-        #TODO: write out the trained model at the end of training @Stefan
+        # TODO: write out the trained model at the end of training @Stefan
         # Stefan: Looks good to me. 
         # TODO: maybe we should also log out all pointwise regrets in the ending-epoch to disk to use it to make nicer plots for a publication?
         # Proposal Nils:

@@ -53,6 +53,7 @@ class ExperimentConfiguration:
 
 @dataclass#(frozen=True) TODO: frozen not possible with post_init
 class LoggingConfiguration:
+    logging: bool = False
     file_name: str = time.strftime('%Y-%m-%d %a %H:%M:%S')
     plot_frequency: int = 100
     plot_points: int = 100
@@ -64,7 +65,8 @@ class LoggingConfiguration:
     eval_batch_size: int = 2**22
     cache_eval_actions: bool = True
     max_epochs: int = None
-
+    save_tb_events_to_csv: bool = False
+    save_tb_events_to_binary: bool = False
 
     save_figure_to_disk_png: bool = True
     save_figure_to_disk_svg: bool = True
