@@ -26,7 +26,7 @@ from bnelearn.strategy import ClosureStrategy
 # These are called millions of times, so each implementation should be
 # setting specific, i.e. there should be NO setting checks at runtime.
 
-# TODO: I believe it might be possible to move these back into the sublasses, maybe even when they have to be pickled.
+# TODO: Stefan: I believe it might be possible to move these back into the sublasses, maybe even when they have to be pickled.
 #       That would make this file a bit more readible. Make low-prio issue after merging to master
 
 def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(
@@ -267,8 +267,8 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
         self._set_symmetric_bne_closure()
 
-        # TODO: parallelism should be taken from elsewhere
-        # TODO: existence of valuation_prior not guaranteed
+        # TODO: parallelism should be taken from elsewhere. Should be moved to config. Assigned @Stefan
+        # TODO: existence of valuation_prior not guaranteed Assigned @Stefan
         n_processes_optimal_strategy = 44 if self.valuation_prior != 'uniform' and \
                                              self.payment_rule != 'second_price' else 0
         bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
@@ -293,7 +293,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
         print('Utility in BNE (sampled): \t{:.5f}'.format(bne_utility_sampled))
         print('Utility in BNE (analytic): \t{:.5f}'.format(bne_utility_analytical))
-        # TODO: make atol dynamic based on batch size
+        # TODO: make atol dynamic based on batch size to avoid false positives in test runs.
         if not torch.allclose(bne_utility_analytical, bne_utility_sampled, atol=5e-2):
             warnings.warn("Analytical BNE Utility does not match sampled utility from parent class! \n\t sampled {}, analytic {}".format(
                           bne_utility_sampled, bne_utility_analytical))
@@ -405,10 +405,9 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         self.n_models = self.n_players
         self._bidder2model: List[int] = list(range(self.n_players))
 
-        try: # TODO: should also support differnt lower bounds as now in ´except´
-             # assumes list type later on
-            self.u_lo = float(experiment_config.u_lo)
-        except:
+        if not isinstance(experiment_config.u_lo, list):
+            self.u_lo = [float(experiment_config.u_lo)] * self.n_players
+        else:
             self.u_lo: List[float] = [float(experiment_config.u_lo[i]) for i in range(self.n_players)]
         self.u_hi: List[float] = [float(experiment_config.u_hi[i]) for i in range(self.n_players)]
         assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
@@ -437,7 +436,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
     def _setup_eval_environment(self):
 
         if len(set(self.u_lo)) != 1: # BNE for differnt u_lo for each player
-            print('Warning: only one of multiple BNE selected!') # TODO
+            print('Warning: only one of multiple BNE selected!') # TODO @Nils
             # BNE 1
             # # self._optimal_bid = _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
             #     u_lo=self.u_lo, u_hi=self.u_hi
@@ -480,5 +479,4 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
             bne_utilities_sampled = torch.tensor([0.9694, 5.0688]) # calculated using 100x batch size above
             print("\tReplacing sampled bne utilities by precalculated utilities with higher precision: {}".format(bne_utilities_sampled))
 
-        # TODO: possibly redraw bne-env valuations over time to eliminate bias
         self.bne_utilities = bne_utilities_sampled

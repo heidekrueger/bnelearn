@@ -5,7 +5,7 @@ as it shares most its properties.
 
 TODO:
     - support for multiple BNE
-    - valuations of plotiing BNE _optimal_bid_multidiscriminatory2x2 are wrong
+    - valuations of plotting BNE _optimal_bid_multidiscriminatory2x2 are wrong
 
 """
 
@@ -30,6 +30,8 @@ from bnelearn.strategy import ClosureStrategy
 ########################################################################################################################
 ###                                                 BNE STRATEGIES                                                   ###
 ########################################################################################################################
+
+# TODO: make this private @Nils
 def multiunit_bne(experiment_config, payment_rule):
     """
     Method that returns the known BNE strategy for the standard multi-unit auctions

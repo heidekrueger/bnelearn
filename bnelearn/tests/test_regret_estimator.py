@@ -20,7 +20,7 @@ from bnelearn.strategy import TruthfulStrategy, ClosureStrategy
 import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder
 
-eps = 0.0001 #TODO Stefan: why + eps?
+eps = 0.0001
 # bid candidates to be evaluated against
 bids_i = torch.linspace(0, 1, steps=7).unsqueeze(0) + eps
 bids_i_comb = torch.linspace(0,1, steps=4).unsqueeze(0) + eps
@@ -124,7 +124,7 @@ def test_ex_post_regret_estimator_truthful(rule, mechanism, bid_profile, bids_i,
 
     agents = [None] * n_bidders
     for i in range(n_bidders):
-        #TODO: Add player position
+        #TODO: Add player position. Check this @Paul
         agents[i] = Bidder.uniform(0,1,TruthfulStrategy(), player_position = i, batch_size = batch_size)
         agents[i].valuations = bid_profile[:,i,:].to(device)
 
@@ -142,7 +142,7 @@ def test_ex_interim_regret_estimator_truthful(rule, mechanism, bid_profile, bids
 
     agents = [None] * n_bidders
     for i in range(n_bidders):
-        #TODO: Add player position
+        #TODO: Add player position. Check this @Paul
         agents[i] = Bidder.uniform(0,1,TruthfulStrategy(), player_position = i, batch_size = batch_size)
         agents[i].valuations = bid_profile[:,i,:].to(device)
 
@@ -155,7 +155,6 @@ def test_ex_interim_regret_estimator_truthful(rule, mechanism, bid_profile, bids
 
 def test_ex_interim_regret_estimator_fpsb_bne():
     """Test the regret in BNE of fpsb. - ex interim regret should be close to zero"""
-    # TODO: currently broken because using ex_post regret.
     n_players = 3
     grid_size = 2**5
     batch_size = 2**12
@@ -192,6 +191,6 @@ def test_ex_interim_regret_estimator_fpsb_bne():
     mean_regret = regret.mean()
     max_regret = regret.max()
 
-    # TODO: mean regret should be close to 0
+
     assert mean_regret < 0.001, "Regret in BNE should be (close to) zero!" # common: ~2e-4
     assert max_regret < 0.01, "Regret in BNE should be (close to) zero!" # common: 1.5e-3

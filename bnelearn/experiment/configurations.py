@@ -103,7 +103,7 @@ class LearningConfiguration:
     hidden_activations: list = None
     pretrain_iters: int = 500
     batch_size: int = 2**18
-    input_length: int = 1 #TODO: To be removed later
+    input_length: int = 1 #TODO: Stefan: remove here. @Paul
 
     def __post_init__(self):
         self.optimizer: Type[Optimizer] = self._set_optimizer(self.optimizer_type)

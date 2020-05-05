@@ -1,9 +1,6 @@
 """
 This module defines an experiment. It includes logging and plotting since they 
 can often be shared by specific experiments.
-
-TODO:
-    -...
 """
 import sys
 import os
@@ -51,7 +48,7 @@ class Experiment(ABC):
     _bidder2model: List[int]  # a list matching each bidder to their Strategy
     n_models: int
     mechanism: Mechanism
-    positive_output_point: torch.Tensor  # TODO: check type and dimensions
+    positive_output_point: torch.Tensor # shape must be valid model input
 
     ## Fields required for plotting
     plot_xmin: float
@@ -61,15 +58,15 @@ class Experiment(ABC):
     ## Optional - set only in some settings
 
     ## Equilibrium environment
-    bne_utilities: torch.Tensor or List[float]  # TODO: check if type hint correct
+    bne_utilities: torch.Tensor or List[float]  # dimension: n_players
     bne_env: AuctionEnvironment
     _optimal_bid: callable
 
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne=False):
 
-        # Stuff that shuld go somewhere else completely :-D
-        # TODO: Stefan: This should not be here, maybe set in frontend and pass?
+
+        # TODO: Stefan: This should not be here, maybe set in frontend and pass? #assigned to @Stefan
         root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
         if root_path not in sys.path:
             sys.path.append(root_path)
@@ -87,7 +84,7 @@ class Experiment(ABC):
         self.plot_points = LoggingConfiguration.plot_points
 
         # Everything that will be set up per run initioated with none
-        self.log_dir = None  # TODO: is this redundant? someone said it smells
+        self.log_dir = None  # TODO: is this redundant? someone said it smells. @assigned to @Stefan
         self.fig = None
         self.writer = None
         self.overhead = 0.0
@@ -124,15 +121,14 @@ class Experiment(ABC):
         self._setup_mechanism()
 
         self.known_bne = known_bne  # needs to be set in subclass and either specified as input or set there
-        # Cannot lot 'opt' without known bne
-        # TODO: Stefan: currently it's not always possible to infer if known bne exists before calling this (super) init
+        # Cannot log 'opt' without known bne
         if logging_config.log_metrics['opt'] or logging_config.log_metrics['l2']:
             assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
 
         if self.known_bne:
             self._setup_eval_environment()
 
-    # TODO: rename this
+    # TODO: rename this assigned to @Stefan
     def _setup_run(self):
         """Setup everything that is specific to an individual run, including everything nondeterministic"""
         # setup the experiment, don't mess with the order
@@ -144,7 +140,7 @@ class Experiment(ABC):
     def _setup_mechanism(self):
         pass
 
-    # TODO: move entire name/dir logic out of logger into run
+    # TODO: move entire name/dir logic out of logger into run. Assigned to Stefan
     @abstractmethod
     def _get_logdir(self):
         """"""
@@ -166,10 +162,6 @@ class Experiment(ABC):
         pass
 
     def _setup_learners(self):
-        # TODO: the current strat_to_player kwargs is weird. Cross-check this with 
-        # how values are evaluated in learner.
-        # ideally, we can abstract this function away and move the functionality to the base Experiment class.
-        # Implementation in SingleItem case is identical except for player position argument below.
         self.learners = []
         for m_id, model in enumerate(self.models):
             self.learners.append(
@@ -186,7 +178,7 @@ class Experiment(ABC):
     def _setup_bidders(self):
         """
         1. Create and save the models and bidders
-        2. Save the model parameters (#TODO, Paul: For everyone)
+        2. Save the model parameters
         """
         print('Setting up bidders...')
         self.models = [None] * self.n_models
@@ -231,7 +223,7 @@ class Experiment(ABC):
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
 
-    # TODO: why?
+    # TODO: why? assigned to Stefan
     @staticmethod
     def get_risk_profile(risk) -> str:
         if risk == 1.0:
@@ -254,7 +246,6 @@ class Experiment(ABC):
             for learner in self.learners
         ])
 
-        # TODO: everything after this is logging --> measure overhead
         if self.logging_config.logging:
             log_params = {'utilities': utilities, 'prev_params': prev_params}
             elapsed_overhead = self.log_training_iteration(log_params=log_params, epoch=epoch)
@@ -279,7 +270,7 @@ class Experiment(ABC):
 
             self.log_dir = self._get_logdir()
 
-            # TODO: setup Writer here, or make logger an object that takes
+            # TODO: setup Writer here, or make logger an object that takes # assigned to Stefan
             # with Logger ... : (especially, needs to be destroyed on end of run!)
             if self.logging_config.logging:
                 self.log_experiment(run_comment=run_comment, max_epochs=epochs, run=run)
@@ -335,7 +326,7 @@ class Experiment(ABC):
         This implements plotting simple 2D data.
 
         Args
-            fig: matplotlib.figure, TODO might not be needed
+            fig: matplotlib.figure, TODO might not be needed #TODO assigned to Paul
             plot_data: tuple of two pytorch tensors first beeing for x axis, second for y.
                 Both of dimensions (batch_size, n_models, n_bundles)
             writer: could be replaced by self.writer
@@ -384,7 +375,7 @@ class Experiment(ABC):
             lims = (xlim, ylim)
             set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
-            # TODO: Stefan: können wir hier ein paar comments dazu haben, was da passiert?
+            # TODO: Stefan: können wir hier ein paar comments dazu haben, was da passiert? # assigned to Nils
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
                 a, b = None, None
                 if lim is not None:
@@ -445,7 +436,7 @@ class Experiment(ABC):
         self._process_figure(fig, writer=writer, epoch=epoch, figure_name=figure_name + "_3d")
         return fig
 
-    # TODO: when adding log_dir and logging_config as arguments this could be static as well
+    # TODO: when adding log_dir and logging_config as arguments this could be static as well # assign to stefan
     def _process_figure(self, fig, writer=None, epoch=None, figure_name='plot', group='eval', filename=None):
         """displays, logs and/or saves figure built in plot method"""
 
@@ -479,7 +470,6 @@ class Experiment(ABC):
             epoch
         )
 
-    # TODO: plot_xmin and xmax makes not sense since this might be outside the value function
     def log_experiment(self, run_comment, max_epochs, run=""):
         self.max_epochs = max_epochs
 
@@ -525,7 +515,7 @@ class Experiment(ABC):
 
         self.writer = SummaryWriter(self.log_dir, flush_secs=30)
         start_time = timer()
-        self._log_experimentparams()  # TODO: what to use
+        self._log_experimentparams()
         self._log_hyperparams()
         elapsed = timer() - start_time
         self.overhead += elapsed
@@ -535,12 +525,8 @@ class Experiment(ABC):
         Checks which metrics have to be logged and performs logging and plotting.
         Returns:
             - elapsed time in seconds
-        TODO:
-            - Currently we get bne_utility of only one model. Change to avg of all?
         """
         start_time = timer()
-
-        # TODO, Paul: Can delete?: model_is_global = len(self.models) == 1
 
         # calculate infinity-norm of update step
         new_params = [torch.nn.utils.parameters_to_vector(model.parameters())
@@ -638,12 +624,12 @@ class Experiment(ABC):
         utility_vs_bne = torch.tensor([
             self.bne_env.get_reward(
                 self._strat_to_bidder(
-                    model, player_position=i,  # TODO: shouldn't this be model_2_bidder i[0]
+                    model, player_position=self._model2bidder[i][0],
                     batch_size=self.logging_config.eval_batch_size
                 ),
-                draw_valuations=False
+                draw_valuations=False # False because we want to use cached actions when set, reevaluation is expensive e.g. for normal priors
             ) for i, model in enumerate(self.models)
-        ])  # TODO: False because expensive for normal priors
+        ])  
         epsilon_relative = torch.tensor([1 - utility_vs_bne[i] / self.bne_utilities[i]
                                          for i, model in enumerate(self.models)])
         epsilon_absolute = torch.tensor([self.bne_utilities[i] - utility_vs_bne[i]
@@ -653,9 +639,7 @@ class Experiment(ABC):
 
     def _log_metric_l(self):
         """
-        Compare action to BNE and log:
-        l2 (TODO: add formular)
-        l_inf (TODO: add formular)
+        Calculate "action space distance" of model and bne-strategy
         """
         L_2 = [metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
                                                  self.bne_env.agents[i].valuations, 2)
@@ -711,25 +695,23 @@ class Experiment(ABC):
         ex_ante_regret = [model_tuple[0].mean() for model_tuple in regret]
         ex_interim_max_regret = [model_tuple[0].max() for model_tuple in regret]
         if create_plot_output:
-            # TODO, Paul: Transform to output with dim(batch_size, n_models, n_bundle)
+            # TODO, Paul: Transform to output with dim(batch_size, n_models, n_bundle) # assigned to @Paul
             regrets = torch.stack([regret[r][0] for r in range(len(regret))], dim=1)[:, :, None]
             valuations = torch.stack([regret[r][1] for r in range(len(regret))], dim=1)
             plot_output = (valuations, regrets)
             self._plot(fig=self.fig, plot_data=plot_output, writer=self.writer,
                        ylim=[0, max(ex_interim_max_regret).cpu()],
                        figure_name='regret_function', epoch=epoch, plot_points=self.plot_points)
-            # TODO, Paul: Check in detail if correct!?
+            # TODO, Paul: Check in detail if correct!?  # assigned to @Paul
         return ex_ante_regret, ex_interim_max_regret
 
     def _log_experimentparams(self):
-        # TODO: write out all experiment params (complete dict)
+        # TODO: write out all experiment params (complete dict) #See issue #113
         pass
 
     def _log_trained_model(self):
-        # TODO: write out the trained model at the end of training @Stefan
-        # Stefan: Looks good to me. 
-        # TODO: maybe we should also log out all pointwise regrets in the ending-epoch to disk to use it to make nicer plots for a publication?
-        # Proposal Nils:
+        # TODO: maybe we should also log out all pointwise regrets in the ending-epoch to disk to use it to make nicer plots for a publication? --> will be done elsewhere. Assigned to @Paul
+        # Proposal Nils: TODO: assigned to Nils: activate this behavior by default with logging config flag
         for i, model in enumerate(self.models):
             name = 'saved_model_' + str(i) + '.pt'
             torch.save(model.state_dict(), os.path.join(self.log_dir, name))
