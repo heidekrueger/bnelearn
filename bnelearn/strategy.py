@@ -347,6 +347,31 @@ class NeuralNetStrategy(Strategy, nn.Module):
             if not torch.all(self.forward(ensure_positive_output).gt(0)):
                 self.reset(ensure_positive_output)
 
+    @classmethod
+    def load(cls, path: str):
+        """
+        Initializes a saved NeuralNetStrategy from ´path´.
+        """
+
+        model_dict = torch.load(path)
+
+        # TODO Nils: WIP! Needs careful handling as it's not a default ´torch.nn.Module´.
+        #            Read out the needed parameters
+        params = {}
+
+        # standard initialization
+        strategy = cls(
+            input_length=params["input_length"],
+            hidden_nodes=params["hidden_nodes"],
+            hidden_activations=params["hidden_activations"],
+            output_length=params["output_length"]
+        )
+
+        # override model weights with saved ones
+        strategy.load_state_dict(model_dict)
+
+        return strategy
+
     def pretrain(self, input_tensor: torch.Tensor, iters: int, transformation: Callable = None):
         """Performs `iters` steps of supervised learning on `input` tensor,
            in order to find an initial bid function that is suitable for learning.

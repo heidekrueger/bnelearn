@@ -368,7 +368,7 @@ class MultiUnitExperiment(Experiment, ABC):
         super()._plot(fig, plot_data, writer, epoch, xlim, ylim, labels,
                       x_label, y_label, fmts, figure_name, plot_points)
 
-        if self.n_units == 2:
+        if self.n_units == 2 and not isinstance(self, SplitAwardExperiment):
             super()._plot_3d(plot_data, writer, epoch, figure_name)
 
     @staticmethod
