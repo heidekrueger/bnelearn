@@ -675,6 +675,8 @@ class Experiment(ABC):
         regret_batch_size = self.logging_config.regret_batch_size
         regret_grid_size = self.logging_config.regret_grid_size
 
+        assert regret_batch_size <= env.batch_size, "Regret for larger than actual batch size not implemented."
+
         bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
                                   dtype=env.agents[0].valuations.dtype, device=env.mechanism.device)
         regret_grid = torch.zeros(regret_grid_size, env.n_players, dtype=env.agents[0].valuations.dtype,
