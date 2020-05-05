@@ -71,8 +71,6 @@ class LocalGlobalExperiment(Experiment, ABC):
         self.plot_ymax = self.plot_xmax * 1.05
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0):
-        # TODO: this probably isn't the right place...
-        # The model should know who is using it # TODO: Stefan: In my oppinion, it shouldn't...
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
                               batch_size=batch_size, n_items = self.n_items)
 
