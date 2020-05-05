@@ -71,6 +71,7 @@ class LoggingConfiguration:
     max_epochs: int = None
     save_tb_events_to_csv: bool = False
     save_tb_events_to_binary: bool = False
+    save_model: bool = True
 
     save_figure_to_disk_png: bool = True
     save_figure_to_disk_svg: bool = True

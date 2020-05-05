@@ -277,6 +277,9 @@ class Experiment(ABC):
             if self.logging_config.logging and self.logging_config.save_tb_events_to_csv:
                 self.log_tb_events()
 
+            if self.logging_config.save_model:
+                self._log_trained_model()
+
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
             # if torch.cuda.memory_allocated() > 0:
@@ -321,7 +324,7 @@ class Experiment(ABC):
         This implements plotting simple 2D data.
 
         Args
-            fig: matplotlib.figure, TODO might not be needed #TODO assigned to Paul
+            fig: matplotlib.figure, TODO might not be needed @Paul
             plot_data: tuple of two pytorch tensors first beeing for x axis, second for y.
                 Both of dimensions (batch_size, n_models, n_bundles)
             writer: could be replaced by self.writer
@@ -367,25 +370,29 @@ class Experiment(ABC):
                 if n_players < 10 and labels is not None:
                     axs[plot_idx].legend(loc='upper left')
 
+            """
+            set axis limits based on function parameters ´xlim´, ´ylim´ if provided otherwise
+            based on ´self.plot_xmin´ etc. object attributes. In either case, these variables
+            can also be lists for sperate limits of individual plots.
+            """
             lims = (xlim, ylim)
             set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
-            # TODO: Stefan: können wir hier ein paar comments dazu haben, was da passiert? # assigned to Nils
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
                 a, b = None, None
-                if lim is not None:
+                if lim is not None: # use parameters ´xlim´ etc.
                     if isinstance(lim[0], list):
                         a, b = lim[plot_idx][0], lim[plot_idx][1]
                     else:
                         a, b = lim[0], lim[1]
-                elif hasattr(self, str_lim[0]):
+                elif hasattr(self, str_lim[0]): # use attributes ´self.plot_xmin´ etc.
                     if isinstance(eval('self.' + str(str_lim[0])), list):
                         a = eval('self.' + str(str_lim[plot_idx]))[0]
                         b = eval('self.' + str(str_lim[plot_idx]))[1]
                     else:
                         a, b = eval('self.' + str(str_lim[0])), eval('self.' + str(str_lim[1]))
                 if a is not None:
-                    set_lim(a, b)
+                    set_lim(a, b) # call matplotlib function
 
             axs[plot_idx].locator_params(axis='x', nbins=5)
         title = plt.title if n_bundles == 1 else plt.suptitle
@@ -706,7 +713,6 @@ class Experiment(ABC):
 
     def _log_trained_model(self):
         # TODO: maybe we should also log out all pointwise regrets in the ending-epoch to disk to use it to make nicer plots for a publication? --> will be done elsewhere. Assigned to @Paul
-        # Proposal Nils: TODO: assigned to Nils: activate this behavior by default with logging config flag
-        for i, model in enumerate(self.models):
-            name = 'saved_model_' + str(i) + '.pt'
+        for model, player_position in zip(self.models, self._model2bidder):
+            name = 'model_' + str(player_position[0]) + '.pt'
             torch.save(model.state_dict(), os.path.join(self.log_dir, name))

@@ -238,10 +238,6 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
                 u_i_alternative[v], _ = torch.max(u_i_alternative_v,0)
                 tmp = int(batch_size/100)
 
-                if v % tmp == 0:
-                    print('Stefan: this (regret) printed huge tensors, I disabled it :-P')
-                #     print('{} %'.format(v*100/batch_size))
-
                 # clean up
                 del u_i_alternative_v
         except RuntimeError as err:
