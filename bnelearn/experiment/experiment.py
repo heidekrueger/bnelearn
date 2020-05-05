@@ -66,12 +66,6 @@ class Experiment(ABC):
                  logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne=False):
 
 
-        # TODO: Stefan: This should not be here, maybe set in frontend and pass? #assigned to @Stefan
-        root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
-        if root_path not in sys.path:
-            sys.path.append(root_path)
-        self.log_root = os.path.join(root_path, 'experiments')
-
         # Configs
         self.experiment_config = experiment_config
         self.learning_config = learning_config
@@ -86,7 +80,7 @@ class Experiment(ABC):
         # Everything that will be set up per run initioated with none
         self.log_dir = None  # TODO: is this redundant? someone said it smells. @assigned to @Stefan
         self.fig = None
-        self.writer = None
+        self.writer = None # TODO Stefan: not sure if writer as attribute is the best way.
         self.overhead = 0.0
 
         self.models: Iterable[torch.nn.Module] = None
@@ -503,7 +497,7 @@ class Experiment(ABC):
         if run_comment:
             run_name = run_name + ' - ' + str(run_comment)
 
-        self.log_dir = os.path.join(self.log_root, self.log_dir, run_name)
+        self.log_dir = os.path.join(self.logging_config.root_dir, self.log_dir, run_name)
         os.makedirs(self.log_dir, exist_ok=False)
         if self.logging_config.save_figure_to_disk_png:
             os.mkdir(os.path.join(self.log_dir, 'png'))

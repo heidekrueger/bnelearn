@@ -1,5 +1,6 @@
 from typing import Type
 import time
+import os
 
 import torch
 from torch.optim import Optimizer
@@ -54,6 +55,9 @@ class ExperimentConfiguration:
 @dataclass
 class LoggingConfiguration:
     logging: bool = False
+    # root directory for logging. subdirectories will be inferred and created based on experiment name and config
+    root_dir: str = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
+    # TODO Stefan: where is this used.
     file_name: str = time.strftime('%Y-%m-%d %a %H:%M:%S')
     plot_frequency: int = 100
     plot_points: int = 100
