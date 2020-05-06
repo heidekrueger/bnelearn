@@ -486,7 +486,7 @@ class Experiment(ABC):
         if self.logging_config.log_metrics['opt'] and hasattr(self, 'bne_env'):
             # dim: [points, bidders, items]
             self.v_opt = torch.stack(
-                [b.draw_values_grid_(self.plot_points)
+                [b.draw_values_grid(self.plot_points)
                  for b in [self.bne_env.agents[i[0]] for i in self._model2bidder]],
                 dim=1
             )
@@ -496,7 +496,7 @@ class Experiment(ABC):
                 dim=1
             )
             if self.v_opt.shape[0] != self.plot_points:
-                print('´plot_points´ changed due to ´draw_values_grid_´')
+                print('´plot_points´ changed due to ´draw_values_grid´')
                 self.plot_points = self.v_opt.shape[0]
 
         is_ipython = 'inline' in plt.get_backend()
@@ -686,8 +686,7 @@ class Experiment(ABC):
 
             # Only supports regret_batch_size <= batch_size
             bid_profile[:, i, :] = agent.get_action()[:regret_batch_size, ...]
-            regret_grid[:, i] = torch.linspace(v_lb, v_ub, regret_grid_size,
-                                               device=env.mechanism.device)
+            regret_grid[:, i] = agent.draw_values_grid(regret_grid_size)
 
         torch.cuda.empty_cache()
         regret = [
