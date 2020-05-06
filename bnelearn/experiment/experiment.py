@@ -4,34 +4,30 @@ can often be shared by specific experiments.
 """
 
 import os
-
+import time
 from abc import ABC, abstractmethod
+from time import perf_counter as timer
 from typing import Iterable, List
 
-import torch
-
-from torch.utils.tensorboard import SummaryWriter
-import numpy as np
-
-import time
-from time import perf_counter as timer
 import matplotlib.pyplot as plt
-from matplotlib.ticker import LinearLocator, FormatStrFormatter
+import numpy as np
+import torch
+from matplotlib.ticker import FormatStrFormatter, LinearLocator
 from mpl_toolkits.mplot3d import Axes3D
+from torch.utils.tensorboard import SummaryWriter
+import bnelearn.util.logging as logging_utils
+import bnelearn.util.metrics as metrics
+from bnelearn.bidder import Bidder
+from bnelearn.environment import AuctionEnvironment, Environment
+from bnelearn.experiment.configurations import (ExperimentConfiguration,
+                                                LearningConfiguration,
+                                                LoggingConfiguration)
+from bnelearn.experiment.gpu_controller import GPUController
+from bnelearn.learner import ESPGLearner, Learner
+from bnelearn.mechanism import Mechanism
+from bnelearn.strategy import NeuralNetStrategy
 
 # pylint: disable=unnecessary-pass,unused-argument
-
-from bnelearn.bidder import Bidder
-from bnelearn.environment import Environment, AuctionEnvironment
-from bnelearn.mechanism import Mechanism
-from bnelearn.learner import Learner, ESPGLearner
-from bnelearn.strategy import NeuralNetStrategy
-import bnelearn.util.metrics as metrics
-import bnelearn.util.logging as logging_utils
-
-from bnelearn.experiment.gpu_controller import GPUController
-from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
-
 
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
@@ -53,7 +49,6 @@ class Experiment(ABC):
     mechanism: Mechanism
     positive_output_point: torch.Tensor # shape must be valid model input
 
-
     ## Fields required for plotting
     plot_xmin: float
     plot_xmax: float
@@ -68,8 +63,6 @@ class Experiment(ABC):
 
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne=False):
-
-
         # Configs
         self.experiment_config = experiment_config
         self.learning_config = learning_config
@@ -147,7 +140,6 @@ class Experiment(ABC):
     # TODO: move entire name/dir logic out of logger into run. Assigned to Stefan
     @abstractmethod
     def _get_logdir_hierarchy(self):
-        """"""
         pass
 
     @abstractmethod
@@ -233,7 +225,6 @@ class Experiment(ABC):
         self._setup_learning_environment()
         self._setup_learners()
 
-
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
         tic = timer()
@@ -302,7 +293,6 @@ class Experiment(ABC):
     ########################################################################################################
     ####################################### Moved logging to here ##########################################
     ########################################################################################################
-
 
     # Generalize as much as possible to avoid code overload and too much individualism
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
@@ -434,7 +424,6 @@ class Experiment(ABC):
                                      save_png=self.logging_config.save_figure_to_disk_png,
                                      save_svg = self.logging_config.save_figure_to_disk_svg)
         return fig
-
 
     def log_run_metadata(self, output_dir, max_epochs):
         # TODO: Stefan: this method still mixes per-experiment and per-run logic
