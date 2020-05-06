@@ -39,7 +39,7 @@ expected_regret_1_2_1 = torch.tensor(
     ], dtype = torch.float)
 
 # 2 Batch, 3 bidders, 1 item
-# TODO: add a player that has highest valuation SOMETIMES but with different behavior of opponents across batches!
+# TODO, later: add a player that has highest valuation SOMETIMES but with different behavior of opponents across batches!
 valuations_2_3_1 = torch.tensor(
     [[
         [0.1], [0.3], [0.5]
@@ -70,10 +70,10 @@ expected_ex_post_regret_2_3_1_tenths = torch.tensor(
 
 # LLLLGG: 1 Batch, 6 bidders,2 items (bid on each, 8 in total)
 valuations_1_6_2 = torch.tensor([[
-        [0.011, 0.512],
-        [0.021, 0.22],
-        [0.031, 0.32],
-        [0.041, 0.42],
+        [0.011, 0.512],#[,*]
+        [0.021, 0.22],#[,*]
+        [0.031, 0.32],#[,*]
+        [0.041, 0.42],#[,*]
         [0.89, 0.052],
         [0.061, 0.062]
     ]], dtype = torch.float)
@@ -87,7 +87,8 @@ expected_regret_1_6_2 = torch.tensor([
         [0,                 0                ],
         [0,                 0                ]
     ], dtype = torch.float)
-#TODO: Add one test with other pricing rule (-> and positive utility in agent)
+#TODO, later: Add one test with other pricing rule (-> and positive utility in agent)
+#TODO, Paul: @Nils add tests for your settings
 
 
 
@@ -124,7 +125,6 @@ def test_ex_post_regret_estimator_truthful(rule, mechanism, bid_profile, bids_i,
 
     agents = [None] * n_bidders
     for i in range(n_bidders):
-        #TODO: Add player position. Check this @Paul
         agents[i] = Bidder.uniform(0,1,TruthfulStrategy(), player_position = i, batch_size = batch_size)
         agents[i].valuations = bid_profile[:,i,:].to(device)
 
@@ -142,14 +142,15 @@ def test_ex_interim_regret_estimator_truthful(rule, mechanism, bid_profile, bids
 
     agents = [None] * n_bidders
     for i in range(n_bidders):
-        #TODO: Add player position. Check this @Paul
         agents[i] = Bidder.uniform(0,1,TruthfulStrategy(), player_position = i, batch_size = batch_size)
         agents[i].valuations = bid_profile[:,i,:].to(device)
+
+    grid_values = torch.stack([x.flatten() for x in torch.meshgrid([bids_i.squeeze()] * n_items)]).t()
 
     for i in range(n_bidders):
         regret,_ = metrics.ex_interim_regret(mechanism, bid_profile.to(device), 
                                            i, agents[i].valuations,
-                                           bids_i.squeeze().to(device))
+                                           grid_values.to(device))
         assert torch.allclose(regret.mean(), expected_regret[i,0], atol = 0.001), "Unexpected avg regret"
         assert torch.allclose(regret.max(),  expected_regret[i,1], atol = 0.001), "Unexpected max regret"
 

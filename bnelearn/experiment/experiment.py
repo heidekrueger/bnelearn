@@ -483,7 +483,6 @@ class Experiment(ABC):
                                      save_svg = self.logging_config.save_figure_to_disk_svg)
         return fig
 
-
     def _evaluate_and_log_epoch(self, log_params: dict, epoch: int) -> float:
         """
         Checks which metrics have to be logged and performs logging and plotting.
@@ -608,10 +607,10 @@ class Experiment(ABC):
         regret_grid_size = self.logging_config.regret_grid_size
 
         assert regret_batch_size <= env.batch_size, "Regret for larger than actual batch size not implemented."
-
+        n_bundles = env.agents[0].valuations.shape[1]
         bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
                                   dtype=env.agents[0].valuations.dtype, device=env.mechanism.device)
-        regret_grid = torch.zeros(regret_grid_size, env.n_players, dtype=env.agents[0].valuations.dtype,
+        regret_grid = torch.zeros(regret_grid_size, env.n_players, n_bundles, dtype=env.agents[0].valuations.dtype,
                                   device=env.mechanism.device)
 
         for agent in env.agents:
@@ -627,8 +626,7 @@ class Experiment(ABC):
 
             # Only supports regret_batch_size <= batch_size
             bid_profile[:, i, :] = agent.get_action()[:regret_batch_size, ...]
-            regret_grid[:, i] = torch.linspace(v_lb, v_ub, regret_grid_size,
-                                               device=env.mechanism.device)
+            regret_grid[:, i, :] = agent.draw_values_grid(regret_grid_size)
 
         torch.cuda.empty_cache()
         regret = [
@@ -636,21 +634,20 @@ class Experiment(ABC):
                 env.mechanism, bid_profile,
                 learner.strat_to_player_kwargs['player_position'],
                 env.agents[learner.strat_to_player_kwargs['player_position']].valuations[:regret_batch_size, ...],
-                regret_grid[:, learner.strat_to_player_kwargs['player_position']]
+                regret_grid[:, learner.strat_to_player_kwargs['player_position'], :]
             )
             for learner in self.learners
         ]
         ex_ante_regret = [model_tuple[0].mean() for model_tuple in regret]
         ex_interim_max_regret = [model_tuple[0].max() for model_tuple in regret]
         if create_plot_output:
-            # TODO, Paul: Transform to output with dim(batch_size, n_models, n_bundle) # assigned to @Paul
+            # Transform to output with dim(batch_size, n_models, n_bundle), for regrets n_bundle=1
             regrets = torch.stack([regret[r][0] for r in range(len(regret))], dim=1)[:, :, None]
             valuations = torch.stack([regret[r][1] for r in range(len(regret))], dim=1)
             plot_output = (valuations, regrets)
             self._plot(fig=self.fig, plot_data=plot_output, writer=self.writer,
                        ylim=[0, max(ex_interim_max_regret).cpu()],
                        figure_name='regret_function', epoch=epoch, plot_points=self.plot_points)
-            # TODO, Paul: Check in detail if correct!?  # assigned to @Paul
         return ex_ante_regret, ex_interim_max_regret
 
     def _log_experiment_params(self):
