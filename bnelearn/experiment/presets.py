@@ -17,7 +17,8 @@ def single_item_uniform_symmetric(n_runs: int, n_epochs: int,
                                                  n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
-                                                 regret_grid_size=regret_grid_size
+                                                 regret_grid_size=regret_grid_size,
+                                                 enable_logging=logging
                                                  )
 
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
@@ -41,7 +42,8 @@ def single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
-                                                 eval_batch_size=eval_batch_size
+                                                 eval_batch_size=eval_batch_size,
+                                                 enable_logging=logging
                                                  )
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        valuation_mean=valuation_mean, valuation_std=valuation_std,

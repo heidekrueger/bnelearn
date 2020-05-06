@@ -40,31 +40,34 @@ if __name__ == '__main__':
     # n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = \
     #       presets.single_item_uniform_symmetric(1,20, 2, 'first_price')
 
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     presets.single_item_uniform_symmetric(2, 100, [2], 'first_price', model_sharing=True)
+    enable_logging = False
+
+    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+        presets.single_item_uniform_symmetric(2, 10, [2], 'first_price', model_sharing=True, logging=enable_logging)
     # logging_configuration.save_tb_events_to_binary_detailed = True
     # logging_configuration.save_tb_events_to_csv_detailed = True
 
+    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+        presets.single_item_gaussian_symmetric(2,20, [2], 'second_price', logging=enable_logging)
+    # running_configuration, logging_configuration, experiment_configuration, experiment_class =\
+    #    presets.llg(2,10,'nearest_zero',specific_gpu=1, logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     presets.single_item_gaussian_symmetric(1,20, [2], 'second_price')
-    running_configuration, logging_configuration, experiment_configuration, experiment_class =\
-       presets.llg(2,200,'nearest_zero',specific_gpu=1)
-    logging_configuration.save_tb_events_to_csv_detailed = True
+    #    presets.llllgg(2,10,'first_price',model_sharing=False, logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #    presets.llllgg(1,310,'first_price')#,model_sharing=False)
+    #   presets.multiunit(n_runs=2, n_epochs=10, n_players=[2], n_units=2, payment_rule='first_price', logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #   presets.multiunit(n_runs=100, n_epochs=4000, n_players=[2], n_units=2, payment_rule='first_price')
+    #   presets.splitaward(1, 10, [2], logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #   presets.splitaward(1, 500, [2])
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #    presets.single_item_asymmetric_uniform(n_runs=1, n_epochs=4000)
+    #    presets.single_item_asymmetric_uniform(n_runs=1, n_epochs=10, logging=enable_logging)
+
 
     gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
+    # TODO: Stefan: would be nice if the same switch would also work for LLLLGG
     input_length = experiment_configuration.n_units \
         if experiment_configuration.n_units is not None else 1
     learning_configuration = LearningConfiguration(
         input_length=1,
-        pretrain_iters=500
+        pretrain_iters=50
     )
 
     try:

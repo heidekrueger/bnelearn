@@ -121,6 +121,9 @@ class CustomSummaryWriter(SummaryWriter):
                 """Only a single value --> log directly in main run""" 
                 
                 self.add_scalar(tag, vals, global_step, walltime)
+            elif len(vals) == 1:
+                """List type of length 1, but not tensor --> extract item"""
+                self.add_scalar(tag, vals[0], global_step, walltime)
             elif len(vals) == l:
                 """Log each into a run with its own prefix."""
                 for suffix, scalar_value in zip(run_suffices, vals):
