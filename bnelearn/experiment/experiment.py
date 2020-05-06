@@ -242,7 +242,7 @@ class Experiment(ABC):
 
         if self.logging_config.enable_logging:
             log_params = {'utilities': utilities, 'prev_params': prev_params}
-            elapsed_overhead = self.log_training_iteration(log_params=log_params, epoch=epoch)
+            elapsed_overhead = self._evaluate_and_log_epoch(log_params=log_params, epoch=epoch)
             print('epoch {}:\t elapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead))
         else:
             print('epoch {}:\t elapsed {:.2f}s'.format(epoch, timer() - tic))
@@ -473,11 +473,13 @@ class Experiment(ABC):
         elapsed = timer() - tic
         self.overhead += elapsed
 
-    def log_training_iteration(self, log_params: dict, epoch: int) -> float:
+    def _evaluate_and_log_epoch(self, log_params: dict, epoch: int) -> float:
         """
         Checks which metrics have to be logged and performs logging and plotting.
         Returns:
             - elapsed time in seconds
+            - Stefan todos / understanding quesitons
+            - TODO: takes log_params. can it be 
         """
         start_time = timer()
 
@@ -491,15 +493,15 @@ class Experiment(ABC):
         # logging metrics
         if self.logging_config.log_metrics['opt']:
             log_params['utility_vs_bne'], log_params['epsilon_relative'], log_params['epsilon_absolute'] = \
-                self._log_metric_opt()
+                self._calculate_metrics_known_bne()
 
         if self.logging_config.log_metrics['l2']:
-            log_params['L_2'], log_params['L_inf'] = self._log_metric_l()
+            log_params['L_2'], log_params['L_inf'] = self._calculate_metrics_action_space_norms()
 
         if self.logging_config.log_metrics['regret'] and (epoch % self.logging_config.regret_frequency) == 0:
             create_plot_output = epoch % self.logging_config.plot_frequency == 0
             log_params['regret_ex_ante'], log_params['regret_ex_interim'] = \
-                self._log_metric_regret(create_plot_output, epoch)
+                self._calculate_metrics_regret(create_plot_output, epoch)
 
         # plotting
         if epoch % self.logging_config.plot_frequency == 0:
@@ -537,14 +539,15 @@ class Experiment(ABC):
         self._log_metrics(log_params, epoch=epoch)
         return timer() - start_time
 
-    def _log_metrics(self, metrics_dict: dict, epoch: int, prefix: str = 'eval',
+    def _log_metrics(self, writer = None,
+                     metrics_dict: dict, epoch: int, prefix: str = 'eval',
                      param_group_postfix: str = '', metric_prefix: str = ''):
         """ Writes everthing from ´metrics_dict´ to tensorboard event files via the ´self.writer´.
             keys in ´metrics_dict´ represent the metric name, values should be of type
             float, list, dict, or torch.Tensor.
         """
 
-        if not self.logging_config.enable_logging:
+        if not writer:
             "If logging is disabled, don't write anything to TB."
             return
 
@@ -554,24 +557,24 @@ class Experiment(ABC):
             tag = prefix + param_group_postfix + '/' + metric_prefix + str(metric_key)
 
             if isinstance(metric_val, float):
-                self.writer.add_scalar(tag, metric_val, epoch)
+                writer.add_scalar(tag, metric_val, epoch)
 
             elif isinstance(metric_val, list):
-                self.writer.add_scalars(tag, dict(zip(name_list, metric_val)), epoch)
+                writer.add_scalars(tag, dict(zip(name_list, metric_val)), epoch)
 
             elif isinstance(metric_val, dict):
                 for key, val in metric_val.items():
-                    self.writer.add_scalars(
+                    writer.add_scalars(
                         tag, dict(zip([name + '/' + str(key) for name in name_list], val)), epoch
                     )
 
             elif torch.is_tensor(metric_val):
-                self.writer.add_scalars(tag, dict(zip(name_list, metric_val.tolist())), epoch)
+                writer.add_scalars(tag, dict(zip(name_list, metric_val.tolist())), epoch)
 
             else:
                 raise TypeError('metric type {} cannot be saved'.format(type(metric_val)))
 
-    def _log_metric_opt(self):
+    def _calculate_metrics_known_bne(self):
         """
         Compare performance to BNE and log:
         utility_vs_bne
@@ -595,7 +598,7 @@ class Experiment(ABC):
 
         return utility_vs_bne, epsilon_relative, epsilon_absolute
 
-    def _log_metric_l(self):
+    def _calculate_metrics_action_space_norms(self):
         """
         Calculate "action space distance" of model and bne-strategy
         """
@@ -607,7 +610,7 @@ class Experiment(ABC):
                  for i, model in enumerate(self.models)]
         return L_2, L_inf
 
-    def _log_metric_regret(self, create_plot_output: bool, epoch: int = None):
+    def _calculate_metrics_regret(self, create_plot_output: bool, epoch: int = None):
         """
         Compute mean regret of current policy and return
         ex interim regret (ex ante regret is the average of that tensor)

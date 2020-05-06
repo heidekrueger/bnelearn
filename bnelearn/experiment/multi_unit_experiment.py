@@ -31,8 +31,8 @@ from bnelearn.strategy import ClosureStrategy
 ###                                                 BNE STRATEGIES                                                   ###
 ########################################################################################################################
 
-# TODO: make this private @Nils
-def multiunit_bne(experiment_config, payment_rule):
+
+def _multiunit_bne(experiment_config, payment_rule):
     """
     Method that returns the known BNE strategy for the standard multi-unit auctions
     (split-award is NOT one of the) as callable if available and None otherwise.
@@ -280,7 +280,7 @@ class MultiUnitExperiment(Experiment, ABC):
         # check for available BNE strategy
         self._optimal_bid = None
         if not isinstance(self, SplitAwardExperiment):
-            self._optimal_bid = multiunit_bne(experiment_config, experiment_config.payment_rule)
+            self._optimal_bid = _multiunit_bne(experiment_config, experiment_config.payment_rule)
         else:
             if experiment_config.n_units == 2 and experiment_config.n_players == 2:
                 self._optimal_bid = _optimal_bid_splitaward2x2_1(experiment_config)
