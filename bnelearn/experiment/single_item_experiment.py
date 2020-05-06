@@ -304,7 +304,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions, risk=self.risk)
 
-    def _get_logdir(self):
+    def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, self.valuation_prior,
                 'symmetric', self.risk_profile, str(self.n_players) + 'p']
         return os.path.join(*name)
@@ -424,7 +424,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
 
         super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
-    def _get_logdir(self):
+    def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, self.valuation_prior,
                 'asymmetric', self.risk_profile, str(self.n_players) + 'p']
         return os.path.join(*name)

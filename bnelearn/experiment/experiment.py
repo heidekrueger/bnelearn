@@ -1,35 +1,33 @@
 """
-This module defines an experiment. It includes logging and plotting since they 
+This module defines an experiment. It includes logging and plotting since they
 can often be shared by specific experiments.
 """
-import sys
+
 import os
+import time
 from abc import ABC, abstractmethod
+from time import perf_counter as timer
 from typing import Iterable, List
 
-import torch
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-from torch.utils.tensorboard import SummaryWriter
-import numpy as np
-import pandas as pd
-
-from time import perf_counter as timer
 import matplotlib.pyplot as plt
-from matplotlib.ticker import LinearLocator, FormatStrFormatter
+import numpy as np
+import torch
+from matplotlib.ticker import FormatStrFormatter, LinearLocator
 from mpl_toolkits.mplot3d import Axes3D
+from torch.utils.tensorboard import SummaryWriter
+import bnelearn.util.logging as logging_utils
+import bnelearn.util.metrics as metrics
+from bnelearn.bidder import Bidder
+from bnelearn.environment import AuctionEnvironment, Environment
+from bnelearn.experiment.configurations import (ExperimentConfiguration,
+                                                LearningConfiguration,
+                                                LoggingConfiguration)
+from bnelearn.experiment.gpu_controller import GPUController
+from bnelearn.learner import ESPGLearner, Learner
+from bnelearn.mechanism import Mechanism
+from bnelearn.strategy import NeuralNetStrategy
 
 # pylint: disable=unnecessary-pass,unused-argument
-
-from bnelearn.bidder import Bidder
-from bnelearn.environment import Environment, AuctionEnvironment
-from bnelearn.mechanism import Mechanism
-from bnelearn.learner import Learner, ESPGLearner
-from bnelearn.strategy import NeuralNetStrategy
-import bnelearn.util.metrics as metrics
-
-from bnelearn.experiment.gpu_controller import GPUController
-from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
-
 
 class Experiment(ABC):
     """Abstract Class representing an experiment"""
@@ -47,6 +45,7 @@ class Experiment(ABC):
     # attributes required for general setup logic
     _bidder2model: List[int]  # a list matching each bidder to their Strategy
     n_models: int
+    n_items: int
     mechanism: Mechanism
     positive_output_point: torch.Tensor # shape must be valid model input
 
@@ -64,14 +63,6 @@ class Experiment(ABC):
 
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne=False):
-
-
-        # TODO: Stefan: This should not be here, maybe set in frontend and pass? #assigned to @Stefan
-        root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
-        if root_path not in sys.path:
-            sys.path.append(root_path)
-        self.log_root = os.path.join(root_path, 'experiments')
-
         # Configs
         self.experiment_config = experiment_config
         self.learning_config = learning_config
@@ -84,9 +75,9 @@ class Experiment(ABC):
         self.plot_points = LoggingConfiguration.plot_points
 
         # Everything that will be set up per run initioated with none
-        self.log_dir = None  # TODO: is this redundant? someone said it smells. @assigned to @Stefan
+        self.run_log_dir = None
         self.fig = None
-        self.writer = None
+        self.writer = None # TODO Stefan: not sure if writer as attribute is the best way.
         self.overhead = 0.0
 
         self.models: Iterable[torch.nn.Module] = None
@@ -104,6 +95,10 @@ class Experiment(ABC):
             self.regret_batch_size = logging_config.regret_batch_size
         if logging_config.regret_grid_size is not None:
             self.regret_grid_size = logging_config.regret_grid_size
+        # sets log dir for experiment. Individual runs will log to subdirectories of this.
+        self.experiment_log_dir = os.path.join(logging_config.log_root_dir,
+                                               self._get_logdir_hierarchy(),
+                                               logging_config.experiment_dir)
 
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
@@ -128,13 +123,15 @@ class Experiment(ABC):
         if self.known_bne:
             self._setup_eval_environment()
 
-    # TODO: rename this assigned to @Stefan
-    def _setup_run(self):
-        """Setup everything that is specific to an individual run, including everything nondeterministic"""
-        # setup the experiment, don't mess with the order
-        self._setup_bidders()
-        self._setup_learning_environment()
-        self._setup_learners()
+    # TODO: why? assigned to Stefan
+    @staticmethod
+    def get_risk_profile(risk) -> str:
+        if risk == 1.0:
+            return 'risk_neutral'
+        elif risk == 0.5:
+            return 'risk_averse'
+        else:
+            return 'other'
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -142,8 +139,7 @@ class Experiment(ABC):
 
     # TODO: move entire name/dir logic out of logger into run. Assigned to Stefan
     @abstractmethod
-    def _get_logdir(self):
-        """"""
+    def _get_logdir_hierarchy(self):
         pass
 
     @abstractmethod
@@ -203,7 +199,7 @@ class Experiment(ABC):
             print('\tpretraining...')
 
             if hasattr(self, 'pretrain_transform'):
-                pretrain_transform = self.pretrain_transform
+                pretrain_transform = self.pretrain_transform # pylint: disable=no-member
             else:
                 pretrain_transform = None
 
@@ -223,15 +219,11 @@ class Experiment(ABC):
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
 
-    # TODO: why? assigned to Stefan
-    @staticmethod
-    def get_risk_profile(risk) -> str:
-        if risk == 1.0:
-            return 'risk_neutral'
-        elif risk == 0.5:
-            return 'risk_averse'
-        else:
-            return 'other'
+    def _init_new_run(self):
+        """Setup everything that is specific to an individual run, including everything nondeterministic"""
+        self._setup_bidders()
+        self._setup_learning_environment()
+        self._setup_learners()
 
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
@@ -246,79 +238,61 @@ class Experiment(ABC):
             for learner in self.learners
         ])
 
-        if self.logging_config.logging:
+        if self.logging_config.enable_logging:
             log_params = {'utilities': utilities, 'prev_params': prev_params}
             elapsed_overhead = self.log_training_iteration(log_params=log_params, epoch=epoch)
             print('epoch {}:\t elapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead))
         else:
             print('epoch {}:\t elapsed {:.2f}s'.format(epoch, timer() - tic))
 
-    def run(self, epochs, n_runs: int = 1, run_comment: str = None, seeds: Iterable[int] = None):
+    def run(self, epochs, n_runs: int = 1, seeds: Iterable[int] = None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
 
         if not seeds:
             seeds = list(range(n_runs))
 
-        for run in range(n_runs):
-            seed = seeds[run]
-            print('Running experiment {} (using seed {})'.format(run, seed))
+        assert len(seeds) == n_runs, "Number of seeds doesn't match number of runs."
+
+        for run_id, seed in enumerate(seeds):
+            print(f'Running experiment {run_id} (using seed {seed})')
+            run_log_dir = os.path.join(
+                self.experiment_log_dir,
+                f'{run_id:02d} ' + time.strftime('%H.%M.%S ') + str(seed))
+
             torch.random.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
             np.random.seed(seed)
 
-            self._setup_run()
-
-            self.log_dir = self._get_logdir()
+            self._init_new_run()
 
             # TODO: setup Writer here, or make logger an object that takes # assigned to Stefan
             # with Logger ... : (especially, needs to be destroyed on end of run!)
-            if self.logging_config.logging:
-                self.log_experiment(run_comment=run_comment, max_epochs=epochs, run=run)
+            if self.logging_config.enable_logging:
+                self.log_run_metadata(output_dir=run_log_dir, max_epochs=epochs)
             # disable this to continue training?
             epoch = 0
             for epoch in range(epoch, epoch + epochs + 1):
                 self._training_loop(epoch=epoch)
 
-            if self.logging_config.logging and self.logging_config.save_tb_events_to_csv:
-                self.log_tb_events()
-
-            if self.logging_config.save_model:
-                self._log_trained_model()
+            # Finish up
+            if self.logging_config.save_models:
+                self._save_models(directory = run_log_dir)
 
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
             # if torch.cuda.memory_allocated() > 0:
             #    warnings.warn('Theres a memory leak')
 
+        # Once all runs are done, convert tb event files to csv
+        if self.logging_config.enable_logging:
+            logging_utils.log_tb_events(output_dir=self.experiment_log_dir,
+                                        write_detailed=self.logging_config.save_tb_events_to_csv_detailed,
+                                        write_aggregate=self.logging_config.save_tb_events_to_csv_aggregate)
+
+
     ########################################################################################################
     ####################################### Moved logging to here ##########################################
     ########################################################################################################
-    # based on https://stackoverflow.com/a/57411105/4755970
-    # output_dir must be the directory immediately above the runs and each run must have the same shape.
-    # No aggregation of multiple subdirectories for now.
-    def log_tb_events(self):
-        output_dir = self.log_dir
-
-        # runs are all subdirectories that don't start with '.' (exclude '.ipython_checkpoints')
-        # add more filters as needed
-        runs = [x.name for x in os.scandir(output_dir) if
-                x.is_dir() and not x.name.startswith('.') and not x.name == 'alternative']
-
-        d = {'run': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []}
-        for run in runs:
-            ea = EventAccumulator(os.path.join(output_dir, run)).Reload()
-            tags = ea.Tags()['scalars']
-
-            for tag in tags:
-                for event in ea.Scalars(tag):
-                    d['run'].append(run)
-                    d['tag'].append(tag)
-                    d['value'].append(event.value)
-                    d['wall_time'].append(event.wall_time)
-                    d['epoch'].append(event.step)
-
-        df = pd.DataFrame(d)
-        df.to_csv(os.path.join(output_dir, f'all_results.csv'))
 
     # Generalize as much as possible to avoid code overload and too much individualism
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
@@ -403,7 +377,11 @@ class Experiment(ABC):
         title = plt.title if n_bundles == 1 else plt.suptitle
         title('iteration {}'.format(epoch))
 
-        self._process_figure(fig, writer=writer, epoch=epoch, figure_name=figure_name)
+        logging_utils.process_figure(fig, epoch=epoch, figure_name=figure_name, tb_group='eval',
+                                     tb_writer=writer, display=self.logging_config.plot_show_inline,
+                                     output_dir=self.run_log_dir,
+                                     save_png=self.logging_config.save_figure_to_disk_png,
+                                     save_svg = self.logging_config.save_figure_to_disk_svg)
 
         return fig
 
@@ -440,44 +418,15 @@ class Experiment(ABC):
         fig.suptitle('iteration {}'.format(epoch), size=16)
         fig.tight_layout()
 
-        self._process_figure(fig, writer=writer, epoch=epoch, figure_name=figure_name + "_3d")
+        logging_utils.process_figure(fig, epoch=epoch, figure_name=figure_name+'_3d', tb_group='eval',
+                                     tb_writer=writer, display=self.logging_config.plot_show_inline,
+                                     output_dir=self.run_log_dir,
+                                     save_png=self.logging_config.save_figure_to_disk_png,
+                                     save_svg = self.logging_config.save_figure_to_disk_svg)
         return fig
 
-    # TODO: when adding log_dir and logging_config as arguments this could be static as well # assign to stefan
-    def _process_figure(self, fig, writer=None, epoch=None, figure_name='plot', group='eval', filename=None):
-        """displays, logs and/or saves figure built in plot method"""
-
-        if not filename:
-            filename = figure_name
-
-        if self.logging_config.save_figure_to_disk_png:
-            plt.savefig(os.path.join(self.log_dir, 'png', f'{filename}_{epoch:05}.png'))
-
-        if self.logging_config.save_figure_to_disk_svg:
-            plt.savefig(os.path.join(self.log_dir, 'svg', f'{filename}_{epoch:05}.svg'),
-                        format='svg', dpi=1200)
-        if writer:
-            writer.add_figure(f'{group}/{figure_name}', fig, epoch)
-        if self.logging_config.plot_show_inline:
-            # display.display(plt.gcf())
-            plt.show()
-
-    def _log_hyperparams(self, epoch=0):
-        """Everything that should be logged on every learning_rate update"""
-
-        for i, model in enumerate(self.models):
-            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)
-            self.writer.add_graph(model, self.env.agents[i].valuations)
-
-        self.writer.add_scalar('hyperparameters/batch_size', self.learning_config.batch_size, epoch)
-        self.writer.add_scalar('hyperparameters/epochs', self.logging_config.max_epochs, epoch)
-        self.writer.add_scalar(
-            'hyperparameters/pretrain_iters',
-            self.learning_config.pretrain_iters,
-            epoch
-        )
-
-    def log_experiment(self, run_comment, max_epochs, run=""):
+    def log_run_metadata(self, output_dir, max_epochs):
+        # TODO: Stefan: this method still mixes per-experiment and per-run logic
         self.max_epochs = max_epochs
 
         # setting up plotting
@@ -504,27 +453,22 @@ class Experiment(ABC):
             from IPython import display
         plt.rcParams['figure.figsize'] = [8, 5]
 
-        if os.name == 'nt':
-            raise ValueError('The run_name may not contain : on Windows!')
-        run_name = self.logging_config.file_name + '_' + str(run)
-        if run_comment:
-            run_name = run_name + ' - ' + str(run_comment)
-
-        self.log_dir = os.path.join(self.log_root, self.log_dir, run_name)
-        os.makedirs(self.log_dir, exist_ok=False)
+        os.makedirs(output_dir, exist_ok=False)
         if self.logging_config.save_figure_to_disk_png:
-            os.mkdir(os.path.join(self.log_dir, 'png'))
+            os.mkdir(os.path.join(output_dir, 'png'))
         if self.logging_config.save_figure_to_disk_svg:
-            os.mkdir(os.path.join(self.log_dir, 'svg'))
+            os.mkdir(os.path.join(output_dir, 'svg'))
+        if self.logging_config.save_models:
+            os.mkdir(os.path.join(output_dir, 'models'))
 
-        print('Started run. Logging to {}'.format(self.log_dir))
+        print('Started run. Logging to {}'.format(output_dir))
         self.fig = plt.figure()
 
-        self.writer = SummaryWriter(self.log_dir, flush_secs=30)
-        start_time = timer()
-        self._log_experimentparams()
+        self.writer = SummaryWriter(output_dir, flush_secs=30)
+        tic = timer()
+        self._log_experiment_params() #TODO: should probably be called only once, not every run
         self._log_hyperparams()
-        elapsed = timer() - start_time
+        elapsed = timer() - tic
         self.overhead += elapsed
 
     def log_training_iteration(self, log_params: dict, epoch: int) -> float:
@@ -593,10 +537,15 @@ class Experiment(ABC):
 
     def _log_metrics(self, metrics_dict: dict, epoch: int, prefix: str = 'eval',
                      param_group_postfix: str = '', metric_prefix: str = ''):
-        """ Writes everthing from ´metrics_dict´ to disk via the ´self.writer´.
+        """ Writes everthing from ´metrics_dict´ to tensorboard event files via the ´self.writer´.
             keys in ´metrics_dict´ represent the metric name, values should be of type
             float, list, dict, or torch.Tensor.
         """
+
+        if not self.logging_config.enable_logging:
+            "If logging is disabled, don't write anything to TB."
+            return
+
         name_list = ['agent_{}'.format(i) for i in range(self.experiment_config.n_players)]
 
         for metric_key, metric_val in metrics_dict.items():
@@ -636,7 +585,7 @@ class Experiment(ABC):
                 ),
                 draw_valuations=False # False because we want to use cached actions when set, reevaluation is expensive e.g. for normal priors
             ) for i, model in enumerate(self.models)
-        ])  
+        ])
         epsilon_relative = torch.tensor([1 - utility_vs_bne[i] / self.bne_utilities[i]
                                          for i, model in enumerate(self.models)])
         epsilon_absolute = torch.tensor([self.bne_utilities[i] - utility_vs_bne[i]
@@ -712,12 +661,28 @@ class Experiment(ABC):
             # TODO, Paul: Check in detail if correct!?  # assigned to @Paul
         return ex_ante_regret, ex_interim_max_regret
 
-    def _log_experimentparams(self):
+    def _log_experiment_params(self):
         # TODO: write out all experiment params (complete dict) #See issue #113
+        # TODO: Stefan: this currently called _per run_. is this desired behavior?
         pass
 
-    def _log_trained_model(self):
+    def _log_hyperparams(self, epoch=0):
+        """Everything that should be logged on every learning_rate update"""
+
+        for i, model in enumerate(self.models):
+            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)
+            self.writer.add_graph(model, self.env.agents[i].valuations)
+
+        self.writer.add_scalar('hyperparameters/batch_size', self.learning_config.batch_size, epoch)
+        self.writer.add_scalar('hyperparameters/epochs', self.logging_config.max_epochs, epoch)
+        self.writer.add_scalar(
+            'hyperparameters/pretrain_iters',
+            self.learning_config.pretrain_iters,
+            epoch
+        )
+
+    def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise regrets in the ending-epoch to disk to use it to make nicer plots for a publication? --> will be done elsewhere. Assigned to @Paul
         for model, player_position in zip(self.models, self._model2bidder):
             name = 'model_' + str(player_position[0]) + '.pt'
-            torch.save(model.state_dict(), os.path.join(self.log_dir, name))
+            torch.save(model.state_dict(), os.path.join(directory, 'models', name))

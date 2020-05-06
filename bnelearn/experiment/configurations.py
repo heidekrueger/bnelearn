@@ -1,5 +1,6 @@
-from typing import Type
+from typing import Type, List
 import time
+import os
 
 import torch
 from torch.optim import Optimizer
@@ -53,8 +54,23 @@ class ExperimentConfiguration:
 
 @dataclass
 class LoggingConfiguration:
-    logging: bool = False
-    file_name: str = time.strftime('%Y-%m-%d %a %H:%M:%S')
+    """Controls logging and evaluation aspects of an experiment suite.
+
+    If logging is enabled, the experiment runs will be logged to the following
+    directories:
+        log_root_dir / 
+            [setting-specific dir hierarchy determined by Experiment subclasses] /
+                experiment_timestamp + experiment_name / 
+                    run_timestamp + run_seed
+    """
+    enable_logging: bool = True #If false, disables ALL logging
+    # root directory for logging. subdirectories will be inferred and created based on experiment name and config
+    log_root_dir: str = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
+    # TODO Stefan: where is this used.
+    experiment_name: str = None
+    # Rationale behind timestamp format: should be ordered chronologically but include weekday. 
+    # Using . instead of : for compatability with Windows 
+    experiment_timestamp: str = time.strftime('%Y-%m-%d %a %H.%M') #removed %S here, we won't need seconds
     plot_frequency: int = 100
     plot_points: int = 100
     plot_show_inline: bool = True
@@ -65,16 +81,21 @@ class LoggingConfiguration:
     eval_batch_size: int = 2**22
     cache_eval_actions: bool = True
     max_epochs: int = None
-    save_tb_events_to_csv: bool = False
-    save_tb_events_to_binary: bool = False
-    save_model: bool = True
+    save_tb_events_to_csv_aggregate: bool = True
+    save_tb_events_to_csv_detailed: bool = False
+    save_tb_events_to_binary_detailed: bool = False
+    save_models: bool = True
 
     save_figure_to_disk_png: bool = True
     save_figure_to_disk_svg: bool = True
     save_figure_data_to_disk: bool = True
-    save_disable_all: bool = False
 
     def __post_init__(self):
+
+        self.experiment_dir = self.experiment_timestamp
+        if self.experiment_name:
+            self.experiment_dir += ' ' + str(self.experiment_name)
+
         metrics = self.log_metrics
         self.log_metrics = {'opt': False,
                             'l2': False,
@@ -86,22 +107,23 @@ class LoggingConfiguration:
         if self.log_metrics['regret'] and self.regret_batch_size is None:
             self.regret_batch_size: int = 2**8
             self.regret_grid_size: int = 2**8
-        if self.save_disable_all:
+        if not self.enable_logging:
+            self.save_tb_events_to_csv_aggregate = False
+            self.save_tb_events_to_csv_detailed: bool = False
+            self.save_tb_events_to_binary_detailed: bool = False
+            self.save_models = False
             self.save_figure_to_disk_png = False
             self.save_figure_to_disk_svg = False
             self.save_figure_data_to_disk = False
 
-    def update_file_name(self, name=None):
-        if name is None:
-            self.file_name = time.strftime('%Y-%m-%d %a %H:%M:%S')
 
 @dataclass
 class LearningConfiguration:
     learner_hyperparams: dict = None
     optimizer_type: str or Type[Optimizer] = 'adam'
     optimizer_hyperparams: dict = None
-    hidden_nodes: list = None
-    hidden_activations: list = None
+    hidden_nodes: List[int] = None
+    hidden_activations: List[nn.Module] = None
     pretrain_iters: int = 500
     batch_size: int = 2**18
     input_length: int = 1 #TODO: Stefan: remove here. @Paul
@@ -117,7 +139,7 @@ class LearningConfiguration:
         if self.hidden_nodes is None:
             self.hidden_nodes = [5,5,5]
         if self.hidden_activations is None:
-            self.hidden_activations = [nn.SELU(),nn.SELU(),nn.SELU()]
+            self.hidden_activations = [nn.SELU() for layer in self.hidden_nodes]
 
     @staticmethod
     def _set_optimizer(optimizer: str or Type[Optimizer]) -> Type[Optimizer]:
