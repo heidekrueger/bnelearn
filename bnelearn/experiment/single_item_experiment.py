@@ -169,13 +169,14 @@ class SingleItemExperiment(Experiment, ABC):
 
     # known issue: pylint doesn't recognize this class as abstract: https://github.com/PyCQA/pylint/commit/4024949f6caf5eff5f3da7ab2b4c3cf2e296472b
     # pylint: disable=abstract-method
-    valuation_prior: str
 
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne = False):
 
         if not hasattr(self, 'payment_rule'):
             self.payment_rule = experiment_config.payment_rule
+        if not hasattr(self, 'valuation_prior'):
+            self.valuation_prior = 'unknown'
 
         super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
         self.n_items = 1
@@ -276,7 +277,6 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self._set_symmetric_bne_closure()
 
         # TODO: parallelism should be taken from elsewhere. Should be moved to config. Assigned @Stefan
-        # TODO: existence of valuation_prior not guaranteed Assigned @Stefan
         n_processes_optimal_strategy = 44 if self.valuation_prior != 'uniform' and \
                                              self.payment_rule != 'second_price' else 0
         bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
