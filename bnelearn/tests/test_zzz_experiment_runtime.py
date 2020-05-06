@@ -4,7 +4,6 @@ It chooses only 2 runs, with 3 epochs but plots and logs every period. Logging a
 It considers each implemented experiment with each payment rule. Fo each experiment no model_sharing is tested once.
 TODO:
     - Paul: InputLength should become obsolete Stefan: yes! @assigned Paul
-    - Paul: Disable logging (by a variable that is checked just before writing) @Stefan
     - Paul: Maybe later: Add bne metric to LLLLGG and test for failure
     - Stefan: Later: gaussian with fpsb and regret
 """
@@ -23,7 +22,7 @@ ids_single_item, testdata_single_item = zip(*[
     ['single_item-symmetric-uniform-fp', (single_item_uniform_symmetric(2,3, [2], 'first_price'),1)],
     ['single_item-symmetric-uniform-fp-no_model_sharing',
         (single_item_uniform_symmetric(2,3, [3], 'first_price',model_sharing=False),1)],
-    ['single_item-symmetric-uniform-vcg', (single_item_uniform_symmetric(2,3, [3], 'second_price'),1)],
+    #['single_item-symmetric-uniform-vcg', (single_item_uniform_symmetric(2,3, [3], 'second_price'),1)],
     # too expensive. ['single_item-symmetric-gaussian-fp', (single_item_gaussian_symmetric(2,3, [4], 'first_price'),1)],
     ['single_item-symmetric-gaussian-vcg', (single_item_gaussian_symmetric(2,3, [5], 'second_price'),1)],
     ['single_item-asymmetric-uniform-fp', (single_item_asymmetric_uniform(2,3, 'first_price'),1)],
@@ -35,13 +34,13 @@ ids_local_global, testdata_local_global = zip(*[
     ['LLG-fp-no_model_sharing', (llg(2,3,'first_price', model_sharing=False,log_metrics=['regret']),1)],
     ['LLG-vcg', (llg(2,3,'vcg'),1)],
     ['LLG-nearest_bid', (llg(2,3,'nearest_bid'),1)],
-    ['LLG-nearest_zero', (llg(2,3,'nearest_zero'),1)],
-    ['LLG-nearest_vcg', (llg(2,3,'nearest_vcg'),1)],
+    #['LLG-nearest_zero', (llg(2,3,'nearest_zero'),1)],
+    #['LLG-nearest_vcg', (llg(2,3,'nearest_vcg'),1)],
     # LLLLGG
-    ['LLLLGG-fp', (llllgg(2,2,'first_price'),2)],
+    #['LLLLGG-fp', (llllgg(2,2,'first_price'),2)],
     ['LLLLGG-fp-no_model_sharing', (llllgg(2,2,'first_price',model_sharing=False),2)],
     ['LLLLGG-vcg', (llllgg(2,2,'vcg'),2)],
-    ['LLLLGG-nearest_vcg', (llllgg(2,2,'nearest_vcg',core_solver='gurobi'),2)]
+    #['LLLLGG-nearest_vcg', (llllgg(2,2,'nearest_vcg',core_solver='gurobi'),2)]
     ])
 ids_multi_unit, testdata_multi_unit = zip(*[
     # MultiUnit
