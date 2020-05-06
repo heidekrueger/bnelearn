@@ -1,3 +1,4 @@
+"""This module contains all possible solutions for the LLLLGG setting to be checked."""
 # row, column for ones
 subsolutions  = [
     [0, 0],
@@ -194,4 +195,4 @@ solutions_non_sparse = [
     [0,0,1,0, 0,1,0,1, 0,0,0,0], # CD FG HA
     [0,1,0,1, 0,0,1,0, 0,0,0,0], # BC DE GH
     [0,1,0,0, 1,0,0,1, 0,0,0,0], # BC EF HA
-        ]
+    ]

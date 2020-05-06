@@ -2,13 +2,14 @@
 
 import os
 import time
-from typing import List
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-from torch.utils.tensorboard.writer import SummaryWriter, FileWriter, scalar
-import pandas as pd
 import warnings
+from typing import List
+
 import matplotlib.pyplot as plt
+import pandas as pd
 import torch
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
 
 
 # based on https://stackoverflow.com/a/57411105/4755970
@@ -27,8 +28,8 @@ def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detail
     all_tb_events = {'run': [], 'subrun': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []}
     last_epoch_tb_events = {'run': [], 'subrun': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []}
     for run in runs:
-        subruns = [x.name for x in os.scandir(os.path.join(experiment_dir, run)) 
-                   if x.is_dir() and any(file.startswith('events.out.tfevents') 
+        subruns = [x.name for x in os.scandir(os.path.join(experiment_dir, run))
+                   if x.is_dir() and any(file.startswith('events.out.tfevents')
                                          for file in os.listdir(os.path.join(experiment_dir, run, x.name)))]
         subruns.append('.') #also read global logs
         for subrun in subruns:
@@ -92,9 +93,10 @@ class CustomSummaryWriter(SummaryWriter):
     the option to control these.
     """
 
-    def add_metrics_dict(self, metrics_dict: dict, run_suffices: List[str], global_step=None, walltime=None,
-                        group_prefix: str = None ):
-        """         
+    def add_metrics_dict(self, metrics_dict: dict, run_suffices: List[str],
+                         global_step=None, walltime=None,
+                         group_prefix: str = None):
+        """
         Args:
             metric_dict (dict): A dict of metrics. Keys are tag names, values are values.
                 values can be float, List[float] or Tensor.
@@ -116,16 +118,14 @@ class CustomSummaryWriter(SummaryWriter):
             tag = key if not group_prefix else group_prefix + '/' + key
 
             if isinstance(vals, float) or isinstance(vals, int) or (
-                torch.is_tensor(vals) and vals.size() in {torch.Size([]), torch.Size([1])}
-                ):
-                """Only a single value --> log directly in main run""" 
-                
+                    torch.is_tensor(vals) and vals.size() in {torch.Size([]), torch.Size([1])}):
+                # Only a single value --> log directly in main run
                 self.add_scalar(tag, vals, global_step, walltime)
             elif len(vals) == 1:
-                """List type of length 1, but not tensor --> extract item"""
+                # List type of length 1, but not tensor --> extract item
                 self.add_scalar(tag, vals[0], global_step, walltime)
             elif len(vals) == l:
-                """Log each into a run with its own prefix."""
+                # Log each into a run with its own prefix.
                 for suffix, scalar_value in zip(run_suffices, vals):
                     fw_tag = fw_logdir + "/" + suffix.replace("/", "_")
 
@@ -138,7 +138,6 @@ class CustomSummaryWriter(SummaryWriter):
                     # Not using caffe2 -->following line is commented out from original SummaryWriter implementation
                     # if self._check_caffe2_blob(scalar_value):
                     #     scalar_value = workspace.FetchBlob(scalar_value)
-                    fw.add_summary(scalar(tag, scalar_value),
-                                global_step, walltime)
+                    fw.add_summary(scalar(tag, scalar_value), global_step, walltime)
             else:
                 raise ValueError('Got list of invalid length.')
