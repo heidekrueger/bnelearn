@@ -141,23 +141,24 @@ class Bidder(Player):
         """ Returns a batch of values equally distributed within self.grid_lb and self.grid_ub
             ,and NOT according to the actual distribution, for n_items.
             This is used amongst others for valuations and bids.
-            Args
-            ----
+            Args:
                 batch_size: int, upper bound of returned batch size
+            returns:
+                grid_values: (batch_size)   #TODO, Paul: @Nils Ensure that batch_size is returned in your settings.
         """
         batch_size_per_dim = int(batch_size ** (1/self.n_items))
         lin = torch.linspace(self.grid_lb, self.grid_ub,
                              batch_size_per_dim, device=self.device)
-        grid_valuations = torch.stack([x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()
+        grid_values = torch.stack([x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()
         if isinstance(self.item_interest_limit, int):
-            grid_valuations[:,self.item_interest_limit:] = 0
+            grid_values[:,self.item_interest_limit:] = 0
         if self.constant_marginal_values:
-           grid_valuations.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
-                                       grid_valuations[:,0:1].repeat(1, self.n_items-1))
+           grid_values.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
+                                       grid_values[:,0:1].repeat(1, self.n_items-1))
         if self.descending_valuations:
-            grid_valuations = grid_valuations.sort(dim=1, descending=True)[0].unique(dim=0)
+            grid_values = grid_values.sort(dim=1, descending=True)[0].unique(dim=0)
 
-        return grid_valuations
+        return grid_values
 
     def draw_valuations_(self):
         """ Sample a new batch of valuations from the Bidder's prior. Negative
