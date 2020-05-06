@@ -107,7 +107,7 @@ class LoggingConfiguration:
         if self.log_metrics['regret'] and self.regret_batch_size is None:
             self.regret_batch_size: int = 2**8
             self.regret_grid_size: int = 2**8
-        if not enable_logging:
+        if not self.enable_logging:
             self.save_tb_events_to_csv_aggregate = False
             self.save_tb_events_to_csv_detailed: bool = False
             self.save_tb_events_to_binary: bool = False
