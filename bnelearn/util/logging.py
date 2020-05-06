@@ -12,49 +12,56 @@ import torch
 
 
 # based on https://stackoverflow.com/a/57411105/4755970
-# output_dir must be the directory immediately above the runs and each run must have the same shape.
+# experiment must be the directory immediately above the runs and each run must have the same shape.
 # No aggregation of multiple subdirectories for now.
-def log_tb_events(output_dir, write_aggregate=True, write_detailed=False, write_binary=False):
+def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detailed=False, write_binary=False):
     """
     This function reads all tensorboard event log files in subdirectories and converts their content into
     a single csv file containing info of all runs.
     """
-    cross_experiment_log_dir = output_dir.rsplit('/', 1)[0]
     # runs are all subdirectories that don't start with '.' (exclude '.ipython_checkpoints')
     # add more filters as needed
-    runs = [x.name for x in os.scandir(output_dir) if
+    runs = [x.name for x in os.scandir(experiment_dir) if
             x.is_dir() and not x.name.startswith('.') and not x.name == 'alternative']
 
-    cur_run_tb_events = {'run': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []}
-    last_epoch_tb_events = {'run': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []}
+    all_tb_events = {'run': [], 'subrun': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []}
+    last_epoch_tb_events = {'run': [], 'subrun': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []}
     for run in runs:
-        ea = EventAccumulator(os.path.join(output_dir, run)).Reload()
-        tags = ea.Tags()['scalars']
+        subruns = [x.name for x in os.scandir(os.path.join(experiment_dir, run)) 
+                   if x.is_dir() and any(file.startswith('events.out.tfevents') 
+                                         for file in os.listdir(os.path.join(experiment_dir, run, x.name)))]
+        subruns.append('.') #also read global logs
+        for subrun in subruns:
 
-        for tag in tags:
-            for event in ea.Scalars(tag):
-                cur_run_tb_events['run'].append(run)
-                cur_run_tb_events['tag'].append(tag)
-                cur_run_tb_events['value'].append(event.value)
-                cur_run_tb_events['wall_time'].append(event.wall_time)
-                cur_run_tb_events['epoch'].append(event.step)
+            ea = EventAccumulator(os.path.join(experiment_dir, run, subrun)).Reload()
+            tags = ea.Tags()['scalars']
 
-        last_epoch_tb_events['run'].append(run)
-        last_epoch_tb_events['tag'].append(tag)
-        last_epoch_tb_events['value'].append(event.value)
-        last_epoch_tb_events['wall_time'].append(event.wall_time)
-        last_epoch_tb_events['epoch'].append(event.step)
+            for tag in tags:
+                for event in ea.Scalars(tag):
+                    all_tb_events['run'].append(run)
+                    all_tb_events['subrun'].append(subrun)
+                    all_tb_events['tag'].append(tag)
+                    all_tb_events['value'].append(event.value)
+                    all_tb_events['wall_time'].append(event.wall_time)
+                    all_tb_events['epoch'].append(event.step)
 
-    cur_run_tb_events = pd.DataFrame(cur_run_tb_events)
+                last_epoch_tb_events['run'].append(run)
+                last_epoch_tb_events['subrun'].append(subrun)
+                last_epoch_tb_events['tag'].append(tag)
+                last_epoch_tb_events['value'].append(event.value)
+                last_epoch_tb_events['wall_time'].append(event.wall_time)
+                last_epoch_tb_events['epoch'].append(event.step)
+
+    all_tb_events = pd.DataFrame(all_tb_events)
     last_epoch_tb_events = pd.DataFrame(last_epoch_tb_events)
 
     if write_detailed:
-        f_name = os.path.join(output_dir, f'full_results.csv')
-        cur_run_tb_events.to_csv(f_name)
+        f_name = os.path.join(experiment_dir, f'full_results.csv')
+        all_tb_events.to_csv(f_name, index=False)
 
     if write_aggregate:
-        f_name = os.path.join(cross_experiment_log_dir, f'aggregate_log.csv')
-        last_epoch_tb_events.to_csv(f_name, mode='a', header=not os.path.isfile(f_name))
+        f_name = os.path.join(experiment_dir, f'aggregate_log.csv')
+        last_epoch_tb_events.to_csv(f_name, index=False)
 
     if write_binary:
         warnings.warn('Binary serialization not Implemented')
@@ -104,8 +111,6 @@ class CustomSummaryWriter(SummaryWriter):
             run_suffices = []
 
         l = len(run_suffices)
-        print(l)
-
 
         for key, vals in metrics_dict.items():
             tag = key if not group_prefix else group_prefix + '/' + key

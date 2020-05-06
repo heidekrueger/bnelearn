@@ -17,8 +17,7 @@ def single_item_uniform_symmetric(n_runs: int, n_epochs: int,
                                                  n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
-                                                 regret_grid_size=regret_grid_size,
-                                                 max_epochs=n_epochs
+                                                 regret_grid_size=regret_grid_size
                                                  )
 
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
@@ -42,8 +41,7 @@ def single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
-                                                 eval_batch_size=eval_batch_size,
-                                                 max_epochs=n_epochs,
+                                                 eval_batch_size=eval_batch_size
                                                  )
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        valuation_mean=valuation_mean, valuation_std=valuation_std,
@@ -73,8 +71,7 @@ def single_item_asymmetric_uniform(
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
-                                                 eval_batch_size=eval_batch_size,
-                                                 max_epochs=n_epochs
+                                                 eval_batch_size=eval_batch_size
                                                  )
 
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
@@ -96,7 +93,6 @@ def llg(n_runs: int, n_epochs: int,
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
-                                                 max_epochs=n_epochs,
                                                  enable_logging=logging
                                                  )
 
@@ -121,7 +117,6 @@ def llllgg(n_runs: int, n_epochs: int,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
                                                  eval_batch_size=eval_batch_size,
-                                                 max_epochs=n_epochs,
                                                  enable_logging=logging
                                                  )
 
@@ -156,7 +151,6 @@ def multiunit(
         regret_batch_size=regret_batch_size,
         regret_grid_size=regret_grid_size,
         plot_points=1000,
-        max_epochs=n_epochs,
         enable_logging=logging
     )
     experiment_configuration = ExperimentConfiguration(
@@ -195,7 +189,6 @@ def splitaward(
         log_metrics=log_metrics,
         regret_batch_size=regret_batch_size,
         regret_grid_size=regret_grid_size,
-        max_epochs=n_epochs,
         enable_logging=logging
     )
 

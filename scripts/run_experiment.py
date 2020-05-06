@@ -48,7 +48,8 @@ if __name__ == '__main__':
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     presets.single_item_gaussian_symmetric(1,20, [2], 'second_price')
     running_configuration, logging_configuration, experiment_configuration, experiment_class =\
-       presets.llg(1,110,'nearest_zero',specific_gpu=1)
+       presets.llg(2,200,'nearest_zero',specific_gpu=1)
+    logging_configuration.save_tb_events_to_csv_detailed = True
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #    presets.llllgg(1,310,'first_price')#,model_sharing=False)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \

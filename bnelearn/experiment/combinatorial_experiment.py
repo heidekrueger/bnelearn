@@ -70,6 +70,13 @@ class LocalGlobalExperiment(Experiment, ABC):
         self.plot_ymin = self.plot_xmin
         self.plot_ymax = self.plot_xmax * 1.05
 
+    def _get_model_names(self):
+        if self.model_sharing:
+            global_name = 'global' if self.n_players - self.n_local == 1 else 'globals'
+            return ['locals', global_name]
+        else:
+            return super()._get_model_names()
+
     def _strat_to_bidder(self, strategy, batch_size, player_position=0):
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
                               batch_size=batch_size, n_items = self.n_items)

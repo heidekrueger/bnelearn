@@ -78,7 +78,6 @@ class LoggingConfiguration:
     regret_frequency: int = 100
     eval_batch_size: int = 2**22
     cache_eval_actions: bool = True
-    max_epochs: int = None
     save_tb_events_to_csv_aggregate: bool = True
     save_tb_events_to_csv_detailed: bool = False
     save_tb_events_to_binary_detailed: bool = False
