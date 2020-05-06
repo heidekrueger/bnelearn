@@ -114,7 +114,8 @@ def run_llg(n_runs: int, n_epochs: int,
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
-                                                 max_epochs=n_epochs
+                                                 max_epochs=n_epochs,
+                                                 enable_logging=logging
                                                  )
 
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
@@ -138,7 +139,8 @@ def run_llllgg(n_runs: int, n_epochs: int,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
                                                  eval_batch_size=eval_batch_size,
-                                                 max_epochs=n_epochs
+                                                 max_epochs=n_epochs,
+                                                 enable_logging=logging
                                                  )
 
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
@@ -172,7 +174,8 @@ def run_multiunit(
         regret_batch_size=regret_batch_size,
         regret_grid_size=regret_grid_size,
         plot_points=1000,
-        max_epochs=n_epochs
+        max_epochs=n_epochs,
+        enable_logging=logging
     )
     experiment_configuration = ExperimentConfiguration(
         payment_rule=payment_rule, n_units=n_units,
@@ -210,7 +213,8 @@ def run_splitaward(
         log_metrics=log_metrics,
         regret_batch_size=regret_batch_size,
         regret_grid_size=regret_grid_size,
-        max_epochs=n_epochs
+        max_epochs=n_epochs,
+        enable_logging=logging
     )
 
     experiment_configuration = ExperimentConfiguration(
