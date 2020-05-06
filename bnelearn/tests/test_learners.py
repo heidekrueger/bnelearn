@@ -100,7 +100,7 @@ def test_ES_learner_SGD():
     for _ in range(epoch+1):
         utility = learner.update_strategy_and_evaluate_utility()
 
-    assert utility > 1.4, "optimizer did not learn sufficiently (1.4), got {:.2f}".format(utility)
+    assert utility > 1.34, "optimizer did not learn sufficiently (1.34), got {:.2f}".format(utility)
 
 def test_PG_learner_SGD():
     """Tests the standard policy gradient learner in static env.
