@@ -247,7 +247,7 @@ class Experiment(ABC):
             for learner in self.learners
         ])
 
-        if self.logging_config.logging:
+        if self.logging_config.enable_logging:
             log_params = {'utilities': utilities, 'prev_params': prev_params}
             elapsed_overhead = self.log_training_iteration(log_params=log_params, epoch=epoch)
             print('epoch {}:\t elapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead))
@@ -293,10 +293,10 @@ class Experiment(ABC):
             #    warnings.warn('Theres a memory leak')
 
         # Once all runs are done, convert tb event files to csv
-        if self.logging_config.logging and self.logging_config.save_tb_events_to_csv:
-            logging_utils.convert_tb_to_csv(directory=self.run_log_dir,
-                                            write_detailed=self.logging_config.save_tb_events_to_csv_detailed,
-                                            write_aggregate=self.logging_config.save_tb_events_to_csv_aggregate)
+        if self.logging_config.enable_logging:
+            logging_utils.log_tb_events(output_dir=self.experiment_log_dir,
+                                        write_detailed=self.logging_config.save_tb_events_to_csv_detailed,
+                                        write_aggregate=self.logging_config.save_tb_events_to_csv_aggregate)
 
     ########################################################################################################
     ####################################### Moved logging to here ##########################################

@@ -36,7 +36,7 @@ def run_single_item_uniform_symmetric(n_runs: int, n_epochs: int,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
                                                  max_epochs=n_epochs,
-                                                 logging=logging)
+                                                 )
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        u_lo=u_lo, u_hi=u_hi, risk=risk)
     experiment_class = UniformSymmetricPriorSingleItemExperiment
@@ -60,7 +60,7 @@ def run_single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
                                                  regret_grid_size=regret_grid_size,
                                                  eval_batch_size=eval_batch_size,
                                                  max_epochs=n_epochs,
-                                                 logging=logging)
+                                                 )
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        valuation_mean=valuation_mean, valuation_std=valuation_std,
                                                        risk=risk)
@@ -91,7 +91,7 @@ def run_single_item_asymmetric_uniform(
                                                  regret_grid_size=regret_grid_size,
                                                  eval_batch_size=eval_batch_size,
                                                  max_epochs=n_epochs,
-                                                 logging=logging)
+                                                 )
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        u_lo=u_lo, u_hi=u_hi, risk=risk)
     experiment_class = TwoPlayerAsymmetricUniformPriorSingleItemExperiment
@@ -112,7 +112,7 @@ def run_llg(n_runs: int, n_epochs: int,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
                                                  max_epochs=n_epochs,
-                                                 logging=logging)
+                                                 )
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        u_lo=u_lo, u_hi=u_hi, risk=risk)
     experiment_class = LLGExperiment
@@ -135,7 +135,7 @@ def run_llllgg(n_runs: int, n_epochs: int,
                                                  regret_grid_size=regret_grid_size,
                                                  eval_batch_size=eval_batch_size,
                                                  max_epochs=n_epochs,
-                                                 logging=logging)
+                                                 )
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        u_lo=u_lo, u_hi=u_hi, risk=risk, core_solver=core_solver)
     experiment_class = LLLLGGExperiment
@@ -168,7 +168,7 @@ def run_multiunit(
         regret_grid_size=regret_grid_size,
         plot_points=1000,
         max_epochs=n_epochs,
-        logging=logging
+
     )
     experiment_configuration = ExperimentConfiguration(
         payment_rule=payment_rule, n_units=n_units,
@@ -203,7 +203,6 @@ def run_splitaward(
         specific_gpu=specific_gpu, n_players=[2]
     )
     logging_configuration = LoggingConfiguration(
-        logging=logging,
         log_metrics=log_metrics,
         regret_batch_size=regret_batch_size,
         regret_grid_size=regret_grid_size,
@@ -241,7 +240,9 @@ if __name__ == '__main__':
 
     running_configuration, logging_configuration, experiment_configuration, experiment_class = \
         run_single_item_uniform_symmetric(1, 1, [2], 'first_price', model_sharing=False)
-    logging_configuration.save_tb_events_to_csv = True
+    logging_configuration.save_tb_events_to_binary_detailed = True
+    logging_configuration.save_tb_events_to_csv_detailed = True
+
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     run_single_item_gaussian_symmetric(1,20, [2], 'second_price')
     # running_configuration, logging_configuration, experiment_configuration, experiment_class =\
@@ -267,7 +268,7 @@ if __name__ == '__main__':
         for i in running_configuration.n_players:
             experiment_configuration.n_players = i
             # TODO: filename needs a smarter solution. # Assigned @Stefan Logging files (after Paul moves this)
-            logging_configuration.update_file_name()
+            # logging_configuration.update_file_name()
             experiment = experiment_class(experiment_configuration, learning_configuration,
                                           logging_configuration, gpu_configuration)
             experiment.run(epochs=running_configuration.n_epochs, n_runs=running_configuration.n_runs)
