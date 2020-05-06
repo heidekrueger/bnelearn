@@ -70,6 +70,13 @@ class LocalGlobalExperiment(Experiment, ABC):
         self.plot_ymin = self.plot_xmin
         self.plot_ymax = self.plot_xmax * 1.05
 
+    def _get_model_names(self):
+        if self.model_sharing:
+            global_name = 'global' if self.n_players - self.n_local == 1 else 'globals'
+            return ['locals', global_name]
+        else:
+            return super()._get_model_names()
+
     def _strat_to_bidder(self, strategy, batch_size, player_position=0):
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
                               batch_size=batch_size, n_items = self.n_items)
@@ -120,7 +127,7 @@ class LLGExperiment(LocalGlobalExperiment):
 
     def _setup_eval_environment(self):
         bne_strategies = [
-            ClosureStrategy(partial(self._optimal_bid, player_position=i))
+            ClosureStrategy(partial(self._optimal_bid, player_position=i)) # pylint: disable=no-member
             for i in range(self.n_players)
         ]
 
@@ -142,7 +149,7 @@ class LLGExperiment(LocalGlobalExperiment):
         print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
         self.bne_utilities = bne_utilities_sampled
 
-    def _get_logdir(self):
+    def _get_logdir_hierarchy(self):
         name = ['LLG', self.payment_rule]
         return os.path.join(*name)
 
@@ -172,7 +179,7 @@ class LLLLGGExperiment(LocalGlobalExperiment):
     def _setup_mechanism(self):
         self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver=self.experiment_config.core_solver, parallel=1, cuda=self.gpu_config.cuda)
 
-    def _get_logdir(self):
+    def _get_logdir_hierarchy(self):
         name = ['LLLLGG', self.payment_rule, str(self.n_players) + 'p']
         return os.path.join(*name)
 
