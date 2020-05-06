@@ -175,7 +175,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
         - Only for risk neutral bidders
     TODO:
         - Add check for risk neutral bidders.
-        - Move grid_creation out of regret @Nils and Paul, discuss
+        - Move grid_creation out of regret for Nils special cases
     """
     agent_bid_actual = bid_profile[:,player_position,:]
     ## Use smaller dtypes to save memory
@@ -186,16 +186,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
         grid = grid.half()
     bid_profile_origin = bid_profile
 
-    #TODO: Generalize these dimensions
     batch_size, n_players, n_items = bid_profile.shape # pylint: disable=unused-variable
-    grid_size = grid.shape[0] #TODO: update this
-    # Create multidimensional bid tensor if required
-    if n_items == 1:
-        grid = grid.view(grid_size, 1).to(bid_profile.device)
-    elif n_items >= 2:
-        if len(grid.shape) == 1:
-            grid = torch.combinations(grid, r=n_items, with_replacement=True).to(bid_profile.device) #grid_size**n_items x n_items
-            #TODO Stefan: this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
 
     grid_size, _ = grid.shape #TODO this _new_ grid size refers to all combinations, whereas the previous one was 1D only
 

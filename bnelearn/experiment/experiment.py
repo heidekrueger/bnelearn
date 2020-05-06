@@ -667,10 +667,10 @@ class Experiment(ABC):
         regret_grid_size = self.logging_config.regret_grid_size
 
         assert regret_batch_size <= env.batch_size, "Regret for larger than actual batch size not implemented."
-
+        n_bundles = env.agents[0].valuations.shape[1]
         bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
                                   dtype=env.agents[0].valuations.dtype, device=env.mechanism.device)
-        regret_grid = torch.zeros(regret_grid_size, env.n_players, dtype=env.agents[0].valuations.dtype,
+        regret_grid = torch.zeros(regret_grid_size, env.n_players, n_bundles, dtype=env.agents[0].valuations.dtype,
                                   device=env.mechanism.device)
 
         for agent in env.agents:
@@ -686,7 +686,7 @@ class Experiment(ABC):
 
             # Only supports regret_batch_size <= batch_size
             bid_profile[:, i, :] = agent.get_action()[:regret_batch_size, ...]
-            regret_grid[:, i] = agent.draw_values_grid(regret_grid_size)
+            regret_grid[:, i, :] = agent.draw_values_grid(regret_grid_size)
 
         torch.cuda.empty_cache()
         regret = [
@@ -694,7 +694,7 @@ class Experiment(ABC):
                 env.mechanism, bid_profile,
                 learner.strat_to_player_kwargs['player_position'],
                 env.agents[learner.strat_to_player_kwargs['player_position']].valuations[:regret_batch_size, ...],
-                regret_grid[:, learner.strat_to_player_kwargs['player_position']]
+                regret_grid[:, learner.strat_to_player_kwargs['player_position'], :]
             )
             for learner in self.learners
         ]
