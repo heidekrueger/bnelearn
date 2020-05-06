@@ -130,12 +130,15 @@ class Experiment(ABC):
         if self.known_bne:
             self._setup_eval_environment()
 
-    # TODO: rename this assigned to @Stefan
-    def _init_new_run(self):
-        """Setup everything that is specific to an individual run, including everything nondeterministic"""
-        self._setup_bidders()
-        self._setup_learning_environment()
-        self._setup_learners()
+    # TODO: why? assigned to Stefan
+    @staticmethod
+    def get_risk_profile(risk) -> str:
+        if risk == 1.0:
+            return 'risk_neutral'
+        elif risk == 0.5:
+            return 'risk_averse'
+        else:
+            return 'other'
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -224,15 +227,12 @@ class Experiment(ABC):
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
 
-    # TODO: why? assigned to Stefan
-    @staticmethod
-    def get_risk_profile(risk) -> str:
-        if risk == 1.0:
-            return 'risk_neutral'
-        elif risk == 0.5:
-            return 'risk_averse'
-        else:
-            return 'other'
+    def _init_new_run(self):
+        """Setup everything that is specific to an individual run, including everything nondeterministic"""
+        self._setup_bidders()
+        self._setup_learning_environment()
+        self._setup_learners()
+
 
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
@@ -297,6 +297,7 @@ class Experiment(ABC):
             logging_utils.log_tb_events(output_dir=self.experiment_log_dir,
                                         write_detailed=self.logging_config.save_tb_events_to_csv_detailed,
                                         write_aggregate=self.logging_config.save_tb_events_to_csv_aggregate)
+
 
     ########################################################################################################
     ####################################### Moved logging to here ##########################################
@@ -436,6 +437,7 @@ class Experiment(ABC):
 
 
     def log_run_metadata(self, output_dir, max_epochs):
+        # TODO: Stefan: this method still mixes per-experiment and per-run logic
         self.max_epochs = max_epochs
 
         # setting up plotting
@@ -546,10 +548,15 @@ class Experiment(ABC):
 
     def _log_metrics(self, metrics_dict: dict, epoch: int, prefix: str = 'eval',
                      param_group_postfix: str = '', metric_prefix: str = ''):
-        """ Writes everthing from ´metrics_dict´ to disk via the ´self.writer´.
+        """ Writes everthing from ´metrics_dict´ to tensorboard event files via the ´self.writer´.
             keys in ´metrics_dict´ represent the metric name, values should be of type
             float, list, dict, or torch.Tensor.
         """
+
+        if not self.logging_config.enable_logging:
+            "If logging is disabled, don't write anything to TB."
+            return
+
         name_list = ['agent_{}'.format(i) for i in range(self.experiment_config.n_players)]
 
         for metric_key, metric_val in metrics_dict.items():
