@@ -142,7 +142,7 @@ class LLGExperiment(LocalGlobalExperiment):
         print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
         self.bne_utilities = bne_utilities_sampled
 
-    def _get_logdir(self):
+    def _get_logdir_hierarchy(self):
         name = ['LLG', self.payment_rule]
         return os.path.join(*name)
 
@@ -172,7 +172,7 @@ class LLLLGGExperiment(LocalGlobalExperiment):
     def _setup_mechanism(self):
         self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver=self.experiment_config.core_solver, parallel=1, cuda=self.gpu_config.cuda)
 
-    def _get_logdir(self):
+    def _get_logdir_hierarchy(self):
         name = ['LLLLGG', self.payment_rule, str(self.n_players) + 'p']
         return os.path.join(*name)
 

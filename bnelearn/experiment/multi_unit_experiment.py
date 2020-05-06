@@ -356,7 +356,7 @@ class MultiUnitExperiment(Experiment, ABC):
         self.bne_utilities = [self.bne_env.get_reward(agent, draw_valuations=True)
                               for agent in self.bne_env.agents]
 
-    def _get_logdir(self):
+    def _get_logdir_hierarchy(self):
         name = ['MultiUnit', self.payment_rule, str(self.n_players) + 'players_' + str(self.n_units) + 'units']
         return os.path.join(*name)
 
@@ -432,7 +432,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
             cache_actions=cache_actions
         )
 
-    def _get_logdir(self):
+    def _get_logdir_hierarchy(self):
         name = ['SplitAward', self.payment_rule, str(self.n_players) + 'players_' +
                 str(self.n_units) + 'units']
         return os.path.join(*name)
