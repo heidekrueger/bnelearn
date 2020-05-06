@@ -702,14 +702,13 @@ class Experiment(ABC):
         ex_ante_regret = [model_tuple[0].mean() for model_tuple in regret]
         ex_interim_max_regret = [model_tuple[0].max() for model_tuple in regret]
         if create_plot_output:
-            # TODO, Paul: Transform to output with dim(batch_size, n_models, n_bundle) # assigned to @Paul
+            # Transform to output with dim(batch_size, n_models, n_bundle), for regrets n_bundle=1
             regrets = torch.stack([regret[r][0] for r in range(len(regret))], dim=1)[:, :, None]
             valuations = torch.stack([regret[r][1] for r in range(len(regret))], dim=1)
             plot_output = (valuations, regrets)
             self._plot(fig=self.fig, plot_data=plot_output, writer=self.writer,
                        ylim=[0, max(ex_interim_max_regret).cpu()],
                        figure_name='regret_function', epoch=epoch, plot_points=self.plot_points)
-            # TODO, Paul: Check in detail if correct!?  # assigned to @Paul
         return ex_ante_regret, ex_interim_max_regret
 
     def _log_experimentparams(self):
