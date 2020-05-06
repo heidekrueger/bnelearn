@@ -243,7 +243,7 @@ if __name__ == '__main__':
     #       run_single_item_uniform_symmetric(1,20, 2, 'first_price')
 
     running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-        run_single_item_uniform_symmetric(1, 1, [2], 'first_price', model_sharing=False)
+        run_single_item_uniform_symmetric(2, 100, [2], 'first_price', model_sharing=False)
     logging_configuration.save_tb_events_to_binary_detailed = True
     logging_configuration.save_tb_events_to_csv_detailed = True
 
