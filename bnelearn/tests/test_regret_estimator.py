@@ -88,6 +88,7 @@ expected_regret_1_6_2 = torch.tensor([
         [0,                 0                ]
     ], dtype = torch.float)
 #TODO: Add one test with other pricing rule (-> and positive utility in agent)
+#TODO, Paul: @Nils add tests for your settings
 
 
 
@@ -146,10 +147,12 @@ def test_ex_interim_regret_estimator_truthful(rule, mechanism, bid_profile, bids
         agents[i] = Bidder.uniform(0,1,TruthfulStrategy(), player_position = i, batch_size = batch_size)
         agents[i].valuations = bid_profile[:,i,:].to(device)
 
+    bids_i = torch.stack([bids_i.squeeze()]*n_items, 0).view(len(bids_i.squeeze()), n_items)
+
     for i in range(n_bidders):
         regret,_ = metrics.ex_interim_regret(mechanism, bid_profile.to(device), 
                                            i, agents[i].valuations,
-                                           bids_i.squeeze().to(device))
+                                           bids_i.to(device))
         assert torch.allclose(regret.mean(), expected_regret[i,0], atol = 0.001), "Unexpected avg regret"
         assert torch.allclose(regret.max(),  expected_regret[i,1], atol = 0.001), "Unexpected max regret"
 
