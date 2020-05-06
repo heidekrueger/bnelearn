@@ -144,21 +144,31 @@ class Bidder(Player):
             Args:
                 batch_size: int, upper bound of returned batch size
             returns:
-                grid_values: (batch_size)   #TODO, Paul: @Nils Ensure that batch_size is returned in your settings.
+                grid_values: (batch_size)
         """
-        batch_size_per_dim = int(batch_size ** (1/self.n_items))
+
+        # change batch_size s.t. it'll approx. end up at intended batch_size in the end
+        adapted_batch_size = batch_size
+        if self.descending_valuations:
+            for d in range(1, self.n_items+1):
+                adapted_batch_size *= d
+
+        batch_size_per_dim = int(adapted_batch_size ** (1/self.n_items) + .5)
         lin = torch.linspace(self.grid_lb, self.grid_ub,
                              batch_size_per_dim, device=self.device)
-        grid_values = torch.stack([x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()
+        grid_values = torch.stack([
+            x.flatten() for x in torch.meshgrid([lin] * self.n_items)
+        ]).t()
+
         if isinstance(self.item_interest_limit, int):
             grid_values[:,self.item_interest_limit:] = 0
         if self.constant_marginal_values:
-           grid_values.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
-                                       grid_values[:,0:1].repeat(1, self.n_items-1))
+            grid_values.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
+                                    grid_values[:,0:1].repeat(1, self.n_items-1))
         if self.descending_valuations:
             grid_values = grid_values.sort(dim=1, descending=True)[0].unique(dim=0)
 
-        return grid_values
+        return grid_values[:batch_size,:]
 
     def draw_valuations_(self):
         """ Sample a new batch of valuations from the Bidder's prior. Negative
@@ -306,10 +316,12 @@ class ReverseBidder(Bidder):
     def draw_values_grid(self, batch_size):
         """ Extends `Bidder.draw_values_grid` with efficiency parameter
         """
-        grid_valuations = super().draw_values_grid(batch_size)
-        grid_valuations[:,1] = self.efficiency_parameter * grid_valuations[:,0]
+        grid_values = torch.zeros(batch_size, self.n_items, device=self.device)
+        grid_values[:, 0] = torch.linspace(self.grid_lb, self.grid_ub,
+                                           batch_size, device=self.device)
+        grid_values[:, 1] = self.efficiency_parameter * grid_values[:, 0]
 
-        return grid_valuations
+        return grid_values
 
     def draw_valuations_(self):
         """ Extends `Bidder.draw_valuations_` with efiiciency parameter
@@ -318,7 +330,7 @@ class ReverseBidder(Bidder):
 
         assert self.valuations.shape[1] == 2, \
             'linear valuations are only defined for two items.'
-        self.valuations[:,1] = self.efficiency_parameter * self.valuations[:,0]
+        self.valuations[:, 1] = self.efficiency_parameter * self.valuations[:, 0]
 
         return self.valuations
 
