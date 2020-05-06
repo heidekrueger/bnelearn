@@ -1,29 +1,11 @@
-# TODO: essentially move this file into /scripts, this will require moving the run.... functions into bnelearn.experiment.presets or similar. Assigned @Paul
-
-
-import sys
-import os
-
-sys.path.append(os.path.realpath('.'))
-sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
-import torch
-import torch.nn as nn
-import fire
-
-from bnelearn.experiment.gpu_controller import GPUController
 from bnelearn.experiment.configurations import *
-# from bnelearn.experiment.logger import LLGAuctionLogger, LLLLGGAuctionLogger, SingleItemAuctionLogger
 from bnelearn.experiment.single_item_experiment import UniformSymmetricPriorSingleItemExperiment, \
     GaussianSymmetricPriorSingleItemExperiment, TwoPlayerAsymmetricUniformPriorSingleItemExperiment
 
 from bnelearn.experiment.combinatorial_experiment import LLGExperiment, LLLLGGExperiment
 from bnelearn.experiment.multi_unit_experiment import MultiUnitExperiment, SplitAwardExperiment
-import warnings
 
-from dataclasses import dataclass, field, asdict
-
-
-def run_single_item_uniform_symmetric(n_runs: int, n_epochs: int,
+def single_item_uniform_symmetric(n_runs: int, n_epochs: int,
                                       n_players: [int], payment_rule: str, model_sharing=True,
                                       u_lo=0, u_hi=1,
                                       risk=1.0,
@@ -45,7 +27,7 @@ def run_single_item_uniform_symmetric(n_runs: int, n_epochs: int,
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 
-def run_single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
+def single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
                                        n_players: [int], payment_rule: str, model_sharing=True, valuation_mean=15,
                                        valuation_std=10,
                                        risk=1.0, eval_batch_size=2 ** 16,
@@ -70,7 +52,7 @@ def run_single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 
-def run_single_item_asymmetric_uniform(
+def single_item_asymmetric_uniform(
         n_runs: int,
         n_epochs: int,
         payment_rule='first_price',
@@ -101,7 +83,7 @@ def run_single_item_asymmetric_uniform(
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 
-def run_llg(n_runs: int, n_epochs: int,
+def llg(n_runs: int, n_epochs: int,
             payment_rule: str, model_sharing=True,
             u_lo=[0, 0, 0], u_hi=[1, 1, 2],
             risk=1.0,
@@ -124,7 +106,7 @@ def run_llg(n_runs: int, n_epochs: int,
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 
-def run_llllgg(n_runs: int, n_epochs: int,
+def llllgg(n_runs: int, n_epochs: int,
                payment_rule: str, model_sharing=True,
                u_lo=[0, 0, 0, 0, 0, 0], u_hi=[1, 1, 1, 1, 2, 2],
                risk=1.0, eval_batch_size=2 ** 12,
@@ -149,7 +131,7 @@ def run_llllgg(n_runs: int, n_epochs: int,
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 
-def run_multiunit(
+def multiunit(
             n_runs: int, n_epochs: int,
             n_players: list = [2],
             payment_rule: str = 'vcg',
@@ -188,7 +170,7 @@ def run_multiunit(
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 
-def run_splitaward(
+def splitaward(
             n_runs: int, n_epochs: int,
             n_players: list = [2],
             payment_rule: str = 'first_price',
@@ -227,58 +209,3 @@ def run_splitaward(
     )
     experiment_class = SplitAwardExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
-
-
-if __name__ == '__main__':
-    '''
-    Runs predefined experiments with individual parameters
-    fire.Fire() asks you to decide for one of the experiments defined above
-    by writing its name and define the required (and optional) parameters
-    e.g.:
-        run_experiment.py run_single_item_uniform_symmetric 1 20 [2,3] 'first_price'
-
-    alternatively instead of fire.Fire() use, e.g.:
-        run_single_item_uniform_symmetric(1,20,[2,3],'first_price')
-
-    '''
-    # n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = fire.Fire()
-    # n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = run_llg(1,20,'vcg')
-    # n_runs, n_epochs, n_players, specific_gpu, input_length, experiment_class, experiment_params = \
-    #       run_single_item_uniform_symmetric(1,20, 2, 'first_price')
-
-    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-        run_single_item_uniform_symmetric(2, 100, [2], 'first_price', model_sharing=False)
-    logging_configuration.save_tb_events_to_binary_detailed = True
-    logging_configuration.save_tb_events_to_csv_detailed = True
-
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     run_single_item_gaussian_symmetric(1,20, [2], 'second_price')
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class =\
-    #    run_llg(1,110,'nearest_zero',specific_gpu=1)
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #    run_llllgg(1,310,'first_price')#,model_sharing=False)
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #   run_multiunit(n_runs=100, n_epochs=4000, n_players=[2], n_units=2, payment_rule='first_price')
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #   run_splitaward(1, 500, [2])
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #    run_single_item_asymmetric_uniform(n_runs=1, n_epochs=4000)
-
-    gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
-    input_length = experiment_configuration.n_units \
-        if experiment_configuration.n_units is not None else 1
-    learning_configuration = LearningConfiguration(
-        input_length=input_length,
-        pretrain_iters=10
-    )
-
-    try:
-        for i in running_configuration.n_players:
-            experiment_configuration.n_players = i
-            experiment = experiment_class(experiment_configuration, learning_configuration,
-                                          logging_configuration, gpu_configuration)
-            experiment.run(epochs=running_configuration.n_epochs, n_runs=running_configuration.n_runs)
-
-    except KeyboardInterrupt:
-        print('\nKeyboardInterrupt: released memory after interruption')
-        torch.cuda.empty_cache()

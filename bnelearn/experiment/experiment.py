@@ -95,10 +95,7 @@ class Experiment(ABC):
             self.regret_batch_size = logging_config.regret_batch_size
         if logging_config.regret_grid_size is not None:
             self.regret_grid_size = logging_config.regret_grid_size
-        # sets log dir for experiment. Individual runs will log to subdirectories of this.
-        self.experiment_log_dir = os.path.join(logging_config.log_root_dir,
-                                               self._get_logdir_hierarchy(),
-                                               logging_config.experiment_dir)
+        
 
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
@@ -107,6 +104,11 @@ class Experiment(ABC):
         if not hasattr(self, 'payment_rule'):
             self.payment_rule = experiment_config.payment_rule
 
+        # sets log dir for experiment. Individual runs will log to subdirectories of this.
+        self.experiment_log_dir = os.path.join(logging_config.log_root_dir,
+                                               self._get_logdir_hierarchy(),
+                                               logging_config.experiment_dir)
+                                               
         ### actual logic
         # Inverse of bidder --> model lookup table
         self._model2bidder: List[List[int]] = [[] for m in range(self.n_models)]

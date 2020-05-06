@@ -50,8 +50,6 @@ class ExperimentConfiguration:
         if self.input_length is None:
             self.input_length = self.n_units
 
-
-
 @dataclass
 class LoggingConfiguration:
     """Controls logging and evaluation aspects of an experiment suite.
@@ -115,7 +113,6 @@ class LoggingConfiguration:
             self.save_figure_to_disk_png = False
             self.save_figure_to_disk_svg = False
             self.save_figure_data_to_disk = False
-
 
 @dataclass
 class LearningConfiguration:
