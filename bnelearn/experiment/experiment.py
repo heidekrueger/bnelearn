@@ -95,7 +95,7 @@ class Experiment(ABC):
             self.regret_batch_size = logging_config.regret_batch_size
         if logging_config.regret_grid_size is not None:
             self.regret_grid_size = logging_config.regret_grid_size
-        
+
 
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
@@ -108,7 +108,7 @@ class Experiment(ABC):
         self.experiment_log_dir = os.path.join(logging_config.log_root_dir,
                                                self._get_logdir_hierarchy(),
                                                logging_config.experiment_dir)
-                                               
+
         ### actual logic
         # Inverse of bidder --> model lookup table
         self._model2bidder: List[List[int]] = [[] for m in range(self.n_models)]
@@ -479,7 +479,7 @@ class Experiment(ABC):
         Returns:
             - elapsed time in seconds
             - Stefan todos / understanding quesitons
-            - TODO: takes log_params. can it be 
+            - TODO: takes log_params. can it be
         """
         start_time = timer()
 
@@ -536,11 +536,11 @@ class Experiment(ABC):
 
         self.overhead = self.overhead + timer() - start_time
         log_params['overhead_hours'] = self.overhead / 3600
-        self._log_metrics(log_params, epoch=epoch)
+        self._log_metrics(log_params, epoch=epoch, writer = self.writer)
         return timer() - start_time
 
-    def _log_metrics(self, writer = None,
-                     metrics_dict: dict, epoch: int, prefix: str = 'eval',
+    def _log_metrics(self,
+                     metrics_dict: dict, epoch: int, writer = None, prefix: str = 'eval',
                      param_group_postfix: str = '', metric_prefix: str = ''):
         """ Writes everthing from ´metrics_dict´ to tensorboard event files via the ´self.writer´.
             keys in ´metrics_dict´ represent the metric name, values should be of type
@@ -576,37 +576,46 @@ class Experiment(ABC):
 
     def _calculate_metrics_known_bne(self):
         """
-        Compare performance to BNE and log:
+        Compare performance to BNE and return:
         utility_vs_bne
         epsilon_relative
         epsilon_absolute
-        """
 
+        Each is a list of length self.n_models
+        """
+        # shorthand for model to bidder index conversion
+        m2b = lambda m: self._model2bidder[m][0]
+
+        # length: n_models
         utility_vs_bne = torch.tensor([
             self.bne_env.get_reward(
                 self._strat_to_bidder(
-                    model, player_position=self._model2bidder[i][0],
+                    model, player_position=m2b(i),
                     batch_size=self.logging_config.eval_batch_size
                 ),
                 draw_valuations=False # False because we want to use cached actions when set, reevaluation is expensive e.g. for normal priors
             ) for i, model in enumerate(self.models)
         ])
-        epsilon_relative = torch.tensor([1 - utility_vs_bne[i] / self.bne_utilities[i]
-                                         for i, model in enumerate(self.models)])
-        epsilon_absolute = torch.tensor([self.bne_utilities[i] - utility_vs_bne[i]
-                                         for i, model in enumerate(self.models)])
+        epsilon_relative = torch.tensor(
+            [1 - utility_vs_bne[i] / self.bne_utilities[m2b(i)] for i, model in enumerate(self.models)])
+        epsilon_absolute = torch.tensor(
+            [self.bne_utilities[m2b(i)] - utility_vs_bne[i] for i, model in enumerate(self.models)])
 
         return utility_vs_bne, epsilon_relative, epsilon_absolute
 
     def _calculate_metrics_action_space_norms(self):
         """
         Calculate "action space distance" of model and bne-strategy
+
+        Returns:
+            L_2 and L_inf, each a list of length self.models
         """
-        L_2 = [metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
-                                                 self.bne_env.agents[i].valuations, 2)
+        # shorthand for model to agent
+        m2a = lambda m: self.bne_env.agents[self._model2bidder[m][0]]
+
+        L_2 = [metrics.norm_strategy_and_actions(model, m2a(i).get_action(), m2a(i).valuations, 2)
                for i, model in enumerate(self.models)]
-        L_inf = [metrics.norm_strategy_and_actions(model, self.bne_env.agents[i].get_action(),
-                                                   self.bne_env.agents[i].valuations, float('inf'))
+        L_inf = [metrics.norm_strategy_and_actions(model, m2a(i).get_action(), m2a(i).valuations, float('inf'))
                  for i, model in enumerate(self.models)]
         return L_2, L_inf
 
