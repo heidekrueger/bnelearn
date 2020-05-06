@@ -26,9 +26,6 @@ from bnelearn.strategy import ClosureStrategy
 # These are called millions of times, so each implementation should be
 # setting specific, i.e. there should be NO setting checks at runtime.
 
-# TODO: Stefan: I believe it might be possible to move these back into the sublasses, maybe even when they have to be pickled.
-#       That would make this file a bit more readible. Make low-prio issue after merging to master
-
 def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(
         valuation: torch.Tensor or np.ndarray or float, n_players: int, prior_cdf: Callable, **kwargs) -> torch.Tensor:
     if not isinstance(valuation, torch.Tensor):
@@ -172,6 +169,7 @@ class SingleItemExperiment(Experiment, ABC):
 
     # known issue: pylint doesn't recognize this class as abstract: https://github.com/PyCQA/pylint/commit/4024949f6caf5eff5f3da7ab2b4c3cf2e296472b
     # pylint: disable=abstract-method
+    valuation_prior: str
 
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne = False):
@@ -190,6 +188,16 @@ class SingleItemExperiment(Experiment, ABC):
         else:
             raise ValueError('Invalid Mechanism type!')
 
+    @staticmethod
+    def get_risk_profile(risk) -> str:
+        """Used for logging and checking existence of bne"""
+        if risk == 1.0:
+            return 'risk_neutral'
+        elif risk == 0.5:
+            return 'risk_averse'
+        else:
+            return 'other'
+
 class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
     """A Single Item Experiment that has the same valuation prior for all participating bidders.
     For risk-neutral agents, a unique BNE is known.
@@ -205,7 +213,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.positive_output_point = torch.stack([self.common_prior.mean]*self.n_items)
 
         self.risk = float(experiment_config.risk)
-        self.risk_profile = Experiment.get_risk_profile(self.risk)
+        self.risk_profile = self.get_risk_profile(self.risk)
 
         # if not given by subclass, implement generic optimal_bid if known
         known_bne = known_bne or \
@@ -398,7 +406,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         self.payment_rule = 'first_price'
         self.valuation_prior = 'uniform'
         self.risk = float(experiment_config.risk)
-        self.risk_profile = Experiment.get_risk_profile(self.risk)
+        self.risk_profile = self.get_risk_profile(self.risk)
 
         self.n_players = 2
         self.n_items = 1

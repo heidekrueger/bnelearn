@@ -130,7 +130,7 @@ class Bidder(Player):
         if (new_value.dtype, new_value.device) != (self._valuations.dtype, self._valuations.device):
             warnings.warn(
                 "New valuations have different dtype and/or device than bidder. Converting to {},{}".format(
-                    	self._valuations.device, self._valuations.dtype)
+                    self._valuations.device, self._valuations.dtype)
                 )
 
         if not new_value.equal(self._valuations):

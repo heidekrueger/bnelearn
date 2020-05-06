@@ -1,11 +1,13 @@
-from typing import Type, List
-import time
+"""This module provides dataclasses that are used to hold configs."""
 import os
+import time
+from dataclasses import dataclass
+from typing import List, Type
 
 import torch
-from torch.optim import Optimizer
 import torch.nn as nn
-from dataclasses import dataclass, field
+from torch.optim import Optimizer
+
 
 # Only used on front end
 @dataclass(frozen=True)
@@ -56,18 +58,17 @@ class LoggingConfiguration:
 
     If logging is enabled, the experiment runs will be logged to the following
     directories:
-        log_root_dir / 
+        log_root_dir /
             [setting-specific dir hierarchy determined by Experiment subclasses] /
-                experiment_timestamp + experiment_name / 
+                experiment_timestamp + experiment_name /
                     run_timestamp + run_seed
     """
     enable_logging: bool = True #If false, disables ALL logging
     # root directory for logging. subdirectories will be inferred and created based on experiment name and config
     log_root_dir: str = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
-    # TODO Stefan: where is this used.
     experiment_name: str = None
-    # Rationale behind timestamp format: should be ordered chronologically but include weekday. 
-    # Using . instead of : for compatability with Windows 
+    # Rationale behind timestamp format: should be ordered chronologically but include weekday.
+    # Using . instead of : for compatability with Windows
     experiment_timestamp: str = time.strftime('%Y-%m-%d %a %H.%M') #removed %S here, we won't need seconds
     plot_frequency: int = 100
     plot_points: int = 100
@@ -148,5 +149,5 @@ class LearningConfiguration:
                 return torch.optim.Adam
             if optimizer in ('SGD', 'sgd', 'Sgd'):
                 return torch.optim.SGD
-            # TODO: add more optimizers as needed
+            # add more optimizers as needed
         raise ValueError('Optimizer type could not be inferred!')

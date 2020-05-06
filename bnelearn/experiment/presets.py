@@ -1,18 +1,29 @@
-from bnelearn.experiment.configurations import *
-from bnelearn.experiment.single_item_experiment import UniformSymmetricPriorSingleItemExperiment, \
-    GaussianSymmetricPriorSingleItemExperiment, TwoPlayerAsymmetricUniformPriorSingleItemExperiment
+from typing import List
 
-from bnelearn.experiment.combinatorial_experiment import LLGExperiment, LLLLGGExperiment
-from bnelearn.experiment.multi_unit_experiment import MultiUnitExperiment, SplitAwardExperiment
+from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
+                                                          LLLLGGExperiment)
+from bnelearn.experiment.configurations import (ExperimentConfiguration,
+                                                LearningConfiguration,
+                                                LoggingConfiguration,
+                                                RunningConfiguration)
+from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment,
+                                                       SplitAwardExperiment)
+from bnelearn.experiment.single_item_experiment import (
+    GaussianSymmetricPriorSingleItemExperiment,
+    TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
+    UniformSymmetricPriorSingleItemExperiment)
+
+# the lists that are defaults will never be mutated, so we're ok with using them here.
+# pylint: disable = dangerous-default-value 
 
 def single_item_uniform_symmetric(n_runs: int, n_epochs: int,
-                                      n_players: [int], payment_rule: str, model_sharing=True,
-                                      u_lo=0, u_hi=1,
-                                      risk=1.0,
-                                      log_metrics=['opt', 'l2', 'regret'], regret_batch_size=2 ** 4,
-                                      regret_grid_size=2 ** 4,
-                                      specific_gpu=0,
-                                      logging=True):
+                                  n_players: List[int], payment_rule: str, model_sharing=True,
+                                  u_lo=0, u_hi=1,
+                                  risk=1.0,
+                                  log_metrics=['opt', 'l2', 'regret'], regret_batch_size=2 ** 4,
+                                  regret_grid_size=2 ** 4,
+                                  specific_gpu=0,
+                                  logging=True):
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu,
                                                  n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,

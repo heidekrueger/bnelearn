@@ -7,15 +7,20 @@ TODO:
     - Paul: Maybe later: Add bne metric to LLLLGG and test for failure
     - Stefan: Later: gaussian with fpsb and regret
 """
-import pytest
-import sys
 import os
-sys.path.append(os.path.realpath('.'))
-from bnelearn.experiment.presets \
-    import single_item_uniform_symmetric, single_item_gaussian_symmetric, \
-           single_item_asymmetric_uniform, llg, llllgg, multiunit, splitaward
+import sys
+
+import pytest
+
 from bnelearn.experiment.configurations import LearningConfiguration
 from bnelearn.experiment.gpu_controller import GPUController
+from bnelearn.experiment.presets import (llg, llllgg, multiunit,
+                                         single_item_asymmetric_uniform,
+                                         single_item_gaussian_symmetric,
+                                         single_item_uniform_symmetric,
+                                         splitaward)
+
+sys.path.append(os.path.realpath('.'))
 
 ids_single_item, testdata_single_item = zip(*[
     # Single item

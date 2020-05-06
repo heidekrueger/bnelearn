@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib.ticker import FormatStrFormatter, LinearLocator
-from mpl_toolkits.mplot3d import Axes3D
 from torch.utils.tensorboard import SummaryWriter
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
@@ -76,7 +75,7 @@ class Experiment(ABC):
         # Everything that will be set up per run initioated with none
         self.run_log_dir = None
         self.fig = None
-        self.writer = None # TODO Stefan: not sure if writer as attribute is the best way.
+        self.writer = None
         self.overhead = 0.0
 
         self.models: Iterable[torch.nn.Module] = None
@@ -126,15 +125,7 @@ class Experiment(ABC):
         if self.known_bne:
             self._setup_eval_environment()
 
-    # TODO: why? assigned to Stefan
-    @staticmethod
-    def get_risk_profile(risk) -> str:
-        if risk == 1.0:
-            return 'risk_neutral'
-        elif risk == 0.5:
-            return 'risk_averse'
-        else:
-            return 'other'
+
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -159,30 +150,16 @@ class Experiment(ABC):
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
         pass
 
-    @abstractmethod
-    def _setup_bidders(self):
-        """
-        """
-        pass
-
-    @abstractmethod
-    def _setup_learning_environment(self):
-        """This method should set up the environment that is used for learning. """
-        pass
-
     def _setup_learners(self):
-        self.learners = []
-        for m_id, model in enumerate(self.models):
-            self.learners.append(
-                ESPGLearner(
-                    model=model,
-                    environment=self.env,
-                    hyperparams=self.learning_config.learner_hyperparams,
-                    optimizer_type=self.learning_config.optimizer,
-                    optimizer_hyperparams=self.learning_config.optimizer_hyperparams,
-                    strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
-                )
-            )
+
+        self.learners = [
+            ESPGLearner(model=model,
+                        environment=self.env,
+                        hyperparams=self.learning_config.learner_hyperparams,
+                        optimizer_type=self.learning_config.optimizer,
+                        optimizer_hyperparams=self.learning_config.optimizer_hyperparams,
+                        strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]})
+            for m_id, model in enumerate(self.models)]
 
     def _setup_bidders(self):
         """
@@ -279,7 +256,7 @@ class Experiment(ABC):
                 self._log_experiment_params() #TODO: should probably be called only once, not every run
                 self._log_hyperparams()
             elapsed = timer() - tic
-        else: 
+        else:
             print('Logging disabled.')
             elapsed = 0
         self.overhead += elapsed
@@ -288,6 +265,9 @@ class Experiment(ABC):
         """Cleans up a run after it is completed"""
         if self.logging_config.enable_logging and self.logging_config.save_models:
             self._save_models(directory = self.run_log_dir)
+
+        del self.writer #make this explicit to force cleanup and closing of tb-logfiles
+        self.writer = None
 
         torch.cuda.empty_cache()
         torch.cuda.ipc_collect()
@@ -340,10 +320,12 @@ class Experiment(ABC):
 
         # Once all runs are done, convert tb event files to csv
         if self.logging_config.enable_logging and (
-            self.logging_config.save_tb_events_to_csv_detailed or self.logging_config.save_tb_events_to_csv_aggregate):
-            logging_utils.tabulate_tensorboard_logs(experiment_dir=self.experiment_log_dir,
-                                        write_detailed=self.logging_config.save_tb_events_to_csv_detailed,
-                                        write_aggregate=self.logging_config.save_tb_events_to_csv_aggregate)
+                self.logging_config.save_tb_events_to_csv_detailed or
+                self.logging_config.save_tb_events_to_csv_aggregate):
+            logging_utils.tabulate_tensorboard_logs(
+                experiment_dir=self.experiment_log_dir,
+                write_detailed=self.logging_config.save_tb_events_to_csv_detailed,
+                write_aggregate=self.logging_config.save_tb_events_to_csv_aggregate)
 
 
     ########################################################################################################
@@ -354,7 +336,7 @@ class Experiment(ABC):
     # TODO Stefan: method only uses self in eval and for output point
     def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
-              x_label="valuation", y_label="bid", fmts=['o'],
+              x_label="valuation", y_label="bid", fmts: list = None,
               figure_name: str = 'bid_function', plot_points=100):
         """
         This implements plotting simple 2D data.
@@ -372,6 +354,9 @@ class Experiment(ABC):
             figure_name: str, for seperate plot saving of e.g. bids and regret,
             plot_point: int of number of ploting points for each strategy in each subplot
         """
+
+        if fmts is None:
+            fmts = ['o']
 
         x = plot_data[0].detach().cpu().numpy()
         y = plot_data[1].detach().cpu().numpy()
@@ -439,10 +424,9 @@ class Experiment(ABC):
                                      output_dir=self.run_log_dir,
                                      save_png=self.logging_config.save_figure_to_disk_png,
                                      save_svg = self.logging_config.save_figure_to_disk_svg)
-
         return fig
 
-    # TODO: stefan only uses self in output_dir, nowhere else
+    # TODO: stefan only uses self in output_dir, nowhere else --> can we move this to utils.plotting? etc?
     def _plot_3d(self, plot_data, writer, epoch, figure_name):
         """
         Creating 3d plots. Provide grid if no plot_data is provided
@@ -531,9 +515,9 @@ class Experiment(ABC):
                 print(
                     "\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})" \
                         .format(
-                        log_params['utility_vs_bne'].tolist(),
-                        log_params['epsilon_relative'].tolist(),
-                        log_params['epsilon_absolute'].tolist()
+                            log_params['utility_vs_bne'].tolist(),
+                            log_params['epsilon_relative'].tolist(),
+                            log_params['epsilon_absolute'].tolist()
                     )
                 )
                 v = torch.cat([v, self.v_opt], dim=1)
@@ -570,7 +554,7 @@ class Experiment(ABC):
                     model, player_position=m2b(i),
                     batch_size=self.logging_config.eval_batch_size
                 ),
-                draw_valuations=False # False because we want to use cached actions when set, reevaluation is expensive e.g. for normal priors
+                draw_valuations=False # False because we want to use cached actions when set, reevaluation is expensive
             ) for i, model in enumerate(self.models)
         ])
         epsilon_relative = torch.tensor(
@@ -670,7 +654,8 @@ class Experiment(ABC):
         )
 
     def _save_models(self, directory):
-        # TODO: maybe we should also log out all pointwise regrets in the ending-epoch to disk to use it to make nicer plots for a publication? --> will be done elsewhere. Assigned to @Paul
+        # TODO: maybe we should also log out all pointwise regrets in the ending-epoch to disk to
+        # use it to make nicer plots for a publication? --> will be done elsewhere. Assigned to @Paul
         for model, player_position in zip(self.models, self._model2bidder):
             name = 'model_' + str(player_position[0]) + '.pt'
             torch.save(model.state_dict(), os.path.join(directory, 'models', name))

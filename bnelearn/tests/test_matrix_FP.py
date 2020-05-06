@@ -22,7 +22,7 @@ device = 'cuda' if cuda else 'cpu'
 batch_size = 1
 input_length = 1
 # Params
-epochs = 1000
+epochs = 500
 
 # Wrapper transforming a strategy to bidder, used by the optimizer
 # this is a dummy, valuation doesn't matter
