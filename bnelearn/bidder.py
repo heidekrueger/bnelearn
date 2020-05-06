@@ -137,10 +137,10 @@ class Bidder(Player):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
             self._valuations_changed =True
 
-    def draw_valuations_grid_(self, batch_size):
-        """ Returns a batch of valuations equally distributed within the actual range
-            and NOT accordiing to the actual destribution.
-
+    def draw_values_grid_(self, batch_size):
+        """ Returns a batch of values equally distributed within self.grid_lb and self.grid_ub
+            ,and NOT according to the actual distribution, for n_items.
+            This is used amongst others for valuations and bids.
             Args
             ----
                 batch_size: int, upper bound of returned batch size
@@ -302,10 +302,10 @@ class ReverseBidder(Bidder):
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
 
-    def draw_valuations_grid_(self, batch_size):
-        """ Extends `Bidder.draw_valuations_grid_` with efiiciency parameter
+    def draw_values_grid_(self, batch_size):
+        """ Extends `Bidder.draw_values_grid_` with efficiency parameter
         """
-        grid_valuations = super().draw_valuations_grid_(batch_size)
+        grid_valuations = super().draw_values_grid_(batch_size)
         grid_valuations[:,1] = self.efficiency_parameter * grid_valuations[:,0]
 
         return grid_valuations

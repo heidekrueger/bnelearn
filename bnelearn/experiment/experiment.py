@@ -486,7 +486,7 @@ class Experiment(ABC):
         if self.logging_config.log_metrics['opt'] and hasattr(self, 'bne_env'):
             # dim: [points, bidders, items]
             self.v_opt = torch.stack(
-                [b.draw_valuations_grid_(self.plot_points)
+                [b.draw_values_grid__(self.plot_points)
                  for b in [self.bne_env.agents[i[0]] for i in self._model2bidder]],
                 dim=1
             )
@@ -496,7 +496,7 @@ class Experiment(ABC):
                 dim=1
             )
             if self.v_opt.shape[0] != self.plot_points:
-                print('´plot_points´ changed due to ´draw_valuations_grid_´')
+                print('´plot_points´ changed due to ´draw_values_grid__´')
                 self.plot_points = self.v_opt.shape[0]
 
         is_ipython = 'inline' in plt.get_backend()
@@ -716,7 +716,7 @@ class Experiment(ABC):
         pass
 
     def _log_trained_model(self):
-        # TODO: maybe we should also log out all pointwise regrets in the ending-epoch to disk to use it to make nicer plots for a publication? --> will be done elsewhere. Assigned to @Paul
+        # TODO: maybe we should also log out all pointwise regrets in the ending-epoch to disk to use it to make nicer plots for a publication? --> will be done elsewhere. Assign to @Hlib after merge.
         for model, player_position in zip(self.models, self._model2bidder):
             name = 'model_' + str(player_position[0]) + '.pt'
             torch.save(model.state_dict(), os.path.join(self.log_dir, name))
