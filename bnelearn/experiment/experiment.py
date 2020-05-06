@@ -261,28 +261,32 @@ class Experiment(ABC):
             from IPython import display
         plt.rcParams['figure.figsize'] = [8, 5]
 
-        os.makedirs(output_dir, exist_ok=False)
-        if self.logging_config.save_figure_to_disk_png:
-            os.mkdir(os.path.join(output_dir, 'png'))
-        if self.logging_config.save_figure_to_disk_svg:
-            os.mkdir(os.path.join(output_dir, 'svg'))
-        if self.logging_config.save_models:
-            os.mkdir(os.path.join(output_dir, 'models'))
-
-        print('Started run. Logging to {}'.format(output_dir))
-        self.fig = plt.figure()
         if self.logging_config.enable_logging:
+            os.makedirs(output_dir, exist_ok=False)
+            if self.logging_config.save_figure_to_disk_png :
+                os.mkdir(os.path.join(output_dir, 'png'))
+            if self.logging_config.save_figure_to_disk_svg:
+                os.mkdir(os.path.join(output_dir, 'svg'))
+            if self.logging_config.save_models:
+                os.mkdir(os.path.join(output_dir, 'models'))
+
+            print('Started run. Logging to {}'.format(output_dir))
+            self.fig = plt.figure()
             self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
-        tic = timer()
-        self._log_experiment_params() #TODO: should probably be called only once, not every run
-        self._log_hyperparams()
-        elapsed = timer() - tic
+            tic = timer()
+            if self.logging_config.enable_logging:
+                self._log_experiment_params() #TODO: should probably be called only once, not every run
+                self._log_hyperparams()
+            elapsed = timer() - tic
+        else: 
+            print('Logging disabled.')
+            elapsed = 0
         self.overhead += elapsed
 
     def _exit_run(self):
         """Cleans up a run after it is completed"""
-        if self.logging_config.save_models:
+        if self.logging_config.enable_logging and self.logging_config.save_models:
             self._save_models(directory = self.run_log_dir)
 
         torch.cuda.empty_cache()
@@ -335,7 +339,8 @@ class Experiment(ABC):
             self._exit_run()
 
         # Once all runs are done, convert tb event files to csv
-        if self.logging_config.enable_logging:
+        if self.logging_config.enable_logging and (
+            self.logging_config.save_tb_events_to_csv_detailed or self.logging_config.save_tb_events_to_csv_aggregate):
             logging_utils.tabulate_tensorboard_logs(experiment_dir=self.experiment_log_dir,
                                         write_detailed=self.logging_config.save_tb_events_to_csv_detailed,
                                         write_aggregate=self.logging_config.save_tb_events_to_csv_aggregate)
