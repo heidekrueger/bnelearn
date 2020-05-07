@@ -148,9 +148,9 @@ def test_ex_interim_regret_estimator_truthful(rule, mechanism, bid_profile, bids
     grid_values = torch.stack([x.flatten() for x in torch.meshgrid([bids_i.squeeze()] * n_items)]).t()
 
     for i in range(n_bidders):
-        regret,_ = metrics.ex_interim_regret(mechanism, bid_profile.to(device), 
-                                           i, agents[i].valuations,
-                                           grid_values.to(device))
+        regret,_ = metrics.ex_interim_regret(mechanism, bid_profile.to(device),
+                                             agents[i], agents[i].valuations,
+                                             grid_values.to(device))
         assert torch.allclose(regret.mean(), expected_regret[i,0], atol = 0.001), "Unexpected avg regret"
         assert torch.allclose(regret.max(),  expected_regret[i,1], atol = 0.001), "Unexpected max regret"
 
@@ -170,7 +170,7 @@ def test_ex_interim_regret_estimator_fpsb_bne():
     mechanism = FirstPriceSealedBidAuction()
 
     def optimal_bid(valuation):
-            return u_lo + (valuation - u_lo) * (n_players - 1) / (n_players - 1.0 + risk)
+        return u_lo + (valuation - u_lo) * (n_players - 1) / (n_players - 1.0 + risk)
 
     strat = ClosureStrategy(optimal_bid)
 
@@ -185,7 +185,7 @@ def test_ex_interim_regret_estimator_fpsb_bne():
     for i,a in enumerate(agents):
         bid_profile[:,i,:] = a.get_action()
     # assert first player has (near) zero regret
-    regret,_ = metrics.ex_interim_regret(mechanism, bid_profile, player_position = 0,
+    regret,_ = metrics.ex_interim_regret(mechanism, bid_profile, agents[0],
                                        agent_valuation = agents[0].valuations,
                                        grid = grid
                                        )
