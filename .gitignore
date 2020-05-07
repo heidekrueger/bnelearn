@@ -47,3 +47,6 @@ pylint.txt
 
 # PyCharm
 /.idea/*
+
+# Running script
+#bnelearn/experiment/run_experiment.py

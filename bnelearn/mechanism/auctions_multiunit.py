@@ -79,9 +79,9 @@ def _get_multiunit_allocation(
     return allocations
 
 
-class MultiItemDiscriminatoryAuction(Mechanism):
+class MultiUnitDiscriminatoryAuction(Mechanism):
     """ Multi item discriminatory auction.
-        Items are allocated to the highest n_item bids, winners pay as bid.
+        Units are allocated to the highest n_item bids, winners pay as bid.
 
         Bids of each bidder must be in decreasing
         order, otherwise the mechanism does not accept these bids and allocates no units
@@ -130,7 +130,7 @@ class MultiItemDiscriminatoryAuction(Mechanism):
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
 
-class MultiItemUniformPriceAuction(Mechanism):
+class MultiUnitUniformPriceAuction(Mechanism):
     """ In a uniform-price auction, all units are sold at a “market-clearing” price
         such that the total amount demanded is equal to the total amount supplied.
         We adopt the rule that the market-clearing price is the same as the highest
@@ -142,7 +142,7 @@ class MultiItemUniformPriceAuction(Mechanism):
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Runs a (batch of) Multi Item Uniform-Price Auction(s). Invalid bids (i.e. in
+        Runs a (batch of) Multi Unit Uniform-Price Auction(s). Invalid bids (i.e. in
         increasing order) will be ignored (-> no allocation to that bidder), s.t.
         the bidder might be able to ´learn´ the right behavior.
 
@@ -183,7 +183,7 @@ class MultiItemUniformPriceAuction(Mechanism):
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
 
-class MultiItemVickreyAuction(Mechanism):
+class MultiUnitVickreyAuction(Mechanism):
     """ In a Vickrey auction, a bidder who wins k units pays the k highest
         losing bids of the other bidders.
 
@@ -194,7 +194,7 @@ class MultiItemVickreyAuction(Mechanism):
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Runs a (batch of) Multi Item Vickrey Auction(s). Invalid bids (i.e. in
+        Runs a (batch of) Multi Unit Vickrey Auction(s). Invalid bids (i.e. in
         increasing order) will be ignored (-> no allocation to that bidder), s.t.
         the bidder might be able to ´learn´ the right behavior.
 
@@ -301,6 +301,7 @@ class FPSBSplitAwardAuction(Mechanism):
         allocation: torch.Tensor(batch_size, b_bundles=2), values = {0,1}
         """
 
+
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
@@ -322,20 +323,20 @@ class FPSBSplitAwardAuction(Mechanism):
 
         batch_arange = torch.arange(0, n_batch, device=bids.device)
         winning_bundles[
-                batch_arange,
-                best_100_indices,
-                torch.zeros_like(best_100_indices)
-            ] = 1
+            batch_arange,
+            best_100_indices,
+            torch.zeros_like(best_100_indices)
+        ] = 1
         winning_bundles[
-                batch_arange,
-                best_50_indices[:,0],
-                torch.ones_like(best_100_indices)
-            ] = 1
+            batch_arange,
+            best_50_indices[:,0],
+            torch.ones_like(best_100_indices)
+        ] = 1
         winning_bundles[
-                batch_arange,
-                best_50_indices[:,1],
-                torch.ones_like(best_100_indices)
-            ] = 1
+            batch_arange,
+            best_50_indices[:,1],
+            torch.ones_like(best_100_indices)
+        ] = 1
 
         winning_bundles[bid_100_won,:,1] = 0
         winning_bundles[~bid_100_won,:,0] = 0
@@ -343,7 +344,7 @@ class FPSBSplitAwardAuction(Mechanism):
         if random_tie_break: # restore bidder order
             idx_rev = idx.sort(dim=1)[1]
             winning_bundles = batched_index_select(winning_bundles, 1, idx_rev)
-            bids = batched_index_select(bids, 1, idx_rev) # are bids even needed later on? 
+            bids = batched_index_select(bids, 1, idx_rev) # are bids even needed later on?
 
         return winning_bundles
 

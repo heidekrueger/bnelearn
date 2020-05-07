@@ -3,8 +3,8 @@ root_path = os.path.join(os.path.expanduser('~'), 'bnelearn')
 if root_path not in sys.path:
     sys.path.append(root_path)
 
-import scripts.run_matrix_NN as NN
-import scripts.run_matrix_FP as FP
+import scripts_work_in_progress.run_matrix_NN as NN
+import scripts_work_in_progress.run_matrix_FP as FP
 import random
 
 games = ['MP']#['PD', 'MP', 'BoS', 'RPS','JG']#['PD', 'MP', 'BoS']

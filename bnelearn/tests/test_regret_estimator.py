@@ -20,7 +20,7 @@ from bnelearn.strategy import TruthfulStrategy, ClosureStrategy
 import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder
 
-eps = 0.0001 #TODO Stefan: why + eps?
+eps = 0.0001
 # bid candidates to be evaluated against
 bids_i = torch.linspace(0, 1, steps=7).unsqueeze(0) + eps
 bids_i_comb = torch.linspace(0,1, steps=4).unsqueeze(0) + eps
@@ -39,7 +39,7 @@ expected_regret_1_2_1 = torch.tensor(
     ], dtype = torch.float)
 
 # 2 Batch, 3 bidders, 1 item
-# TODO: add a player that has highest valuation SOMETIMES but with different behavior of opponents across batches!
+# TODO, later: add a player that has highest valuation SOMETIMES but with different behavior of opponents across batches!
 valuations_2_3_1 = torch.tensor(
     [[
         [0.1], [0.3], [0.5]
@@ -70,10 +70,10 @@ expected_ex_post_regret_2_3_1_tenths = torch.tensor(
 
 # LLLLGG: 1 Batch, 6 bidders,2 items (bid on each, 8 in total)
 valuations_1_6_2 = torch.tensor([[
-        [0.011, 0.512],
-        [0.021, 0.22],
-        [0.031, 0.32],
-        [0.041, 0.42],
+        [0.011, 0.512],#[,*]
+        [0.021, 0.22],#[,*]
+        [0.031, 0.32],#[,*]
+        [0.041, 0.42],#[,*]
         [0.89, 0.052],
         [0.061, 0.062]
     ]], dtype = torch.float)
@@ -87,7 +87,8 @@ expected_regret_1_6_2 = torch.tensor([
         [0,                 0                ],
         [0,                 0                ]
     ], dtype = torch.float)
-#TODO: Add one test with other pricing rule (-> and positive utility in agent)
+#TODO, later: Add one test with other pricing rule (-> and positive utility in agent)
+#TODO, Paul: @Nils add tests for your settings
 
 
 
@@ -97,22 +98,22 @@ expected_regret_1_6_2 = torch.tensor([
 # Each tuple specified here will then be tested for all implemented solvers.
 ids_ex_post, testdata_ex_post = zip(*[
     ['fpsb - 1 batch, 2 bidders, 1 item',
-        ('fpsb', FirstPriceSealedBidAuction(), valuations_1_2_1, bids_i, expected_regret_1_2_1)],
+        ('first_price', FirstPriceSealedBidAuction(), valuations_1_2_1, bids_i, expected_regret_1_2_1)],
     ['fpsb - 2 batches, 3 bidders, 1 item, steps of sixths',
-        ('fpsb', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_post_regret_2_3_1_sixths)],
+        ('first_price', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_post_regret_2_3_1_sixths)],
     ['fpsb - 2 batches, 3 bidders, 1 item, steps of tenths',
-        ('fpsb', FirstPriceSealedBidAuction(), valuations_2_3_1, b_i_tenths, expected_ex_post_regret_2_3_1_tenths)],
+        ('first_price', FirstPriceSealedBidAuction(), valuations_2_3_1, b_i_tenths, expected_ex_post_regret_2_3_1_tenths)],
     ['fpsb - 1 batch, 6 bidders, 2 item',
-        ('fpsb', LLLLGGAuction(valuations_1_6_2.shape[0]), valuations_1_6_2, bids_i_comb, expected_regret_1_6_2)]
+        ('first_price', LLLLGGAuction(), valuations_1_6_2, bids_i_comb, expected_regret_1_6_2)]
     ])
 
 ids_ex_interim, testdata_ex_interim = zip(*[
     ['fpsb - 1 batch, 2 bidders, 1 item',
-        ('fpsb', FirstPriceSealedBidAuction(), valuations_1_2_1, bids_i, expected_regret_1_2_1)],
+        ('first_price', FirstPriceSealedBidAuction(), valuations_1_2_1, bids_i, expected_regret_1_2_1)],
     ['fpsb - 2 batches, 3 bidders, 1 item, steps of sixths',
-        ('fpsb', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_interim_regret_2_3_1_sixths)],
+        ('fpfirst_pricesb', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_interim_regret_2_3_1_sixths)],
     ['fpsb - 1 batch, 6 bidders, 2 item',
-        ('fpsb', LLLLGGAuction(valuations_1_6_2.shape[0]), valuations_1_6_2, bids_i_comb, expected_regret_1_6_2)]
+        ('first_price', LLLLGGAuction(), valuations_1_6_2, bids_i_comb, expected_regret_1_6_2)]
     ])
 
 @pytest.mark.parametrize("rule, mechanism, bid_profile, bids_i, expected_regret", testdata_ex_post, ids=ids_ex_post)
@@ -124,7 +125,6 @@ def test_ex_post_regret_estimator_truthful(rule, mechanism, bid_profile, bids_i,
 
     agents = [None] * n_bidders
     for i in range(n_bidders):
-        #TODO: Add player position
         agents[i] = Bidder.uniform(0,1,TruthfulStrategy(), player_position = i, batch_size = batch_size)
         agents[i].valuations = bid_profile[:,i,:].to(device)
 
@@ -142,20 +142,20 @@ def test_ex_interim_regret_estimator_truthful(rule, mechanism, bid_profile, bids
 
     agents = [None] * n_bidders
     for i in range(n_bidders):
-        #TODO: Add player position
         agents[i] = Bidder.uniform(0,1,TruthfulStrategy(), player_position = i, batch_size = batch_size)
         agents[i].valuations = bid_profile[:,i,:].to(device)
 
+    grid_values = torch.stack([x.flatten() for x in torch.meshgrid([bids_i.squeeze()] * n_items)]).t()
+
     for i in range(n_bidders):
-        regret = metrics.ex_interim_regret(mechanism, bid_profile.to(device), 
-                                           i, agents[i].valuations, agents[i].get_action(),
-                                           bids_i.squeeze().to(device))
+        regret,_ = metrics.ex_interim_regret(mechanism, bid_profile.to(device), 
+                                           i, agents[i].valuations,
+                                           grid_values.to(device))
         assert torch.allclose(regret.mean(), expected_regret[i,0], atol = 0.001), "Unexpected avg regret"
         assert torch.allclose(regret.max(),  expected_regret[i,1], atol = 0.001), "Unexpected max regret"
 
 def test_ex_interim_regret_estimator_fpsb_bne():
     """Test the regret in BNE of fpsb. - ex interim regret should be close to zero"""
-    # TODO: currently broken because using ex_post regret.
     n_players = 3
     grid_size = 2**5
     batch_size = 2**12
@@ -185,14 +185,13 @@ def test_ex_interim_regret_estimator_fpsb_bne():
     for i,a in enumerate(agents):
         bid_profile[:,i,:] = a.get_action()
     # assert first player has (near) zero regret
-    regret = metrics.ex_interim_regret(mechanism, bid_profile, player_position = 0,
+    regret,_ = metrics.ex_interim_regret(mechanism, bid_profile, player_position = 0,
                                        agent_valuation = agents[0].valuations,
-                                       agent_bid_actual = agents[0].get_action(),
                                        grid = grid
                                        )
     mean_regret = regret.mean()
     max_regret = regret.max()
 
-    # TODO: mean regret should be close to 0
+
     assert mean_regret < 0.001, "Regret in BNE should be (close to) zero!" # common: ~2e-4
     assert max_regret < 0.01, "Regret in BNE should be (close to) zero!" # common: 1.5e-3

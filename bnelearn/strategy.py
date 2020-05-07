@@ -6,6 +6,8 @@ import math
 from abc import ABC, abstractmethod
 from copy import copy
 from typing import Callable, Iterable
+import os
+import sys
 import warnings
 
 import torch
@@ -41,11 +43,18 @@ class ClosureStrategy(Strategy):
                       0/1 (i.e. no parallelism)
     """
 
-    def __init__(self, closure: Callable, parallel: int = 0):
+
+    def __init__(self, closure: Callable, parallel: int = 0, mute=False):
         if not isinstance(closure, Callable):
             raise ValueError("Provided closure must be Callable!")
         self.closure = closure
         self.parallel = parallel
+        self._mute = mute
+
+    def __mute(self):
+        """suppresses stderr output from workers (avoid integration warnings for each process)"""
+        if self._mute:
+            sys.stderr = open(os.devnull, 'w')
 
     def play(self, inputs):
         pool_size = 1
@@ -79,7 +88,7 @@ class ClosureStrategy(Strategy):
 
             #torch.multiprocessing.set_sharing_strategy('file_system') # needed for very large number of chunks
 
-            with torch.multiprocessing.Pool(pool_size) as p:
+            with torch.multiprocessing.Pool(pool_size, initializer=self.__mute) as p:
                 # as we handled chunks ourselves, each element of our list should be an individual chunk,
                 # so the pool.map will get argument chunksize=1
                 # The following code is wrapped to produce progess bar, without it simplifies to:
@@ -338,6 +347,31 @@ class NeuralNetStrategy(Strategy, nn.Module):
             if not torch.all(self.forward(ensure_positive_output).gt(0)):
                 self.reset(ensure_positive_output)
 
+    @classmethod
+    def load(cls, path: str):
+        """
+        Initializes a saved NeuralNetStrategy from ´path´.
+        """
+
+        model_dict = torch.load(path)
+
+        # TODO Nils: WIP! Needs careful handling as it's not a default ´torch.nn.Module´.
+        #            Read out the needed parameters
+        params = {}
+
+        # standard initialization
+        strategy = cls(
+            input_length=params["input_length"],
+            hidden_nodes=params["hidden_nodes"],
+            hidden_activations=params["hidden_activations"],
+            output_length=params["output_length"]
+        )
+
+        # override model weights with saved ones
+        strategy.load_state_dict(model_dict)
+
+        return strategy
+
     def pretrain(self, input_tensor: torch.Tensor, iters: int, transformation: Callable = None):
         """Performs `iters` steps of supervised learning on `input` tensor,
            in order to find an initial bid function that is suitable for learning.
@@ -388,4 +422,3 @@ class TruthfulStrategy(Strategy, nn.Module):
 
     def play(self, inputs):
         return self.forward(inputs)
- 

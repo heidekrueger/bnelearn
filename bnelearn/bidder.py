@@ -98,6 +98,8 @@ class Bidder(Player):
         if self._cache_actions:
             self.actions = torch.zeros(batch_size, n_items, device=self.device)
         self.draw_valuations_()
+        self.grid_lb = max(0,self.value_distribution.icdf(torch.tensor(0.001)))
+        self.grid_ub = self.value_distribution.icdf(torch.tensor(0.999))
 
     ### Alternative Constructors #############
     @classmethod
@@ -128,13 +130,45 @@ class Bidder(Player):
         if (new_value.dtype, new_value.device) != (self._valuations.dtype, self._valuations.device):
             warnings.warn(
                 "New valuations have different dtype and/or device than bidder. Converting to {},{}".format(
-                self._valuations.device, self._valuations.dtype)
+                    self._valuations.device, self._valuations.dtype)
                 )
 
         if not new_value.equal(self._valuations):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
             self._valuations_changed =True
 
+    def draw_values_grid(self, batch_size):
+        """ Returns a batch of values equally distributed within self.grid_lb and self.grid_ub
+            ,and NOT according to the actual distribution, for n_items.
+            This is used amongst others for valuations and bids.
+            Args:
+                batch_size: int, upper bound of returned batch size
+            returns:
+                grid_values: (batch_size)
+        """
+
+        # change batch_size s.t. it'll approx. end up at intended batch_size in the end
+        adapted_batch_size = batch_size
+        if self.descending_valuations:
+            for d in range(1, self.n_items+1):
+                adapted_batch_size *= d
+
+        batch_size_per_dim = int(adapted_batch_size ** (1/self.n_items) + .5)
+        lin = torch.linspace(self.grid_lb, self.grid_ub,
+                             batch_size_per_dim, device=self.device)
+        grid_values = torch.stack([
+            x.flatten() for x in torch.meshgrid([lin] * self.n_items)
+        ]).t()
+
+        if isinstance(self.item_interest_limit, int):
+            grid_values[:,self.item_interest_limit:] = 0
+        if self.constant_marginal_values:
+            grid_values.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
+                                    grid_values[:,0:1].repeat(1, self.n_items-1))
+        if self.descending_valuations:
+            grid_values = grid_values.sort(dim=1, descending=True)[0].unique(dim=0)
+
+        return grid_values[:batch_size,:]
 
     def draw_valuations_(self):
         """ Sample a new batch of valuations from the Bidder's prior. Negative
@@ -213,9 +247,7 @@ class Bidder(Player):
         """Calculate action from current valuations, or retrieve from cache"""
         if self._cache_actions and not self._valuations_changed:
             return self.actions
-
         inputs = self.valuations.view(self.batch_size, -1)
-
         # for cases when n_itmes != input_length (e.g. Split-Award Auctions, combinatorial auctions with bid languages)
         # TODO: generalize this, see #82. https://gitlab.lrz.de/heidekrueger/bnelearn/issues/82
         if hasattr(self.strategy, 'input_length') and self.strategy.input_length != self.n_items:
@@ -242,7 +274,7 @@ class ReverseBidder(Bidder):
                  strategy,
                  player_position = None,
                  batch_size = 1,
-                 n_items = 1,
+                 n_units = 1,
                  cuda = True,
                  cache_actions: bool = False,
                  descending_valuations = False,
@@ -258,7 +290,7 @@ class ReverseBidder(Bidder):
             strategy,
             player_position,
             batch_size,
-            n_items,
+            n_units,
             cuda,
             cache_actions,
             descending_valuations,
@@ -266,6 +298,8 @@ class ReverseBidder(Bidder):
             item_interest_limit,
             constant_marginal_values
         )
+        self.grid_lb_regret = 0
+        self.grid_ub_regret = float(2*self.grid_ub)
 
     @classmethod
     def uniform(cls, lower, upper, strategy, **kwargs):
@@ -279,6 +313,16 @@ class ReverseBidder(Bidder):
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
 
+    def draw_values_grid(self, batch_size):
+        """ Extends `Bidder.draw_values_grid` with efficiency parameter
+        """
+        grid_values = torch.zeros(batch_size, self.n_items, device=self.device)
+        grid_values[:, 0] = torch.linspace(self.grid_lb, self.grid_ub,
+                                           batch_size, device=self.device)
+        grid_values[:, 1] = self.efficiency_parameter * grid_values[:, 0]
+
+        return grid_values
+
     def draw_valuations_(self):
         """ Extends `Bidder.draw_valuations_` with efiiciency parameter
         """
@@ -286,7 +330,7 @@ class ReverseBidder(Bidder):
 
         assert self.valuations.shape[1] == 2, \
             'linear valuations are only defined for two items.'
-        self.valuations[:,1] = self.efficiency_parameter * self.valuations[:,0]
+        self.valuations[:, 1] = self.efficiency_parameter * self.valuations[:, 0]
 
         return self.valuations
 

@@ -168,15 +168,15 @@ ids, testdata = zip(*[
     ['fp - single-batch - zero_bids', (1,'first_price', bids_5, expected_allocation_5, torch.Tensor([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]))],
     #['fp - neg. bids and nn.SELU()', (1,'first_price', bids_3, expected_allocation_3, torch.Tensor([[0.5, 0.7, 1.5, 0.0, 0.9, 1.1]]))],
 
-    ['nearest vcg - single-batch', (1,'nearest-vcg', bids_4, expected_allocation_4, torch.Tensor([[16.0, 16.0, 0.0, 0.0, 0.0, 0.0]]))],
-    ['nearest vcg - single-batch - zero_bids', (1,'nearest-vcg', bids_5, expected_allocation_5, torch.Tensor([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]))],
-    ['nearest vcg - multi-batch', (1,'nearest-vcg', bids_1, expected_allocation_1, torch.tensor([
+    ['nearest vcg - single-batch', (1,'nearest_vcg', bids_4, expected_allocation_4, torch.Tensor([[16.0, 16.0, 0.0, 0.0, 0.0, 0.0]]))],
+    ['nearest vcg - single-batch - zero_bids', (1,'nearest_vcg', bids_5, expected_allocation_5, torch.Tensor([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]))],
+    ['nearest vcg - multi-batch', (1,'nearest_vcg', bids_1, expected_allocation_1, torch.tensor([
                                                                                     [0.0, 0.0, 0.5, 0.5, 3.5, 0.0],
                                                                                     [2.0, 2.0, 1.5, 1.5, 0.0, 0.0],
                                                                                     [2.5, 3.5, 1.5, 1.5, 0.0, 0.0],
                                                                                     [2.5, 3.5, 1.0, 2.0, 0.0, 0.0]], dtype = torch.float))],
-    ['nearest vcg - single-batch - multi_core', (2,'nearest-vcg', bids_4, expected_allocation_4, torch.Tensor([[16.0, 16.0, 0.0, 0.0, 0.0, 0.0]]))],
-    ['nearest vcg - multi-batch - multi_core', (2,'nearest-vcg', bids_1, expected_allocation_1, torch.tensor([
+    ['nearest vcg - single-batch - multi_core', (2,'nearest_vcg', bids_4, expected_allocation_4, torch.Tensor([[16.0, 16.0, 0.0, 0.0, 0.0, 0.0]]))],
+    ['nearest vcg - multi-batch - multi_core', (2,'nearest_vcg', bids_1, expected_allocation_1, torch.tensor([
                                                                                     [0.0, 0.0, 0.5, 0.5, 3.5, 0.0],
                                                                                     [2.0, 2.0, 1.5, 1.5, 0.0, 0.0],
                                                                                     [2.5, 3.5, 1.5, 1.5, 0.0, 0.0],
@@ -190,7 +190,7 @@ def run_LLLLGG_test(parallel, rule, device, bids, expected_allocation, expected_
     if device == 'cuda' and not cuda:
         pytest.skip("This test needs CUDA, but it's not available.")
 
-    game = LLLLGGAuction(batch_size = len(bids), rule = rule, cuda=cuda, core_solver=solver, parallel=parallel)
+    game = LLLLGGAuction(rule = rule, cuda=cuda, core_solver=solver, parallel=parallel)
     allocation, payments = game.run(bids.to(device))
 
     assert torch.equal(allocation, expected_allocation.to(device)), "Wrong allocation"

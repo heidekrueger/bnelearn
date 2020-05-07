@@ -10,10 +10,10 @@ bids_1 = torch.rand([2**5,6,2], dtype = torch.float)
 # Console: pytest bnelearn/tests/test_llllgg_core_solver_comp.py -s
 # (parallel, payment rule, bids, device)
 ids, testdata = zip(*[
-    ['nearest vcg - single - cpu', (1,'nearest-vcg', bids_1, 'cpu')],
-    ['nearest vcg - multi - cpu', (8,'nearest-vcg', bids_1, 'cpu')],
-    ['nearest vcg - single - gpu', (1,'nearest-vcg', bids_1, 'cuda')],
-    ['nearest vcg - multi - gpu', (8,'nearest-vcg', bids_1, 'cuda')],
+    ['nearest vcg - single - cpu', (1,'nearest_vcg', bids_1, 'cpu')],
+    ['nearest vcg - multi - cpu', (8,'nearest_vcg', bids_1, 'cpu')],
+    ['nearest vcg - single - gpu', (1,'nearest_vcg', bids_1, 'cuda')],
+    ['nearest vcg - multi - gpu', (8,'nearest_vcg', bids_1, 'cuda')],
 ])
 
 def run_LLLLGG_test(parallel, rule, bids, device):
@@ -23,9 +23,9 @@ def run_LLLLGG_test(parallel, rule, bids, device):
     if device == 'cuda' and not cuda:
         pytest.skip("This test needs CUDA, but it's not available.")
 
-    game_gurobi = LLLLGGAuction(batch_size = len(bids), rule=rule, cuda=cuda, core_solver='gurobi', parallel=parallel)
-    game_cvxpy = LLLLGGAuction(batch_size = len(bids),  rule=rule,cuda=cuda, core_solver='cvxpy')
-    game_qpth = LLLLGGAuction(batch_size = len(bids),  rule=rule,cuda=cuda, core_solver='qpth')
+    game_gurobi = LLLLGGAuction(rule=rule, cuda=cuda, core_solver='gurobi', parallel=parallel)
+    game_cvxpy = LLLLGGAuction(rule=rule,cuda=cuda, core_solver='cvxpy')
+    game_qpth = LLLLGGAuction(rule=rule,cuda=cuda, core_solver='qpth')
 
     allocation_gurobi, payments_gurobi = game_gurobi.run(bids.to(device))
     allocation_cvxpy, payments_cvxpy = game_cvxpy.run(bids.to(device))
