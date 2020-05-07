@@ -360,12 +360,12 @@ class MultiUnitExperiment(Experiment, ABC):
         name = ['MultiUnit', self.payment_rule, str(self.n_players) + 'players_' + str(self.n_units) + 'units']
         return os.path.join(*name)
 
-    def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
+    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list=None, ylim: list=None, labels: list=None,
               x_label="valuation", y_label="bid", fmts=['o'],
               figure_name: str='bid_function', plot_points=100):
 
-        super()._plot(fig, plot_data, writer, epoch, xlim, ylim, labels,
+        super()._plot(plot_data, writer, epoch, xlim, ylim, labels,
                       x_label, y_label, fmts, figure_name, plot_points)
 
         if self.n_units == 2 and not isinstance(self, SplitAwardExperiment):
@@ -436,10 +436,10 @@ class SplitAwardExperiment(MultiUnitExperiment):
                 str(self.n_units) + 'units']
         return os.path.join(*name)
 
-    def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
+    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list=None, ylim: list=None, labels: list=None,
               x_label="valuation", y_label="bid", fmts=['o'],
               figure_name: str='bid_function', plot_points=100):
 
-        super()._plot(fig, plot_data, writer, epoch, xlim, ylim, labels,
+        super()._plot(plot_data, writer, epoch, xlim, ylim, labels,
                       x_label, y_label, fmts, figure_name, plot_points)

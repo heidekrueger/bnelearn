@@ -1,5 +1,3 @@
-# TODO: essentially move this file into /scripts, this will require moving the run.... 
-# functions into bnelearn.experiment.presets or similar. Assigned @Paul
 import sys
 import os
 import torch
@@ -41,8 +39,8 @@ if __name__ == '__main__':
     '''
     enable_logging = True
 
-    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-        fire.Fire()
+    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+    #     fire.Fire()
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     single_item_uniform_symmetric(2, 10, [2], 'first_price', model_sharing=True, logging=enable_logging)
     # logging_configuration.save_tb_events_to_binary_detailed = True
@@ -54,8 +52,8 @@ if __name__ == '__main__':
     #    llg(2,10,'nearest_zero',specific_gpu=1, logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #    llllgg(2,10,'first_price',model_sharing=False, logging=enable_logging)
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #   multiunit(n_runs=2, n_epochs=10, n_players=[2], n_units=2, payment_rule='first_price', logging=enable_logging)
+    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+      multiunit(n_runs=2, n_epochs=10, n_players=[2], n_units=2, payment_rule='first_price', logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #   splitaward(1, 10, [2], logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \

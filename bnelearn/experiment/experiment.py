@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib.ticker import FormatStrFormatter, LinearLocator
+from mpl_toolkits.mplot3d import Axes3D # Do not delete me! I am needed though it doesn't look like it!
 from torch.utils.tensorboard import SummaryWriter
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
@@ -75,7 +76,6 @@ class Experiment(ABC):
 
         # Everything that will be set up per run initioated with none
         self.run_log_dir = None
-        self.fig = None
         self.writer = None
         self.overhead = 0.0
 
@@ -335,7 +335,7 @@ class Experiment(ABC):
 
 
     # TODO Stefan: method only uses self in eval and for output point
-    def _plot(self, fig, plot_data, writer: SummaryWriter or None, epoch=None,
+    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts: list = None,
               figure_name: str = 'bid_function', plot_points=100):
@@ -343,7 +343,6 @@ class Experiment(ABC):
         This implements plotting simple 2D data.
 
         Args
-            fig: matplotlib.figure, TODO might not be needed @Paul
             plot_data: tuple of two pytorch tensors first beeing for x axis, second for y.
                 Both of dimensions (batch_size, n_models, n_bundles)
             writer: could be replaced by self.writer
@@ -526,7 +525,7 @@ class Experiment(ABC):
                 labels += ['BNE_{}'.format(i) for i in range(len(self.models))]
                 fmts += ['b--'] * len(self.models)
 
-            self._plot(fig=self.fig, plot_data=(v, b), writer=self.writer, figure_name='bid_function',
+            self._plot(plot_data=(v, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         self.overhead = self.overhead + timer() - start_time
@@ -630,7 +629,7 @@ class Experiment(ABC):
             regrets = torch.stack([regret[r][0] for r in range(len(regret))], dim=1)[:, :, None]
             valuations = torch.stack([regret[r][1] for r in range(len(regret))], dim=1)
             plot_output = (valuations, regrets)
-            self._plot(fig=self.fig, plot_data=plot_output, writer=self.writer,
+            self._plot(plot_data=plot_output, writer=self.writer,
                        ylim=[0, max(ex_interim_max_regret).cpu()],
                        figure_name='regret_function', epoch=epoch, plot_points=self.plot_points)
         return ex_ante_regret, ex_interim_max_regret
@@ -656,7 +655,7 @@ class Experiment(ABC):
 
     def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise regrets in the ending-epoch to disk to
-        # use it to make nicer plots for a publication? --> will be done elsewhere. Assigned to @Paul
+        # use it to make nicer plots for a publication? --> will be done elsewhere. Logging. Assigned to @Hlib/@Stefan
         for model, player_position in zip(self.models, self._model2bidder):
             name = 'model_' + str(player_position[0]) + '.pt'
             torch.save(model.state_dict(), os.path.join(directory, 'models', name))
