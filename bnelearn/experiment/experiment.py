@@ -615,12 +615,11 @@ class Experiment(ABC):
         torch.cuda.empty_cache()
         regret = [
             metrics.ex_interim_regret(
-                env.mechanism, bid_profile,
-                learner.strat_to_player_kwargs['player_position'],
-                env.agents[learner.strat_to_player_kwargs['player_position']].valuations[:regret_batch_size, ...],
-                regret_grid[:, learner.strat_to_player_kwargs['player_position'], :]
+                env.mechanism, bid_profile, self.bidders[player_positions[0]],
+                self.bidders[player_positions[0]].valuations[:regret_batch_size, ...],
+                regret_grid[:, player_positions[0], :]
             )
-            for learner in self.learners
+            for player_positions in self._model2bidder
         ]
         ex_ante_regret = [model_tuple[0].mean() for model_tuple in regret]
         ex_interim_max_regret = [model_tuple[0].max() for model_tuple in regret]

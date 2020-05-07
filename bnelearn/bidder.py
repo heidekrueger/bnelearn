@@ -221,7 +221,12 @@ class Bidder(Player):
         assert allocations.dim() == 2 # batch_size x items
         assert payments.dim() == 1 # batch_size
 
-        payoff = self.get_welfare(allocations, counterfactual_valuations) - payments
+        welfare = self.get_welfare(allocations, counterfactual_valuations)
+
+        if len(welfare.shape) == 3:
+            welfare = torch.mean(welfare, 1)
+
+        payoff = welfare - payments
 
         if self.risk == 1.0:
             return payoff
@@ -229,7 +234,7 @@ class Bidder(Player):
             # payoff^alpha not well defined in negative domain for risk averse agents
             return payoff.relu()**self.risk - (-payoff).relu()**self.risk
 
-    def get_welfare(self, allocations, valuations = None):
+    def get_welfare(self, allocations, valuations=None):
         """
         For a batch of allocations and payments return the player's welfare.
         If valuations are not specified, welfare is calculated for `self.valuations`.
@@ -239,7 +244,11 @@ class Bidder(Player):
         if valuations is None:
             valuations = self.valuations
 
-        welfare = (valuations * allocations).sum(dim=1)
+        if len(allocations.shape) == len(valuations.shape) - 1:
+            print('double sample!')
+            welfare = valuations.mul_(allocations).sum(dim=2)
+        else:
+            welfare = (valuations * allocations).sum(dim=1)
 
         return welfare
 
