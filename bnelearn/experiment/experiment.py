@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib.ticker import FormatStrFormatter, LinearLocator
-from mpl_toolkits.mplot3d import Axes3D # Do not delete me! I am needed though it doesn't look like it!
+from mpl_toolkits.mplot3d import Axes3D # pylint: disable=(whatever-message-pylint has. I assume unused-import)
 from torch.utils.tensorboard import SummaryWriter
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
