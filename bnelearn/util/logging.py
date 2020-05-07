@@ -65,7 +65,8 @@ def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detail
         last_epoch_tb_events.to_csv(f_name, index=False)
 
     if write_binary:
-        warnings.warn('Binary serialization not Implemented')
+        f_name = os.path.join(experiment_dir, f'full_results.pkl')
+        all_tb_events.to_pickle(f_name)
 
 
 def process_figure(fig, epoch=None, figure_name='plot', tb_group='eval',
