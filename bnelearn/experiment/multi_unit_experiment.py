@@ -295,7 +295,7 @@ class MultiUnitExperiment(Experiment, ABC):
         else:
             self.pretrain_transform = self.default_pretrain_transform
 
-        self.input_length =  experiment_config.input_length
+        self.input_length =  experiment_config.n_units
 
         self.plot_xmin = self.plot_ymin = min(self.u_lo)
         self.plot_xmax = self.plot_ymax = max(self.u_hi)
@@ -385,7 +385,6 @@ class SplitAwardExperiment(MultiUnitExperiment):
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
 
         self.efficiency_parameter = experiment_config.efficiency_parameter
-        self.input_length = experiment_config.input_length
 
         super().__init__(experiment_config, learning_config, logging_config, gpu_config)
 

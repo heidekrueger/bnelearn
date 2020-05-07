@@ -98,6 +98,7 @@ class LLGExperiment(LocalGlobalExperiment):
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known! (i.e. uniformity, bounds, etc)
         known_bne = experiment_config.payment_rule in \
             ['vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
+        self.input_length = 1
         super().__init__(3,2, 1, experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
     def _setup_mechanism(self):
@@ -171,7 +172,7 @@ class LLLLGGExperiment(LocalGlobalExperiment):
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
 
         assert experiment_config.n_players == 6, "not right number of players for setting"
-        assert learning_config.input_length == 2, "Learner config has to take 2 inputs!"
+        self.input_length = 2
 
         known_bne = False
         super().__init__(6, 4, 2, experiment_config, learning_config, logging_config, gpu_config, known_bne)

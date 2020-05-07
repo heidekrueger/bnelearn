@@ -178,8 +178,9 @@ class SingleItemExperiment(Experiment, ABC):
         if not hasattr(self, 'valuation_prior'):
             self.valuation_prior = 'unknown'
 
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
         self.n_items = 1
+        self.input_length = 1
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
     def _setup_mechanism(self):
         if self.payment_rule == 'first_price':

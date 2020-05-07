@@ -47,6 +47,7 @@ class Experiment(ABC):
     n_items: int
     mechanism: Mechanism
     positive_output_point: torch.Tensor # shape must be valid model input
+    input_length: int
 
     ## Fields required for plotting
     plot_xmin: float
@@ -171,7 +172,7 @@ class Experiment(ABC):
 
         for i in range(len(self.models)):
             self.models[i] = NeuralNetStrategy(
-                self.learning_config.input_length,
+                self.input_length,
                 hidden_nodes=self.learning_config.hidden_nodes,
                 hidden_activations=self.learning_config.hidden_activations,
                 ensure_positive_output=self.positive_output_point,
