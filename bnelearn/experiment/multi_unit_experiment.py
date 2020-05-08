@@ -350,6 +350,9 @@ class MultiUnitExperiment(Experiment, ABC):
 
     def _setup_eval_environment(self):
         """Setup the BNE envierment for later evaluation of the learned strategies"""
+        
+        if not isinstance(self._optimal_bid, list):
+            self._optimal_bid = [self._optimal_bid]
 
         # set up list for multiple bne
         self.bne_env = [None] * len(self._optimal_bid)
