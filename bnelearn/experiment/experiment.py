@@ -59,7 +59,7 @@ class Experiment(ABC):
 
     ## Equilibrium environment
     bne_utilities: torch.Tensor or List[float]  # dimension: n_players
-    bne_env: AuctionEnvironment
+    bne_env: AuctionEnvironment or List[AuctionEnvironment]
     _optimal_bid: callable
 
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
@@ -95,8 +95,6 @@ class Experiment(ABC):
         if logging_config.regret_grid_size is not None:
             self.regret_grid_size = logging_config.regret_grid_size
 
-
-
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
         if not hasattr(self, 'n_players'):
@@ -125,8 +123,6 @@ class Experiment(ABC):
 
         if self.known_bne:
             self._setup_eval_environment()
-
-
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -219,20 +215,31 @@ class Experiment(ABC):
         output_dir = self.run_log_dir
 
         if self.logging_config.log_metrics['opt'] and hasattr(self, 'bne_env'):
-            # dim: [points, bidders, items]
-            self.v_opt = torch.stack(
-                [b.draw_values_grid(self.plot_points)
-                 for b in [self.bne_env.agents[i[0]] for i in self._model2bidder]],
-                dim=1
-            )
-            self.b_opt = torch.stack(
-                [self._optimal_bid(self.v_opt[:, m, :], player_position=b[0])
-                 for m, b in enumerate(self._model2bidder)],
-                dim=1
-            )
-            if self.v_opt.shape[0] != self.plot_points:
-                print('´plot_points´ changed due to ´draw_values_grid´')
-                self.plot_points = self.v_opt.shape[0]
+
+            if not isinstance(self.bne_env, list):
+                # TODO Nils: should always be a list, even when there is only one BNE
+                print('what')
+                self.bne_env = [self.bne_env]
+
+            # set up list for (multiple) BNE valuations and bids
+            self.v_opt = [None] * len(self.bne_env)
+            self.b_opt = [None] * len(self.bne_env)
+
+            for i, bne_env in enumerate(self.bne_env):
+                # dim: [points, bidders, items]
+                self.v_opt[i] = torch.stack(
+                    [b.draw_values_grid(self.plot_points)
+                     for b in [bne_env.agents[i[0]] for i in self._model2bidder]],
+                    dim=1
+                )
+                self.b_opt[i] = torch.stack(
+                    [self._optimal_bid[i](self.v_opt[i][:, m, :], player_position=b[0])
+                     for m, b in enumerate(self._model2bidder)],
+                    dim=1
+                )
+                if self.v_opt[i].shape[0] != self.plot_points:
+                    print('´plot_points´ changed due to ´draw_values_grid´')
+                    self.plot_points = self.v_opt.shape[0]
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
@@ -486,11 +493,19 @@ class Experiment(ABC):
 
         # logging metrics
         if self.logging_config.log_metrics['opt']:
-            log_params['utility_vs_bne'], log_params['epsilon_relative'], log_params['epsilon_absolute'] = \
-                self._calculate_metrics_known_bne()
+            utility_vs_bne, epsilon_relative, epsilon_absolute = self._calculate_metrics_known_bne()
+            for i in range(len(self.bne_env)):
+                n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
+                log_params['utility_vs_bne' + n] = utility_vs_bne[i]
+                log_params['epsilon_relative' + n] = epsilon_relative[i]
+                log_params['epsilon_absolute' + n] = epsilon_absolute[i]
 
         if self.logging_config.log_metrics['l2']:
-            log_params['L_2'], log_params['L_inf'] = self._calculate_metrics_action_space_norms()
+            L_2, L_inf = self._calculate_metrics_action_space_norms()
+            for i in range(len(self.bne_env)):
+                n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
+                log_params['L_2' + n] = L_2[i]
+                log_params['L_inf' + n] = L_inf[i]
 
         if self.logging_config.log_metrics['regret'] and (epoch % self.logging_config.regret_frequency) == 0:
             create_plot_output = epoch % self.logging_config.plot_frequency == 0
@@ -512,18 +527,19 @@ class Experiment(ABC):
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
             if self.logging_config.log_metrics['opt']:
-                print(
-                    "\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})" \
-                        .format(
-                            log_params['utility_vs_bne'].tolist(),
-                            log_params['epsilon_relative'].tolist(),
-                            log_params['epsilon_absolute'].tolist()
-                    )
-                )
-                v = torch.cat([v, self.v_opt], dim=1)
-                b = torch.cat([b, self.b_opt], dim=1)
-                labels += ['BNE_{}'.format(i) for i in range(len(self.models))]
-                fmts += ['b--'] * len(self.models)
+                for env_idx, _ in enumerate(self.bne_env):
+                    # print(
+                    #     "\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})" \
+                    #         .format(
+                    #             log_params['utility_vs_bne'],
+                    #             log_params['epsilon_relative'],
+                    #             log_params['epsilon_absolute']
+                    #     )
+                    # )
+                    v = torch.cat([v, self.v_opt[env_idx]], dim=1)
+                    b = torch.cat([b, self.b_opt[env_idx]], dim=1)
+                    labels += ['BNE_{}_{}'.format(env_idx, j) for j in range(len(self.models))]
+                    fmts += ['b--'] * len(self.models)
 
             self._plot(plot_data=(v, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
@@ -533,7 +549,6 @@ class Experiment(ABC):
         if self.writer:
             self.writer.add_metrics_dict(log_params, self._model_names, epoch, group_prefix = 'eval')
         return timer() - start_time
-
 
     def _calculate_metrics_known_bne(self):
         """
@@ -547,20 +562,29 @@ class Experiment(ABC):
         # shorthand for model to bidder index conversion
         m2b = lambda m: self._model2bidder[m][0]
 
-        # length: n_models
-        utility_vs_bne = torch.tensor([
-            self.bne_env.get_reward(
-                self._strat_to_bidder(
-                    model, player_position=m2b(i),
-                    batch_size=self.logging_config.eval_batch_size
-                ),
-                draw_valuations=False # False because we want to use cached actions when set, reevaluation is expensive
-            ) for i, model in enumerate(self.models)
-        ])
-        epsilon_relative = torch.tensor(
-            [1 - utility_vs_bne[i] / self.bne_utilities[m2b(i)] for i, model in enumerate(self.models)])
-        epsilon_absolute = torch.tensor(
-            [self.bne_utilities[m2b(i)] - utility_vs_bne[i] for i, model in enumerate(self.models)])
+        utility_vs_bne = [None] * len(self.bne_env)
+        epsilon_relative = [None] * len(self.bne_env)
+        epsilon_absolute = [None] * len(self.bne_env)
+
+        for bne_idx, bne_env in enumerate(self.bne_env):
+            # length: n_models
+            utility_vs_bne[bne_idx] = torch.tensor([
+                bne_env.get_reward(
+                    self._strat_to_bidder(
+                        model, player_position=m2b(i),
+                        batch_size=self.logging_config.eval_batch_size
+                    ),
+                    draw_valuations=False # False b/c we want to use cached actions when set, reevaluation expensive
+                ) for i, model in enumerate(self.models)
+            ])
+            epsilon_relative[bne_idx] = torch.tensor(
+                [1 - utility_vs_bne[bne_idx][i] / self.bne_utilities[bne_idx][m2b(i)]
+                 for i, model in enumerate(self.models)]
+            )
+            epsilon_absolute[bne_idx] = torch.tensor(
+                [self.bne_utilities[bne_idx][m2b(i)] - utility_vs_bne[bne_idx][i]
+                 for i, model in enumerate(self.models)]
+            )
 
         return utility_vs_bne, epsilon_relative, epsilon_absolute
 
@@ -571,13 +595,26 @@ class Experiment(ABC):
         Returns:
             L_2 and L_inf, each a list of length self.models
         """
-        # shorthand for model to agent
-        m2a = lambda m: self.bne_env.agents[self._model2bidder[m][0]]
 
-        L_2 = [metrics.norm_strategy_and_actions(model, m2a(i).get_action(), m2a(i).valuations, 2)
-               for i, model in enumerate(self.models)]
-        L_inf = [metrics.norm_strategy_and_actions(model, m2a(i).get_action(), m2a(i).valuations, float('inf'))
-                 for i, model in enumerate(self.models)]
+        L_2 = [None] * len(self.bne_env)
+        L_inf = [None] * len(self.bne_env)
+        for bne_idx, bne_env in enumerate(self.bne_env):
+
+            # shorthand for model to agent
+            m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
+
+            L_2[bne_idx] = [
+                metrics.norm_strategy_and_actions(
+                    model, m2a(i).get_action(), m2a(i).valuations, 2
+                )
+                for i, model in enumerate(self.models)
+            ]
+            L_inf[bne_idx] = [
+                metrics.norm_strategy_and_actions(
+                    model, m2a(i).get_action(), m2a(i).valuations, float('inf')
+                )
+                for i, model in enumerate(self.models)
+            ]
         return L_2, L_inf
 
     def _calculate_metrics_regret(self, create_plot_output: bool, epoch: int = None):
