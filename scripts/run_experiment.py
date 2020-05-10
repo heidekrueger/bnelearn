@@ -47,7 +47,7 @@ if __name__ == '__main__':
     # logging_configuration.save_tb_events_to_csv_detailed = True
 
     running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-         single_item_gaussian_symmetric(1, 1, [2], 'second_price', logging=enable_logging, specific_gpu=0,
+         single_item_gaussian_symmetric(2, 1, [2], 'second_price', logging=enable_logging, specific_gpu=0,
                                         save_tb_events_to_csv_detailed=True,
                                         save_tb_events_to_binary_detailed=True)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class =\

@@ -330,6 +330,10 @@ class Experiment(ABC):
                 write_aggregate=self.logging_config.save_tb_events_to_csv_aggregate,
                 write_binary=self.logging_config.save_tb_events_to_binary_detailed)
 
+            logging_utils.print_aggregate_tensorboard_logs(self.experiment_log_dir)
+            logging_utils.print_full_tensorboard_logs(self.experiment_log_dir)
+
+
 
     ########################################################################################################
     ####################################### Moved logging to here ##########################################

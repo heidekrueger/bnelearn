@@ -1,15 +1,20 @@
 """This module contains utilities for logging of experiments"""
 
 import os
+import pickle
 import time
 import warnings
 from typing import List
+from tabulate import tabulate
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
+
+full_log_file_name = 'full_results'
+aggregate_log_file_name = 'aggregate_log'
 
 
 # based on https://stackoverflow.com/a/57411105/4755970
@@ -31,7 +36,7 @@ def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detail
         subruns = [x.name for x in os.scandir(os.path.join(experiment_dir, run))
                    if x.is_dir() and any(file.startswith('events.out.tfevents')
                                          for file in os.listdir(os.path.join(experiment_dir, run, x.name)))]
-        subruns.append('.') #also read global logs
+        subruns.append('.')  # also read global logs
         for subrun in subruns:
 
             ea = EventAccumulator(os.path.join(experiment_dir, run, subrun)).Reload()
@@ -57,16 +62,49 @@ def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detail
     last_epoch_tb_events = pd.DataFrame(last_epoch_tb_events)
 
     if write_detailed:
-        f_name = os.path.join(experiment_dir, f'full_results.csv')
+        f_name = os.path.join(experiment_dir, f'{full_log_file_name}.csv')
         all_tb_events.to_csv(f_name, index=False)
 
     if write_aggregate:
-        f_name = os.path.join(experiment_dir, f'aggregate_log.csv')
+        f_name = os.path.join(experiment_dir, f'{aggregate_log_file_name}.csv')
         last_epoch_tb_events.to_csv(f_name, index=False)
 
     if write_binary:
-        f_name = os.path.join(experiment_dir, f'full_results.pkl')
+        f_name = os.path.join(experiment_dir, f'{full_log_file_name}.pkl')
         all_tb_events.to_pickle(f_name)
+
+
+def print_full_tensorboard_logs(experiment_dir, first_row: int = 0, last_row=None):
+    """
+    Prints in a tabular form the full log from all the runs in the current experiment, reads data from a pkl file
+    in the experiment directory
+    :param first_row: the first row to be printed if the full log is used
+    :param last_row: the last row to be printed if the full log is used
+    """
+
+    f_name = os.path.join(experiment_dir, f'{full_log_file_name}.pkl')
+    objects = []
+    with (open(f_name, "rb")) as full_results:
+        while True:
+            try:
+                objects.append(pickle.load(full_results))
+            except EOFError:
+                break
+    if last_row is None:
+        last_row = len(objects[0])
+    print('Full log:')
+    print(tabulate(objects[0].iloc[first_row:last_row], headers='keys', tablefmt='psql', showindex="never"))
+
+
+def print_aggregate_tensorboard_logs(experiment_dir):
+    """
+    Prints in a tabular form the aggregate log from all the runs in the current experiment,
+    reads data from the csv file in the experiment directory
+    """
+    f_name = os.path.join(experiment_dir, f'{aggregate_log_file_name}.csv')
+    df = pd.read_csv(f_name)
+    print('Aggregate log:')
+    print(tabulate(df, headers='keys', tablefmt='psql', showindex="never"))
 
 
 def process_figure(fig, epoch=None, figure_name='plot', tb_group='eval',
@@ -88,7 +126,8 @@ def process_figure(fig, epoch=None, figure_name='plot', tb_group='eval',
 
 
 class CustomSummaryWriter(SummaryWriter):
-    """Extends SummaryWriter with a method to add multiple scalars in the way
+    """
+    Extends SummaryWriter with a method to add multiple scalars in the way
     that we intend. The original SummaryWriter can either add a single scalar at a time
     or multiple scalars, but in the latter case, multiple runs are created without
     the option to control these.
