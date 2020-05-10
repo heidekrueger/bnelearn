@@ -1,26 +1,22 @@
 cvxpy #pip
-qpth~=0.0.15
+qpth #pip - currently using local install, see https://github.com/locuslab/qpth/pull/33
 gurobi # conda -c gurobi
-numpy~=1.18.1
+numpy
 future #required for pytorch 1.1 tensorboard integration
 jupyterlab
 pytorch # conda -c pytorch
-tensorboard~=2.1.0
-matplotlib~=3.1.3
-pytest~=5.3.5
+tensorboard
+matplotlib
+pytest
 pytest-cov
 pytest-xdist #parallel tests
 pylint
 pylint-exit #pip
 pylint2codeclimate #pip
-scipy~=1.4.1
-tqdm~=4.42.1
-fire~=0.3.1
+scipy # for numeric integration
+tqdm #for progress bars
+fire #conda -c conda-forge
 
-
+tabulate~=0.8.3
 # non-python requirements (for package development only)
 # jq # installable via apt-get; used to automatically clean up ipynb files on commit via git filters.
-
-pandas~=1.0.1
-tabulate~=0.8.3
-setuptools~=45.2.0
