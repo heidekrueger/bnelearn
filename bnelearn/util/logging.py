@@ -13,8 +13,8 @@ import torch
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
 
-full_log_file_name = 'full_results'
-aggregate_log_file_name = 'aggregate_log'
+_full_log_file_name = 'full_results'
+_aggregate_log_file_name = 'aggregate_log'
 
 
 # based on https://stackoverflow.com/a/57411105/4755970
@@ -62,15 +62,15 @@ def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detail
     last_epoch_tb_events = pd.DataFrame(last_epoch_tb_events)
 
     if write_detailed:
-        f_name = os.path.join(experiment_dir, f'{full_log_file_name}.csv')
+        f_name = os.path.join(experiment_dir, f'{_full_log_file_name}.csv')
         all_tb_events.to_csv(f_name, index=False)
 
     if write_aggregate:
-        f_name = os.path.join(experiment_dir, f'{aggregate_log_file_name}.csv')
+        f_name = os.path.join(experiment_dir, f'{_aggregate_log_file_name}.csv')
         last_epoch_tb_events.to_csv(f_name, index=False)
 
     if write_binary:
-        f_name = os.path.join(experiment_dir, f'{full_log_file_name}.pkl')
+        f_name = os.path.join(experiment_dir, f'{_full_log_file_name}.pkl')
         all_tb_events.to_pickle(f_name)
 
 
@@ -82,7 +82,7 @@ def print_full_tensorboard_logs(experiment_dir, first_row: int = 0, last_row=Non
     :param last_row: the last row to be printed if the full log is used
     """
 
-    f_name = os.path.join(experiment_dir, f'{full_log_file_name}.pkl')
+    f_name = os.path.join(experiment_dir, f'{_full_log_file_name}.pkl')
     objects = []
     with (open(f_name, "rb")) as full_results:
         while True:
@@ -93,7 +93,7 @@ def print_full_tensorboard_logs(experiment_dir, first_row: int = 0, last_row=Non
     if last_row is None:
         last_row = len(objects[0])
     print('Full log:')
-    print(tabulate(objects[0].iloc[first_row:last_row], headers='keys', tablefmt='psql', showindex="never"))
+    print(objects[0].iloc[first_row:last_row].to_markdown())
 
 
 def print_aggregate_tensorboard_logs(experiment_dir):
@@ -101,10 +101,10 @@ def print_aggregate_tensorboard_logs(experiment_dir):
     Prints in a tabular form the aggregate log from all the runs in the current experiment,
     reads data from the csv file in the experiment directory
     """
-    f_name = os.path.join(experiment_dir, f'{aggregate_log_file_name}.csv')
+    f_name = os.path.join(experiment_dir, f'{_aggregate_log_file_name}.csv')
     df = pd.read_csv(f_name)
     print('Aggregate log:')
-    print(tabulate(df, headers='keys', tablefmt='psql', showindex="never"))
+    print(df.to_markdown())
 
 
 def process_figure(fig, epoch=None, figure_name='plot', tb_group='eval',
