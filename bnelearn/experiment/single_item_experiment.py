@@ -445,47 +445,52 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
     def _setup_eval_environment(self):
 
         if len(set(self.u_lo)) != 1: # BNE for differnt u_lo for each player
-            print('Warning: only one of multiple BNE selected!') # TODO @Nils
+            self._optimal_bid = [None] * 3
+
             # BNE 1
-            # # self._optimal_bid = _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
-            #     u_lo=self.u_lo, u_hi=self.u_hi
-            # )
+            self._optimal_bid[0] = _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
+                u_lo=self.u_lo, u_hi=self.u_hi
+            )
 
             # BNE 2
-            self._optimal_bid = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2,
-                                        u_lo=self.u_lo, u_hi=self.u_hi)
+            self._optimal_bid[1] = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2,
+                                           u_lo=self.u_lo, u_hi=self.u_hi)
 
             # # BNE 3
-            # self._optimal_bid = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3,
-            #                             u_lo=self.u_lo, u_hi=self.u_hi)
+            self._optimal_bid[2] = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3,
+                                           u_lo=self.u_lo, u_hi=self.u_hi)
 
         else: # BNE for fixed u_lo for all players
-            self._optimal_bid = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral,
-                                        u_lo=self.u_lo, u_hi=self.u_hi)
+            self._optimal_bid = [partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral,
+                                         u_lo=self.u_lo, u_hi=self.u_hi)]
 
-        bne_strategies = [ClosureStrategy(partial(self._optimal_bid, player_position=i))
-                          for i in range(self.n_players)]
+        bne_strategies = [None] * len(self._optimal_bid)
+        self.bne_env = [None] * len(self._optimal_bid)
+        bne_utilities_sampled = [None] * len(self._optimal_bid)
+        for i, bid in enumerate(self._optimal_bid):
+            bne_strategies[i] = [ClosureStrategy(partial(bid, player_position=i))
+                                 for i in range(self.n_players)]
 
-        self.bne_env = AuctionEnvironment(
-            mechanism=self.mechanism,
-            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                          batch_size=self.logging_config.eval_batch_size)
-                    for i in range(self.n_players)],
-            n_players=self.n_players,
-            batch_size=self.logging_config.eval_batch_size,
-            strategy_to_player_closure=self._strat_to_bidder
-        )
+            self.bne_env[i] = AuctionEnvironment(
+                mechanism=self.mechanism,
+                agents=[self._strat_to_bidder(bne_strategies[i][p], player_position=p,
+                                              batch_size=self.logging_config.eval_batch_size)
+                        for p in range(self.n_players)],
+                n_players=self.n_players,
+                batch_size=self.logging_config.eval_batch_size,
+                strategy_to_player_closure=self._strat_to_bidder
+            )
 
-        bne_utilities_sampled = torch.tensor(
-            [self.bne_env.get_reward(a, draw_valuations=True) for a in self.bne_env.agents])
+            bne_utilities_sampled[i] = torch.tensor(
+                [self.bne_env[i].get_reward(a, draw_valuations=True) for a in self.bne_env[i].agents])
 
-        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
-        print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
+            print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled[i]))
+            print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
 
-        print('Debug: eval_batch size:{}'.format(self.bne_env.batch_size))
-        if self.u_lo ==5. and self.u_hi[0] ==15. and self.u_hi[1] ==25. and self.bne_env.batch_size <= 2**22:
-        # replace by known optimum with higher precision
-            bne_utilities_sampled = torch.tensor([0.9694, 5.0688]) # calculated using 100x batch size above
-            print("\tReplacing sampled bne utilities by precalculated utilities with higher precision: {}".format(bne_utilities_sampled))
+            print('Debug: eval_batch size:{}'.format(self.bne_env[i].batch_size))
+            if self.u_lo ==5. and self.u_hi[0] ==15. and self.u_hi[1] ==25. and self.bne_env[i].batch_size <= 2**22:
+            # replace by known optimum with higher precision
+                bne_utilities_sampled[i] = torch.tensor([0.9694, 5.0688]) # calculated using 100x batch size above
+                print("\tReplacing sampled bne utilities by precalculated utilities with higher precision: {}".format(bne_utilities_sampled[i]))
 
         self.bne_utilities = bne_utilities_sampled
