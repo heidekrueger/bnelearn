@@ -494,7 +494,7 @@ class Experiment(ABC):
 
         if self.logging_config.log_metrics['regret'] and (epoch % self.logging_config.regret_frequency) == 0:
             create_plot_output = epoch % self.logging_config.plot_frequency == 0
-            log_params['regret_ex_ante'], log_params['regret_ex_interim'] = \
+            log_params['regret_ex_ante'], log_params['regret_ex_interim'], log_params['util_loss_rel'] = \
                 self._calculate_metrics_regret(create_plot_output, epoch)
 
         # plotting
@@ -624,6 +624,7 @@ class Experiment(ABC):
         ]
         ex_ante_regret = [model_tuple[0].mean() for model_tuple in regret]
         ex_interim_max_regret = [model_tuple[0].max() for model_tuple in regret]
+        util_loss_rel = [model_tuple[2] for model_tuple in regret]
         if create_plot_output:
             # Transform to output with dim(batch_size, n_models, n_bundle), for regrets n_bundle=1
             regrets = torch.stack([regret[r][0] for r in range(len(regret))], dim=1)[:, :, None]
@@ -632,7 +633,7 @@ class Experiment(ABC):
             self._plot(plot_data=plot_output, writer=self.writer,
                        ylim=[0, max(ex_interim_max_regret).cpu()],
                        figure_name='regret_function', epoch=epoch, plot_points=self.plot_points)
-        return ex_ante_regret, ex_interim_max_regret
+        return ex_ante_regret, ex_interim_max_regret, util_loss_rel
 
     def _log_experiment_params(self):
         # TODO: write out all experiment params (complete dict) #See issue #113

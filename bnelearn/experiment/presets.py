@@ -20,9 +20,9 @@ def single_item_uniform_symmetric(n_runs: int, n_epochs: int,
                                   n_players: List[int], payment_rule: str, model_sharing=True,
                                   u_lo=0, u_hi=1,
                                   risk=1.0,
-                                  log_metrics=['opt', 'l2', 'regret'], regret_batch_size=2 ** 4,
-                                  regret_grid_size=2 ** 4,
-                                  specific_gpu=0,
+                                  log_metrics=['opt', 'l2', 'regret'], 
+                                  regret_batch_size=2 ** 12, regret_grid_size=2 ** 10,
+                                  specific_gpu=1,
                                   logging=True):
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu,
                                                  n_players=n_players)
@@ -39,11 +39,11 @@ def single_item_uniform_symmetric(n_runs: int, n_epochs: int,
 
 
 def single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
-                                       n_players: [int], payment_rule: str, model_sharing=True, valuation_mean=15,
-                                       valuation_std=10,
-                                       risk=1.0, eval_batch_size=2 ** 16,
-                                       log_metrics=['opt', 'l2', 'regret'], regret_batch_size=2 ** 8,
-                                       regret_grid_size=2 ** 8,
+                                       n_players: [int], payment_rule: str, model_sharing=True,
+                                       valuation_mean=10, valuation_std=5,
+                                       risk=1.0, eval_batch_size=2 ** 22,
+                                       log_metrics=['opt', 'l2', 'regret'], 
+                                       regret_batch_size=2 ** 12, regret_grid_size=2 ** 10,
                                        specific_gpu=1,
                                        logging=True):
     if eval_batch_size == 2 ** 16:
@@ -71,10 +71,9 @@ def single_item_asymmetric_uniform(
         u_lo=[0, 6],  # [5, 5],     [0, 6]
         u_hi=[5, 7],  # [15, 25],   [5, 7]
         risk=1.0,
-        eval_batch_size=2 ** 18,
+        eval_batch_size=2 ** 22,
         log_metrics=['opt', 'l2', 'regret'],
-        regret_batch_size=2 ** 8,
-        regret_grid_size=2 ** 8,
+        regret_batch_size=2 ** 12, regret_grid_size=2 ** 10,
         specific_gpu=1,
         logging=True
     ):
@@ -96,8 +95,10 @@ def single_item_asymmetric_uniform(
 def llg(n_runs: int, n_epochs: int,
             payment_rule: str, model_sharing=True,
             u_lo=[0, 0, 0], u_hi=[1, 1, 2],
+            eval_batch_size=2 ** 22,
             risk=1.0,
-            log_metrics=['opt', 'l2', 'regret'], regret_batch_size=2 ** 8, regret_grid_size=2 ** 8,
+            log_metrics=['opt', 'l2', 'regret'], 
+            regret_batch_size=2 ** 12, regret_grid_size=2 ** 10,
             specific_gpu=1,
             logging=True):
     n_players = [3]
@@ -118,8 +119,9 @@ def llg(n_runs: int, n_epochs: int,
 def llllgg(n_runs: int, n_epochs: int,
                payment_rule: str, model_sharing=True,
                u_lo=[0, 0, 0, 0, 0, 0], u_hi=[1, 1, 1, 1, 2, 2],
-               risk=1.0, eval_batch_size=2 ** 12,
-               log_metrics=['regret'], regret_batch_size=2 ** 8, regret_grid_size=2 ** 8,
+               risk=1.0, eval_batch_size=2 ** 22,
+               log_metrics=['regret'], 
+               regret_batch_size=2 ** 12, regret_grid_size=2 ** 10,
                core_solver="NoCore",
                specific_gpu=1,
                logging=True):
@@ -150,9 +152,8 @@ def multiunit(
             risk=1.0,
             constant_marginal_values: bool = False,
             item_interest_limit: int = None,
-            regret_batch_size=2 ** 8,
-            regret_grid_size=2 ** 8,
-            specific_gpu=0,
+            regret_batch_size=2 ** 12, regret_grid_size=2 ** 10,
+            specific_gpu=1,
             logging=True
     ):
     running_configuration = RunningConfiguration(
@@ -189,8 +190,7 @@ def splitaward(
             constant_marginal_values: bool = False,
             item_interest_limit: int = None,
             efficiency_parameter: float = 0.3,
-            regret_batch_size=2 ** 8,
-            regret_grid_size=2 ** 8,
+            regret_batch_size=2 ** 12, regret_grid_size=2 ** 10,
             specific_gpu=1,
             logging=True
     ):

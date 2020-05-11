@@ -265,4 +265,5 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     u_i_actual = torch.mean(u_i_actual,1)
     ## average and max regret over all valuations
     regret = (u_i_alternative - u_i_actual).relu().clone().detach().requires_grad_(False)
-    return regret, agent_valuation
+    util_loss_rel = 1 - (u_i_actual.mean()/u_i_alternative.mean())
+    return regret, agent_valuation, util_loss_rel
