@@ -5,7 +5,6 @@ import pickle
 import time
 import warnings
 from typing import List
-from tabulate import tabulate
 
 import matplotlib.pyplot as plt
 import pandas as pd
