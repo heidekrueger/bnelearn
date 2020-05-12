@@ -322,11 +322,17 @@ class Experiment(ABC):
         # Once all runs are done, convert tb event files to csv
         if self.logging_config.enable_logging and (
                 self.logging_config.save_tb_events_to_csv_detailed or
-                self.logging_config.save_tb_events_to_csv_aggregate):
+                self.logging_config.save_tb_events_to_csv_aggregate or
+                self.logging_config.save_tb_events_to_binary_detailed):
             logging_utils.tabulate_tensorboard_logs(
                 experiment_dir=self.experiment_log_dir,
                 write_detailed=self.logging_config.save_tb_events_to_csv_detailed,
-                write_aggregate=self.logging_config.save_tb_events_to_csv_aggregate)
+                write_aggregate=self.logging_config.save_tb_events_to_csv_aggregate,
+                write_binary=self.logging_config.save_tb_events_to_binary_detailed)
+
+            logging_utils.print_aggregate_tensorboard_logs(self.experiment_log_dir)
+            logging_utils.print_full_tensorboard_logs(self.experiment_log_dir)
+
 
 
     ########################################################################################################

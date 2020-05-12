@@ -16,7 +16,6 @@ pylint2codeclimate #pip
 scipy # for numeric integration
 tqdm #for progress bars
 fire #conda -c conda-forge
-
-
+tabulate # required for pandas pretty-printing
 # non-python requirements (for package development only)
 # jq # installable via apt-get; used to automatically clean up ipynb files on commit via git filters.
