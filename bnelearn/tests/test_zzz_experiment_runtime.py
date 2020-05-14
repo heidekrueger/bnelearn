@@ -5,7 +5,7 @@ It considers each implemented experiment with each payment rule. Fo each experim
 TODO:
     - Paul: InputLength should become obsolete Stefan: yes! @assigned Paul
     - Paul: Maybe later: Add bne metric to LLLLGG and test for failure
-    - Stefan: Later: gaussian with fpsb and regret
+    - Stefan: Later: gaussian with fpsb and util_loss
 """
 import os
 import sys
@@ -35,8 +35,8 @@ ids_single_item, testdata_single_item = zip(*[
     ])
 ids_local_global, testdata_local_global = zip(*[
     # LLG
-    ['LLG-fp', (llg(2,3,'first_price',log_metrics=['regret']))],
-    ['LLG-fp-no_model_sharing', (llg(2,3,'first_price', model_sharing=False,log_metrics=['regret']))],
+    ['LLG-fp', (llg(2,3,'first_price',log_metrics=['util_loss']))],
+    ['LLG-fp-no_model_sharing', (llg(2,3,'first_price', model_sharing=False,log_metrics=['util_loss']))],
     ['LLG-vcg', (llg(2,3,'vcg'))],
     ['LLG-nearest_bid', (llg(2,3,'nearest_bid'))],
     #['LLG-nearest_zero', (llg(2,3,'nearest_zero'))],
@@ -63,10 +63,10 @@ def run_auction_test(create_auction_function):
     # Log and plot frequent but few
     logging_configuration.enable_logging = False
     logging_configuration.plot_frequency=1
-    logging_configuration.regret_frequency=1
+    logging_configuration.util_loss_frequency=1
     logging_configuration.plot_points=10
-    logging_configuration.regret_batch_size = 2**2
-    logging_configuration.regret_grid_size = 2**2
+    logging_configuration.util_loss_batch_size = 2**2
+    logging_configuration.util_loss_grid_size = 2**2
     learning_configuration.batch_size = 2**2
     experiment_configuration.n_players = running_configuration.n_players[0]
     # Create and run the experiment

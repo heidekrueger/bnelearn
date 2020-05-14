@@ -70,9 +70,9 @@ class LoggingConfiguration:
     plot_points: int = 100
     plot_show_inline: bool = True
     log_metrics: list = None
-    regret_batch_size: int = None
-    regret_grid_size: int = None
-    regret_frequency: int = 100
+    util_loss_batch_size: int = None
+    util_loss_grid_size: int = None
+    util_loss_frequency: int = 100
     eval_batch_size: int = 2**22
     cache_eval_actions: bool = True
     save_tb_events_to_csv_aggregate: bool = True
@@ -93,14 +93,14 @@ class LoggingConfiguration:
         metrics = self.log_metrics
         self.log_metrics = {'opt': False,
                             'l2': False,
-                            'regret': False}
+                            'util_loss': False}
         if metrics is not None:
             for metric in metrics:
                 assert metric in self.log_metrics.keys(), "Metric not known."
                 self.log_metrics[metric] = True
-        if self.log_metrics['regret'] and self.regret_batch_size is None:
-            self.regret_batch_size: int = 2**8
-            self.regret_grid_size: int = 2**8
+        if self.log_metrics['util_loss'] and self.util_loss_batch_size is None:
+            self.util_loss_batch_size: int = 2**8
+            self.util_loss_grid_size: int = 2**8
         if not self.enable_logging:
             self.save_tb_events_to_csv_aggregate = False
             self.save_tb_events_to_csv_detailed: bool = False
