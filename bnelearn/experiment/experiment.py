@@ -311,10 +311,32 @@ class Experiment(ABC):
             torch.random.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
             np.random.seed(seed)
+            if self.logging_config.stopping_criterion:
+                stopping_list = None
 
             self._init_new_run()
 
             for e in range(epochs+1):
+                # If a stopping criterion is set, check wheather it is fullfilled
+                if self.logging_config.stopping_criterion is not None and e%100 == 0:
+                    util_loss_batch_size_tmp = self.logging_config.util_loss_batch_size
+                    util_loss_grid_size_tmp = self.logging_config.util_loss_grid_size
+                    self.logging_config.util_loss_batch_size = min(self.logging_config.util_loss_batch_size, 2**10)
+                    self.logging_config.util_loss_grid_size = 2**7
+                    loss_ex_ante, _ = self._calculate_metrics_util_loss(False)
+                    self.logging_config.util_loss_batch_size = util_loss_batch_size_tmp
+                    self.logging_config.util_loss_grid_size = util_loss_grid_size_tmp
+                    stopping_list.append(loss_ex_ante)
+                    if len(stopping_list) >= 3:
+                        stop = True
+                        for k in range(len(stopping_list)):
+                            for k2 in range(k, len(stopping_list)):
+                                if(abs(stopping_list[k]-stopping_list[k2])/stopping_list[k] > self.logging_config.stopping_criterion):
+                                    stop = False
+                                    break
+                        if stop:
+                            break
+                        stopping_list.pop()
                 self._training_loop(epoch=e)
 
             self._exit_run()
