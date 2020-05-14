@@ -71,8 +71,8 @@ class Experiment(ABC):
         self.gpu_config = gpu_config
 
         # Global Stuff that should be initiated here
-        self.plot_frequency = LoggingConfiguration.plot_frequency
-        self.plot_points = min(self.logging_config.plot_points, self.learning_config.batch_size)
+        self.plot_frequency = logging_config.plot_frequency
+        self.plot_points = min(logging_config.plot_points, learning_config.batch_size)
 
         # Everything that will be set up per run initioated with none
         self.run_log_dir = None

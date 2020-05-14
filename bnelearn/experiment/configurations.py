@@ -46,6 +46,7 @@ class ExperimentConfiguration:
 
     # LLLLGG
     core_solver: str = 'NoCore'
+    parallel: int = 1
 
 @dataclass
 class LoggingConfiguration:
