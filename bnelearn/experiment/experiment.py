@@ -295,6 +295,8 @@ class Experiment(ABC):
         else:
             print('epoch {}:\t elapsed {:.2f}s'.format(epoch, timer() - tic))
 
+        return utilities
+
 
     def run(self, epochs, n_runs: int = 1, seeds: Iterable[int] = None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
@@ -311,33 +313,29 @@ class Experiment(ABC):
             torch.random.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
             np.random.seed(seed)
-            if self.logging_config.stopping_criterion:
-                stopping_list = None
+            if self.logging_config.stopping_criterion_rel_util_loss_dif:
+                stopping_list = []
 
             self._init_new_run()
 
             for e in range(epochs+1):
+                    
+                utilities = self._training_loop(epoch=e)
+
                 # If a stopping criterion is set, check wheather it is fullfilled
-                if self.logging_config.stopping_criterion is not None and e%100 == 0:
+                if self.logging_config.stopping_criterion_rel_util_loss_dif is not None and e%100 == 0:
+                    #TODO, Paul: Add overhead registration
                     util_loss_batch_size_tmp = self.logging_config.util_loss_batch_size
                     util_loss_grid_size_tmp = self.logging_config.util_loss_grid_size
                     self.logging_config.util_loss_batch_size = min(self.logging_config.util_loss_batch_size, 2**10)
-                    self.logging_config.util_loss_grid_size = 2**7
+                    self.logging_config.util_loss_grid_size = 2**9
                     loss_ex_ante, _ = self._calculate_metrics_util_loss(False)
                     self.logging_config.util_loss_batch_size = util_loss_batch_size_tmp
                     self.logging_config.util_loss_grid_size = util_loss_grid_size_tmp
-                    stopping_list.append(loss_ex_ante)
+                    stopping_list.append(1 - utilities/(utilities + torch.tensor(loss_ex_ante)))
                     if len(stopping_list) >= 3:
-                        stop = True
-                        for k in range(len(stopping_list)):
-                            for k2 in range(k, len(stopping_list)):
-                                if(abs(stopping_list[k]-stopping_list[k2])/stopping_list[k] > self.logging_config.stopping_criterion):
-                                    stop = False
-                                    break
-                        if stop:
+                        if self._check_convergence(stopping_list):
                             break
-                        stopping_list.pop()
-                self._training_loop(epoch=e)
 
             self._exit_run()
 
@@ -355,7 +353,16 @@ class Experiment(ABC):
             logging_utils.print_aggregate_tensorboard_logs(self.experiment_log_dir)
             logging_utils.print_full_tensorboard_logs(self.experiment_log_dir)
 
-
+    def _check_convergence(self, stopping_list):
+        for k in range(len(stopping_list)):
+            for k2 in range(k+1, len(stopping_list)):
+                for bidder in range(len(stopping_list[0])):
+                    print(stopping_list)
+                    print(abs(stopping_list[k][bidder]-stopping_list[k2][bidder]))
+                    if(abs(stopping_list[k][bidder]-stopping_list[k2][bidder]) > self.logging_config.stopping_criterion_rel):
+                        stopping_list.pop(0)
+                        return False
+        return True
 
     ########################################################################################################
     ####################################### Moved logging to here ##########################################
