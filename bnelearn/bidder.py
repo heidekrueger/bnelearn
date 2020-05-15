@@ -140,11 +140,14 @@ class Bidder(Player):
     def draw_values_grid(self, batch_size):
         """ Returns a batch of values equally distributed within self.grid_lb and self.grid_ub
             ,and NOT according to the actual distribution, for n_items.
+            The size can vary since we split by the number of items. But it is guaranteed to be:
+            >= batch_size
+
             This is used amongst others for valuations and bids.
             Args:
                 batch_size: int, upper bound of returned batch size
             returns:
-                grid_values: (batch_size)
+                grid_values: (>=batch_size)
         """
 
         # change batch_size s.t. it'll approx. end up at intended batch_size in the end
@@ -153,7 +156,7 @@ class Bidder(Player):
             for d in range(1, self.n_items+1):
                 adapted_batch_size *= d
 
-        batch_size_per_dim = int(adapted_batch_size ** (1/self.n_items) + .5)
+        batch_size_per_dim = round((adapted_batch_size ** (1/self.n_items)) + .49)
         lin = torch.linspace(self.grid_lb, self.grid_ub,
                              batch_size_per_dim, device=self.device)
         grid_values = torch.stack([
@@ -167,8 +170,9 @@ class Bidder(Player):
                                     grid_values[:,0:1].repeat(1, self.n_items-1))
         if self.descending_valuations:
             grid_values = grid_values.sort(dim=1, descending=True)[0].unique(dim=0)
-
-        return grid_values[:batch_size,:]
+        
+        assert grid_values.shape[0] >= batch_size, "grid_size is lower than expected!"
+        return grid_values
 
     def draw_valuations_(self):
         """ Sample a new batch of valuations from the Bidder's prior. Negative

@@ -321,22 +321,24 @@ class Experiment(ABC):
             for e in range(epochs+1):
                     
                 utilities = self._training_loop(epoch=e)
-
-                # If a stopping criterion is set, check wheather it is fullfilled
+                # If the stopping criterion is set, ...
                 if self.logging_config.stopping_criterion_rel_util_loss_dif is not None and e%100 == 0:
-                    #TODO, Paul: Add overhead registration
+                    start_time = timer()
                     util_loss_batch_size_tmp = self.logging_config.util_loss_batch_size
                     util_loss_grid_size_tmp = self.logging_config.util_loss_grid_size
                     self.logging_config.util_loss_batch_size = min(self.logging_config.util_loss_batch_size, 2**10)
-                    self.logging_config.util_loss_grid_size = 2**9
+                    self.logging_config.util_loss_grid_size = 2**7
+                    # ...get the util_loss
                     loss_ex_ante, _ = self._calculate_metrics_util_loss(False)
                     self.logging_config.util_loss_batch_size = util_loss_batch_size_tmp
                     self.logging_config.util_loss_grid_size = util_loss_grid_size_tmp
+                    # ...and compute the rel_util_loss
                     stopping_list.append(1 - utilities/(utilities + torch.tensor(loss_ex_ante)))
                     if len(stopping_list) >= 3:
-                        if self._check_convergence(stopping_list):
+                        # ...finally check for convergence
+                        if self._check_convergence(stopping_list, self.logging_config.stopping_criterion_rel_util_loss_dif):
                             break
-
+                    self.overhead = self.overhead + timer() - start_time
             self._exit_run()
 
         # Once all runs are done, convert tb event files to csv
@@ -353,13 +355,18 @@ class Experiment(ABC):
             logging_utils.print_aggregate_tensorboard_logs(self.experiment_log_dir)
             logging_utils.print_full_tensorboard_logs(self.experiment_log_dir)
 
-    def _check_convergence(self, stopping_list):
+    def _check_convergence(self, stopping_list: list, stopping_criterion: float):
+        """
+        Checks whether the stored values in stopping_list all fullfil the stopping criterion
+        args:
+            stopping_list: list[3]
+        """
         for k in range(len(stopping_list)):
             for k2 in range(k+1, len(stopping_list)):
                 for bidder in range(len(stopping_list[0])):
                     print(stopping_list)
                     print(abs(stopping_list[k][bidder]-stopping_list[k2][bidder]))
-                    if(abs(stopping_list[k][bidder]-stopping_list[k2][bidder]) > self.logging_config.stopping_criterion_rel):
+                    if(abs(stopping_list[k][bidder]-stopping_list[k2][bidder]) > stopping_criterion):
                         stopping_list.pop(0)
                         return False
         return True
@@ -626,26 +633,12 @@ class Experiment(ABC):
         util_loss_grid_size = self.logging_config.util_loss_grid_size
 
         assert util_loss_batch_size <= env.batch_size, "Util_loss for larger than actual batch size not implemented."
-        n_bundles = env.agents[0].valuations.shape[1]
         bid_profile = torch.zeros(util_loss_batch_size, env.n_players, env.agents[0].n_items,
                                   dtype=env.agents[0].valuations.dtype, device=env.mechanism.device)
-        util_loss_grid = torch.zeros(util_loss_grid_size, env.n_players, n_bundles, dtype=env.agents[0].valuations.dtype,
-                                  device=env.mechanism.device)
 
         for agent in env.agents:
-            i = agent.player_position
-
-            # TODO Nils: ugly work-around for split-award: needs seperate plot and util_loss bounds
-            if hasattr(agent, 'grid_lb_util_loss'):
-                v_lb = agent.grid_lb_util_loss
-                v_ub = agent.grid_ub_util_loss
-            else:
-                v_lb = agent.grid_lb
-                v_ub = agent.grid_ub
-
             # Only supports util_loss_batch_size <= batch_size
-            bid_profile[:, i, :] = agent.get_action()[:util_loss_batch_size, ...]
-            util_loss_grid[:, i, :] = agent.draw_values_grid(util_loss_grid_size)
+            bid_profile[:, agent.player_position, :] = agent.get_action()[:util_loss_batch_size, ...]
 
         torch.cuda.empty_cache()
         util_loss = [
@@ -653,7 +646,7 @@ class Experiment(ABC):
                 env.mechanism, bid_profile,
                 learner.strat_to_player_kwargs['player_position'],
                 env.agents[learner.strat_to_player_kwargs['player_position']].valuations[:util_loss_batch_size, ...],
-                util_loss_grid[:, learner.strat_to_player_kwargs['player_position'], :]
+                env.agents[learner.strat_to_player_kwargs['player_position']].draw_values_grid(util_loss_grid_size)
             )
             for learner in self.learners
         ]
