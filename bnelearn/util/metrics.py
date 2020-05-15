@@ -199,7 +199,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     allocation, payments = mechanism.play(bid_profile)
 
     # we only need the specific player's allocation and can get rid of the rest.
-    a_i = allocation[:, player_position, :].view(grid_size * batch_size, n_items).type(torch.bool)
+    a_i = allocation[:, player_position, :].view(grid_size * batch_size, n_items)
     p_i = payments[:, player_position].view(grid_size * batch_size) #grid * batch
 
     del allocation, payments, bid_profile
@@ -252,16 +252,18 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     del v_i, a_i, p_i
     torch.cuda.empty_cache()
 
+    # TODO Nils: following dozens line are doing te same stuff as above just not on grid but with actual bidding
+    #            -> combine in function
     ### Evaluate actual bids
     bid_profile = _create_grid_bid_profiles(player_position, agent_bid_actual, bid_profile_origin)
 
     ## Calculate allocation and payments for actual bids given opponents bids
     allocation, payments = mechanism.play(bid_profile)
-    a_i = allocation[:, player_position, :]
-    p_i = payments[:, player_position]
+    a_i = allocation[:, player_position, :].view(batch_size * batch_size, n_items)
+    p_i = payments[:, player_position].view(batch_size * batch_size)
 
     ## Calculate realized valuations given allocation
-    v_i = agent_valuation.repeat(1, grid_size * batch_size).view(batch_size, grid_size * batch_size, n_items)
+    v_i = agent_valuation.repeat(1, batch_size).view(1, batch_size * batch_size, n_items)
 
     ## Calculate utilities
     u_i_actual = agent.get_counterfactual_utility(a_i, p_i, v_i)

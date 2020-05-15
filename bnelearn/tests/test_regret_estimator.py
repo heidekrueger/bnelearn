@@ -181,17 +181,15 @@ def test_ex_interim_regret_estimator_fpsb_bne():
 
     grid = torch.linspace(0,1, steps = grid_size).unsqueeze(-1)
 
-    bid_profile = torch.empty(batch_size, n_players, n_items, device = agents[0].valuations.device)
+    bid_profile = torch.empty(batch_size, n_players, n_items, device=agents[0].valuations.device)
     for i,a in enumerate(agents):
         bid_profile[:,i,:] = a.get_action()
     # assert first player has (near) zero regret
     regret,_ = metrics.ex_interim_regret(mechanism, bid_profile, agents[0],
-                                       agent_valuation = agents[0].valuations,
-                                       grid = grid
-                                       )
+                                         agent_valuation=agents[0].valuations,
+                                         grid=grid)
     mean_regret = regret.mean()
     max_regret = regret.max()
-
 
     assert mean_regret < 0.001, "Regret in BNE should be (close to) zero!" # common: ~2e-4
     assert max_regret < 0.01, "Regret in BNE should be (close to) zero!" # common: 1.5e-3

@@ -616,9 +616,9 @@ class Experiment(ABC):
             regrets = torch.stack([regret[r][0] for r in range(len(regret))], dim=1)[:, :, None]
             valuations = torch.stack([regret[r][1] for r in range(len(regret))], dim=1)
             plot_output = (valuations, regrets)
-            self._plot(plot_data=plot_output, writer=self.writer, xlim=[0,2],
-                       ylim=[0, self.y_lim_hi],
-                       figure_name='regret_function', epoch=epoch, plot_points=self.plot_points)
+            self._plot(plot_data=plot_output, writer=self.writer, ylim=[0, self.y_lim_hi],
+                       y_label='regret', figure_name='regret_function', epoch=epoch,
+                       plot_points=self.plot_points)
         return ex_ante_regret, ex_interim_max_regret
 
     def _log_experiment_params(self):
