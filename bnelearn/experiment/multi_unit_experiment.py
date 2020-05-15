@@ -242,10 +242,10 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
                 opt_bid_function[0](valuation[:,0].cpu().numpy()),
                 opt_bid_function[1](valuation[:,0].cpu().numpy())
             ],
-            device = valuation.device
+            device = valuation.device,
+            dtype = valuation.dtype
         ).t_()
         bid[bid < 0] = 0
-        bid[torch.bid(opt_bid)] = 0
         return bid
 
     return _optimal_bid
@@ -283,8 +283,8 @@ class MultiUnitExperiment(Experiment, ABC):
             self._optimal_bid = _multiunit_bne(experiment_config, experiment_config.payment_rule)
         else:
             if experiment_config.n_units == 2 and experiment_config.n_players == 2:
-                self._optimal_bid = _optimal_bid_splitaward2x2_1(experiment_config)
-                self._optimal_bid_2 = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
+                # self._optimal_bid = _optimal_bid_splitaward2x2_1(experiment_config)
+                self._optimal_bid = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
         known_bne = self._optimal_bid is not None
 
         self.constant_marginal_values = experiment_config.constant_marginal_values
@@ -423,7 +423,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
             strategy=strategy,
             n_units=self.n_units,
             item_interest_limit=self.item_interest_limit,
-            descending_valuations=True,
+            descending_valuations=False,
             constant_marginal_values=self.constant_marginal_values,
             player_position=player_position,
             efficiency_parameter=self.efficiency_parameter,

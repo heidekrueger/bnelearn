@@ -4,6 +4,7 @@ import torch
 from bnelearn.strategy import Strategy
 from bnelearn.mechanism import Mechanism
 from bnelearn.bidder import Bidder
+from .logging import printProgressBar
 
 
 def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> float:
@@ -179,6 +180,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     """
     player_position = agent.player_position
     agent_bid_actual = bid_profile[:,player_position,:]
+
     ## Use smaller dtypes to save memory
     if half_precision:
         bid_profile = bid_profile.half()
@@ -197,9 +199,8 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     allocation, payments = mechanism.play(bid_profile)
 
     # we only need the specific player's allocation and can get rid of the rest.
-
-    a_i = allocation[:,player_position,:].view(grid_size * batch_size, n_items).type(torch.bool)
-    p_i = payments[:,player_position].view(grid_size * batch_size) #grid * batch
+    a_i = allocation[:, player_position, :].view(grid_size * batch_size, n_items).type(torch.bool)
+    p_i = payments[:, player_position].view(grid_size * batch_size) #grid * batch
 
     del allocation, payments, bid_profile
     if torch.cuda.is_available():
@@ -224,12 +225,14 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     except RuntimeError as err:
         print("Warning: Failed computing regret as batch. Trying sequential valuations computation. Error:\n {0}".format(err))
         try:
+            printProgressBar(0, batch_size, suffix='complete')
+
             # valuations sequential
             u_i_alternative = torch.zeros(batch_size, device=p_i.device)
             for idx in range(batch_size):
-                v_i_batch = agent_valuation[idx].repeat(1, grid_size * batch_size).view(batch_size * grid_size, n_items)
+                v_i = agent_valuation[idx].repeat(1, grid_size * batch_size).view(batch_size * grid_size, n_items)
                 ## Calculate utilities
-                u_i_alternative_v = agent.get_counterfactual_utility(a_i, p_i, v_i_batch)
+                u_i_alternative_v = agent.get_counterfactual_utility(a_i, p_i, v_i)
                 u_i_alternative_v = u_i_alternative_v.view(grid_size, batch_size) #(batch x grid x batch)
                 # avg per bid
                 u_i_alternative_v = torch.mean(u_i_alternative_v, 1)
@@ -238,6 +241,8 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
 
                 # clean up
                 del u_i_alternative_v
+
+                printProgressBar(idx + 1, batch_size, suffix='complete')
 
         except NotImplementedError as err: #RuntimeError
             print("Error: Failed computing regret as batch with sequential valuations. Decrease dimensions to fix. Error:\n {0}".format(err))
@@ -248,22 +253,20 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     torch.cuda.empty_cache()
 
     ### Evaluate actual bids
-    ## Merge actual bids into opponnents bids (bid_no_i)
     bid_profile = _create_grid_bid_profiles(player_position, agent_bid_actual, bid_profile_origin)
 
     ## Calculate allocation and payments for actual bids given opponents bids
     allocation, payments = mechanism.play(bid_profile)
-    a_i = allocation[:,player_position,:].view(batch_size, batch_size, n_items)
-    p_i = payments[:,player_position].view(batch_size, batch_size, 1).sum(2)
+    a_i = allocation[:, player_position, :]
+    p_i = payments[:, player_position]
 
     ## Calculate realized valuations given allocation
-    v_i = agent_valuation.view(batch_size,1,n_items).repeat(1, batch_size, 1)
-    v_i = torch.einsum('ijk,ijk->ijk', v_i, a_i).sum(2)
+    v_i = agent_valuation.repeat(1, grid_size * batch_size).view(batch_size, grid_size * batch_size, n_items)
 
     ## Calculate utilities
-    u_i_actual = v_i - p_i
-    # avg per bid and valuation
-    u_i_actual = torch.mean(u_i_actual,1)
+    u_i_actual = agent.get_counterfactual_utility(a_i, p_i, v_i)
+    u_i_actual = torch.mean(u_i_actual, 1)
+
     ## average and max regret over all valuations
     regret = (u_i_alternative - u_i_actual).relu().clone().detach().requires_grad_(False)
     return regret, agent_valuation

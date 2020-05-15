@@ -23,7 +23,7 @@ from bnelearn.experiment.configurations import (ExperimentConfiguration,
                                                 LearningConfiguration,
                                                 LoggingConfiguration)
 from bnelearn.experiment.gpu_controller import GPUController
-from bnelearn.learner import ESPGLearner, Learner
+from bnelearn.learner import ESPGLearner, Learner, DummyNonLearner
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import NeuralNetStrategy
 
@@ -154,7 +154,7 @@ class Experiment(ABC):
     def _setup_learners(self):
 
         self.learners = [
-            ESPGLearner(model=model,
+            DummyNonLearner(model=model,
                         environment=self.env,
                         hyperparams=self.learning_config.learner_hyperparams,
                         optimizer_type=self.learning_config.optimizer,
@@ -180,7 +180,7 @@ class Experiment(ABC):
             ).to(self.gpu_config.device)
 
         self.bidders = [
-            self._strat_to_bidder(self.models[m_id], batch_size=self.learning_config.batch_size, player_position=i)
+            self._strat_to_bidder(self.bne_strategies[i], batch_size=self.learning_config.batch_size, player_position=i)
             for i, m_id in enumerate(self._bidder2model)]
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
@@ -496,7 +496,7 @@ class Experiment(ABC):
             create_plot_output = epoch % self.logging_config.plot_frequency == 0
             log_params['regret_ex_ante'], log_params['regret_ex_interim'] = \
                 self._calculate_metrics_regret(create_plot_output, epoch)
-
+            print(log_params['regret_ex_ante'], log_params['regret_ex_interim'])
         # plotting
         if epoch % self.logging_config.plot_frequency == 0:
             print("\tcurrent utilities: " + str(log_params['utilities'].tolist()))
@@ -591,45 +591,33 @@ class Experiment(ABC):
         regret_grid_size = self.logging_config.regret_grid_size
 
         assert regret_batch_size <= env.batch_size, "Regret for larger than actual batch size not implemented."
-        n_bundles = env.agents[0].valuations.shape[1]
         bid_profile = torch.zeros(regret_batch_size, env.n_players, env.agents[0].n_items,
                                   dtype=env.agents[0].valuations.dtype, device=env.mechanism.device)
-        regret_grid = torch.zeros(regret_grid_size, env.n_players, n_bundles, dtype=env.agents[0].valuations.dtype,
-                                  device=env.mechanism.device)
 
+        # Only supports regret_batch_size <= batch_size
         for agent in env.agents:
-            i = agent.player_position
-
-            # TODO Nils: ugly work-around for split-award: needs seperate plot and regret bounds
-            if hasattr(agent, 'grid_lb_regret'):
-                v_lb = agent.grid_lb_regret
-                v_ub = agent.grid_ub_regret
-            else:
-                v_lb = agent.grid_lb
-                v_ub = agent.grid_ub
-
-            # Only supports regret_batch_size <= batch_size
-            bid_profile[:, i, :] = agent.get_action()[:regret_batch_size, ...]
-            regret_grid[:, i, :] = agent.draw_values_grid(regret_grid_size)
+            bid_profile[:, agent.player_position, :] = agent.get_action()[:regret_batch_size, ...]
 
         torch.cuda.empty_cache()
         regret = [
             metrics.ex_interim_regret(
                 env.mechanism, bid_profile, self.bidders[player_positions[0]],
                 self.bidders[player_positions[0]].valuations[:regret_batch_size, ...],
-                regret_grid[:, player_positions[0], :]
+                self.bidders[player_positions[0]].draw_values_grid(regret_grid_size, False)
             )
             for player_positions in self._model2bidder
         ]
         ex_ante_regret = [model_tuple[0].mean() for model_tuple in regret]
         ex_interim_max_regret = [model_tuple[0].max() for model_tuple in regret]
         if create_plot_output:
+            if not hasattr(self, 'y_lim_hi'):
+                self.y_lim_hi = max(ex_interim_max_regret).cpu()
             # Transform to output with dim(batch_size, n_models, n_bundle), for regrets n_bundle=1
             regrets = torch.stack([regret[r][0] for r in range(len(regret))], dim=1)[:, :, None]
             valuations = torch.stack([regret[r][1] for r in range(len(regret))], dim=1)
             plot_output = (valuations, regrets)
-            self._plot(plot_data=plot_output, writer=self.writer,
-                       ylim=[0, max(ex_interim_max_regret).cpu()],
+            self._plot(plot_data=plot_output, writer=self.writer, xlim=[0,2],
+                       ylim=[0, self.y_lim_hi],
                        figure_name='regret_function', epoch=epoch, plot_points=self.plot_points)
         return ex_ante_regret, ex_interim_max_regret
 

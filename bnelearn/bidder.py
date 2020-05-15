@@ -137,7 +137,7 @@ class Bidder(Player):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
             self._valuations_changed =True
 
-    def draw_values_grid(self, batch_size):
+    def draw_values_grid(self, batch_size, valuation_grid=True):
         """ Returns a batch of values equally distributed within self.grid_lb and self.grid_ub
             ,and NOT according to the actual distribution, for n_items.
             This is used amongst others for valuations and bids.
@@ -147,15 +147,21 @@ class Bidder(Player):
                 grid_values: (batch_size)
         """
 
+        if valuation_grid:
+            lb = self.grid_lb
+            ub = self.grid_ub
+        else:
+            lb = self.grid_lb_regret
+            ub = self.grid_ub_regret
+
         # change batch_size s.t. it'll approx. end up at intended batch_size in the end
         adapted_batch_size = batch_size
         if self.descending_valuations:
             for d in range(1, self.n_items+1):
                 adapted_batch_size *= d
 
-        batch_size_per_dim = int(adapted_batch_size ** (1/self.n_items) + .5)
-        lin = torch.linspace(self.grid_lb, self.grid_ub,
-                             batch_size_per_dim, device=self.device)
+        batch_size_per_dim = round(adapted_batch_size ** (1/self.n_items) + .5)
+        lin = torch.linspace(lb, ub, batch_size_per_dim, device=self.device)
         grid_values = torch.stack([
             x.flatten() for x in torch.meshgrid([lin] * self.n_items)
         ]).t()
@@ -168,7 +174,7 @@ class Bidder(Player):
         if self.descending_valuations:
             grid_values = grid_values.sort(dim=1, descending=True)[0].unique(dim=0)
 
-        return grid_values[:batch_size,:]
+        return grid_values
 
     def draw_valuations_(self):
         """ Sample a new batch of valuations from the Bidder's prior. Negative
@@ -322,13 +328,24 @@ class ReverseBidder(Bidder):
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
 
-    def draw_values_grid(self, batch_size):
+    def draw_values_grid(self, batch_size, valuation_grid=True):
         """ Extends `Bidder.draw_values_grid` with efficiency parameter
+
+        Args
+        ----
+            valuation_grid: bool, if True returns legitimate valuations, otherwise it returns
+                a larger grid, which can be used as ``all reasonable bids`` as needed for
+                estiamtion of regret.
         """
+
         grid_values = torch.zeros(batch_size, self.n_items, device=self.device)
-        grid_values[:, 0] = torch.linspace(self.grid_lb, self.grid_ub,
-                                           batch_size, device=self.device)
-        grid_values[:, 1] = self.efficiency_parameter * grid_values[:, 0]
+
+        if valuation_grid:
+            grid_values[:, 0] = torch.linspace(self.grid_lb, self.grid_ub, batch_size,
+                                               device=self.device)
+            grid_values[:, 1] = self.efficiency_parameter * grid_values[:, 0]
+        else:
+            grid_values = super().draw_values_grid(batch_size, False)
 
         return grid_values
 
@@ -346,4 +363,4 @@ class ReverseBidder(Bidder):
     def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
         """For reverse bidders, returns are inverted.
         """
-        return - super().get_counterfactual_utility(allocations,payments,counterfactual_valuations)
+        return - super().get_counterfactual_utility(allocations, payments, counterfactual_valuations)
