@@ -123,7 +123,7 @@ def llg(n_runs: int, n_epochs: int,
 def llllgg(n_runs: int, n_epochs: int,
            payment_rule: str, model_sharing=True,
            u_lo=[0, 0, 0, 0, 0, 0], u_hi=[1, 1, 1, 1, 2, 2],
-           risk=1.0, eval_batch_size=2 ** 12,
+           risk=1.0, eval_batch_size=2 ** 12, util_loss_frequency=100,
            log_metrics=['util_loss'], util_loss_batch_size=2 ** 12, util_loss_grid_size=2 ** 10,
            core_solver="NoCore", parallel = 1,
            specific_gpu=1,
@@ -135,7 +135,8 @@ def llllgg(n_runs: int, n_epochs: int,
                                                  util_loss_batch_size=util_loss_batch_size,
                                                  util_loss_grid_size=util_loss_grid_size,
                                                  eval_batch_size=eval_batch_size,
-                                                 enable_logging=logging
+                                                 enable_logging=logging,
+                                                 util_loss_frequency=util_loss_frequency
                                                  )
 
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
