@@ -314,29 +314,29 @@ class Experiment(ABC):
             torch.cuda.manual_seed_all(seed)
             np.random.seed(seed)
             if self.logging_config.stopping_criterion_rel_util_loss_dif:
-                stopping_list = []
+                stopping_list = np.empty((self.n_models,0))
 
             self._init_new_run()
 
             for e in range(epochs+1):
-                    
                 utilities = self._training_loop(epoch=e)
                 # If the stopping criterion is set, ...
                 if self.logging_config.stopping_criterion_rel_util_loss_dif is not None and e%100 == 0:
                     start_time = timer()
                     util_loss_batch_size_tmp = self.logging_config.util_loss_batch_size
                     util_loss_grid_size_tmp = self.logging_config.util_loss_grid_size
-                    self.logging_config.util_loss_batch_size = min(self.logging_config.util_loss_batch_size, 2**12)
-                    self.logging_config.util_loss_grid_size = 2**7
+                    self.logging_config.util_loss_batch_size = min(self.logging_config.util_loss_batch_size, 2**10)
+                    self.logging_config.util_loss_grid_size = 2**9
                     # ...get the util_loss
                     loss_ex_ante, _ = self._calculate_metrics_util_loss(False)
                     self.logging_config.util_loss_batch_size = util_loss_batch_size_tmp
                     self.logging_config.util_loss_grid_size = util_loss_grid_size_tmp
                     # ...and compute the rel_util_loss
-                    stopping_list.append(1 - utilities/(utilities + torch.tensor(loss_ex_ante)))
-                    if len(stopping_list) >= 3:
+                    stopping_list = np.append(stopping_list, (1 - utilities/(utilities + torch.tensor(loss_ex_ante))).view(self.n_models,1), axis=1)
+                    if len(stopping_list[0]) >= 3:
                         # ...finally check for convergence
-                        if self._check_convergence(stopping_list, self.logging_config.stopping_criterion_rel_util_loss_dif):
+                        stop, stopping_list = self._check_convergence(stopping_list, self.logging_config.stopping_criterion_rel_util_loss_dif, e)
+                        if stop:
                             break
                     self.overhead = self.overhead + timer() - start_time
             self._exit_run()
@@ -355,21 +355,20 @@ class Experiment(ABC):
             logging_utils.print_aggregate_tensorboard_logs(self.experiment_log_dir)
             logging_utils.print_full_tensorboard_logs(self.experiment_log_dir)
 
-    def _check_convergence(self, stopping_list: list, stopping_criterion: float):
+    def _check_convergence(self, stopping_list: np.array, stopping_criterion: float, epoch: int):
         """
-        Checks whether the stored values in stopping_list all fullfil the stopping criterion
+        Checks whether stored values fulfill the criterion
         args:
-            stopping_list: list[3]
+            stopping_list: np.array
         """
         print(stopping_list)
-        for k in range(len(stopping_list)):
-            for k2 in range(k+1, len(stopping_list)):
-                for bidder in range(len(stopping_list[0])):
-                    print(abs(stopping_list[k][bidder]-stopping_list[k2][bidder]))
-                    if(abs(stopping_list[k][bidder]-stopping_list[k2][bidder]) > stopping_criterion):
-                        stopping_list.pop(0)
-                        return False
-        return True
+        dif = stopping_list.max(1)-stopping_list.min(1)
+        log_params = {'stopping_criterion': dif}
+        self.writer.add_metrics_dict(log_params, self._model_names, epoch, group_prefix = 'eval')
+        if dif.max() <= stopping_criterion:
+            return True, stopping_list
+        stopping_list = np.delete(stopping_list, 0,1)
+        return False, stopping_list
 
     ########################################################################################################
     ####################################### Moved logging to here ##########################################
