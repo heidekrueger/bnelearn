@@ -23,7 +23,7 @@ from bnelearn.experiment.configurations import (ExperimentConfiguration,
                                                 LearningConfiguration,
                                                 LoggingConfiguration)
 from bnelearn.experiment.gpu_controller import GPUController
-from bnelearn.learner import ESPGLearner, Learner, DummyNonLearner
+from bnelearn.learner import ESPGLearner, Learner
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import NeuralNetStrategy
 
@@ -154,7 +154,7 @@ class Experiment(ABC):
     def _setup_learners(self):
 
         self.learners = [
-            DummyNonLearner(model=model,
+            ESPGLearner(model=model,
                         environment=self.env,
                         hyperparams=self.learning_config.learner_hyperparams,
                         optimizer_type=self.learning_config.optimizer,
@@ -180,7 +180,7 @@ class Experiment(ABC):
             ).to(self.gpu_config.device)
 
         self.bidders = [
-            self._strat_to_bidder(self.bne_strategies[i], batch_size=self.learning_config.batch_size, player_position=i)
+            self._strat_to_bidder(self.models[m_id], batch_size=self.learning_config.batch_size, player_position=i)
             for i, m_id in enumerate(self._bidder2model)]
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
@@ -496,7 +496,7 @@ class Experiment(ABC):
             create_plot_output = epoch % self.logging_config.plot_frequency == 0
             log_params['regret_ex_ante'], log_params['regret_ex_interim'] = \
                 self._calculate_metrics_regret(create_plot_output, epoch)
-            print(log_params['regret_ex_ante'], log_params['regret_ex_interim'])
+
         # plotting
         if epoch % self.logging_config.plot_frequency == 0:
             print("\tcurrent utilities: " + str(log_params['utilities'].tolist()))

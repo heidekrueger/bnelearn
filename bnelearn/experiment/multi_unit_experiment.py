@@ -283,8 +283,8 @@ class MultiUnitExperiment(Experiment, ABC):
             self._optimal_bid = _multiunit_bne(experiment_config, experiment_config.payment_rule)
         else:
             if experiment_config.n_units == 2 and experiment_config.n_players == 2:
-                # self._optimal_bid = _optimal_bid_splitaward2x2_1(experiment_config)
-                self._optimal_bid = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
+                self._optimal_bid = _optimal_bid_splitaward2x2_1(experiment_config)
+                # self._optimal_bid = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
         known_bne = self._optimal_bid is not None
 
         self.constant_marginal_values = experiment_config.constant_marginal_values
