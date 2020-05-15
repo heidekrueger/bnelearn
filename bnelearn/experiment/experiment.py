@@ -326,7 +326,7 @@ class Experiment(ABC):
                     start_time = timer()
                     util_loss_batch_size_tmp = self.logging_config.util_loss_batch_size
                     util_loss_grid_size_tmp = self.logging_config.util_loss_grid_size
-                    self.logging_config.util_loss_batch_size = min(self.logging_config.util_loss_batch_size, 2**10)
+                    self.logging_config.util_loss_batch_size = min(self.logging_config.util_loss_batch_size, 2**12)
                     self.logging_config.util_loss_grid_size = 2**7
                     # ...get the util_loss
                     loss_ex_ante, _ = self._calculate_metrics_util_loss(False)
@@ -361,10 +361,10 @@ class Experiment(ABC):
         args:
             stopping_list: list[3]
         """
+        print(stopping_list)
         for k in range(len(stopping_list)):
             for k2 in range(k+1, len(stopping_list)):
                 for bidder in range(len(stopping_list[0])):
-                    print(stopping_list)
                     print(abs(stopping_list[k][bidder]-stopping_list[k2][bidder]))
                     if(abs(stopping_list[k][bidder]-stopping_list[k2][bidder]) > stopping_criterion):
                         stopping_list.pop(0)
