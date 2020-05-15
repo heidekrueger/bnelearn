@@ -244,8 +244,8 @@ class Bidder(Player):
         if valuations is None:
             valuations = self.valuations
 
+        # TODO Nils: regret work-around
         if len(allocations.shape) == len(valuations.shape) - 1:
-            print('double sample!')
             welfare = valuations.mul_(allocations).sum(dim=2)
         else:
             welfare = (valuations * allocations).sum(dim=1)
