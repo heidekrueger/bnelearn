@@ -16,9 +16,11 @@
 import pytest
 import torch
 from bnelearn.mechanism import LLLLGGAuction, FirstPriceSealedBidAuction
+from bnelearn.mechanism.auctions_multiunit import FPSBSplitAwardAuction
 from bnelearn.strategy import TruthfulStrategy, ClosureStrategy
 import bnelearn.util.metrics as metrics
-from bnelearn.bidder import Bidder
+from bnelearn.bidder import Bidder, ReverseBidder
+from bnelearn.experiment.multi_unit_experiment import _optimal_bid_splitaward2x2_1
 
 eps = 0.0001
 # bid candidates to be evaluated against
@@ -188,8 +190,49 @@ def test_ex_interim_regret_estimator_fpsb_bne():
     regret,_ = metrics.ex_interim_regret(mechanism, bid_profile, agents[0],
                                          agent_valuation=agents[0].valuations,
                                          grid=grid)
+
     mean_regret = regret.mean()
     max_regret = regret.max()
 
     assert mean_regret < 0.001, "Regret in BNE should be (close to) zero!" # common: ~2e-4
     assert max_regret < 0.01, "Regret in BNE should be (close to) zero!" # common: 1.5e-3
+
+def test_ex_interim_regret_estimator_splitaward_bne():
+    """Test the regret in BNE of fpsb split-award auction. - ex interim regret should be close to zero"""
+    n_players = 2
+    grid_size = 2**5
+    batch_size = 2**12
+    n_items = 2
+
+    class SpltAwardConfig:
+        u_lo = [1, 1]
+        u_hi = [1.4, 1.4]
+        efficiency_parameter = .3
+    config = SpltAwardConfig()
+
+    mechanism = FPSBSplitAwardAuction()
+    strat = ClosureStrategy(_optimal_bid_splitaward2x2_1(config))
+
+    agents = [
+        ReverseBidder.uniform(config.u_lo[0], config.u_hi[0], strat,
+                              n_units=n_items, efficiency_parameter=config.efficiency_parameter,
+                              player_position=i, batch_size=batch_size)
+        for i in range(n_players)
+    ]
+
+    grid = torch.linspace(0, 3, steps=grid_size).unsqueeze(-1)
+
+    bid_profile = torch.empty(batch_size, n_players, n_items, device=agents[0].valuations.device)
+    for i, a in enumerate(agents):
+        bid_profile[:, i, :] = a.get_action()
+
+    # assert first player has (near) zero regret
+    regret,_ = metrics.ex_interim_regret(mechanism, bid_profile, agents[0],
+                                         agent_valuation=agents[0].valuations,
+                                         grid=grid)
+
+    mean_regret = regret.mean()
+    max_regret = regret.max()
+
+    assert mean_regret < 0.0001, "Regret in BNE should be (close to) zero!"
+    assert max_regret < 0.0001, "Regret in BNE should be (close to) zero!"
