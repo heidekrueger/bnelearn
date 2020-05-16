@@ -147,10 +147,10 @@ class Bidder(Player):
                 grid_values: (batch_size)
         """
 
-        if valuation_grid:
+        if valuation_grid or not hasattr(self, 'grid_lb_regret'):
             lb = self.grid_lb
             ub = self.grid_ub
-        else:
+        else:            
             lb = self.grid_lb_regret
             ub = self.grid_ub_regret
 

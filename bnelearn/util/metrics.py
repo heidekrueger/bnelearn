@@ -266,7 +266,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     v_i = agent_valuation.repeat(1, batch_size).view(1, batch_size * batch_size, n_items)
 
     ## Calculate utilities
-    u_i_actual = agent.get_counterfactual_utility(a_i, p_i, v_i)
+    u_i_actual = agent.get_counterfactual_utility(a_i, p_i, v_i).view(batch_size, batch_size)
     u_i_actual = torch.mean(u_i_actual, 1)
 
     ## average and max regret over all valuations
