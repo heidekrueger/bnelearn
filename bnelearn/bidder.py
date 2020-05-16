@@ -7,9 +7,11 @@ This module implements players / bidders / agents in games.
 
 from abc import ABC, abstractmethod
 import warnings
+import math
 import torch
 from torch.distributions import Distribution
 from bnelearn.strategy import MatrixGameStrategy, FictitiousPlayStrategy, FictitiousNeuralPlayStrategy
+
 
 class Player(ABC):
     """
@@ -98,8 +100,15 @@ class Bidder(Player):
         if self._cache_actions:
             self.actions = torch.zeros(batch_size, n_items, device=self.device)
         self.draw_valuations_()
-        self.grid_lb = max(0,self.value_distribution.icdf(torch.tensor(0.001)))
-        self.grid_ub = self.value_distribution.icdf(torch.tensor(0.999))
+
+        # Compute lower and upper bounds for grid computation
+        self._grid_lb = self.value_distribution.support.lower_bound \
+            if hasattr(self.value_distribution.support, 'lower_bound') \
+            else self.value_distribution.icdf(torch.tensor(0.001))
+        self._grid_lb = max(0,self._grid_lb)
+        self._grid_ub = self.value_distribution.support.upper_bound \
+            if hasattr(self.value_distribution.support, 'upper_bound') \
+            else self.value_distribution.icdf(torch.tensor(0.999))
 
     ### Alternative Constructors #############
     @classmethod
@@ -137,27 +146,33 @@ class Bidder(Player):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
             self._valuations_changed =True
 
-    def draw_values_grid(self, batch_size):
-        """ Returns a batch of values equally distributed within self.grid_lb and self.grid_ub
-            ,and NOT according to the actual distribution, for n_items.
-            The size can vary since we split by the number of items. But it is guaranteed to be:
-            >= batch_size
+    def get_valuation_grid(self, n_points):
+        """ Returns a grid of approximately `n_points` valuations that are
+            equidistant (in each dimension) on the support of self.value_distribution.
+            If the support is unbounded, the 0.1th and 99.9th percentiles are used instead.
 
-            This is used amongst others for valuations and bids.
+            For most distributions, the actual total size of the grid returned will be min(n^self.n_items)
+            s.t. n^self.n_items >= n_points. E.g. for n_items=2 the grid will be square, for 3 it will be a cupe, etc.
+
+            (For descending_valuations, the logic is somewhat different)
+
             Args:
-                batch_size: int, upper bound of returned batch size
+                n_points: int, minimum number of total points in the grid
             returns:
-                grid_values: (>=batch_size)
+                grid_values (dim: [ceil(n_points^(1/n_items)]*n_items)
+
+            # TODO: - update this tu support different number of points per dimension
+                    - with descending_valuations, this currently draws many more points than needed
+                      then throws most of them away
         """
 
-        # change batch_size s.t. it'll approx. end up at intended batch_size in the end
-        adapted_batch_size = batch_size
+        # change batch_size s.t. it'll approx. end up at intended n_points in the end
+        adapted_size = n_points
         if self.descending_valuations:
-            for d in range(1, self.n_items+1):
-                adapted_batch_size *= d
+            adapted_size = n_points * math.factorial(self.n_items)
 
-        batch_size_per_dim = round((adapted_batch_size ** (1/self.n_items)) + .49)
-        lin = torch.linspace(self.grid_lb, self.grid_ub,
+        batch_size_per_dim = math.ceil(adapted_size ** (1/self.n_items))
+        lin = torch.linspace(self._grid_lb, self._grid_ub,
                              batch_size_per_dim, device=self.device)
         grid_values = torch.stack([
             x.flatten() for x in torch.meshgrid([lin] * self.n_items)
@@ -170,8 +185,8 @@ class Bidder(Player):
                                     grid_values[:,0:1].repeat(1, self.n_items-1))
         if self.descending_valuations:
             grid_values = grid_values.sort(dim=1, descending=True)[0].unique(dim=0)
-        
-        assert grid_values.shape[0] >= batch_size, "grid_size is lower than expected!"
+
+        assert grid_values.shape[0] >= n_points, "grid_size is lower than expected!"
         return grid_values
 
     def draw_valuations_(self):
@@ -302,8 +317,6 @@ class ReverseBidder(Bidder):
             item_interest_limit,
             constant_marginal_values
         )
-        self.grid_lb_regret = 0
-        self.grid_ub_regret = float(2*self.grid_ub)
 
     @classmethod
     def uniform(cls, lower, upper, strategy, **kwargs):
@@ -317,12 +330,12 @@ class ReverseBidder(Bidder):
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
 
-    def draw_values_grid(self, batch_size):
-        """ Extends `Bidder.draw_values_grid` with efficiency parameter
+    def get_valuation_grid(self, n_points):
+        """ Extends `Bidder.get_valuation_grid` with efficiency parameter
         """
-        grid_values = torch.zeros(batch_size, self.n_items, device=self.device)
-        grid_values[:, 0] = torch.linspace(self.grid_lb, self.grid_ub,
-                                           batch_size, device=self.device)
+        grid_values = torch.zeros(n_points, self.n_items, device=self.device)
+        grid_values[:, 0] = torch.linspace(self._grid_lb, self._grid_ub,
+                                           n_points, device=self.device)
         grid_values[:, 1] = self.efficiency_parameter * grid_values[:, 0]
 
         return grid_values

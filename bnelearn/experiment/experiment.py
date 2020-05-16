@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib.ticker import FormatStrFormatter, LinearLocator
-from mpl_toolkits.mplot3d import Axes3D # pylint: disable=(whatever-message-pylint has. I assume unused-import)
+from mpl_toolkits.mplot3d import Axes3D # pylint: disable=unused-import
 from torch.utils.tensorboard import SummaryWriter
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
@@ -221,7 +221,7 @@ class Experiment(ABC):
         if self.logging_config.log_metrics['opt'] and hasattr(self, 'bne_env'):
             # dim: [points, bidders, items]
             self.v_opt = torch.stack(
-                [b.draw_values_grid(self.plot_points)
+                [b.get_valuation_grid(self.plot_points)
                  for b in [self.bne_env.agents[i[0]] for i in self._model2bidder]],
                 dim=1
             )
@@ -231,7 +231,7 @@ class Experiment(ABC):
                 dim=1
             )
             if self.v_opt.shape[0] != self.plot_points:
-                print('´plot_points´ changed due to ´draw_values_grid´')
+                print('´plot_points´ changed due to ´get_valuation_gird´')
                 self.plot_points = self.v_opt.shape[0]
 
         is_ipython = 'inline' in plt.get_backend()
@@ -645,7 +645,7 @@ class Experiment(ABC):
                 env.mechanism, bid_profile,
                 learner.strat_to_player_kwargs['player_position'],
                 env.agents[learner.strat_to_player_kwargs['player_position']].valuations[:util_loss_batch_size, ...],
-                env.agents[learner.strat_to_player_kwargs['player_position']].draw_values_grid(util_loss_grid_size)
+                env.agents[learner.strat_to_player_kwargs['player_position']].get_valuation_grid(util_loss_grid_size)
             )
             for learner in self.learners
         ]
