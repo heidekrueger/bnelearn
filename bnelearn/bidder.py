@@ -167,12 +167,12 @@ class Bidder(Player):
                       then throws most of them away
         """
 
-        if valuation_grid or not hasattr(self, 'grid_lb_regret'):
+        if valuation_grid or not hasattr(self, '_grid_lb_util_loss'):
             lb = self._grid_lb
             ub = self._grid_ub
         else:
-            lb = self._grid_lb_regret
-            ub = self._grid_ub_regret
+            lb = self._grid_lb_util_loss
+            ub = self._grid_ub_util_loss
 
         # change batch_size s.t. it'll approx. end up at intended n_points in the end
         adapted_size = n_points
@@ -334,6 +334,8 @@ class ReverseBidder(Bidder):
             item_interest_limit,
             constant_marginal_values
         )
+        self._grid_lb_util_loss = 0
+        self._grid_ub_util_loss = float(2 * self._grid_ub)
 
     @classmethod
     def uniform(cls, lower, upper, strategy, **kwargs):

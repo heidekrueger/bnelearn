@@ -150,9 +150,10 @@ def test_ex_interim_util_loss_estimator_truthful(rule, mechanism, bid_profile, b
     grid_values = torch.stack([x.flatten() for x in torch.meshgrid([bids_i.squeeze()] * n_items)]).t()
 
     for i in range(n_bidders):
-        util_loss,_ = metrics.ex_interim_util_loss(mechanism, bid_profile.to(device), 
-                                           i, agents[i].valuations,
-                                           grid_values.to(device))
+        util_loss,_ = metrics.ex_interim_util_loss(                                           
+            mechanism, bid_profile.to(device), agents[i], agent_valuation=agents[i].valuations,
+            grid=grid_values.to(device))
+
         assert torch.allclose(util_loss.mean(), expected_util_loss[i,0], atol = 0.001), "Unexpected avg util_loss"
         assert torch.allclose(util_loss.max(),  expected_util_loss[i,1], atol = 0.001), "Unexpected max util_loss"
 
@@ -184,16 +185,14 @@ def test_ex_interim_util_loss_estimator_fpsb_bne():
     grid = torch.linspace(0,1, steps = grid_size).unsqueeze(-1)
 
     bid_profile = torch.empty(batch_size, n_players, n_items, device=agents[0].valuations.device)
-    for i,a in enumerate(agents):
+    for i, a in enumerate(agents):
         bid_profile[:,i,:] = a.get_action()
     # assert first player has (near) zero util_loss
-    util_loss,_ = metrics.ex_interim_util_loss(mechanism, bid_profile, player_position = 0,
-                                       agent_valuation = agents[0].valuations,
-                                       grid = grid
-                                       )
+    util_loss, _ = metrics.ex_interim_util_loss(
+        mechanism, bid_profile, agents[0], agent_valuation=agents[0].valuations, grid=grid)
+
     mean_util_loss = util_loss.mean()
     max_util_loss = util_loss.max()
-
 
     assert mean_util_loss < 0.001, "Util_loss in BNE should be (close to) zero!" # common: ~2e-4
     assert max_util_loss < 0.01, "Util_loss in BNE should be (close to) zero!" # common: 1.5e-3
