@@ -274,8 +274,8 @@ class MultiUnitExperiment(Experiment, ABC):
         else:
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
-
-        if hasattr(self, 'positive_output_point'):
+    
+        if not hasattr(self, 'positive_output_point'):
             self.positive_output_point = torch.tensor([[self.u_hi] * self.n_units], dtype=torch.float)
 
         # check for available BNE strategy
