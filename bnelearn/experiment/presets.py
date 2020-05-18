@@ -21,15 +21,15 @@ def single_item_uniform_symmetric(n_runs: int, n_epochs: int,
                                   n_players: List[int], payment_rule: str, model_sharing=True,
                                   u_lo=0, u_hi=1,
                                   risk=1.0,
-                                  log_metrics=['opt', 'l2', 'regret'], regret_batch_size=2 ** 4,
-                                  regret_grid_size=2 ** 4,
+                                  log_metrics=['opt', 'l2', 'util_loss'], util_loss_batch_size=2 ** 4,
+                                  util_loss_grid_size=2 ** 4,
                                   specific_gpu=0,
                                   logging=True):
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu,
                                                  n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
-                                                 regret_batch_size=regret_batch_size,
-                                                 regret_grid_size=regret_grid_size,
+                                                 util_loss_batch_size=util_loss_batch_size,
+                                                 util_loss_grid_size=util_loss_grid_size,
                                                  enable_logging=logging
                                                  )
 
@@ -43,8 +43,8 @@ def single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
                                    n_players: [int], payment_rule: str, model_sharing=True, valuation_mean=15,
                                    valuation_std=10,
                                    risk=1.0, eval_batch_size=2 ** 16,
-                                   log_metrics=['opt', 'l2', 'regret'], regret_batch_size=2 ** 8,
-                                   regret_grid_size=2 ** 8,
+                                   log_metrics=['opt', 'l2', 'util_loss'], util_loss_batch_size=2 ** 8,
+                                   util_loss_grid_size=2 ** 8,
                                    specific_gpu=1,
                                    logging=True,
                                    save_tb_events_to_csv_detailed: bool = False,
@@ -54,8 +54,8 @@ def single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu,
                                                  n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
-                                                 regret_batch_size=regret_batch_size,
-                                                 regret_grid_size=regret_grid_size,
+                                                 util_loss_batch_size=util_loss_batch_size,
+                                                 util_loss_grid_size=util_loss_grid_size,
                                                  eval_batch_size=eval_batch_size,
                                                  enable_logging=logging,
                                                  save_tb_events_to_csv_detailed=save_tb_events_to_csv_detailed,
@@ -68,7 +68,36 @@ def single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 
-def single_item_asymmetric_uniform(
+def single_item_asymmetric_uniform_overlapping(
+        n_runs: int,
+        n_epochs: int,
+        payment_rule='first_price',
+        model_sharing=False,
+        u_lo=[5, 5],
+        u_hi=[15, 25],
+        risk=1.0,
+        eval_batch_size=2 ** 18,
+        log_metrics=['opt', 'l2', 'util_loss'],
+        util_loss_batch_size=2 ** 8,
+        util_loss_grid_size=2 ** 8,
+        specific_gpu=1,
+        logging=True
+):
+    n_players = [2]
+    running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs,
+                                                 specific_gpu=specific_gpu, n_players=n_players)
+    logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
+                                                 util_loss_batch_size=util_loss_batch_size,
+                                                 util_loss_grid_size=util_loss_grid_size,
+                                                 eval_batch_size=eval_batch_size
+                                                 )
+
+    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
+                                                       u_lo=u_lo, u_hi=u_hi, risk=risk)
+    experiment_class = TwoPlayerAsymmetricUniformPriorSingleItemExperiment
+    return running_configuration, logging_configuration, experiment_configuration, experiment_class
+
+def single_item_asymmetric_uniform_disjunct(
         n_runs: int,
         n_epochs: int,
         payment_rule='first_price',
@@ -77,9 +106,9 @@ def single_item_asymmetric_uniform(
         u_hi=[5, 7],  # [15, 25],   [5, 7]
         risk=1.0,
         eval_batch_size=2 ** 18,
-        log_metrics=['opt', 'l2', 'regret'],
-        regret_batch_size=2 ** 8,
-        regret_grid_size=2 ** 8,
+        log_metrics=['opt', 'l2', 'util_loss'],
+        util_loss_batch_size=2 ** 8,
+        util_loss_grid_size=2 ** 8,
         specific_gpu=1,
         logging=True
 ):
@@ -87,8 +116,8 @@ def single_item_asymmetric_uniform(
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs,
                                                  specific_gpu=specific_gpu, n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
-                                                 regret_batch_size=regret_batch_size,
-                                                 regret_grid_size=regret_grid_size,
+                                                 util_loss_batch_size=util_loss_batch_size,
+                                                 util_loss_grid_size=util_loss_grid_size,
                                                  eval_batch_size=eval_batch_size
                                                  )
 
@@ -102,15 +131,15 @@ def llg(n_runs: int, n_epochs: int,
         payment_rule: str, model_sharing=True,
         u_lo=[0, 0, 0], u_hi=[1, 1, 2],
         risk=1.0,
-        log_metrics=['opt', 'l2', 'regret'], regret_batch_size=2 ** 8, regret_grid_size=2 ** 8,
+        log_metrics=['opt', 'l2', 'util_loss'], util_loss_batch_size=2 ** 8, util_loss_grid_size=2 ** 8,
         specific_gpu=1,
         logging=True):
     n_players = [3]
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu,
                                                  n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
-                                                 regret_batch_size=regret_batch_size,
-                                                 regret_grid_size=regret_grid_size,
+                                                 util_loss_batch_size=util_loss_batch_size,
+                                                 util_loss_grid_size=util_loss_grid_size,
                                                  enable_logging=logging
                                                  )
 
@@ -123,23 +152,25 @@ def llg(n_runs: int, n_epochs: int,
 def llllgg(n_runs: int, n_epochs: int,
            payment_rule: str, model_sharing=True,
            u_lo=[0, 0, 0, 0, 0, 0], u_hi=[1, 1, 1, 1, 2, 2],
-           risk=1.0, eval_batch_size=2 ** 12,
-           log_metrics=['regret'], regret_batch_size=2 ** 8, regret_grid_size=2 ** 8,
-           core_solver="NoCore",
+           risk=1.0, eval_batch_size=2 ** 12, util_loss_frequency=100,
+           log_metrics=['util_loss'], util_loss_batch_size=2 ** 12, util_loss_grid_size=2 ** 10,
+           core_solver="NoCore", parallel = 1,
            specific_gpu=1,
            logging=True):
     n_players = [6]
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu,
                                                  n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
-                                                 regret_batch_size=regret_batch_size,
-                                                 regret_grid_size=regret_grid_size,
+                                                 util_loss_batch_size=util_loss_batch_size,
+                                                 util_loss_grid_size=util_loss_grid_size,
                                                  eval_batch_size=eval_batch_size,
-                                                 enable_logging=logging
+                                                 enable_logging=logging,
+                                                 util_loss_frequency=util_loss_frequency
                                                  )
 
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
-                                                       u_lo=u_lo, u_hi=u_hi, risk=risk, core_solver=core_solver)
+                                                       u_lo=u_lo, u_hi=u_hi, risk=risk, core_solver=core_solver,
+                                                       parallel = parallel)
     experiment_class = LLLLGGExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
@@ -149,14 +180,14 @@ def multiunit(
         n_players: list = [2],
         payment_rule: str = 'vcg',
         n_units=2,
-        log_metrics=['opt', 'l2', 'regret'],
+        log_metrics=['opt', 'l2', 'util_loss'],
         model_sharing=True,
         u_lo=[0, 0], u_hi=[1, 1],
         risk=1.0,
         constant_marginal_values: bool = False,
         item_interest_limit: int = None,
-        regret_batch_size=2 ** 8,
-        regret_grid_size=2 ** 8,
+        util_loss_batch_size=2 ** 8,
+        util_loss_grid_size=2 ** 8,
         specific_gpu=0,
         logging=True
 ):
@@ -166,8 +197,8 @@ def multiunit(
     )
     logging_configuration = LoggingConfiguration(
         log_metrics=log_metrics,
-        regret_batch_size=regret_batch_size,
-        regret_grid_size=regret_grid_size,
+        util_loss_batch_size=util_loss_batch_size,
+        util_loss_grid_size=util_loss_grid_size,
         plot_points=1000,
         enable_logging=logging
     )
@@ -188,14 +219,14 @@ def splitaward(
         payment_rule: str = 'first_price',
         n_units=2,
         model_sharing=True,
-        log_metrics=['opt', 'l2', 'regret'],
+        log_metrics=['opt', 'l2', 'util_loss'],
         u_lo=[1, 1], u_hi=[1.4, 1.4],
         risk=1.0,
         constant_marginal_values: bool = False,
         item_interest_limit: int = None,
         efficiency_parameter: float = 0.3,
-        regret_batch_size=2 ** 8,
-        regret_grid_size=2 ** 8,
+        util_loss_batch_size=2 ** 8,
+        util_loss_grid_size=2 ** 8,
         specific_gpu=1,
         logging=True
 ):
@@ -205,8 +236,8 @@ def splitaward(
     )
     logging_configuration = LoggingConfiguration(
         log_metrics=log_metrics,
-        regret_batch_size=regret_batch_size,
-        regret_grid_size=regret_grid_size,
+        util_loss_batch_size=util_loss_batch_size,
+        util_loss_grid_size=util_loss_grid_size,
         enable_logging=logging
     )
 
