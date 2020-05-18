@@ -68,7 +68,36 @@ def single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 
-def single_item_asymmetric_uniform(
+def single_item_asymmetric_uniform_overlapping(
+        n_runs: int,
+        n_epochs: int,
+        payment_rule='first_price',
+        model_sharing=False,
+        u_lo=[5, 5],
+        u_hi=[15, 25],
+        risk=1.0,
+        eval_batch_size=2 ** 18,
+        log_metrics=['opt', 'l2', 'util_loss'],
+        util_loss_batch_size=2 ** 8,
+        util_loss_grid_size=2 ** 8,
+        specific_gpu=1,
+        logging=True
+):
+    n_players = [2]
+    running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs,
+                                                 specific_gpu=specific_gpu, n_players=n_players)
+    logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
+                                                 util_loss_batch_size=util_loss_batch_size,
+                                                 util_loss_grid_size=util_loss_grid_size,
+                                                 eval_batch_size=eval_batch_size
+                                                 )
+
+    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
+                                                       u_lo=u_lo, u_hi=u_hi, risk=risk)
+    experiment_class = TwoPlayerAsymmetricUniformPriorSingleItemExperiment
+    return running_configuration, logging_configuration, experiment_configuration, experiment_class
+
+def single_item_asymmetric_uniform_disjunct(
         n_runs: int,
         n_epochs: int,
         payment_rule='first_price',

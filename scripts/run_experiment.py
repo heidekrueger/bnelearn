@@ -1,29 +1,24 @@
-import sys
 import os
-import torch
-import fire
+import sys
 
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
+import fire
+import torch
+
+from bnelearn.experiment.configurations import (ExperimentConfiguration, LearningConfiguration,
+                                                LoggingConfiguration, RunningConfiguration)
 from bnelearn.experiment.gpu_controller import GPUController
-from bnelearn.experiment.configurations import RunningConfiguration, ExperimentConfiguration, \
-                                               LoggingConfiguration, LearningConfiguration
-from bnelearn.experiment.single_item_experiment import UniformSymmetricPriorSingleItemExperiment, \
-                                                       GaussianSymmetricPriorSingleItemExperiment, \
-                                                       TwoPlayerAsymmetricUniformPriorSingleItemExperiment
-from bnelearn.experiment.combinatorial_experiment import LLGExperiment, LLLLGGExperiment
-from bnelearn.experiment.multi_unit_experiment import MultiUnitExperiment, SplitAwardExperiment
-import warnings
+from bnelearn.experiment import (GaussianSymmetricPriorSingleItemExperiment,
+                                 TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
+                                 UniformSymmetricPriorSingleItemExperiment,
+                                 LLGExperiment, LLLLGGExperiment, MultiUnitExperiment, SplitAwardExperiment)
 from bnelearn.experiment.presets import (llg, llllgg, multiunit,
-                                         single_item_asymmetric_uniform,
+                                         single_item_asymmetric_uniform_disjunct,
+                                         single_item_asymmetric_uniform_overlapping,
                                          single_item_gaussian_symmetric,
-                                         single_item_uniform_symmetric,
-                                         splitaward)
-
-from dataclasses import dataclass, field, asdict
-
-
+                                         single_item_uniform_symmetric, splitaward)
 
 if __name__ == '__main__':
     '''
@@ -64,7 +59,9 @@ if __name__ == '__main__':
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #   splitaward(1, 100, [2], logging=enable_logging)
     running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-       single_item_asymmetric_uniform(n_runs=1, n_epochs=100, logging=enable_logging)
+       single_item_asymmetric_uniform_overlapping(n_runs=1, n_epochs=500, logging=enable_logging)
+    #running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+    #   single_item_asymmetric_uniform_disjunct(n_runs=1, n_epochs=500, logging=enable_logging)
 
     gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
     learning_configuration = LearningConfiguration(
