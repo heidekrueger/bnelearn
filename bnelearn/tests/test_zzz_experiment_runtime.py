@@ -15,7 +15,7 @@ import pytest
 from bnelearn.experiment.configurations import LearningConfiguration
 from bnelearn.experiment.gpu_controller import GPUController
 from bnelearn.experiment.presets import (llg, llllgg, multiunit,
-                                         single_item_asymmetric_uniform,
+                                         single_item_asymmetric_uniform_overlapping,
                                          single_item_gaussian_symmetric,
                                          single_item_uniform_symmetric,
                                          splitaward)
@@ -30,8 +30,8 @@ ids_single_item, testdata_single_item = zip(*[
     #['single_item-symmetric-uniform-vcg', (single_item_uniform_symmetric(2,3, [3], 'second_price'))],
     # too expensive. ['single_item-symmetric-gaussian-fp', (single_item_gaussian_symmetric(2,3, [4], 'first_price'))],
     ['single_item-symmetric-gaussian-vcg', (single_item_gaussian_symmetric(2,3, [5], 'second_price'))],
-    ['single_item-asymmetric-uniform-fp', (single_item_asymmetric_uniform(2,3, 'first_price'))],
-    ['single_item-asymmetric-uniform-vcg', (single_item_asymmetric_uniform(2,3, 'second_price'))]
+    ['single_item-asymmetric-uniform-fp', (single_item_asymmetric_uniform_overlapping(2,3, 'first_price'))],
+    ['single_item-asymmetric-uniform-vcg', (single_item_asymmetric_uniform_overlapping(2,3, 'second_price'))]
     ])
 ids_local_global, testdata_local_global = zip(*[
     # LLG
