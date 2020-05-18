@@ -11,7 +11,6 @@ import torch
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
 
-
 # based on https://stackoverflow.com/a/57411105/4755970
 # experiment must be the directory immediately above the runs and each run must have the same shape.
 # No aggregation of multiple subdirectories for now.
@@ -141,3 +140,4 @@ class CustomSummaryWriter(SummaryWriter):
                     fw.add_summary(scalar(tag, scalar_value), global_step, walltime)
             else:
                 raise ValueError('Got list of invalid length.')
+

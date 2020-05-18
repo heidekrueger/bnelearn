@@ -13,8 +13,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib.ticker import FormatStrFormatter, LinearLocator
-from mpl_toolkits.mplot3d import Axes3D # pylint: disable=(whatever-message-pylint has. I assume unused-import)
+from mpl_toolkits.mplot3d import Axes3D  # pylint: disable=(whatever-message-pylint has. I assume unused-import)
 from torch.utils.tensorboard import SummaryWriter
+from tensorboard.plugins.hparams import api as hp
+
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder
@@ -26,6 +28,7 @@ from bnelearn.experiment.gpu_controller import GPUController
 from bnelearn.learner import ESPGLearner, Learner
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import NeuralNetStrategy
+
 
 # pylint: disable=unnecessary-pass,unused-argument
 
@@ -47,7 +50,7 @@ class Experiment(ABC):
     n_models: int
     n_items: int
     mechanism: Mechanism
-    positive_output_point: torch.Tensor # shape must be valid model input
+    positive_output_point: torch.Tensor  # shape must be valid model input
     input_length: int
 
     ## Fields required for plotting
@@ -95,8 +98,6 @@ class Experiment(ABC):
         if logging_config.regret_grid_size is not None:
             self.regret_grid_size = logging_config.regret_grid_size
 
-
-
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
         if not hasattr(self, 'n_players'):
@@ -126,8 +127,6 @@ class Experiment(ABC):
         if self.known_bne:
             self._setup_eval_environment()
 
-
-
     @abstractmethod
     def _setup_mechanism(self):
         pass
@@ -141,10 +140,10 @@ class Experiment(ABC):
         """Returns a list of names of models for use in logging.
         Defaults to agent{ids of agents that use the model} but may be overwritten by subclasses.
         """
-        if self.n_models ==1:
+        if self.n_models == 1:
             return []
-        return ['bidder' + str(bidders[0]) if len(bidders)==1 else
-                'bidders'+ ''.join([str(b) for b in bidders])
+        return ['bidder' + str(bidders[0]) if len(bidders) == 1 else
+                'bidders' + ''.join([str(b) for b in bidders])
                 for bidders in self._model2bidder]
 
     @abstractmethod
@@ -190,7 +189,7 @@ class Experiment(ABC):
             print('\tpretraining...')
 
             if hasattr(self, 'pretrain_transform'):
-                pretrain_transform = self.pretrain_transform # pylint: disable=no-member
+                pretrain_transform = self.pretrain_transform  # pylint: disable=no-member
             else:
                 pretrain_transform = None
 
@@ -241,7 +240,7 @@ class Experiment(ABC):
 
         if self.logging_config.enable_logging:
             os.makedirs(output_dir, exist_ok=False)
-            if self.logging_config.save_figure_to_disk_png :
+            if self.logging_config.save_figure_to_disk_png:
                 os.mkdir(os.path.join(output_dir, 'png'))
             if self.logging_config.save_figure_to_disk_svg:
                 os.mkdir(os.path.join(output_dir, 'svg'))
@@ -254,7 +253,6 @@ class Experiment(ABC):
 
             tic = timer()
             if self.logging_config.enable_logging:
-                self._log_experiment_params() #TODO: should probably be called only once, not every run
                 self._log_hyperparams()
             elapsed = timer() - tic
         else:
@@ -265,13 +263,14 @@ class Experiment(ABC):
     def _exit_run(self):
         """Cleans up a run after it is completed"""
         if self.logging_config.enable_logging and self.logging_config.save_models:
-            self._save_models(directory = self.run_log_dir)
+            self._save_models(directory=self.run_log_dir)
 
-        del self.writer #make this explicit to force cleanup and closing of tb-logfiles
+        del self.writer  # make this explicit to force cleanup and closing of tb-logfiles
         self.writer = None
 
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
+        if self.gpu_config.cuda:
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
         # if torch.cuda.memory_allocated() > 0:
         #    warnings.warn('Theres a memory leak')
 
@@ -289,12 +288,11 @@ class Experiment(ABC):
         ])
 
         if self.logging_config.enable_logging:
-            log_params = {'utilities': utilities, 'prev_params': prev_params}
-            elapsed_overhead = self._evaluate_and_log_epoch(log_params=log_params, epoch=epoch)
+            self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}
+            elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
             print('epoch {}:\t elapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead))
         else:
             print('epoch {}:\t elapsed {:.2f}s'.format(epoch, timer() - tic))
-
 
     def run(self, epochs, n_runs: int = 1, seeds: Iterable[int] = None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
@@ -314,8 +312,11 @@ class Experiment(ABC):
 
             self._init_new_run()
 
-            for e in range(epochs+1):
+            for e in range(epochs + 1):
                 self._training_loop(epoch=e)
+
+            if self.logging_config.enable_logging:
+                self._log_experiment_params()
 
             self._exit_run()
 
@@ -328,11 +329,9 @@ class Experiment(ABC):
                 write_detailed=self.logging_config.save_tb_events_to_csv_detailed,
                 write_aggregate=self.logging_config.save_tb_events_to_csv_aggregate)
 
-
     ########################################################################################################
     ####################################### Moved logging to here ##########################################
     ########################################################################################################
-
 
     # TODO Stefan: method only uses self in eval and for output point
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
@@ -401,19 +400,19 @@ class Experiment(ABC):
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
                 a, b = None, None
-                if lim is not None: # use parameters ´xlim´ etc.
+                if lim is not None:  # use parameters ´xlim´ etc.
                     if isinstance(lim[0], list):
                         a, b = lim[plot_idx][0], lim[plot_idx][1]
                     else:
                         a, b = lim[0], lim[1]
-                elif hasattr(self, str_lim[0]): # use attributes ´self.plot_xmin´ etc.
+                elif hasattr(self, str_lim[0]):  # use attributes ´self.plot_xmin´ etc.
                     if isinstance(eval('self.' + str(str_lim[0])), list):
                         a = eval('self.' + str(str_lim[plot_idx]))[0]
                         b = eval('self.' + str(str_lim[plot_idx]))[1]
                     else:
                         a, b = eval('self.' + str(str_lim[0])), eval('self.' + str(str_lim[1]))
                 if a is not None:
-                    set_lim(a, b) # call matplotlib function
+                    set_lim(a, b)  # call matplotlib function
 
             axs[plot_idx].locator_params(axis='x', nbins=5)
         title = plt.title if n_bundles == 1 else plt.suptitle
@@ -423,7 +422,7 @@ class Experiment(ABC):
                                      tb_writer=writer, display=self.logging_config.plot_show_inline,
                                      output_dir=self.run_log_dir,
                                      save_png=self.logging_config.save_figure_to_disk_png,
-                                     save_svg = self.logging_config.save_figure_to_disk_svg)
+                                     save_svg=self.logging_config.save_figure_to_disk_svg)
         return fig
 
     # TODO: stefan only uses self in output_dir, nowhere else --> can we move this to utils.plotting? etc?
@@ -460,14 +459,14 @@ class Experiment(ABC):
         fig.suptitle('iteration {}'.format(epoch), size=16)
         fig.tight_layout()
 
-        logging_utils.process_figure(fig, epoch=epoch, figure_name=figure_name+'_3d', tb_group='eval',
+        logging_utils.process_figure(fig, epoch=epoch, figure_name=figure_name + '_3d', tb_group='eval',
                                      tb_writer=writer, display=self.logging_config.plot_show_inline,
                                      output_dir=self.run_log_dir,
                                      save_png=self.logging_config.save_figure_to_disk_png,
-                                     save_svg = self.logging_config.save_figure_to_disk_svg)
+                                     save_svg=self.logging_config.save_figure_to_disk_svg)
         return fig
 
-    def _evaluate_and_log_epoch(self, log_params: dict, epoch: int) -> float:
+    def _evaluate_and_log_epoch(self, epoch: int) -> float:
         """
         Checks which metrics have to be logged and performs logging and plotting.
         Returns:
@@ -480,26 +479,26 @@ class Experiment(ABC):
         # calculate infinity-norm of update step
         new_params = [torch.nn.utils.parameters_to_vector(model.parameters())
                       for model in self.models]
-        log_params['update_norm'] = [(new_params[i] - log_params['prev_params'][i]).norm(float('inf'))
-                                     for i in range(self.n_models)]
-        del log_params['prev_params']
+        self._cur_epoch_log_params['update_norm'] = [(new_params[i] - self._cur_epoch_log_params['prev_params'][i]).norm(float('inf'))
+                                                     for i in range(self.n_models)]
+        del self._cur_epoch_log_params['prev_params']
 
         # logging metrics
         if self.logging_config.log_metrics['opt']:
-            log_params['utility_vs_bne'], log_params['epsilon_relative'], log_params['epsilon_absolute'] = \
-                self._calculate_metrics_known_bne()
+            self._cur_epoch_log_params['utility_vs_bne'], self._cur_epoch_log_params['epsilon_relative'], \
+            self._cur_epoch_log_params['epsilon_absolute'] = self._calculate_metrics_known_bne()
 
         if self.logging_config.log_metrics['l2']:
-            log_params['L_2'], log_params['L_inf'] = self._calculate_metrics_action_space_norms()
+            self._cur_epoch_log_params['L_2'], self._cur_epoch_log_params['L_inf'] = self._calculate_metrics_action_space_norms()
 
         if self.logging_config.log_metrics['regret'] and (epoch % self.logging_config.regret_frequency) == 0:
             create_plot_output = epoch % self.logging_config.plot_frequency == 0
-            log_params['regret_ex_ante'], log_params['regret_ex_interim'] = \
+            self._cur_epoch_log_params['regret_ex_ante'], self._cur_epoch_log_params['regret_ex_interim'] = \
                 self._calculate_metrics_regret(create_plot_output, epoch)
 
         # plotting
         if epoch % self.logging_config.plot_frequency == 0:
-            print("\tcurrent utilities: " + str(log_params['utilities'].tolist()))
+            print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
 
             unique_bidders = [self.env.agents[i[0]] for i in self._model2bidder]
             v = torch.stack(
@@ -515,9 +514,9 @@ class Experiment(ABC):
                 print(
                     "\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})" \
                         .format(
-                            log_params['utility_vs_bne'].tolist(),
-                            log_params['epsilon_relative'].tolist(),
-                            log_params['epsilon_absolute'].tolist()
+                        self._cur_epoch_log_params['utility_vs_bne'].tolist(),
+                        self._cur_epoch_log_params['epsilon_relative'].tolist(),
+                        self._cur_epoch_log_params['epsilon_absolute'].tolist()
                     )
                 )
                 v = torch.cat([v, self.v_opt], dim=1)
@@ -529,11 +528,10 @@ class Experiment(ABC):
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         self.overhead = self.overhead + timer() - start_time
-        log_params['overhead_hours'] = self.overhead / 3600
+        self._cur_epoch_log_params['overhead_hours'] = self.overhead / 3600
         if self.writer:
-            self.writer.add_metrics_dict(log_params, self._model_names, epoch, group_prefix = 'eval')
+            self.writer.add_metrics_dict(self._cur_epoch_log_params, self._model_names, epoch, group_prefix='eval')
         return timer() - start_time
-
 
     def _calculate_metrics_known_bne(self):
         """
@@ -554,7 +552,7 @@ class Experiment(ABC):
                     model, player_position=m2b(i),
                     batch_size=self.logging_config.eval_batch_size
                 ),
-                draw_valuations=False # False because we want to use cached actions when set, reevaluation is expensive
+                draw_valuations=False  # False because we want to use cached actions when set, reevaluation is expensive
             ) for i, model in enumerate(self.models)
         ])
         epsilon_relative = torch.tensor(
@@ -637,21 +635,22 @@ class Experiment(ABC):
     def _log_experiment_params(self):
         # TODO: write out all experiment params (complete dict) #See issue #113
         # TODO: Stefan: this currently called _per run_. is this desired behavior?
-        pass
+
+        h_params = {'hyperparameters/batch_size': self.learning_config.batch_size,
+                    'hyperparameters/pretrain_iters': self.learning_config.pretrain_iters,
+                    'hyperparameters/hidden_nodes': str(self.learning_config.hidden_nodes),
+                    'hyperparameters/hidden_activations': str(self.learning_config.hidden_activations),
+                    'hyperparameters/optimizer_hyperparams': str(self.learning_config.optimizer_hyperparams),
+                    'hyperparameters/optimizer_type': self.learning_config.optimizer_type}
+
+        self.writer.add_hparams(h_params, {'utilities': self._cur_epoch_log_params['utilities']})
 
     def _log_hyperparams(self, epoch=0):
         """Everything that should be logged on every learning_rate update"""
 
         for i, model in enumerate(self.models):
-            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)
+            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch) #ToDO To hyperparams
             self.writer.add_graph(model, self.env.agents[i].valuations)
-
-        self.writer.add_scalar('hyperparameters/batch_size', self.learning_config.batch_size, epoch)
-        self.writer.add_scalar(
-            'hyperparameters/pretrain_iters',
-            self.learning_config.pretrain_iters,
-            epoch
-        )
 
     def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise regrets in the ending-epoch to disk to

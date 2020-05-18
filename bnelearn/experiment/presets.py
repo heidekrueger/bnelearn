@@ -23,13 +23,15 @@ def single_item_uniform_symmetric(n_runs: int, n_epochs: int,
                                   log_metrics=['opt', 'l2', 'regret'], regret_batch_size=2 ** 4,
                                   regret_grid_size=2 ** 4,
                                   specific_gpu=0,
-                                  logging=True):
+                                  logging=True,
+                                  eval_batch_size=2**22):
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu,
                                                  n_players=n_players)
     logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
                                                  regret_batch_size=regret_batch_size,
                                                  regret_grid_size=regret_grid_size,
-                                                 enable_logging=logging
+                                                 enable_logging=logging,
+                                                 eval_batch_size=eval_batch_size
                                                  )
 
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
@@ -44,7 +46,7 @@ def single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
                                        risk=1.0, eval_batch_size=2 ** 16,
                                        log_metrics=['opt', 'l2', 'regret'], regret_batch_size=2 ** 8,
                                        regret_grid_size=2 ** 8,
-                                       specific_gpu=1,
+                                       specific_gpu=0,
                                        logging=True):
     if eval_batch_size == 2 ** 16:
         print("Using eval_batch_size of 2**16. Use at least 2**22 for proper experiment runs!")

@@ -46,23 +46,24 @@ if __name__ == '__main__':
     # logging_configuration.save_tb_events_to_binary_detailed = True
     # logging_configuration.save_tb_events_to_csv_detailed = True
 
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     single_item_gaussian_symmetric(2,110, [2], 'second_price', logging=enable_logging)
+    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+        single_item_gaussian_symmetric(1, 7, [2], 'second_price', logging=enable_logging, eval_batch_size=2**8)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class =\
     #    llg(2,10,'nearest_zero',specific_gpu=1, logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #    llllgg(2,10,'first_price',model_sharing=False, logging=enable_logging)
-    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-      multiunit(n_runs=2, n_epochs=10, n_players=[2], n_units=2, payment_rule='first_price', logging=enable_logging)
+    #running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+    #  multiunit(n_runs=2, n_epochs=10, n_players=[2], n_units=2, payment_rule='first_price', logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #   splitaward(1, 10, [2], logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #    single_item_asymmetric_uniform(n_runs=1, n_epochs=10, logging=enable_logging)
 
 
-    gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
+    gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu, cuda=False)
     learning_configuration = LearningConfiguration(
-        pretrain_iters=50
+        pretrain_iters=10,
+        batch_size=2**8
     )
 
     try:
