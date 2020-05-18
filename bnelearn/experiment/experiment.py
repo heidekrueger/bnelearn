@@ -362,10 +362,10 @@ class Experiment(ABC):
             stopping_list: np.array
         """
         print(stopping_list)
-        dif = stopping_list.max(1)-stopping_list.min(1)
-        log_params = {'stopping_criterion': dif}
+        diff = stopping_list.max(1)-stopping_list.min(1)
+        log_params = {'stopping_criterion': diff}
         self.writer.add_metrics_dict(log_params, self._model_names, epoch, group_prefix = 'eval')
-        if dif.max() <= stopping_criterion:
+        if diff.max() <= stopping_criterion:
             return True, stopping_list
         stopping_list = np.delete(stopping_list, 0,1)
         return False, stopping_list
