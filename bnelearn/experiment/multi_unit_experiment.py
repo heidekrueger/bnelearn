@@ -275,7 +275,8 @@ class MultiUnitExperiment(Experiment, ABC):
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
 
-        self.positive_output_point = torch.tensor([[self.u_hi] * self.n_units], dtype=torch.float)
+        if hasattr(self, 'positive_output_point'):
+            self.positive_output_point = torch.tensor([[self.u_hi] * self.n_units], dtype=torch.float)
 
         # check for available BNE strategy
         self._optimal_bid = None
@@ -390,6 +391,9 @@ class SplitAwardExperiment(MultiUnitExperiment):
 
         assert all(u_lo > 0 for u_lo in experiment_config.u_lo), \
             '100% Unit must be valued > 0'
+
+        self.positive_output_point = torch.tensor(
+            [self.u_hi[0], self.efficiency_parameter*self.u_hi[0]], dtype=torch.float)
 
         self.plot_xmin = [self.u_lo[0], self.u_hi[0]]
         self.plot_xmax = [self.experiment_config.efficiency_parameter * self.u_lo[0],
