@@ -313,7 +313,7 @@ class Experiment(ABC):
             torch.random.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
             np.random.seed(seed)
-            if self.logging_config.stopping_criterion_rel_util_loss_dif:
+            if self.logging_config.stopping_criterion_rel_util_loss_diff:
                 stopping_list = np.empty((self.n_models,0))
 
             self._init_new_run()
@@ -321,7 +321,7 @@ class Experiment(ABC):
             for e in range(epochs+1):
                 utilities = self._training_loop(epoch=e)
                 # If the stopping criterion is set, ...
-                if self.logging_config.stopping_criterion_rel_util_loss_dif is not None and e%100 == 0:
+                if self.logging_config.stopping_criterion_rel_util_loss_diff is not None and e%100 == 0:
                     start_time = timer()
                     util_loss_batch_size_tmp = self.logging_config.util_loss_batch_size
                     util_loss_grid_size_tmp = self.logging_config.util_loss_grid_size
@@ -335,7 +335,7 @@ class Experiment(ABC):
                     stopping_list = np.append(stopping_list, (1 - utilities/(utilities + torch.tensor(loss_ex_ante))).view(self.n_models,1), axis=1)
                     if len(stopping_list[0]) >= 3:
                         # ...finally check for convergence
-                        stop, stopping_list = self._check_convergence(stopping_list, self.logging_config.stopping_criterion_rel_util_loss_dif, e)
+                        stop, stopping_list = self._check_convergence(stopping_list, self.logging_config.stopping_criterion_rel_util_loss_diff, e)
                         if stop:
                             break
                     self.overhead = self.overhead + timer() - start_time
@@ -652,10 +652,10 @@ class Experiment(ABC):
         ex_ante_util_loss = [model_tuple[0].mean() for model_tuple in util_loss]
         ex_interim_max_util_loss = [model_tuple[0].max() for model_tuple in util_loss]
         if create_plot_output:
-            # Transform to output with dim(batch_size, n_models, n_bundle), for util_losss n_bundle=1
-            util_losss = torch.stack([util_loss[r][0] for r in range(len(util_loss))], dim=1)[:, :, None]
+            # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
+            util_losses = torch.stack([util_loss[r][0] for r in range(len(util_loss))], dim=1)[:, :, None]
             valuations = torch.stack([util_loss[r][1] for r in range(len(util_loss))], dim=1)
-            plot_output = (valuations, util_losss)
+            plot_output = (valuations, util_losses)
             self._plot(plot_data=plot_output, writer=self.writer,
                        ylim=[0, max(ex_interim_max_util_loss).cpu()],
                        figure_name='util_loss_function', epoch=epoch, plot_points=self.plot_points)
@@ -681,7 +681,7 @@ class Experiment(ABC):
         )
 
     def _save_models(self, directory):
-        # TODO: maybe we should also log out all pointwise util_losss in the ending-epoch to disk to
+        # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to
         # use it to make nicer plots for a publication? --> will be done elsewhere. Logging. Assigned to @Hlib/@Stefan
         for model, player_position in zip(self.models, self._model2bidder):
             name = 'model_' + str(player_position[0]) + '.pt'

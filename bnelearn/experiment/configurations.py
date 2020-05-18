@@ -70,7 +70,7 @@ class LoggingConfiguration:
     plot_points: int = 100
     plot_show_inline: bool = True
     log_metrics: list = None
-    stopping_criterion_rel_util_loss_dif = None
+    stopping_criterion_rel_util_loss_diff = None
     util_loss_batch_size: int = None
     util_loss_grid_size: int = None
     util_loss_frequency: int = 100

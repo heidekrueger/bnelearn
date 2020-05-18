@@ -76,7 +76,7 @@ if __name__ == '__main__':
     )
 
     # General logging configs
-    logging_configuration.stopping_criterion_rel_util_loss_dif = 0.001
+    logging_configuration.stopping_criterion_rel_util_loss_diff = 0.001
     logging_configuration.save_tb_events_to_csv_detailed=True
     logging_configuration.save_tb_events_to_binary_detailed=True
 
