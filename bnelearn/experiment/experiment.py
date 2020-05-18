@@ -377,6 +377,7 @@ class Experiment(ABC):
 
         args:
             values: Tensor(n_values x n_models)
+        returns: bool (True if stopping criterion fulfilled)
         """
         if stopping_criterion is None:
             stopping_criterion = self.logging_config.stopping_criterion_rel_util_loss_diff
@@ -681,7 +682,8 @@ class Experiment(ABC):
             plot_output = (valuations, util_losses)
             self._plot(plot_data=plot_output, writer=self.writer,
                        ylim=[0, max(ex_interim_max_util_loss).cpu()],
-                       figure_name='util_loss_function', epoch=epoch, plot_points=self.plot_points)
+                       figure_name='util_loss_landscape', y_label = 'ex-interim loss',
+                       epoch=epoch, plot_points=self.plot_points)
         return ex_ante_util_loss, ex_interim_max_util_loss
 
     def _log_experiment_params(self):
