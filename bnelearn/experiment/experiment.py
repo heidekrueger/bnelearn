@@ -15,7 +15,6 @@ import torch
 from matplotlib.ticker import FormatStrFormatter, LinearLocator
 from mpl_toolkits.mplot3d import Axes3D  # pylint: disable=(whatever-message-pylint has. I assume unused-import)
 from torch.utils.tensorboard import SummaryWriter
-from tensorboard.plugins.hparams import api as hp
 
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
