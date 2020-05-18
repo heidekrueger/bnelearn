@@ -150,15 +150,9 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
                       player_position: int, agent_valuation: torch.Tensor,
                       grid: torch.Tensor, half_precision = False):
     """
-    Estimates a bidder's util_loss/utility loss in the current bid_profile, i.e. the potential benefit of deviating from the current strategy.
-        alternative (BR) utility BR:
-            BR(v_{t,i}) = \max_{w \in \{1,..,W\}}[ E_{h \in {1,...,H}} (u_i(v_{t,i},b_w,\beta_{-i}(v_{h,-i})))
-        ex-ante and max ex-interim util_loss/utility loss:
-            util_loss_ex_ante = E_{t \in \{1,..,H\}}[ BR(v_{t,i}) - u(v_{t,i})]
-            util_loss_max_interim = \max_{t \in \{1,..,H\}}[ BR(v_{t,i}) - u(v_{t,i})]
-        with:
-            w \in W: alternative bids (grid_size)
-            h \in H: util_loss valuations' batch (batch_size)
+    Estimates a bidder's util_loss/utility loss in the current bid_profile, i.e. the potential benefit of deviating from
+    the current strategy, evaluated at each point of the agent_valuations.
+        At each of these valuation points, the best response utility is approximated via the best utility achieved on the grid.
     Input:
         mechanism
         bid_profile: (batch_size x n_player x n_items)
@@ -197,12 +191,10 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     allocation, payments = mechanism.play(bid_profile)
 
     # we only need the specific player's allocation and can get rid of the rest.
-
     a_i = allocation[:,player_position,:].view(grid_size, batch_size, n_items).type(torch.bool) #TODO Stefan: bool will not work for multi-unit auctions, there we need int!
     p_i = payments[:,player_position].view(grid_size, batch_size) #grid * batch
 
-    #return ((a_i * agent_valuation).sum(2) - p_i).max(0)[0]
-
+    ### First, try calculating entire batch at once (this might fail due to not enough RAM)
     del allocation, payments, bid_profile
     if torch.cuda.is_available():
         torch.cuda.empty_cache() #TODO, later: find out if this actually does anything here.
