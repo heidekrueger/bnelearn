@@ -74,15 +74,15 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.tensor, bid_prof
 
     return bid_profile #bid_eval_size*batch, 1,n_items
 
-def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidder,
+def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidder,
            grid: torch.Tensor, half_precision = False, player_position: int = None):
     """
     # TODO: do we really need this or can we delete it in general?
     # If we decide to keep it, check implementation in detail! (Removing many many todos in the body)
 
-    Estimates a bidder's ex post regret in the current bid_profile vs a potential grid,
+    Estimates a bidder's ex post util_loss in the current bid_profile vs a potential grid,
         i.e. the potential benefit of having deviated from the current strategy, as:
-        regret = max(0, BR(v_i, b_-i) - u_i(b_i, b_-i))
+        util_loss = max(0, BR(v_i, b_-i) - u_i(b_i, b_-i))
     Input:
         mechanism
         bid_profile: (batch_size x n_player x n_items)
@@ -96,7 +96,7 @@ def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidd
             (defaults to player_position of bidder)
         half_precision: (optional, bool) Whether to use half precision tensors. default: false
     Output:
-        regret (batch_size)
+        util_loss (batch_size)
 
     Useful: To get the memory used by a tensor (in MB): (tensor.element_size() * tensor.nelement())/(1024*1024)
     """
@@ -146,27 +146,21 @@ def ex_post_regret(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidd
     return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
 
 
-def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
+def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
                       player_position: int, agent_valuation: torch.Tensor,
                       grid: torch.Tensor, half_precision = False):
     """
-    Estimates a bidder's regret/utility loss in the current bid_profile, i.e. the potential benefit of deviating from the current strategy.
-        alternative (BR) utility BR:
-            BR(v_{t,i}) = \max_{w \in \{1,..,W\}}[ E_{h \in {1,...,H}} (u_i(v_{t,i},b_w,\beta_{-i}(v_{h,-i})))
-        ex-ante and max ex-interim regret/utility loss:
-            regret_ex_ante = E_{t \in \{1,..,H\}}[ BR(v_{t,i}) - u(v_{t,i})]
-            regret_max_interim = \max_{t \in \{1,..,H\}}[ BR(v_{t,i}) - u(v_{t,i})]
-        with:
-            w \in W: alternative bids (grid_size)
-            h \in H: regret valuations' batch (batch_size)
+    Estimates a bidder's util_loss/utility loss in the current bid_profile, i.e. the potential benefit of deviating from
+    the current strategy, evaluated at each point of the agent_valuations.
+        At each of these valuation points, the best response utility is approximated via the best utility achieved on the grid.
     Input:
         mechanism
         bid_profile: (batch_size x n_player x n_items)
-        player_position: specifies the agent for whom the regret is to be evaluated
+        player_position: specifies the agent for whom the util_loss is to be evaluated
         agent_valuation: (batch_size x n_items)
         grid: #TODO: currently (1d with length grid_size #Currently, for n_items == 2, all grid_size**2 combination will be used. Should be replaced by e.g. torch.meshgrid
     Output:
-        regret: (batch_size)
+        util_loss: (batch_size)
         valuations: (batch_size x n_items)
 
     Useful: To get the memory used by a tensor (in MB): (tensor.element_size() * tensor.nelement())/(1024*1024)
@@ -175,7 +169,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
         - Only for risk neutral bidders
     TODO:
         - Add check for risk neutral bidders.
-        - Move grid_creation out of regret for Nils special cases
+        - Move grid_creation out of util_loss for Nils special cases
     """
     agent_bid_actual = bid_profile[:,player_position,:]
     ## Use smaller dtypes to save memory
@@ -197,12 +191,10 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     allocation, payments = mechanism.play(bid_profile)
 
     # we only need the specific player's allocation and can get rid of the rest.
-
     a_i = allocation[:,player_position,:].view(grid_size, batch_size, n_items).type(torch.bool) #TODO Stefan: bool will not work for multi-unit auctions, there we need int!
     p_i = payments[:,player_position].view(grid_size, batch_size) #grid * batch
 
-    #return ((a_i * agent_valuation).sum(2) - p_i).max(0)[0]
-
+    ### First, try calculating entire batch at once (this might fail due to not enough RAM)
     del allocation, payments, bid_profile
     if torch.cuda.is_available():
         torch.cuda.empty_cache() #TODO, later: find out if this actually does anything here.
@@ -220,7 +212,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
         # max per valuations
         u_i_alternative, _ = torch.max(u_i_alternative,1) #batch
     except RuntimeError as err:
-        print("Failed computing regret as batch. Trying sequential valuations computation. Decrease dimensions to fix. Error:\n {0}".format(err))
+        print("Failed computing util_loss as batch. Trying sequential valuations computation. Decrease dimensions to fix. Error:\n {0}".format(err))
         try:
             # valuations sequential
             u_i_alternative = torch.zeros(batch_size, device = p_i.device)
@@ -239,7 +231,7 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
                 # clean up
                 del u_i_alternative_v
         except RuntimeError as err:
-            print("Failed computing regret as batch with sequential valuations. Decrease dimensions to fix. Error:\n {0}".format(err))
+            print("Failed computing util_loss as batch with sequential valuations. Decrease dimensions to fix. Error:\n {0}".format(err))
             u_i_alternative = torch.ones(batch_size, device = p_i.device) * -9999999
 
     # Clean up storage
@@ -263,6 +255,6 @@ def ex_interim_regret(mechanism: Mechanism, bid_profile: torch.Tensor,
     u_i_actual = v_i - p_i
     # avg per bid and valuation
     u_i_actual = torch.mean(u_i_actual,1)
-    ## average and max regret over all valuations
-    regret = (u_i_alternative - u_i_actual).relu().clone().detach().requires_grad_(False)
-    return regret, agent_valuation
+    ## average and max util_loss over all valuations
+    util_loss = (u_i_alternative - u_i_actual).relu().clone().detach().requires_grad_(False)
+    return util_loss, agent_valuation
