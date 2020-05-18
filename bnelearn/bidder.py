@@ -105,7 +105,7 @@ class Bidder(Player):
         self._grid_lb = self.value_distribution.support.lower_bound \
             if hasattr(self.value_distribution.support, 'lower_bound') \
             else self.value_distribution.icdf(torch.tensor(0.001))
-        self._grid_lb = max(0,self._grid_lb)
+        self._grid_lb = max(0, self._grid_lb)
         self._grid_ub = self.value_distribution.support.upper_bound \
             if hasattr(self.value_distribution.support, 'upper_bound') \
             else self.value_distribution.icdf(torch.tensor(0.999))
@@ -168,18 +168,18 @@ class Bidder(Player):
         """
 
         if valuation_grid or not hasattr(self, 'grid_lb_regret'):
-            lb = self.grid_lb
-            ub = self.grid_ub
-        else:            
-            lb = self.grid_lb_regret
-            ub = self.grid_ub_regret
+            lb = self._grid_lb
+            ub = self._grid_ub
+        else:
+            lb = self._grid_lb_regret
+            ub = self._grid_ub_regret
 
         # change batch_size s.t. it'll approx. end up at intended n_points in the end
         adapted_size = n_points
         if self.descending_valuations:
             adapted_size = n_points * math.factorial(self.n_items)
 
-        batch_size_per_dim = round(adapted_batch_size ** (1/self.n_items) + .5)
+        batch_size_per_dim = round(adapted_size ** (1/self.n_items) + .5)
         lin = torch.linspace(lb, ub, batch_size_per_dim, device=self.device)
 
         grid_values = torch.stack([
@@ -193,7 +193,8 @@ class Bidder(Player):
         if self.descending_valuations:
             grid_values = grid_values.sort(dim=1, descending=True)[0].unique(dim=0)
 
-        assert grid_values.shape[0] >= n_points, "grid_size is lower than expected!"
+        # TODO Nils: is this from @Stefan? Paul and me agreed on over-sampleing rather than introducing a bias
+        # assert grid_values.shape[0] >= n_points, "grid_size is lower than expected!"
         return grid_values
 
     def draw_valuations_(self):
@@ -346,7 +347,7 @@ class ReverseBidder(Bidder):
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
 
-    def draw_values_grid(self, n_points, valuation_grid=True):
+    def get_valuation_grid(self, n_points, valuation_grid=True):
         """ Extends `Bidder.draw_values_grid` with efficiency parameter
 
         Args
@@ -359,11 +360,11 @@ class ReverseBidder(Bidder):
         grid_values = torch.zeros(n_points, self.n_items, device=self.device)
 
         if valuation_grid:
-            grid_values[:, 0] = torch.linspace(self.grid_lb, self.grid_ub, n_points,
+            grid_values[:, 0] = torch.linspace(self._grid_lb, self._grid_ub, n_points,
                                                device=self.device)
             grid_values[:, 1] = self.efficiency_parameter * grid_values[:, 0]
         else:
-            grid_values = super().draw_values_grid(n_points, False)
+            grid_values = super().get_valuation_grid(n_points, False)
 
         return grid_values
 
