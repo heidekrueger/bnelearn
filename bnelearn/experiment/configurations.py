@@ -70,12 +70,24 @@ class LoggingConfiguration:
     plot_points: int = 100
     plot_show_inline: bool = True
     log_metrics: list = None
+
+    # Stopping Criterion #TODO: this section should go into ExperimentConfiguration
     stopping_criterion_rel_util_loss_diff = None
+    stopping_criterion_frequency = 100 # how often (each x iters) to calculate the stopping criterion metric
+    stopping_criterion_duration = 3 # the x most recent evaluations will be used for calculating stationarity
+    stopping_criterion_batch_size = 2**10 # TODO: ideally this should be unified with general util_loss batch and grid sizes
+    stopping_criterion_grid_size = 2**9
+
+    # Utility Loss calculation
     util_loss_batch_size: int = None
     util_loss_grid_size: int = None
     util_loss_frequency: int = 100
+
+    # Eval vs known bne
     eval_batch_size: int = 2**22
     cache_eval_actions: bool = True
+
+
     save_tb_events_to_csv_aggregate: bool = True
     save_tb_events_to_csv_detailed: bool = False
     save_tb_events_to_binary_detailed: bool = False
