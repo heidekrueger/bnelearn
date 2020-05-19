@@ -233,8 +233,7 @@ class Experiment(ABC):
             )
             if self.v_opt.shape[0] != self.plot_points:
                 print('´plot_points´ changed due to ´get_valuation_gird´')
-                print(self.v_opt.shape, self.plot_points)
-                # self.plot_points = self.v_opt.shape[0]
+                self.plot_points = self.v_opt.shape[0]
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
