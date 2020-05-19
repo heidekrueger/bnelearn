@@ -250,7 +250,6 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     ### Evaluate actual bids
     bid_profile = _create_grid_bid_profiles(player_position, agent_bid_actual, bid_profile_origin)
 
-    # TODO Nils: why is there no sequential version of this part?
     ## Calculate allocation and payments for actual bids given opponents bids
     allocation, payments = mechanism.play(bid_profile)
     a_i = allocation[:, player_position, :].type(torch.bool).view(batch_size * batch_size, n_items)
