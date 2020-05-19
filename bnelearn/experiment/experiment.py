@@ -642,7 +642,8 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_hyperparams': str(self.learning_config.optimizer_hyperparams),
                     'hyperparameters/optimizer_type': self.learning_config.optimizer_type}
 
-        self.writer.add_hparams(h_params, {'utilities': self._cur_epoch_log_params['utilities']})
+        metrics = {'utilities': self._cur_epoch_log_params['utilities']}
+        self.writer.add_hparams(hparam_dict=h_params, metric_dict=metrics)
 
     def _log_hyperparams(self, epoch=0):
         """Everything that should be logged on every learning_rate update"""

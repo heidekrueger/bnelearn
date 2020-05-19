@@ -9,7 +9,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+from torch.utils.tensorboard.summary import hparams
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
+
 
 # based on https://stackoverflow.com/a/57411105/4755970
 # experiment must be the directory immediately above the runs and each run must have the same shape.
@@ -30,7 +32,7 @@ def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detail
         subruns = [x.name for x in os.scandir(os.path.join(experiment_dir, run))
                    if x.is_dir() and any(file.startswith('events.out.tfevents')
                                          for file in os.listdir(os.path.join(experiment_dir, run, x.name)))]
-        subruns.append('.') #also read global logs
+        subruns.append('.')  # also read global logs
         for subrun in subruns:
 
             ea = EventAccumulator(os.path.join(experiment_dir, run, subrun)).Reload()
@@ -92,6 +94,25 @@ class CustomSummaryWriter(SummaryWriter):
     the option to control these.
     """
 
+    def add_hparams(self, hparam_dict=None, metric_dict=None):
+        """
+        Overides the parent method to prevent the creation of unwanted additional subruns while logging hyperparams,
+        as it is done by the original PyTorch method
+        """
+        torch._C._log_api_usage_once("tensorboard.logging.add_hparams")
+        if type(hparam_dict) is not dict or type(metric_dict) is not dict:
+            raise TypeError('hparam_dict and metric_dict should be dictionary.')
+        exp, ssi, sei = hparams(hparam_dict, metric_dict)
+
+        self.file_writer.add_summary(exp)
+        self.file_writer.add_summary(ssi)
+        self.file_writer.add_summary(sei)
+
+        # Simply commenting the code below out would end up in registering no value for the metric in the hparams tab
+        # (doesn't seem like values are matched automatically in any way)
+        for k, v in metric_dict.items():
+            self.add_scalar(k, v)
+
     def add_metrics_dict(self, metrics_dict: dict, run_suffices: List[str],
                          global_step=None, walltime=None,
                          group_prefix: str = None):
@@ -140,4 +161,3 @@ class CustomSummaryWriter(SummaryWriter):
                     fw.add_summary(scalar(tag, scalar_value), global_step, walltime)
             else:
                 raise ValueError('Got list of invalid length.')
-
