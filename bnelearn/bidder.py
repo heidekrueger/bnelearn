@@ -242,13 +242,14 @@ class Bidder(Player):
         return self.get_counterfactual_utility(allocations, payments, self.valuations)
 
     def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
-        """For a batch of allocations, payments and counterfactual valuations
-            return the player's utilities
         """
-        # TODO Nils: for util_loss we have 2 batch dimensions
-        # assert allocations.dim() == 2 # batch_size x items
-        # assert payments.dim() == 1 # batch_size
+        For a batch of allocations, payments and counterfactual valuations return the
+        player's utilities.
 
+        Can handle multiple batch dimensions, e.g. for allocations a shape of
+        (..., batch_size, n_items). These batch dimensions are kept in returned
+        payoff.
+        """
         welfare = self.get_welfare(allocations, counterfactual_valuations)
 
         payoff = welfare - payments
@@ -263,13 +264,16 @@ class Bidder(Player):
         """
         For a batch of allocations and payments return the player's welfare.
         If valuations are not specified, welfare is calculated for `self.valuations`.
+
+        Can handle multiple batch dimensions, e.g. for allocations a shape of
+        (..., batch_size, n_items). These batch dimensions are kept in returned
+        welfare.
         """
 
         assert allocations.dim() == 2 # batch_size x items
         if valuations is None:
             valuations = self.valuations
 
-        # TODO Nils: regret work-around
         item_dimension = valuations.dim() - 1
         welfare = (valuations * allocations).sum(dim=item_dimension)
 

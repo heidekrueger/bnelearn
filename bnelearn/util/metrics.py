@@ -206,8 +206,6 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
         # valuation is batch x items
         v_i = agent_valuation.repeat(1, grid_size * batch_size).view(batch_size, grid_size * batch_size, n_items)
         p_i = p_i.repeat(batch_size, 1)
-        # Semantic of the next line: (calculated directly, less readible but faster and robust to different
-        # types (e.g. bools/int))
 
         ## Calculate utilities
         u_i_alternative = agent.get_counterfactual_utility(a_i, p_i, v_i)
@@ -245,8 +243,6 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     del v_i, a_i, p_i
     torch.cuda.empty_cache()
 
-    # TODO Nils: following dozen lines are doing the same stuff as above just not on grid but with actual bidding
-    #            -> combine in function
     ### Evaluate actual bids
     bid_profile = _create_grid_bid_profiles(player_position, agent_bid_actual, bid_profile_origin)
 
