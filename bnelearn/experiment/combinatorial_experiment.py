@@ -178,7 +178,8 @@ class LLLLGGExperiment(LocalGlobalExperiment):
         super().__init__(6, 4, 2, experiment_config, learning_config, logging_config, gpu_config, known_bne)
 
     def _setup_mechanism(self):
-        self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver=self.experiment_config.core_solver, parallel=1, cuda=self.gpu_config.cuda)
+        self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver=self.experiment_config.core_solver, 
+                                       parallel=self.experiment_config.parallel, cuda=self.gpu_config.cuda)
 
     def _get_logdir_hierarchy(self):
         name = ['LLLLGG', self.payment_rule, str(self.n_players) + 'p']
