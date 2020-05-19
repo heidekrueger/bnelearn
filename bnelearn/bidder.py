@@ -146,7 +146,7 @@ class Bidder(Player):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
             self._valuations_changed =True
 
-    def get_valuation_grid(self, n_points, valuation_grid=True):
+    def get_valuation_grid(self, n_points, extended_valuation_grid=False):
         """ Returns a grid of approximately `n_points` valuations that are
             equidistant (in each dimension) on the support of self.value_distribution.
             If the support is unbounded, the 0.1th and 99.9th percentiles are used instead.
@@ -158,7 +158,7 @@ class Bidder(Player):
 
             Args:
                 n_points: int, minimum number of total points in the grid
-                valuation_grid: bool, switch for bounds of interval
+                extended_valuation_grid: bool, switch for bounds of interval
             returns:
                 grid_values (dim: [ceil(n_points^(1/n_items)]*n_items)
 
@@ -167,23 +167,23 @@ class Bidder(Player):
                       then throws most of them away
         """
 
-        if valuation_grid or not hasattr(self, '_grid_lb_util_loss'):
-            lb = self._grid_lb
-            ub = self._grid_ub
-        else:
+        if extended_valuation_grid and hasattr(self, '_grid_lb_util_loss'):   
             lb = self._grid_lb_util_loss
             ub = self._grid_ub_util_loss
+        else:
+            lb = self._grid_lb
+            ub = self._grid_ub
 
         # change batch_size s.t. it'll approx. end up at intended n_points in the end
         adapted_size = n_points
         if self.descending_valuations:
             adapted_size = n_points * math.factorial(self.n_items)
 
-        batch_size_per_dim = round(adapted_size ** (1/self.n_items) + .5)
+        batch_size_per_dim = math.ceil(adapted_size ** (1/self.n_items))
         lin = torch.linspace(lb, ub, batch_size_per_dim, device=self.device)
 
         grid_values = torch.stack([
-            x.flatten() for x in torch.meshgrid([lin] * self.n_items)])
+            x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()
 
         if isinstance(self.item_interest_limit, int):
             grid_values[:,self.item_interest_limit:] = 0
@@ -245,13 +245,11 @@ class Bidder(Player):
         """For a batch of allocations, payments and counterfactual valuations
             return the player's utilities
         """
-        assert allocations.dim() == 2 # batch_size x items
-        assert payments.dim() == 1 # batch_size
+        # TODO Nils: for util_loss we have 2 batch dimensions
+        # assert allocations.dim() == 2 # batch_size x items
+        # assert payments.dim() == 1 # batch_size
 
         welfare = self.get_welfare(allocations, counterfactual_valuations)
-
-        if len(welfare.shape) == 3:
-            welfare = torch.mean(welfare, 1)
 
         payoff = welfare - payments
 
@@ -272,10 +270,8 @@ class Bidder(Player):
             valuations = self.valuations
 
         # TODO Nils: regret work-around
-        if len(allocations.shape) == len(valuations.shape) - 1:
-            welfare = valuations.mul_(allocations).sum(dim=2)
-        else:
-            welfare = (valuations * allocations).sum(dim=1)
+        item_dimension = valuations.dim() - 1
+        welfare = (valuations * allocations).sum(dim=item_dimension)
 
         return welfare
 
@@ -349,24 +345,24 @@ class ReverseBidder(Bidder):
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
 
-    def get_valuation_grid(self, n_points, valuation_grid=True):
+    def get_valuation_grid(self, n_points, extended_valuation_grid=False):
         """ Extends `Bidder.draw_values_grid` with efficiency parameter
 
         Args
         ----
-            valuation_grid: bool, if True returns legitimate valuations, otherwise it returns
+            extended_valuation_grid: bool, if True returns legitimate valuations, otherwise it returns
                 a larger grid, which can be used as ``all reasonable bids`` as needed for
                 estiamtion of regret.
         """
 
         grid_values = torch.zeros(n_points, self.n_items, device=self.device)
 
-        if valuation_grid:
+        if extended_valuation_grid:
+            grid_values = super().get_valuation_grid(n_points, extended_valuation_grid)
+        else:
             grid_values[:, 0] = torch.linspace(self._grid_lb, self._grid_ub, n_points,
                                                device=self.device)
             grid_values[:, 1] = self.efficiency_parameter * grid_values[:, 0]
-        else:
-            grid_values = super().get_valuation_grid(n_points, False)
 
         return grid_values
 

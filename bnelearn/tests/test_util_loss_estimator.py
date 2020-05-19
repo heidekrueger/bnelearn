@@ -205,6 +205,7 @@ def test_ex_interim_util_loss_estimator_splitaward_bne():
     n_items = 2
 
     class SpltAwardConfig:
+        """Data class for split-award setting"""
         u_lo = [1, 1]
         u_hi = [1.4, 1.4]
         efficiency_parameter = .3
@@ -220,7 +221,7 @@ def test_ex_interim_util_loss_estimator_splitaward_bne():
         for i in range(n_players)
     ]
 
-    grid = torch.linspace(0, 3, steps=grid_size).unsqueeze(-1)
+    grid = agents[0].get_valuation_grid(grid_size, True)
 
     bid_profile = torch.empty(batch_size, n_players, n_items, device=agents[0].valuations.device)
     for i, a in enumerate(agents):

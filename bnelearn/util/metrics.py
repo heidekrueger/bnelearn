@@ -4,7 +4,7 @@ import torch
 from bnelearn.strategy import Strategy
 from bnelearn.mechanism import Mechanism
 from bnelearn.bidder import Bidder
-from .logging import printProgressBar
+from tqdm import tqdm
 
 
 def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> float:
@@ -76,7 +76,7 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.tensor, bid_prof
     return bid_profile #bid_eval_size*batch, 1,n_items
 
 def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidder,
-           grid: torch.Tensor, half_precision = False, player_position: int = None):
+                      grid: torch.Tensor, half_precision = False, player_position: int = None):
     """
     # TODO: do we really need this or can we delete it in general?
     # If we decide to keep it, check implementation in detail! (Removing many many todos in the body)
@@ -194,7 +194,7 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     allocation, payments = mechanism.play(bid_profile)
 
     # we only need the specific player's allocation and can get rid of the rest.
-    a_i = allocation[:, player_position, :].view(grid_size * batch_size, n_items)
+    a_i = allocation[:, player_position, :].type(torch.bool).view(grid_size * batch_size, n_items)
     p_i = payments[:, player_position].view(grid_size * batch_size) #grid * batch
 
     del allocation, payments, bid_profile
@@ -205,6 +205,7 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     try:
         # valuation is batch x items
         v_i = agent_valuation.repeat(1, grid_size * batch_size).view(batch_size, grid_size * batch_size, n_items)
+        p_i = p_i.repeat(batch_size, 1)
         # Semantic of the next line: (calculated directly, less readible but faster and robust to different
         # types (e.g. bools/int))
 
@@ -220,15 +221,14 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     except RuntimeError as err:
         print("Failed computing util_loss as batch. Trying sequential valuations computation. Decrease dimensions to fix. Error:\n {0}".format(err))
         try:
-            printProgressBar(0, batch_size, suffix='complete')
 
             # valuations sequential
             u_i_alternative = torch.zeros(batch_size, device=p_i.device)
-            for idx in range(batch_size):
+            for idx in tqdm(range(batch_size)):
                 v_i = agent_valuation[idx].repeat(1, grid_size * batch_size).view(batch_size * grid_size, n_items)
                 ## Calculate utilities
                 u_i_alternative_v = agent.get_counterfactual_utility(a_i, p_i, v_i)
-                u_i_alternative_v = u_i_alternative_v.view(grid_size, batch_size) #(batch x grid x batch)
+                u_i_alternative_v = u_i_alternative_v.view(grid_size, batch_size) #(grid x batch)
                 # avg per bid
                 u_i_alternative_v = torch.mean(u_i_alternative_v, 1)
                 # max per valuations
@@ -236,8 +236,6 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
 
                 # clean up
                 del u_i_alternative_v
-
-                printProgressBar(idx + 1, batch_size, suffix='complete')
 
         except RuntimeError as err:
             print("Failed computing util_loss as batch with sequential valuations. Decrease dimensions to fix. Error:\n {0}".format(err))
@@ -247,18 +245,19 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     del v_i, a_i, p_i
     torch.cuda.empty_cache()
 
-    # TODO Nils: following dozens line are doing te same stuff as above just not on grid but with actual bidding
+    # TODO Nils: following dozen lines are doing the same stuff as above just not on grid but with actual bidding
     #            -> combine in function
     ### Evaluate actual bids
     bid_profile = _create_grid_bid_profiles(player_position, agent_bid_actual, bid_profile_origin)
 
+    # TODO Nils: why is there no sequential version of this part?
     ## Calculate allocation and payments for actual bids given opponents bids
     allocation, payments = mechanism.play(bid_profile)
-    a_i = allocation[:, player_position, :].view(batch_size * batch_size, n_items)
+    a_i = allocation[:, player_position, :].type(torch.bool).view(batch_size * batch_size, n_items)
     p_i = payments[:, player_position].view(batch_size * batch_size)
 
     ## Calculate realized valuations given allocation
-    v_i = agent_valuation.repeat(1, batch_size).view(1, batch_size * batch_size, n_items)
+    v_i = agent_valuation.repeat(1, batch_size).view(batch_size * batch_size, n_items)
 
     ## Calculate utilities
     u_i_actual = agent.get_counterfactual_utility(a_i, p_i, v_i).view(batch_size, batch_size)
