@@ -15,7 +15,7 @@ import numpy as np
 import torch
 from matplotlib.ticker import FormatStrFormatter, LinearLocator
 
-from mpl_toolkits.mplot3d import Axes3D # pylint: disable=unused-import
+from mpl_toolkits.mplot3d import Axes3D  # pylint: disable=unused-import
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -93,6 +93,7 @@ class Experiment(ABC):
         self.v_opt: torch.Tensor = None
         self.b_opt: torch.Tensor = None
 
+        self._hparams_metrics = {}
         ### Save locally - can haves
         # Logging
         if logging_config.util_loss_batch_size is not None:
@@ -297,7 +298,6 @@ class Experiment(ABC):
             print('epoch {}:\t elapsed {:.2f}s'.format(epoch, timer() - tic))
         return utilities
 
-
     def run(self, epochs, n_runs: int = 1, seeds: Iterable[int] = None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
         if not seeds:
@@ -314,10 +314,10 @@ class Experiment(ABC):
             torch.cuda.manual_seed_all(seed)
             np.random.seed(seed)
             if self.logging_config.stopping_criterion_rel_util_loss_diff:
-                #stopping_list = np.empty((self.n_models,0))
+                # stopping_list = np.empty((self.n_models,0))
                 stopping_criterion_length = self.logging_config.stopping_criterion_duration
-                stopping_queue = deque(maxlen = stopping_criterion_length)
-                stopping_criterion_batch_size = min(self.logging_config.util_loss_batch_size, 
+                stopping_queue = deque(maxlen=stopping_criterion_length)
+                stopping_criterion_batch_size = min(self.logging_config.util_loss_batch_size,
                                                     self.logging_config.stopping_criterion_batch_size)
                 stopping_criterion_grid_size = self.logging_config.stopping_criterion_grid_size
                 stopping_criterion_frequency = self.logging_config.stopping_criterion_frequency
@@ -325,20 +325,20 @@ class Experiment(ABC):
 
             self._init_new_run()
 
-            for e in range(epochs+1):
+            for e in range(epochs + 1):
                 utilities = self._training_loop(epoch=e)
 
                 # Check stopping criterion
                 if self.logging_config.stopping_criterion_rel_util_loss_diff is not None and \
-                        e>0 and not e % stopping_criterion_frequency:
+                        e > 0 and not e % stopping_criterion_frequency:
                     start_time = timer()
 
                     # Compute relative utility loss
                     loss_ex_ante, _ = self._calculate_metrics_util_loss(
-                        create_plot_output = False,
-                        batch_size = stopping_criterion_batch_size,
-                        grid_size = stopping_criterion_grid_size)
-                    rel_util_loss = 1 - utilities/(utilities + torch.tensor(loss_ex_ante))
+                        create_plot_output=False,
+                        batch_size=stopping_criterion_batch_size,
+                        grid_size=stopping_criterion_grid_size)
+                    rel_util_loss = 1 - utilities / (utilities + torch.tensor(loss_ex_ante))
                     stopping_queue.append(rel_util_loss)
 
                     # Check for convergence when enough data is available
@@ -351,6 +351,13 @@ class Experiment(ABC):
                         print(f'Stopping criterion reached after {e} iterations.')
                         break
 
+            self._hparams_metrics = {
+                'epsilon_relative': self._cur_epoch_log_params['epsilon_relative'],
+                'epsilon_absolute': self._cur_epoch_log_params['epsilon_absolute']
+            }
+            if 'util_loss_ex_ante' in self._cur_epoch_log_params:
+                self._hparams_metrics['util_loss_ex_ante'] = self._cur_epoch_log_params['util_loss_ex_ante']
+
             if self.logging_config.enable_logging:
                 self._log_experiment_params()
 
@@ -361,7 +368,6 @@ class Experiment(ABC):
                 self.logging_config.save_tb_events_to_csv_detailed or
                 self.logging_config.save_tb_events_to_csv_aggregate or
                 self.logging_config.save_tb_events_to_binary_detailed):
-
             print('Tabulating tensorboard logs...')
             logging_utils.tabulate_tensorboard_logs(
                 experiment_dir=self.experiment_log_dir,
@@ -369,7 +375,7 @@ class Experiment(ABC):
                 write_aggregate=self.logging_config.save_tb_events_to_csv_aggregate,
                 write_binary=self.logging_config.save_tb_events_to_binary_detailed)
 
-            #logging_utils.print_aggregate_tensorboard_logs(self.experiment_log_dir)
+            # logging_utils.print_aggregate_tensorboard_logs(self.experiment_log_dir)
             print('Finished.')
 
     def _check_convergence(self, values: torch.Tensor, stopping_criterion: float = None, epoch: int = None):
@@ -384,9 +390,9 @@ class Experiment(ABC):
         if stopping_criterion is None:
             stopping_criterion = self.logging_config.stopping_criterion_rel_util_loss_diff
 
-        diffs = values.max(0)[0] - values.min(0)[0] # size: n_models
+        diffs = values.max(0)[0] - values.min(0)[0]  # size: n_models
         log_params = {'stopping_criterion': diffs}
-        self.writer.add_metrics_dict(log_params, self._model_names, epoch, group_prefix = 'meta')
+        self.writer.add_metrics_dict(log_params, self._model_names, epoch, group_prefix='meta')
 
         return diffs.max().le(stopping_criterion).item()
 
@@ -540,8 +546,9 @@ class Experiment(ABC):
         # calculate infinity-norm of update step
         new_params = [torch.nn.utils.parameters_to_vector(model.parameters())
                       for model in self.models]
-        self._cur_epoch_log_params['update_norm'] = [(new_params[i] - self._cur_epoch_log_params['prev_params'][i]).norm(float('inf'))
-                                                     for i in range(self.n_models)]
+        self._cur_epoch_log_params['update_norm'] = [
+            (new_params[i] - self._cur_epoch_log_params['prev_params'][i]).norm(float('inf'))
+            for i in range(self.n_models)]
         del self._cur_epoch_log_params['prev_params']
 
         # logging metrics
@@ -550,13 +557,13 @@ class Experiment(ABC):
             self._cur_epoch_log_params['epsilon_absolute'] = self._calculate_metrics_known_bne()
 
         if self.logging_config.log_metrics['l2']:
-            self._cur_epoch_log_params['L_2'], self._cur_epoch_log_params['L_inf'] = self._calculate_metrics_action_space_norms()
+            self._cur_epoch_log_params['L_2'], self._cur_epoch_log_params[
+                'L_inf'] = self._calculate_metrics_action_space_norms()
 
         if self.logging_config.log_metrics['util_loss'] and (epoch % self.logging_config.util_loss_frequency) == 0:
             create_plot_output = epoch % self.logging_config.plot_frequency == 0
             self._cur_epoch_log_params['util_loss_ex_ante'], self._cur_epoch_log_params['util_loss_ex_interim'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
-
 
         # plotting
         if epoch % self.logging_config.plot_frequency == 0:
@@ -640,7 +647,8 @@ class Experiment(ABC):
                  for i, model in enumerate(self.models)]
         return L_2, L_inf
 
-    def _calculate_metrics_util_loss(self, create_plot_output: bool, epoch: int = None, batch_size = None, grid_size = None):
+    def _calculate_metrics_util_loss(self, create_plot_output: bool, epoch: int = None, batch_size=None,
+                                     grid_size=None):
         """
         Compute mean util_loss of current policy and return
         ex interim util_loss (ex ante util_loss is the average of that tensor)
@@ -652,7 +660,7 @@ class Experiment(ABC):
 
         env = self.env
         if batch_size is None:
-                batch_size = self.logging_config.util_loss_batch_size
+            batch_size = self.logging_config.util_loss_batch_size
         if grid_size is None:
             grid_size = self.logging_config.util_loss_grid_size
 
@@ -683,7 +691,7 @@ class Experiment(ABC):
             plot_output = (valuations, util_losses)
             self._plot(plot_data=plot_output, writer=self.writer,
                        ylim=[0, max(ex_interim_max_util_loss).cpu()],
-                       figure_name='util_loss_landscape', y_label = 'ex-interim loss',
+                       figure_name='util_loss_landscape', y_label='ex-interim loss',
                        epoch=epoch, plot_points=self.plot_points)
         return ex_ante_util_loss, ex_interim_max_util_loss
 
@@ -698,14 +706,14 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_hyperparams': str(self.learning_config.optimizer_hyperparams),
                     'hyperparameters/optimizer_type': self.learning_config.optimizer_type}
 
-        metrics = {'utilities': self._cur_epoch_log_params['utilities']}
-        self.writer.add_hparams(hparam_dict=h_params, metric_dict=metrics)
+
+        self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
 
     def _log_hyperparams(self, epoch=0):
         """Everything that should be logged on every learning_rate update"""
 
         for i, model in enumerate(self.models):
-            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch) #ToDO To hyperparams
+            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)  # ToDO To hyperparams
             self.writer.add_graph(model, self.env.agents[i].valuations)
 
     def _save_models(self, directory):
