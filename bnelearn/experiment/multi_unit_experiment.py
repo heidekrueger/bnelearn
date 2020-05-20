@@ -248,12 +248,12 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
     # use interpolation of opt_bid done on first batch
     def _optimal_bid(valuation, player_position=None):
         print('Warning: BNE is approximated on CPU.')
-        bid = torch.tensor([
-                opt_bid_function[0](valuation[:,0].cpu().numpy()),
-                opt_bid_function[1](valuation[:,0].cpu().numpy())
+        bid = torch.tensor(
+            [opt_bid_function[0](valuation[:,0].cpu().numpy()),
+             opt_bid_function[1](valuation[:,0].cpu().numpy())
             ],
-            dtype = valuation.dtype,
-            device = valuation.device
+            device = valuation.device,
+            dtype = valuation.dtype
         ).t_()
         bid[bid < 0] = 0
         return bid
@@ -284,8 +284,9 @@ class MultiUnitExperiment(Experiment, ABC):
         else:
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
-
-        self.positive_output_point = torch.tensor([[self.u_hi] * self.n_units], dtype=torch.float)
+    
+        if not hasattr(self, 'positive_output_point'):
+            self.positive_output_point = torch.tensor([[self.u_hi] * self.n_units], dtype=torch.float)
 
         # check for available BNE strategy
         self._optimal_bid = None
@@ -412,6 +413,9 @@ class SplitAwardExperiment(MultiUnitExperiment):
         assert all(u_lo > 0 for u_lo in experiment_config.u_lo), \
             '100% Unit must be valued > 0'
 
+        self.positive_output_point = torch.tensor(
+            [self.u_hi[0], self.efficiency_parameter*self.u_hi[0]], dtype=torch.float)
+
         self.plot_xmin = [self.u_lo[0], self.u_hi[0]]
         self.plot_xmax = [self.experiment_config.efficiency_parameter * self.u_lo[0],
                           self.experiment_config.efficiency_parameter * self.u_hi[0]]
@@ -444,7 +448,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
             strategy=strategy,
             n_units=self.n_units,
             item_interest_limit=self.item_interest_limit,
-            descending_valuations=True,
+            descending_valuations=False,
             constant_marginal_values=self.constant_marginal_values,
             player_position=player_position,
             efficiency_parameter=self.efficiency_parameter,
