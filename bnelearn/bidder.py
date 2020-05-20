@@ -265,7 +265,7 @@ class Bidder(Player):
         For a batch of allocations and payments return the player's welfare.
         If valuations are not specified, welfare is calculated for `self.valuations`.
 
-        Can handle multiple batch dimensions, e.g. for allocations a shape of
+        Can handle multiple batch dimensions, e.g. for valuations a shape of
         (..., batch_size, n_items). These batch dimensions are kept in returned
         welfare.
         """
