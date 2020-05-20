@@ -10,7 +10,7 @@ from .mechanism import Mechanism
 def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
     """
     Helper function for cleaning bids in multi-unit auctions.
-    For multi-unit actions bids per must be in decreasing for each bidder.
+    For multi-unit actions bids must be in decreasing order for each bidder.
     If agents' bids fail to fulfill this property, this function sets their bid
     to zero, which will result in no items allocated and thus zero payoff.
 
@@ -37,16 +37,16 @@ def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
 
     return cleaned_bids
 
-
 def _get_multiunit_allocation(
         bids: torch.Tensor,
         random_tie_break: bool = True,
         accept_zero_bids: bool = False,
     ) -> torch.Tensor:
-    """For bids (batch x player x item) in descending order for each batch/player,
-       returns efficient allocation (0/1, batch x player x item)
+    """
+    For bids (batch x player x item) in descending order for each batch/player,
+    returns efficient allocation (0/1, batch x player x item)
 
-       This function assumes that validity checks have already been performed.
+    This function assumes that validity checks have already been performed.
     """
     # for readability
     batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
@@ -77,6 +77,31 @@ def _get_multiunit_allocation(
         allocations.masked_fill_(mask=bids==0, value=0)
 
     return allocations
+
+def _batched_index_select(input, dim, index):
+    """
+    Extends the torch ´index_select´ function to be used for multiple batches
+    at once.
+
+    author:
+        dashesy @ https://discuss.pytorch.org/t/batched-index-select/9115/11
+
+    args:
+        input: Tensor which is to be indexed
+        dim: Dimension
+        index: Index tensor which proviedes the seleting and ordering.
+
+    returns/yields:
+        Indexed tensor
+    """
+    for ii in range(1, len(input.shape)):
+        if ii != dim:
+            index = index.unsqueeze(ii)
+    expanse = list(input.shape)
+    expanse[0] = -1
+    expanse[dim] = -1
+    index = index.expand(expanse)
+    return torch.gather(input, dim, index)
 
 
 class MultiUnitDiscriminatoryAuction(Mechanism):
@@ -250,30 +275,6 @@ class MultiUnitVickreyAuction(Mechanism):
 
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
-def batched_index_select(input, dim, index):
-    """
-    Extends the torch ´index_select´ function to be used for multiple batches
-    at once.
-
-    author:
-        dashesy @ https://discuss.pytorch.org/t/batched-index-select/9115/11
-
-    args:
-        input: Tensor which is to be indexed
-        dim: Dimension
-        index: Index tensor which proviedes the seleting and ordering.
-
-    returns/yields:
-        Indexed tensor
-    """
-    for ii in range(1, len(input.shape)):
-        if ii != dim:
-            index = index.unsqueeze(ii)
-    expanse = list(input.shape)
-    expanse[0] = -1
-    expanse[dim] = -1
-    index = index.expand(expanse)
-    return torch.gather(input, dim, index)
 
 class FPSBSplitAwardAuction(Mechanism):
     """
@@ -301,7 +302,6 @@ class FPSBSplitAwardAuction(Mechanism):
         allocation: torch.Tensor(batch_size, b_bundles=2), values = {0,1}
         """
 
-
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
@@ -313,7 +313,7 @@ class FPSBSplitAwardAuction(Mechanism):
 
         if random_tie_break: # randomly change order of bidders
             idx = torch.randn((n_batch, n_players), device=bids.device).sort(dim=1)[1]
-            bids = batched_index_select(bids, 1, idx)
+            bids = _batched_index_select(bids, 1, idx)
 
         best_100_bids, best_100_indices = bids[:,:,0].min(dim=1)
         best_50_bids, best_50_indices = bids[:,:,1].topk(2, largest=False, dim=1)
@@ -343,8 +343,8 @@ class FPSBSplitAwardAuction(Mechanism):
 
         if random_tie_break: # restore bidder order
             idx_rev = idx.sort(dim=1)[1]
-            winning_bundles = batched_index_select(winning_bundles, 1, idx_rev)
-            bids = batched_index_select(bids, 1, idx_rev) # are bids even needed later on?
+            winning_bundles = _batched_index_select(winning_bundles, 1, idx_rev)
+            bids = _batched_index_select(bids, 1, idx_rev) # are bids even needed later on?
 
         return winning_bundles
 
@@ -383,3 +383,118 @@ class FPSBSplitAwardAuction(Mechanism):
         payments = self._calculate_payments_first_price(bids, allocation)
 
         return (allocation, payments)
+
+
+class CAItemBidding(Mechanism):
+    """ In a simultaneous Vickrey combinatorial auction, all items are sold
+        simultaneous even if bidders might prefer some bundles over others.
+
+        Each item is sold to the bidder making the highest bid to a price defined
+        by the payment-rule.
+    """
+
+    def __init__(self, rule='first_price', cuda: bool=True):
+        super().__init__(cuda)
+
+        if rule not in ('first_price', 'vcg'):
+            raise ValueError('invalid pricing rule!')
+
+        self.rule = rule
+
+    def _solve_allocation_problem(self, bids: torch.Tensor, random_tie_break: bool=True):
+        """
+        Computes allocation.
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, n_items), values = [0, Inf]
+
+        Returns
+        -------
+        allocation: torch.Tensor(batch_size, b_items), values = {0, 1}
+        """
+
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        n_batch, n_players, n_items = bids.shape
+
+        allocation = torch.zeros_like(bids)
+
+        if random_tie_break: # randomly change order of bidders
+            idx = torch.randn((n_batch, n_players), device=bids.device).sort(dim=1)[1]
+            bids = _batched_index_select(bids, 1, idx)
+
+        allocation.scatter_(1, bids.topk(1, dim=1)[1], 1)
+
+        if random_tie_break: # restore bidder order
+            idx_rev = idx.sort(dim=1)[1]
+            allocation = _batched_index_select(allocation, 1, idx_rev)
+            bids = _batched_index_select(bids, 1, idx_rev) # are bids even needed later on?
+
+        return allocation
+
+    def _calculate_payments_first_price(self, bids: torch.Tensor, allocations: torch.Tensor):
+        """
+        Computes first prices
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_bidders, n_bids=2), values = [0,Inf]
+        allocations: torch.Tensor(batch_size, b_bundles=2), values = {0,1}
+
+        Returns
+        -------
+        payments: torch.Tensor(batch_size, n_bidders), values = [0, Inf]
+        """
+        return torch.sum(allocations * bids, dim=2)
+
+    def _calculate_payments_vcg(self, bids: torch.Tensor, allocations: torch.Tensor):
+        """
+        Computes vcg prices
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_bidders, n_bids=2), values = [0,Inf]
+        allocations: torch.Tensor(batch_size, b_bundles=2), values = {0,1}
+
+        Returns
+        -------
+        payments: torch.Tensor(batch_size, n_bidders), values = [0, Inf]
+        """
+        second_highest_bids = bids.topk(2, dim=1)[0][:,-1:,:]
+        return torch.sum(allocations * second_highest_bids, dim=2)
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs a (batch of) auction(s).
+
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches x n_players x n_items),
+                1 indicating item is allocated to corresponding player
+                in that batch, 0 otherwise
+            payments: tensor of dimension (n_batches x n_players),
+                total payment from player to auctioneer for her
+                allocation in that batch.
+        """
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # allocate return variables
+        allocations = self._solve_allocation_problem(bids)
+
+        # pricing
+        if self.rule == 'first_price':
+            payments = self._calculate_payments_first_price(bids, allocations)
+        elif self.rule == 'vcg':
+            payments = self._calculate_payments_vcg(bids, allocations)
+        else:
+            raise ValueError('invalid pricing rule!')
+
+        return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
