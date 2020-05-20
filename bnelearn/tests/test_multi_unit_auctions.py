@@ -5,13 +5,15 @@ import torch
 
 from bnelearn.mechanism import (MultiUnitDiscriminatoryAuction,
                                 MultiUnitUniformPriceAuction,
-                                MultiUnitVickreyAuction)
+                                MultiUnitVickreyAuction,
+                                CAItemBidding)
 
 cuda = torch.cuda.is_available()
 
 mida = MultiUnitDiscriminatoryAuction(cuda=cuda)
 miup = MultiUnitUniformPriceAuction(cuda=cuda)
 miva = MultiUnitVickreyAuction(cuda=cuda)
+caib = CAItemBidding('vcg' ,cuda=cuda)
 
 device = mida.device
 
@@ -124,3 +126,28 @@ def test_miva_correctness():
         [[2.0000, 2.0000, 4.0000],
          [2.9300, 0.9900, 0.0000]],
         device = payments.device))
+
+def test_caib_correctness():
+    """Test of allocation and payments in MultiUnitVickreyAuction."""
+
+    true_allocations = torch.tensor([
+        [[0., 0., 0.],
+         [1., 0., 0.],
+         [0., 1., 1.]],
+        [[1., 1., 1.],
+         [0., 0., 0.],
+         [0., 0., 0.]],
+        [[1., 1., 1.],
+         [0., 0., 0.],
+         [0., 0., 0.]
+        ]], device = device)
+
+    true_payments = torch.tensor(
+        [[0.0000, 3.6000, 3.0000],
+         [2.9300, 0.0000, 0.0000],
+         [3.6000, 0.0000, 0.0000]
+        ], device = device)
+
+    allocations, payments = caib.run(bids_multi_unit_0)
+    assert torch.equal(allocations, true_allocations)
+    assert torch.equal(payments, true_payments)
