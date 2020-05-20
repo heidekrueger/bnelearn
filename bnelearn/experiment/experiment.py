@@ -639,7 +639,8 @@ class Experiment(ABC):
                  for i, model in enumerate(self.models)]
         return L_2, L_inf
 
-    def _calculate_metrics_util_loss(self, create_plot_output: bool, epoch: int = None, batch_size = None, grid_size = None):
+    def _calculate_metrics_util_loss(self, create_plot_output: bool, epoch: int = None,
+                                     batch_size = None, grid_size = None):
         """
         Compute mean util_loss of current policy and return
         ex interim util_loss (ex ante util_loss is the average of that tensor)
@@ -651,7 +652,7 @@ class Experiment(ABC):
 
         env = self.env
         if batch_size is None:
-                batch_size = self.logging_config.util_loss_batch_size
+            batch_size = self.logging_config.util_loss_batch_size
         if grid_size is None:
             grid_size = self.logging_config.util_loss_grid_size
 
@@ -659,30 +660,31 @@ class Experiment(ABC):
         bid_profile = torch.zeros(batch_size, env.n_players, env.agents[0].n_items,
                                   dtype=env.agents[0].valuations.dtype, device=env.mechanism.device)
 
+        # Only supports regret_batch_size <= batch_size
         for agent in env.agents:
-            # Only supports util_loss_batch_size <= batch_size
             bid_profile[:, agent.player_position, :] = agent.get_action()[:batch_size, ...]
 
         torch.cuda.empty_cache()
         util_loss = [
             metrics.ex_interim_util_loss(
-                env.mechanism, bid_profile,
-                learner.strat_to_player_kwargs['player_position'],
-                env.agents[learner.strat_to_player_kwargs['player_position']].valuations[:batch_size, ...],
-                env.agents[learner.strat_to_player_kwargs['player_position']].get_valuation_grid(grid_size)
+                env.mechanism, bid_profile, self.bidders[player_positions[0]],
+                self.bidders[player_positions[0]].valuations[:batch_size, ...],
+                self.bidders[player_positions[0]].get_valuation_grid(grid_size, True)
             )
-            for learner in self.learners
+            for player_positions in self._model2bidder
         ]
         ex_ante_util_loss = [model_tuple[0].mean() for model_tuple in util_loss]
         ex_interim_max_util_loss = [model_tuple[0].max() for model_tuple in util_loss]
+        if not hasattr(self, '_max_util_loss'):
+            self._max_util_loss = ex_interim_max_util_loss
         if create_plot_output:
             # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
             util_losses = torch.stack([util_loss[r][0] for r in range(len(util_loss))], dim=1)[:, :, None]
             valuations = torch.stack([util_loss[r][1] for r in range(len(util_loss))], dim=1)
             plot_output = (valuations, util_losses)
             self._plot(plot_data=plot_output, writer=self.writer,
-                       ylim=[0, max(ex_interim_max_util_loss).cpu()],
-                       figure_name='util_loss_landscape', y_label = 'ex-interim loss',
+                       ylim=[0, max(self._max_util_loss).cpu()],
+                       figure_name='util_loss_landscape', y_label='ex-interim loss',
                        epoch=epoch, plot_points=self.plot_points)
         return ex_ante_util_loss, ex_interim_max_util_loss
 
