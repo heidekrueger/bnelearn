@@ -20,7 +20,7 @@ class EnhancedJSONEncoder(json.JSONEncoder):
 
 
 # Only used on front end
-@dataclass(frozen=True)
+@dataclass
 class RunningConfiguration:
     n_runs: int = 1
     n_epochs: int = 1000
@@ -31,10 +31,9 @@ class RunningConfiguration:
 @dataclass
 class ModelConfiguration:
     payment_rule: str
-    n_players: int = None
     model_sharing: bool = True
     risk: float = 1.0
-    known_bne = False
+    known_bne: bool = False
 
     # Gaussian Distribution
     valuation_mean: float = None
@@ -122,7 +121,7 @@ class LoggingConfiguration:
     log_metrics: list = None
 
     # Stopping Criterion #TODO: this section should go into ExperimentConfiguration
-    stopping_criterion_rel_util_loss_diff = None
+    stopping_criterion_rel_util_loss_diff: float = None
     stopping_criterion_frequency = 100  # how often (each x iters) to calculate the stopping criterion metric
     stopping_criterion_duration = 3  # the x most recent evaluations will be used for calculating stationarity
     stopping_criterion_batch_size = 2 ** 10  # TODO: ideally this should be unified with general util_loss batch and grid sizes
