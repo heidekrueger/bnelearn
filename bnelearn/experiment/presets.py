@@ -106,7 +106,7 @@ def single_item_asymmetric_uniform_disjunct(
         u_hi=[5, 7],  # [15, 25],   [5, 7]
         risk=1.0,
         eval_batch_size=2 ** 18,
-        log_metrics=['opt', 'l2', 'util_loss'],
+        log_metrics=['opt', 'l2', 'util_loss', 'PoA'],
         util_loss_batch_size=2 ** 8,
         util_loss_grid_size=2 ** 8,
         specific_gpu=1,

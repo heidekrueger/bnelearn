@@ -294,3 +294,44 @@ class AuctionEnvironment(Environment):
             agent.batch_size = self.batch_size
             if isinstance(agent, Bidder):
                 agent.draw_valuations_()
+
+    def get_welfare_max(self):
+        """Returns welfare-maximising allocation
+        """
+
+        # collect all bundle valuations
+        valuations = torch.zeros(
+            self.batch_size, self.n_players, self.agents[0].n_items,
+            device=self.mechanism.device
+        )
+        for i, a in enumerate(self.agents):
+            valuations[:, i, :] = a.valuations
+
+        # allocate to highest valuation
+        allocations = torch.zeros_like(valuations).scatter_(1, valuations.topk(1, dim=1)[1], 1)
+
+        # calculate walfare
+        welfares = torch.zeros(
+            self.batch_size, self.n_players,
+            device=self.mechanism.device
+        )
+        for i, a in enumerate(self.agents):
+            welfares[:, i] = a.get_welfare(allocations[:, i, :])
+
+        return allocations, welfares
+
+    def get_PoA(self, allocations):
+        """Returns (Bayesian) Price of Anarchy
+        """
+
+        max_welfares = self.get_welfare_max()[1].sum(1).mean(0)
+
+        actual_welfares = torch.zeros(
+            self.batch_size, self.n_players,
+            device=self.mechanism.device
+        )
+        for i, a in enumerate(self.agents):
+            actual_welfares[:, i] = a.get_welfare(allocations[:, i, :])
+        actual_welfares = actual_welfares.sum(1).mean(0)
+
+        return float(max_welfares / actual_welfares)

@@ -556,6 +556,9 @@ class Experiment(ABC):
             log_params['util_loss_ex_ante'], log_params['util_loss_ex_interim'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
 
+        if self.logging_config.log_metrics['PoA']:
+            log_params['PoA'] = self._calculate_metrics_PoA()
+
         # plotting
         if epoch % self.logging_config.plot_frequency == 0:
             print("\tcurrent utilities: " + str(log_params['utilities'].tolist()))
@@ -687,6 +690,19 @@ class Experiment(ABC):
                        figure_name='util_loss_landscape', y_label='ex-interim loss',
                        epoch=epoch, plot_points=self.plot_points)
         return ex_ante_util_loss, ex_interim_max_util_loss
+
+    def _calculate_metrics_PoA(self):
+        """Calculate (Bayesian) Price of Anarchy"""
+
+        # calculate actual allocations
+        bid_profile = torch.zeros(self.env.batch_size, self.env.n_players, self.env.agents[0].n_items,
+                                  device=self.env.mechanism.device)
+        for pos, bid in self.env._generate_agent_actions():
+            bid_profile[:, pos, :] = bid
+        allocations, _ = self.env.mechanism.play(bid_profile)
+
+        # compare to welfare maximum
+        return self.env.get_PoA(allocations)
 
     def _log_experiment_params(self):
         # TODO: write out all experiment params (complete dict) #See issue #113
