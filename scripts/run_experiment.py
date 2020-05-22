@@ -43,7 +43,7 @@ if __name__ == '__main__':
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     fire.Fire()
     running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-         single_item_uniform_symmetric(2, 101, [2], 'first_price', model_sharing=True, logging=enable_logging)
+         single_item_uniform_symmetric(1, 5, [2], 'first_price', model_sharing=True, logging=enable_logging)
     # logging_configuration.save_tb_events_to_binary_detailed = True
     # logging_configuration.save_tb_events_to_csv_detailed = True
 
@@ -66,7 +66,7 @@ if __name__ == '__main__':
     #running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #   single_item_asymmetric_uniform_disjunct(n_runs=1, n_epochs=500, logging=enable_logging)
 
-    gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu, cuda=True)
+    gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu, cuda=False)
     learning_configuration = LearningConfiguration(
         pretrain_iters=10,
         batch_size=2**8

@@ -351,14 +351,14 @@ class Experiment(ABC):
                         print(f'Stopping criterion reached after {e} iterations.')
                         break
 
-            self._hparams_metrics = {
-                'epsilon_relative': self._cur_epoch_log_params['epsilon_relative'],
-                'epsilon_absolute': self._cur_epoch_log_params['epsilon_absolute']
-            }
-            if 'util_loss_ex_ante' in self._cur_epoch_log_params:
-                self._hparams_metrics['util_loss_ex_ante'] = self._cur_epoch_log_params['util_loss_ex_ante']
-
             if self.logging_config.enable_logging:
+                self._hparams_metrics = {
+                    'epsilon_relative': self._cur_epoch_log_params['epsilon_relative'],
+                    'epsilon_absolute': self._cur_epoch_log_params['epsilon_absolute']
+                }
+                if 'util_loss_ex_ante' in self._cur_epoch_log_params:
+                    self._hparams_metrics['util_loss_ex_ante'] = self._cur_epoch_log_params['util_loss_ex_ante']
+
                 self._log_experiment_params()
 
             self._exit_run()
