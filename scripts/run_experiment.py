@@ -1,15 +1,16 @@
 import os
 import sys
 
+from bnelearn.util.logging import log_experiment_configurations
+
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
 import fire
 import torch
 
-from bnelearn.experiment.configurations import (ExperimentConfiguration, LearningConfiguration,
-                                                LoggingConfiguration, RunningConfiguration)
-from bnelearn.experiment.gpu_controller import GPUController
+from bnelearn.experiment.configurations import (ModelConfiguration, LearningConfiguration,
+                                                LoggingConfiguration, RunningConfiguration, GPUConfiguration)
 from bnelearn.experiment import (GaussianSymmetricPriorSingleItemExperiment,
                                  TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
                                  UniformSymmetricPriorSingleItemExperiment,
@@ -66,7 +67,7 @@ if __name__ == '__main__':
     #running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #   single_item_asymmetric_uniform_disjunct(n_runs=1, n_epochs=500, logging=enable_logging)
 
-    gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu, cuda=False)
+    gpu_configuration = GPUConfiguration(specific_gpu=running_configuration.specific_gpu, cuda=False)
     learning_configuration = LearningConfiguration(
         pretrain_iters=10,
         batch_size=2**8
@@ -77,12 +78,11 @@ if __name__ == '__main__':
     logging_configuration.save_tb_events_to_csv_detailed=True
     logging_configuration.save_tb_events_to_binary_detailed=True
 
+
     try:
-        for i in running_configuration.n_players:
-            experiment_configuration.n_players = i
-            experiment = experiment_class(experiment_configuration, learning_configuration,
-                                          logging_configuration, gpu_configuration)
-            experiment.run(epochs=running_configuration.n_epochs, n_runs=running_configuration.n_runs)
+        experiment_class(experiment_configuration, learning_configuration,
+                                      logging_configuration, gpu_configuration).run()
+
 
     except KeyboardInterrupt:
         print('\nKeyboardInterrupt: released memory after interruption')

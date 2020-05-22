@@ -12,8 +12,8 @@ from scipy import optimize
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import  AuctionEnvironment
-from bnelearn.experiment import Experiment, GPUController
-from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
+from bnelearn.experiment import Experiment, GPUConfiguration
+from bnelearn.experiment.configurations import ModelConfiguration, LearningConfiguration, LoggingConfiguration
 
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import ClosureStrategy
@@ -170,17 +170,17 @@ class SingleItemExperiment(Experiment, ABC):
     # known issue: pylint doesn't recognize this class as abstract: https://github.com/PyCQA/pylint/commit/4024949f6caf5eff5f3da7ab2b4c3cf2e296472b
     # pylint: disable=abstract-method
 
-    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
-                 logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne = False):
+    def __init__(self, model_config: ModelConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUConfiguration, known_bne = False):
 
         if not hasattr(self, 'payment_rule'):
-            self.payment_rule = experiment_config.payment_rule
+            self.payment_rule = model_config.payment_rule
         if not hasattr(self, 'valuation_prior'):
             self.valuation_prior = 'unknown'
 
         self.n_items = 1
         self.input_length = 1
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        super().__init__(model_config, learning_config, logging_config, gpu_config, known_bne)
 
     def _setup_mechanism(self):
         if self.payment_rule == 'first_price':
@@ -204,25 +204,25 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
     """A Single Item Experiment that has the same valuation prior for all participating bidders.
     For risk-neutral agents, a unique BNE is known.
     """
-    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
-                 logging_config: LoggingConfiguration, gpu_config: GPUController, common_prior: torch.distributions.Distribution,
+    def __init__(self, model_config: ModelConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUConfiguration, common_prior: torch.distributions.Distribution,
                  known_bne = False):
 
-        self.n_players = experiment_config.n_players
+        self.n_players = model_config.n_players
         self.n_items = 1
 
         self.common_prior = common_prior
         self.positive_output_point = torch.stack([self.common_prior.mean]*self.n_items)
 
-        self.risk = float(experiment_config.risk)
+        self.risk = float(model_config.risk)
         self.risk_profile = self.get_risk_profile(self.risk)
 
         # if not given by subclass, implement generic optimal_bid if known
         known_bne = known_bne or \
-            experiment_config.payment_rule == 'second_price' or \
-            (experiment_config.payment_rule == 'first_price' and self.risk == 1.0)
+                    model_config.payment_rule == 'second_price' or \
+                    (model_config.payment_rule == 'first_price' and self.risk == 1.0)
 
-        self.model_sharing = experiment_config.model_sharing
+        self.model_sharing = model_config.model_sharing
         if self.model_sharing:
             self.n_models = 1
             self._bidder2model = [0] * self.n_players
@@ -230,7 +230,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
 
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne=known_bne)
+        super().__init__(model_config, learning_config, logging_config, gpu_config, known_bne=known_bne)
 
     def _set_symmetric_bne_closure(self):
         # set optimal_bid here, possibly overwritten by subclasses if more specific form is known
@@ -320,17 +320,17 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
 class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
 
-    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
-                 logging_config: LoggingConfiguration, gpu_config: GPUController):
+    def __init__(self, model_config: ModelConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUConfiguration):
 
-        assert experiment_config.u_lo is not None, """Prior boundaries not specified!"""
-        assert experiment_config.u_hi is not None, """Prior boundaries not specified!"""
+        assert model_config.u_lo is not None, """Prior boundaries not specified!"""
+        assert model_config.u_hi is not None, """Prior boundaries not specified!"""
 
-        known_bne = experiment_config.payment_rule in ('first_price', 'second_price')
+        known_bne = model_config.payment_rule in ('first_price', 'second_price')
 
         self.valuation_prior = 'uniform'
-        self.u_lo = float(experiment_config.u_lo)
-        self.u_hi = float(experiment_config.u_hi)
+        self.u_lo = float(model_config.u_lo)
+        self.u_hi = float(model_config.u_hi)
         common_prior = torch.distributions.uniform.Uniform(low = self.u_lo, high=self.u_hi)
 
         self.plot_xmin = self.u_lo
@@ -338,7 +338,7 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         self.plot_ymin = 0
         self.plot_ymax = self.u_hi * 1.05
 
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config, common_prior, known_bne)
+        super().__init__(model_config, learning_config, logging_config, gpu_config, common_prior, known_bne)
 
 
     def _set_symmetric_bne_closure(self):
@@ -377,36 +377,36 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         return bne_utility
 
 class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
-    def __init__(self, experiment_config: dict, learning_config: LearningConfiguration,
-                 logging_config: LoggingConfiguration, gpu_config: GPUController):
+    def __init__(self, model_config: dict, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUConfiguration):
 
-        assert experiment_config.valuation_mean is not None, """Valuation mean and/or std not specified!"""
-        assert experiment_config.valuation_std is not None, """Valuation mean and/or std not specified!"""
+        assert model_config.valuation_mean is not None, """Valuation mean and/or std not specified!"""
+        assert model_config.valuation_std is not None, """Valuation mean and/or std not specified!"""
         self.valuation_prior = 'normal'
-        self.valuation_mean = experiment_config.valuation_mean
-        self.valuation_std = experiment_config.valuation_std
+        self.valuation_mean = model_config.valuation_mean
+        self.valuation_std = model_config.valuation_std
         common_prior = torch.distributions.normal.Normal(loc=self.valuation_mean, scale=self.valuation_std)
 
         self.plot_xmin = int(max(0, self.valuation_mean - 3 * self.valuation_std))
         self.plot_xmax = int(self.valuation_mean + 3 * self.valuation_std)
         self.plot_ymin = 0
-        self.plot_ymax = 20 if experiment_config.payment_rule == 'first_price' else self.plot_xmax
+        self.plot_ymax = 20 if model_config.payment_rule == 'first_price' else self.plot_xmax
 
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config, common_prior)
+        super().__init__(model_config, learning_config, logging_config, gpu_config, common_prior)
 
 
 class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
-    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
-                 logging_config: LoggingConfiguration, gpu_config: GPUController):
+    def __init__(self, model_config: ModelConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUConfiguration):
 
 
-        if experiment_config.model_sharing is not None:
-            assert not experiment_config.model_sharing, "Model sharing not available in this setting!"
+        if model_config.model_sharing is not None:
+            assert not model_config.model_sharing, "Model sharing not available in this setting!"
         self.model_sharing = False
 
         self.payment_rule = 'first_price'
         self.valuation_prior = 'uniform'
-        self.risk = float(experiment_config.risk)
+        self.risk = float(model_config.risk)
         self.risk_profile = self.get_risk_profile(self.risk)
 
         self.n_players = 2
@@ -414,11 +414,11 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         self.n_models = self.n_players
         self._bidder2model: List[int] = list(range(self.n_players))
 
-        if not isinstance(experiment_config.u_lo, list):
-            self.u_lo = [float(experiment_config.u_lo)] * self.n_players
+        if not isinstance(model_config.u_lo, list):
+            self.u_lo = [float(model_config.u_lo)] * self.n_players
         else:
-            self.u_lo: List[float] = [float(experiment_config.u_lo[i]) for i in range(self.n_players)]
-        self.u_hi: List[float] = [float(experiment_config.u_hi[i]) for i in range(self.n_players)]
+            self.u_lo: List[float] = [float(model_config.u_lo[i]) for i in range(self.n_players)]
+        self.u_hi: List[float] = [float(model_config.u_hi[i]) for i in range(self.n_players)]
         assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
         self.positive_output_point = torch.tensor([min(self.u_hi)] * self.n_items)
 
@@ -431,7 +431,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
 
         assert self.risk == 1.0, "BNE only known for risk neutral bidders."
 
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        super().__init__(model_config, learning_config, logging_config, gpu_config, known_bne)
 
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, self.valuation_prior,

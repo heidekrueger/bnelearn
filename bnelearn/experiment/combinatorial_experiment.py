@@ -20,8 +20,8 @@ import torch
 from bnelearn.mechanism.auctions_combinatorial import LLGAuction, LLLLGGAuction
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.experiment import Experiment, GPUController
-from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
+from bnelearn.experiment import Experiment, GPUConfiguration
+from bnelearn.experiment.configurations import ModelConfiguration, LearningConfiguration, LoggingConfiguration
 from bnelearn.strategy import ClosureStrategy
 
 class LocalGlobalExperiment(Experiment, ABC):
@@ -29,15 +29,15 @@ class LocalGlobalExperiment(Experiment, ABC):
     This class represents Local Global experiments in general as considered by Bosshard et al. (2018).
     It serves only to provide common logic and parameters for LLG and LLLLGG.
     """
-    def __init__(self, n_players, n_local, n_items, experiment_config, learning_config,
+    def __init__(self, n_players, n_local, n_items, model_config, learning_config,
                  logging_config, gpu_config, known_bne):
         self.n_players = n_players
         self.n_local = n_local
         self.n_items = n_items
 
-        assert experiment_config.u_lo is not None, """Missing prior information!"""
-        assert experiment_config.u_hi is not None, """Missing prior information!"""
-        u_lo = experiment_config.u_lo
+        assert model_config.u_lo is not None, """Missing prior information!"""
+        assert model_config.u_hi is not None, """Missing prior information!"""
+        u_lo = model_config.u_lo
         # Frontend could either provide single number u_lo that is shared or a list for each player.
         if isinstance(u_lo, Iterable):
             assert len(u_lo) == self.n_players
@@ -46,7 +46,7 @@ class LocalGlobalExperiment(Experiment, ABC):
             u_lo = [float(u_lo)] * self.n_players
         self.u_lo = u_lo
 
-        u_hi = experiment_config.u_hi
+        u_hi = model_config.u_hi
         assert isinstance(u_hi, Iterable)
         assert len(u_hi) == self.n_players
         assert u_hi[1:n_local] == u_hi[:n_local-1], "local bidders should be identical"
@@ -55,7 +55,7 @@ class LocalGlobalExperiment(Experiment, ABC):
 
         self.positive_output_point = torch.tensor([min(self.u_hi)]*self.n_items)
 
-        self.model_sharing = experiment_config.model_sharing
+        self.model_sharing = model_config.model_sharing
         if self.model_sharing:
             self.n_models = 2
             self._bidder2model: List[int] = [0] * n_local + [1] * (self.n_players - n_local)
@@ -63,7 +63,7 @@ class LocalGlobalExperiment(Experiment, ABC):
             self.n_models = self.n_players
             self._bidder2model: List[int] = list(range(self.n_players))
 
-        super().__init__(experiment_config,  learning_config, logging_config, gpu_config, known_bne)
+        super().__init__(model_config, learning_config, logging_config, gpu_config, known_bne)
 
         self.plot_xmin = min(u_lo)
         self.plot_xmax = max(u_hi)
@@ -87,19 +87,19 @@ class LLGExperiment(LocalGlobalExperiment):
     Local bidder 1 bids only on the first item, the second only on the second and global only on both.
     Ausubel and Baranov (2018) provide closed form solutions for the 3 core selecting rules.
     """
-    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
-                 logging_config: LoggingConfiguration, gpu_config: GPUController):
+    def __init__(self, model_config: ModelConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUConfiguration):
 
-        assert experiment_config.n_players == 3, "Incorrect number of players specified."
+        assert model_config.n_players == 3, "Incorrect number of players specified."
 
-        self.gamma = experiment_config.gamma
+        self.gamma = model_config.gamma
         assert self.gamma == 0, "Gamma > 0 implemented yet."
 
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known! (i.e. uniformity, bounds, etc)
-        known_bne = experiment_config.payment_rule in \
-            ['vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
+        known_bne = model_config.payment_rule in \
+                    ['vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
         self.input_length = 1
-        super().__init__(3,2, 1, experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        super().__init__(3, 2, 1, model_config, learning_config, logging_config, gpu_config, known_bne)
 
     def _setup_mechanism(self):
         self.mechanism = LLGAuction(rule = self.payment_rule)
@@ -168,18 +168,18 @@ class LLLLGGExperiment(LocalGlobalExperiment):
     TODO:
         - Implement eval_env for VCG
     """
-    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
-                 logging_config: LoggingConfiguration, gpu_config: GPUController):
+    def __init__(self, model_config: ModelConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUConfiguration):
 
-        assert experiment_config.n_players == 6, "not right number of players for setting"
+        assert model_config.n_players == 6, "not right number of players for setting"
         self.input_length = 2
 
         known_bne = False
-        super().__init__(6, 4, 2, experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        super().__init__(6, 4, 2, model_config, learning_config, logging_config, gpu_config, known_bne)
 
     def _setup_mechanism(self):
-        self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver=self.experiment_config.core_solver, 
-                                       parallel=self.experiment_config.parallel, cuda=self.gpu_config.cuda)
+        self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver=self.model_config.core_solver,
+                                       parallel=self.model_config.parallel, cuda=self.gpu_config.cuda)
 
     def _get_logdir_hierarchy(self):
         name = ['LLLLGG', self.payment_rule, str(self.n_players) + 'p']

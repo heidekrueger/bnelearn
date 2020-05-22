@@ -1,12 +1,22 @@
 """This module provides dataclasses that are used to hold configs."""
+import dataclasses
+import json
 import os
 import time
+import warnings
 from dataclasses import dataclass
-from typing import List, Type
+from typing import List, Type, Iterable
 
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
+
+
+class EnhancedJSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        if dataclasses.is_dataclass(o):
+            return dataclasses.asdict(o)
+        return super().default(o)
 
 
 # Only used on front end
@@ -14,15 +24,17 @@ from torch.optim import Optimizer
 class RunningConfiguration:
     n_runs: int = 1
     n_epochs: int = 1000
-    specific_gpu: int = 1
-    n_players: list = None
+    n_players: int = None
+    seeds: Iterable[int] = None
+
 
 @dataclass
-class ExperimentConfiguration:
+class ModelConfiguration:
     payment_rule: str
     n_players: int = None
     model_sharing: bool = True
     risk: float = 1.0
+    known_bne = False
 
     # Gaussian Distribution
     valuation_mean: float = None
@@ -48,6 +60,44 @@ class ExperimentConfiguration:
     core_solver: str = 'NoCore'
     parallel: int = 1
 
+
+@dataclass
+class LearningConfiguration:
+    learner_hyperparams: dict = None
+    optimizer_type: str or Type[Optimizer] = 'adam'
+    optimizer_hyperparams: dict = None
+    hidden_nodes: List[int] = None
+    hidden_activations: List[nn.Module] = None
+    pretrain_iters: int = 500
+    batch_size: int = 2 ** 18
+
+    def __post_init__(self):
+        self.optimizer: Type[Optimizer] = self._set_optimizer(self.optimizer_type)
+        if self.learner_hyperparams is None:
+            self.learner_hyperparams = {'population_size': 64,
+                                        'sigma': 1.,
+                                        'scale_sigma_by_model_size': True}
+        if self.optimizer_hyperparams is None:
+            self.optimizer_hyperparams = {'lr': 3e-3}
+        if self.hidden_nodes is None:
+            self.hidden_nodes = [5, 5, 5]
+        if self.hidden_activations is None:
+            self.hidden_activations = [nn.SELU() for layer in self.hidden_nodes]
+
+    @staticmethod
+    def _set_optimizer(optimizer: str or Type[Optimizer]) -> Type[Optimizer]:
+        """Maps shortcut strings to torch.optim.Optimizer types, if required."""
+        if isinstance(optimizer, type) and issubclass(optimizer, Optimizer):
+            return optimizer
+
+        if isinstance(optimizer, str):
+            if optimizer in ('adam', 'Adam'):
+                return torch.optim.Adam
+            if optimizer in ('SGD', 'sgd', 'Sgd'):
+                return torch.optim.SGD
+            # add more optimizers as needed
+        raise ValueError('Optimizer type could not be inferred!')
+
 @dataclass
 class LoggingConfiguration:
     """Controls logging and evaluation aspects of an experiment suite.
@@ -59,13 +109,13 @@ class LoggingConfiguration:
                 experiment_timestamp + experiment_name /
                     run_timestamp + run_seed
     """
-    enable_logging: bool = True #If false, disables ALL logging
+    enable_logging: bool = True  # If false, disables ALL logging
     # root directory for logging. subdirectories will be inferred and created based on experiment name and config
     log_root_dir: str = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
     experiment_name: str = None
     # Rationale behind timestamp format: should be ordered chronologically but include weekday.
     # Using . instead of : for compatability with Windows
-    experiment_timestamp: str = time.strftime('%Y-%m-%d %a %H.%M') #removed %S here, we won't need seconds
+    experiment_timestamp: str = time.strftime('%Y-%m-%d %a %H.%M')  # removed %S here, we won't need seconds
     plot_frequency: int = 100
     plot_points: int = 100
     plot_show_inline: bool = True
@@ -73,10 +123,10 @@ class LoggingConfiguration:
 
     # Stopping Criterion #TODO: this section should go into ExperimentConfiguration
     stopping_criterion_rel_util_loss_diff = None
-    stopping_criterion_frequency = 100 # how often (each x iters) to calculate the stopping criterion metric
-    stopping_criterion_duration = 3 # the x most recent evaluations will be used for calculating stationarity
-    stopping_criterion_batch_size = 2**10 # TODO: ideally this should be unified with general util_loss batch and grid sizes
-    stopping_criterion_grid_size = 2**9
+    stopping_criterion_frequency = 100  # how often (each x iters) to calculate the stopping criterion metric
+    stopping_criterion_duration = 3  # the x most recent evaluations will be used for calculating stationarity
+    stopping_criterion_batch_size = 2 ** 10  # TODO: ideally this should be unified with general util_loss batch and grid sizes
+    stopping_criterion_grid_size = 2 ** 9
 
     # Utility Loss calculation
     util_loss_batch_size: int = None
@@ -84,9 +134,8 @@ class LoggingConfiguration:
     util_loss_frequency: int = 100
 
     # Eval vs known bne
-    eval_batch_size: int = 2**22
+    eval_batch_size: int = 2 ** 22
     cache_eval_actions: bool = True
-
 
     save_tb_events_to_csv_aggregate: bool = True
     save_tb_events_to_csv_detailed: bool = False
@@ -112,8 +161,8 @@ class LoggingConfiguration:
                 assert metric in self.log_metrics.keys(), "Metric not known."
                 self.log_metrics[metric] = True
         if self.log_metrics['util_loss'] and self.util_loss_batch_size is None:
-            self.util_loss_batch_size: int = 2**8
-            self.util_loss_grid_size: int = 2**8
+            self.util_loss_batch_size: int = 2 ** 8
+            self.util_loss_grid_size: int = 2 ** 8
         if not self.enable_logging:
             self.save_tb_events_to_csv_aggregate = False
             self.save_tb_events_to_csv_detailed: bool = False
@@ -124,38 +173,26 @@ class LoggingConfiguration:
             self.save_figure_data_to_disk = False
 
 @dataclass
-class LearningConfiguration:
-    learner_hyperparams: dict = None
-    optimizer_type: str or Type[Optimizer] = 'adam'
-    optimizer_hyperparams: dict = None
-    hidden_nodes: List[int] = None
-    hidden_activations: List[nn.Module] = None
-    pretrain_iters: int = 500
-    batch_size: int = 2**18
+class GPUConfiguration:
+    cuda: bool = True
+    specific_gpu: int = 0
+    fallback: bool = False
 
     def __post_init__(self):
-        self.optimizer: Type[Optimizer] = self._set_optimizer(self.optimizer_type)
-        if self.learner_hyperparams is None:
-            self.learner_hyperparams = {'population_size': 64,
-                                        'sigma': 1.,
-                                        'scale_sigma_by_model_size': True}
-        if self.optimizer_hyperparams is None:
-            self.optimizer_hyperparams= {'lr': 3e-3}
-        if self.hidden_nodes is None:
-            self.hidden_nodes = [5,5,5]
-        if self.hidden_activations is None:
-            self.hidden_activations = [nn.SELU() for layer in self.hidden_nodes]
+        if self.cuda and not torch.cuda.is_available():
+            warnings.warn('Cuda not available. Falling back to CPU!')
+            self.cuda = False
+            self.fallback = True
+        self.device = 'cuda' if self.cuda else 'cpu'
 
-    @staticmethod
-    def _set_optimizer(optimizer: str or Type[Optimizer]) -> Type[Optimizer]:
-        """Maps shortcut strings to torch.optim.Optimizer types, if required."""
-        if isinstance(optimizer, type) and issubclass(optimizer, Optimizer):
-            return optimizer
+        if self.cuda and self.specific_gpu is not None:
+            torch.cuda.set_device(self.specific_gpu)
 
-        if isinstance(optimizer, str):
-            if optimizer in ('adam', 'Adam'):
-                return torch.optim.Adam
-            if optimizer in ('SGD', 'sgd', 'Sgd'):
-                return torch.optim.SGD
-            # add more optimizers as needed
-        raise ValueError('Optimizer type could not be inferred!')
+@dataclass
+class ExperimentConfiguration:
+    experiment_class: str
+    run_config: RunningConfiguration
+    model_config: ModelConfiguration
+    learning_config: LearningConfiguration
+    logging_config: LoggingConfiguration
+    gpu_config: GPUConfiguration

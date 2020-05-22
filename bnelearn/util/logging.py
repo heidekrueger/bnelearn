@@ -1,20 +1,19 @@
 """This module contains utilities for logging of experiments"""
 
-import os
 import pickle
-import time
-import warnings
 from typing import List
 
 import matplotlib.pyplot as plt
 import pandas as pd
-import torch
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from torch.utils.tensorboard.summary import hparams
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
 
+from bnelearn.experiment.configurations import *
+
 _full_log_file_name = 'full_results'
 _aggregate_log_file_name = 'aggregate_log'
+_configurations_f_name = 'experiment_configurations.json'
 
 
 # based on https://stackoverflow.com/a/57411105/4755970
@@ -202,3 +201,17 @@ class CustomSummaryWriter(SummaryWriter):
                     fw.add_summary(scalar(tag, scalar_value), global_step, walltime)
             else:
                 raise ValueError('Got list of invalid length.')
+
+
+def log_experiment_configurations(experiment_configuration: ExperimentConfiguration):
+    f_name = os.path.join(experiment_configuration.logging_config.experiment_dir, _configurations_f_name)
+    # temp = json.dumps(experiment_configuration, cls=EnhancedJSONEncoder)
+    with open(f_name, 'w') as outfile:
+        json.dump(experiment_configuration, outfile, cls=EnhancedJSONEncoder)
+
+
+def run_experiment_from_configurations_log(experiment_dir):
+    f_name = os.path.join(experiment_dir, _configurations_f_name)
+    with open(f_name) as json_file:
+        data = json.load(json_file)
+    pass

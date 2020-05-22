@@ -19,8 +19,8 @@ from scipy import integrate, interpolate
 
 from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.experiment import GPUController, Experiment
-from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
+from bnelearn.experiment import GPUConfiguration, Experiment
+from bnelearn.experiment.configurations import ModelConfiguration, LearningConfiguration, LoggingConfiguration
 from bnelearn.mechanism import (
     MultiUnitVickreyAuction, MultiUnitUniformPriceAuction, MultiUnitDiscriminatoryAuction,
     FPSBSplitAwardAuction
@@ -256,18 +256,18 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
 class MultiUnitExperiment(Experiment, ABC):
     """ Experiment class for the standard multi-unit auctions.
     """
-    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
-                 logging_config: LoggingConfiguration, gpu_config: GPUController):
+    def __init__(self, model_config: ModelConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUConfiguration):
 
 
-        self.n_units = self.n_items = experiment_config.n_units
-        self.n_players =  experiment_config.n_players
-        self.payment_rule = experiment_config.payment_rule
+        self.n_units = self.n_items = model_config.n_units
+        self.n_players =  model_config.n_players
+        self.payment_rule = model_config.payment_rule
 
-        self.u_lo = experiment_config.u_lo
-        self.u_hi = experiment_config.u_hi
+        self.u_lo = model_config.u_lo
+        self.u_hi = model_config.u_hi
 
-        self.model_sharing = experiment_config.model_sharing
+        self.model_sharing = model_config.model_sharing
         if self.model_sharing:
             self.n_models = 1
             self._bidder2model = [0] * self.n_players
@@ -281,27 +281,27 @@ class MultiUnitExperiment(Experiment, ABC):
         # check for available BNE strategy
         self._optimal_bid = None
         if not isinstance(self, SplitAwardExperiment):
-            self._optimal_bid = _multiunit_bne(experiment_config, experiment_config.payment_rule)
+            self._optimal_bid = _multiunit_bne(model_config, model_config.payment_rule)
         else:
-            if experiment_config.n_units == 2 and experiment_config.n_players == 2:
-                self._optimal_bid = _optimal_bid_splitaward2x2_1(experiment_config)
+            if model_config.n_units == 2 and model_config.n_players == 2:
+                self._optimal_bid = _optimal_bid_splitaward2x2_1(model_config)
                 # self._optimal_bid = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
         known_bne = self._optimal_bid is not None
 
-        self.constant_marginal_values = experiment_config.constant_marginal_values
-        self.item_interest_limit = experiment_config.item_interest_limit
+        self.constant_marginal_values = model_config.constant_marginal_values
+        self.item_interest_limit = model_config.item_interest_limit
 
-        if experiment_config.pretrain_transform is not None:
-            self.pretrain_transform = experiment_config.pretrain_transform
+        if model_config.pretrain_transform is not None:
+            self.pretrain_transform = model_config.pretrain_transform
         else:
             self.pretrain_transform = self.default_pretrain_transform
 
-        self.input_length =  experiment_config.n_units
+        self.input_length =  model_config.n_units
 
         self.plot_xmin = self.plot_ymin = min(self.u_lo)
         self.plot_xmax = self.plot_ymax = max(self.u_hi)
 
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        super().__init__(model_config, learning_config, logging_config, gpu_config, known_bne)
 
         print('\n=== Hyperparameters ===')
         for k in learning_config.learner_hyperparams.keys():
@@ -382,22 +382,22 @@ class SplitAwardExperiment(MultiUnitExperiment):
     """
     Experiment class of the first-price sealed bid split-award auction.
     """
-    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
-                 logging_config: LoggingConfiguration, gpu_config: GPUController):
+    def __init__(self, model_config: ModelConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUConfiguration):
 
-        self.efficiency_parameter = experiment_config.efficiency_parameter
+        self.efficiency_parameter = model_config.efficiency_parameter
 
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config)
+        super().__init__(model_config, learning_config, logging_config, gpu_config)
 
-        assert all(u_lo > 0 for u_lo in experiment_config.u_lo), \
+        assert all(u_lo > 0 for u_lo in model_config.u_lo), \
             '100% Unit must be valued > 0'
 
         self.positive_output_point = torch.tensor(
             [self.u_hi[0], self.efficiency_parameter*self.u_hi[0]], dtype=torch.float)
 
         self.plot_xmin = [self.u_lo[0], self.u_hi[0]]
-        self.plot_xmax = [self.experiment_config.efficiency_parameter * self.u_lo[0],
-                          self.experiment_config.efficiency_parameter * self.u_hi[0]]
+        self.plot_xmax = [self.model_config.efficiency_parameter * self.u_lo[0],
+                          self.model_config.efficiency_parameter * self.u_hi[0]]
         self.plot_ymin = [0, 2 * self.u_hi[0]]
         self.plot_ymax = [0, 2 * self.u_hi[0]]
 

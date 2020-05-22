@@ -2,10 +2,10 @@ from typing import List
 
 from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
                                                           LLLLGGExperiment)
-from bnelearn.experiment.configurations import (ExperimentConfiguration,
+from bnelearn.experiment.configurations import (ModelConfiguration,
                                                 LearningConfiguration,
                                                 LoggingConfiguration,
-                                                RunningConfiguration)
+                                                RunningConfiguration, ExperimentConfiguration)
 from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment,
                                                        SplitAwardExperiment)
 from bnelearn.experiment.single_item_experiment import (
@@ -18,27 +18,36 @@ from bnelearn.experiment.single_item_experiment import (
 # pylint: disable = dangerous-default-value 
 
 def single_item_uniform_symmetric(n_runs: int, n_epochs: int,
-                                  n_players: List[int], payment_rule: str, model_sharing=True,
-                                  u_lo=0, u_hi=1,
+                                  n_players: int, payment_rule: str, model_sharing=True,
+                                  u_lo=[0], u_hi=[1],
                                   risk=1.0,
                                   log_metrics=['opt', 'l2', 'util_loss'], util_loss_batch_size=2 ** 4,
                                   util_loss_grid_size=2 ** 4,
                                   specific_gpu=0,
                                   logging=True,
-                                  eval_batch_size=2**22):
-    running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu,
-                                                 n_players=n_players)
-    logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
-                                                 util_loss_batch_size=util_loss_batch_size,
-                                                 util_loss_grid_size=util_loss_grid_size,
-                                                 enable_logging=logging,
-                                                 eval_batch_size = eval_batch_size
-                                                 )
+                                  eval_batch_size=2 ** 22):
+    running_config = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs,
+                                          n_players=n_players)
+    model_config = ModelConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
+                                      u_lo=u_lo, u_hi=u_hi, risk=risk)
+    learning_config = {}
+    gpu_config = {}
+    logging_config = LoggingConfiguration(log_metrics=log_metrics,
+                                          util_loss_batch_size=util_loss_batch_size,
+                                          util_loss_grid_size=util_loss_grid_size,
+                                          enable_logging=logging,
+                                          eval_batch_size=eval_batch_size
+                                          )
 
-    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
-                                                       u_lo=u_lo, u_hi=u_hi, risk=risk)
+    experiment_config = ExperimentConfiguration(experiment_class='UniformSymmetricPriorSingleItemExperiment',
+                                                run_config=running_config,
+                                                model_config=model_config,
+                                                learning_config=learning_config,
+                                                logging_config=logging_config,
+                                                gpu_config=gpu_config
+                                                )
     experiment_class = UniformSymmetricPriorSingleItemExperiment
-    return running_configuration, logging_configuration, experiment_configuration, experiment_class
+    return experiment_config, experiment_class
 
 
 def single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
@@ -51,7 +60,6 @@ def single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
                                    logging=True,
                                    save_tb_events_to_csv_detailed: bool = False,
                                    save_tb_events_to_binary_detailed: bool = False):
-
     if eval_batch_size == 2 ** 16:
         print("Using eval_batch_size of 2**16. Use at least 2**22 for proper experiment runs!")
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu,
@@ -64,9 +72,10 @@ def single_item_gaussian_symmetric(n_runs: int, n_epochs: int,
                                                  save_tb_events_to_csv_detailed=save_tb_events_to_csv_detailed,
                                                  save_tb_events_to_binary_detailed=save_tb_events_to_binary_detailed
                                                  )
-    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
-                                                       valuation_mean=valuation_mean, valuation_std=valuation_std,
-                                                       risk=risk)
+    experiment_configuration = ModelConfiguration(experiment_class='GaussianSymmetricPriorSingleItemExperiment',
+                                                  payment_rule=payment_rule, model_sharing=model_sharing,
+                                                  valuation_mean=valuation_mean, valuation_std=valuation_std,
+                                                  risk=risk)
     experiment_class = GaussianSymmetricPriorSingleItemExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
@@ -95,10 +104,13 @@ def single_item_asymmetric_uniform_overlapping(
                                                  eval_batch_size=eval_batch_size
                                                  )
 
-    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
-                                                       u_lo=u_lo, u_hi=u_hi, risk=risk)
+    experiment_configuration = \
+        ModelConfiguration(experiment_class='TwoPlayerAsymmetricUniformPriorSingleItemExperiment',
+                           payment_rule=payment_rule, model_sharing=model_sharing,
+                           u_lo=u_lo, u_hi=u_hi, risk=risk)
     experiment_class = TwoPlayerAsymmetricUniformPriorSingleItemExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
+
 
 def single_item_asymmetric_uniform_disjunct(
         n_runs: int,
@@ -124,8 +136,10 @@ def single_item_asymmetric_uniform_disjunct(
                                                  eval_batch_size=eval_batch_size
                                                  )
 
-    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
-                                                       u_lo=u_lo, u_hi=u_hi, risk=risk)
+    experiment_configuration = \
+        ModelConfiguration(experiment_class='TwoPlayerAsymmetricUniformPriorSingleItemExperiment',
+                           payment_rule=payment_rule, model_sharing=model_sharing,
+                           u_lo=u_lo, u_hi=u_hi, risk=risk)
     experiment_class = TwoPlayerAsymmetricUniformPriorSingleItemExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
@@ -146,8 +160,9 @@ def llg(n_runs: int, n_epochs: int,
                                                  enable_logging=logging
                                                  )
 
-    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
-                                                       u_lo=u_lo, u_hi=u_hi, risk=risk)
+    experiment_configuration = ModelConfiguration(experiment_class='LLGExperiment',
+                                                  payment_rule=payment_rule, model_sharing=model_sharing,
+                                                  u_lo=u_lo, u_hi=u_hi, risk=risk)
     experiment_class = LLGExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
@@ -157,7 +172,7 @@ def llllgg(n_runs: int, n_epochs: int,
            u_lo=[0, 0, 0, 0, 0, 0], u_hi=[1, 1, 1, 1, 2, 2],
            risk=1.0, eval_batch_size=2 ** 12, util_loss_frequency=100,
            log_metrics=['util_loss'], util_loss_batch_size=2 ** 12, util_loss_grid_size=2 ** 10,
-           core_solver="NoCore", parallel = 1,
+           core_solver="NoCore", parallel=1,
            specific_gpu=1,
            logging=True):
     n_players = [6]
@@ -171,9 +186,10 @@ def llllgg(n_runs: int, n_epochs: int,
                                                  util_loss_frequency=util_loss_frequency
                                                  )
 
-    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
-                                                       u_lo=u_lo, u_hi=u_hi, risk=risk, core_solver=core_solver,
-                                                       parallel = parallel)
+    experiment_configuration = ModelConfiguration(experiment_class='LLLLGGExperiment',
+                                                  payment_rule=payment_rule, model_sharing=model_sharing,
+                                                  u_lo=u_lo, u_hi=u_hi, risk=risk, core_solver=core_solver,
+                                                  parallel=parallel)
     experiment_class = LLLLGGExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
@@ -205,7 +221,8 @@ def multiunit(
         plot_points=1000,
         enable_logging=logging
     )
-    experiment_configuration = ExperimentConfiguration(
+    experiment_configuration = ModelConfiguration(
+        experiment_class='MultiUnitExperiment',
         payment_rule=payment_rule, n_units=n_units,
         model_sharing=model_sharing,
         u_lo=u_lo, u_hi=u_hi, risk=risk,
@@ -244,7 +261,8 @@ def splitaward(
         enable_logging=logging
     )
 
-    experiment_configuration = ExperimentConfiguration(
+    experiment_configuration = ModelConfiguration(
+        experiment_class='SplitAwardExperiment',
         payment_rule=payment_rule, n_units=n_units,
         model_sharing=model_sharing,
         u_lo=u_lo, u_hi=u_hi, risk=risk,

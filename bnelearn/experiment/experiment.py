@@ -24,9 +24,10 @@ import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
 from bnelearn.experiment.configurations import (ExperimentConfiguration,
+                                                ModelConfiguration,
                                                 LearningConfiguration,
-                                                LoggingConfiguration)
-from bnelearn.experiment.gpu_controller import GPUController
+                                                LoggingConfiguration,
+                                                GPUConfiguration)
 from bnelearn.learner import ESPGLearner, Learner
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import NeuralNetStrategy
@@ -67,19 +68,20 @@ class Experiment(ABC):
     bne_env: AuctionEnvironment
     _optimal_bid: callable
 
-    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
-                 logging_config: LoggingConfiguration, gpu_config: GPUController, known_bne=False):
-        # Configs
+    def __init__(self, experiment_config: ExperimentConfiguration):
+        # Configs, params are duplicated for the ease of usage and brevity
         self.experiment_config = experiment_config
-        self.learning_config = learning_config
-        self.logging_config = logging_config
-        self.gpu_config = gpu_config
+        self.run_config = experiment_config.run_config
+        self.model_config = experiment_config.model_config
+        self.learning_config = experiment_config.learning_config
+        self.logging_config = experiment_config.logging_config
+        self.gpu_config = experiment_config.gpu_config
 
         # Global Stuff that should be initiated here
-        self.plot_frequency = logging_config.plot_frequency
-        self.plot_points = min(logging_config.plot_points, learning_config.batch_size)
+        self.plot_frequency = self.logging_config.plot_frequency
+        self.plot_points = min(self.logging_config.plot_points, self.learning_config.batch_size)
 
-        # Everything that will be set up per run initioated with none
+        # Everything that will be set up per run initiated with none
         self.run_log_dir = None
         self.writer = None
         self.overhead = 0.0
@@ -96,22 +98,22 @@ class Experiment(ABC):
         self._hparams_metrics = {}
         ### Save locally - can haves
         # Logging
-        if logging_config.util_loss_batch_size is not None:
-            self.util_loss_batch_size = logging_config.util_loss_batch_size
-        if logging_config.util_loss_grid_size is not None:
-            self.util_loss_grid_size = logging_config.util_loss_grid_size
+        if self.logging_config.util_loss_batch_size is not None:
+            self.util_loss_batch_size = self.logging_config.util_loss_batch_size
+        if self.logging_config.util_loss_grid_size is not None:
+            self.util_loss_grid_size = self.logging_config.util_loss_grid_size
 
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
         if not hasattr(self, 'n_players'):
-            self.n_players = experiment_config.n_players
+            self.n_players = self.model_config.n_players
         if not hasattr(self, 'payment_rule'):
-            self.payment_rule = experiment_config.payment_rule
+            self.payment_rule = self.model_config.payment_rule
 
         # sets log dir for experiment. Individual runs will log to subdirectories of this.
-        self.experiment_log_dir = os.path.join(logging_config.log_root_dir,
+        self.experiment_log_dir = os.path.join(self.logging_config.log_root_dir,
                                                self._get_logdir_hierarchy(),
-                                               logging_config.experiment_dir)
+                                               self.logging_config.experiment_dir)
 
         ### actual logic
         # Inverse of bidder --> model lookup table
@@ -122,9 +124,10 @@ class Experiment(ABC):
 
         self._setup_mechanism()
 
-        self.known_bne = known_bne  # needs to be set in subclass and either specified as input or set there
+        # needs to be set in subclass and either specified as input or set there
+        self.known_bne = self.model_config.known_bne
         # Cannot log 'opt' without known bne
-        if logging_config.log_metrics['opt'] or logging_config.log_metrics['l2']:
+        if self.logging_config.log_metrics['opt'] or self.logging_config.log_metrics['l2']:
             assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
 
         if self.known_bne:
@@ -255,8 +258,8 @@ class Experiment(ABC):
             self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
             tic = timer()
-            if self.logging_config.enable_logging:
-                self._log_hyperparams()
+            self._log_hyperparams()
+            logging_utils.log_experiment_configurations(self.experiment_config)
             elapsed = timer() - tic
         else:
             print('Logging disabled.')
@@ -298,14 +301,15 @@ class Experiment(ABC):
             print('epoch {}:\t elapsed {:.2f}s'.format(epoch, timer() - tic))
         return utilities
 
-    def run(self, epochs, n_runs: int = 1, seeds: Iterable[int] = None):
+    def run(self):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
-        if not seeds:
-            seeds = list(range(n_runs))
+        if not self.run_config.seeds:
+            seeds = list(range(self.run_config.n_runs))
 
-        assert len(seeds) == n_runs, "Number of seeds doesn't match number of runs."
+        assert sum(1 for _ in self.run_config.seeds) == self.run_config.n_runs, \
+            "Number of seeds doesn't match number of runs."
 
-        for run_id, seed in enumerate(seeds):
+        for run_id, seed in enumerate(self.run_config.seeds):
             print(f'Running experiment {run_id} (using seed {seed})')
             self.run_log_dir = os.path.join(
                 self.experiment_log_dir,
@@ -325,7 +329,7 @@ class Experiment(ABC):
 
             self._init_new_run()
 
-            for e in range(epochs + 1):
+            for e in range(self.run_config.n_epochs + 1):
                 utilities = self._training_loop(epoch=e)
 
                 # Check stopping criterion
@@ -648,7 +652,7 @@ class Experiment(ABC):
         return L_2, L_inf
 
     def _calculate_metrics_util_loss(self, create_plot_output: bool, epoch: int = None,
-                                     batch_size = None, grid_size = None):
+                                     batch_size=None, grid_size=None):
         """
         Compute mean util_loss of current policy and return
         ex interim util_loss (ex ante util_loss is the average of that tensor)
@@ -706,7 +710,6 @@ class Experiment(ABC):
                     'hyperparameters/hidden_activations': str(self.learning_config.hidden_activations),
                     'hyperparameters/optimizer_hyperparams': str(self.learning_config.optimizer_hyperparams),
                     'hyperparameters/optimizer_type': self.learning_config.optimizer_type}
-
 
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
 
