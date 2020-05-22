@@ -105,7 +105,7 @@ class Bidder(Player):
         self._grid_lb = self.value_distribution.support.lower_bound \
             if hasattr(self.value_distribution.support, 'lower_bound') \
             else self.value_distribution.icdf(torch.tensor(0.001))
-        self._grid_lb = max(0,self._grid_lb)
+        self._grid_lb = max(0, self._grid_lb)
         self._grid_ub = self.value_distribution.support.upper_bound \
             if hasattr(self.value_distribution.support, 'upper_bound') \
             else self.value_distribution.icdf(torch.tensor(0.999))
@@ -146,7 +146,7 @@ class Bidder(Player):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
             self._valuations_changed =True
 
-    def get_valuation_grid(self, n_points):
+    def get_valuation_grid(self, n_points, extended_valuation_grid=False):
         """ Returns a grid of approximately `n_points` valuations that are
             equidistant (in each dimension) on the support of self.value_distribution.
             If the support is unbounded, the 0.1th and 99.9th percentiles are used instead.
@@ -158,6 +158,7 @@ class Bidder(Player):
 
             Args:
                 n_points: int, minimum number of total points in the grid
+                extended_valuation_grid: bool, switch for bounds of interval
             returns:
                 grid_values (dim: [ceil(n_points^(1/n_items)]*n_items)
 
@@ -166,17 +167,23 @@ class Bidder(Player):
                       then throws most of them away
         """
 
+        if extended_valuation_grid and hasattr(self, '_grid_lb_util_loss'):   
+            lb = self._grid_lb_util_loss
+            ub = self._grid_ub_util_loss
+        else:
+            lb = self._grid_lb
+            ub = self._grid_ub
+
         # change batch_size s.t. it'll approx. end up at intended n_points in the end
         adapted_size = n_points
         if self.descending_valuations:
             adapted_size = n_points * math.factorial(self.n_items)
 
         batch_size_per_dim = math.ceil(adapted_size ** (1/self.n_items))
-        lin = torch.linspace(self._grid_lb, self._grid_ub,
-                             batch_size_per_dim, device=self.device)
+        lin = torch.linspace(lb, ub, batch_size_per_dim, device=self.device)
+
         grid_values = torch.stack([
-            x.flatten() for x in torch.meshgrid([lin] * self.n_items)
-        ]).t()
+            x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()
 
         if isinstance(self.item_interest_limit, int):
             grid_values[:,self.item_interest_limit:] = 0
@@ -186,7 +193,8 @@ class Bidder(Player):
         if self.descending_valuations:
             grid_values = grid_values.sort(dim=1, descending=True)[0].unique(dim=0)
 
-        assert grid_values.shape[0] >= n_points, "grid_size is lower than expected!"
+        # TODO Nils: is this from @Stefan? Paul and me agreed on over-sampleing rather than introducing a bias
+        # assert grid_values.shape[0] >= n_points, "grid_size is lower than expected!"
         return grid_values
 
     def draw_valuations_(self):
@@ -234,13 +242,17 @@ class Bidder(Player):
         return self.get_counterfactual_utility(allocations, payments, self.valuations)
 
     def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
-        """For a batch of allocations, payments and counterfactual valuations
-            return the player's utilities
         """
-        assert allocations.dim() == 2 # batch_size x items
-        assert payments.dim() == 1 # batch_size
+        For a batch of allocations, payments and counterfactual valuations return the
+        player's utilities.
 
-        payoff = self.get_welfare(allocations, counterfactual_valuations) - payments
+        Can handle multiple batch dimensions, e.g. for allocations a shape of
+        (..., batch_size, n_items). These batch dimensions are kept in returned
+        payoff.
+        """
+        welfare = self.get_welfare(allocations, counterfactual_valuations)
+
+        payoff = welfare - payments
 
         if self.risk == 1.0:
             return payoff
@@ -248,17 +260,22 @@ class Bidder(Player):
             # payoff^alpha not well defined in negative domain for risk averse agents
             return payoff.relu()**self.risk - (-payoff).relu()**self.risk
 
-    def get_welfare(self, allocations, valuations = None):
+    def get_welfare(self, allocations, valuations=None):
         """
         For a batch of allocations and payments return the player's welfare.
         If valuations are not specified, welfare is calculated for `self.valuations`.
+
+        Can handle multiple batch dimensions, e.g. for valuations a shape of
+        (..., batch_size, n_items). These batch dimensions are kept in returned
+        welfare.
         """
 
         assert allocations.dim() == 2 # batch_size x items
         if valuations is None:
             valuations = self.valuations
 
-        welfare = (valuations * allocations).sum(dim=1)
+        item_dimension = valuations.dim() - 1
+        welfare = (valuations * allocations).sum(dim=item_dimension)
 
         return welfare
 
@@ -317,6 +334,8 @@ class ReverseBidder(Bidder):
             item_interest_limit,
             constant_marginal_values
         )
+        self._grid_lb_util_loss = 0
+        self._grid_ub_util_loss = float(2 * self._grid_ub)
 
     @classmethod
     def uniform(cls, lower, upper, strategy, **kwargs):
@@ -330,13 +349,24 @@ class ReverseBidder(Bidder):
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
 
-    def get_valuation_grid(self, n_points):
-        """ Extends `Bidder.get_valuation_grid` with efficiency parameter
+    def get_valuation_grid(self, n_points, extended_valuation_grid=False):
+        """ Extends `Bidder.draw_values_grid` with efficiency parameter
+
+        Args
+        ----
+            extended_valuation_grid: bool, if True returns legitimate valuations, otherwise it returns
+                a larger grid, which can be used as ``all reasonable bids`` as needed for
+                estiamtion of regret.
         """
+
         grid_values = torch.zeros(n_points, self.n_items, device=self.device)
-        grid_values[:, 0] = torch.linspace(self._grid_lb, self._grid_ub,
-                                           n_points, device=self.device)
-        grid_values[:, 1] = self.efficiency_parameter * grid_values[:, 0]
+
+        if extended_valuation_grid:
+            grid_values = super().get_valuation_grid(n_points, extended_valuation_grid)
+        else:
+            grid_values[:, 0] = torch.linspace(self._grid_lb, self._grid_ub, n_points,
+                                               device=self.device)
+            grid_values[:, 1] = self.efficiency_parameter * grid_values[:, 0]
 
         return grid_values
 
@@ -354,4 +384,4 @@ class ReverseBidder(Bidder):
     def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
         """For reverse bidders, returns are inverted.
         """
-        return - super().get_counterfactual_utility(allocations,payments,counterfactual_valuations)
+        return - super().get_counterfactual_utility(allocations, payments, counterfactual_valuations)

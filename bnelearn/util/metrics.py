@@ -4,6 +4,7 @@ import torch
 from bnelearn.strategy import Strategy
 from bnelearn.mechanism import Mechanism
 from bnelearn.bidder import Bidder
+from tqdm import tqdm
 
 
 def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> float:
@@ -75,7 +76,7 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.tensor, bid_prof
     return bid_profile #bid_eval_size*batch, 1,n_items
 
 def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidder,
-           grid: torch.Tensor, half_precision = False, player_position: int = None):
+                      grid: torch.Tensor, half_precision = False, player_position: int = None):
     """
     # TODO: do we really need this or can we delete it in general?
     # If we decide to keep it, check implementation in detail! (Removing many many todos in the body)
@@ -147,8 +148,8 @@ def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: B
 
 
 def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
-                      player_position: int, agent_valuation: torch.Tensor,
-                      grid: torch.Tensor, half_precision = False):
+                         agent: Bidder, agent_valuation: torch.Tensor,
+                         grid: torch.Tensor, half_precision = False):
     """
     Estimates a bidder's util_loss/utility loss in the current bid_profile, i.e. the potential benefit of deviating from
     the current strategy, evaluated at each point of the agent_valuations.
@@ -156,9 +157,10 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     Input:
         mechanism
         bid_profile: (batch_size x n_player x n_items)
-        player_position: specifies the agent for whom the util_loss is to be evaluated
+        agent: specifies the agent for whom the regret is to be evaluated
         agent_valuation: (batch_size x n_items)
-        grid: #TODO: currently (1d with length grid_size #Currently, for n_items == 2, all grid_size**2 combination will be used. Should be replaced by e.g. torch.meshgrid
+        grid: tensor of bids which are to evaluated
+        half_precision: bool
     Output:
         util_loss: (batch_size)
         valuations: (batch_size x n_items)
@@ -171,7 +173,9 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
         - Add check for risk neutral bidders.
         - Move grid_creation out of util_loss for Nils special cases
     """
+    player_position = agent.player_position
     agent_bid_actual = bid_profile[:,player_position,:]
+
     ## Use smaller dtypes to save memory
     if half_precision:
         bid_profile = bid_profile.half()
@@ -181,8 +185,7 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     bid_profile_origin = bid_profile
 
     batch_size, n_players, n_items = bid_profile.shape # pylint: disable=unused-variable
-
-    grid_size, _ = grid.shape #TODO this _new_ grid size refers to all combinations, whereas the previous one was 1D only
+    grid_size, _ = grid.shape
 
     ### Evaluate alternative bids on grid
     bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile_origin) # grid_size x n_players x n_items
@@ -191,45 +194,47 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     allocation, payments = mechanism.play(bid_profile)
 
     # we only need the specific player's allocation and can get rid of the rest.
-    a_i = allocation[:,player_position,:].view(grid_size, batch_size, n_items).type(torch.bool) #TODO Stefan: bool will not work for multi-unit auctions, there we need int!
-    p_i = payments[:,player_position].view(grid_size, batch_size) #grid * batch
+    a_i = allocation[:, player_position, :].type(torch.bool).view(grid_size * batch_size, n_items)
+    p_i = payments[:, player_position].view(grid_size * batch_size) #grid * batch
 
-    ### First, try calculating entire batch at once (this might fail due to not enough RAM)
     del allocation, payments, bid_profile
     if torch.cuda.is_available():
         torch.cuda.empty_cache() #TODO, later: find out if this actually does anything here.
+
     # Calculate realized valuations given allocation
     try:
         # valuation is batch x items
-        v_i = agent_valuation.repeat(1,grid_size * batch_size).view(batch_size, grid_size, batch_size, n_items)
-        # Semantic of the next line: (calculated directly, less readible but faster and robust to different types (e.g. bools/int))
-        #v_i = torch.einsum('hijk,ijk->hij', v_i, a_i)
-        v_i = v_i.mul_(a_i).sum(3) # allocated value. batch x bid_eval x batch (why 2 batch_sizes?)
+        v_i = agent_valuation.repeat(1, grid_size * batch_size).view(batch_size, grid_size * batch_size, n_items)
+        p_i = p_i.repeat(batch_size, 1)
+
         ## Calculate utilities
-        u_i_alternative = v_i - p_i.repeat(batch_size,1,1) #(batch x grid x batch)
+        u_i_alternative = agent.get_counterfactual_utility(a_i, p_i, v_i)
+        u_i_alternative = u_i_alternative.view(batch_size, grid_size, batch_size) #(batch x grid x batch)
+
         # avg per bid
-        u_i_alternative = torch.mean(u_i_alternative,2) #batch x grid
+        u_i_alternative = torch.mean(u_i_alternative, 2) #(batch x grid)
         # max per valuations
-        u_i_alternative, _ = torch.max(u_i_alternative,1) #batch
+        u_i_alternative, _ = torch.max(u_i_alternative, 1) #batch
+
     except RuntimeError as err:
         print("Failed computing util_loss as batch. Trying sequential valuations computation. Decrease dimensions to fix. Error:\n {0}".format(err))
         try:
+
             # valuations sequential
-            u_i_alternative = torch.zeros(batch_size, device = p_i.device)
-            for v in range(batch_size):
-                v_i = agent_valuation[v].repeat(1,grid_size * batch_size).view(grid_size, batch_size, n_items)
-                #for bid in agent bid
-                v_i = torch.einsum('ijk,ijk->ijk', v_i, a_i).sum(2)
+            u_i_alternative = torch.zeros(batch_size, device=p_i.device)
+            for idx in tqdm(range(batch_size)):
+                v_i = agent_valuation[idx].repeat(1, grid_size * batch_size).view(batch_size * grid_size, n_items)
                 ## Calculate utilities
-                u_i_alternative_v = v_i - p_i
+                u_i_alternative_v = agent.get_counterfactual_utility(a_i, p_i, v_i)
+                u_i_alternative_v = u_i_alternative_v.view(grid_size, batch_size) #(grid x batch)
                 # avg per bid
-                u_i_alternative_v = torch.mean(u_i_alternative_v,1)
+                u_i_alternative_v = torch.mean(u_i_alternative_v, 1)
                 # max per valuations
-                u_i_alternative[v], _ = torch.max(u_i_alternative_v,0)
-                tmp = int(batch_size/100)
+                u_i_alternative[idx], _ = torch.max(u_i_alternative_v, 0)
 
                 # clean up
                 del u_i_alternative_v
+
         except RuntimeError as err:
             print("Failed computing util_loss as batch with sequential valuations. Decrease dimensions to fix. Error:\n {0}".format(err))
             u_i_alternative = torch.ones(batch_size, device = p_i.device) * -9999999
@@ -239,22 +244,20 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     torch.cuda.empty_cache()
 
     ### Evaluate actual bids
-    ## Merge actual bids into opponnents bids (bid_no_i)
     bid_profile = _create_grid_bid_profiles(player_position, agent_bid_actual, bid_profile_origin)
 
     ## Calculate allocation and payments for actual bids given opponents bids
     allocation, payments = mechanism.play(bid_profile)
-    a_i = allocation[:,player_position,:].view(batch_size, batch_size, n_items)
-    p_i = payments[:,player_position].view(batch_size, batch_size, 1).sum(2)
+    a_i = allocation[:, player_position, :].type(torch.bool).view(batch_size * batch_size, n_items)
+    p_i = payments[:, player_position].view(batch_size * batch_size)
 
     ## Calculate realized valuations given allocation
-    v_i = agent_valuation.view(batch_size,1,n_items).repeat(1, batch_size, 1)
-    v_i = torch.einsum('ijk,ijk->ijk', v_i, a_i).sum(2)
+    v_i = agent_valuation.repeat(1, batch_size).view(batch_size * batch_size, n_items)
 
     ## Calculate utilities
-    u_i_actual = v_i - p_i
-    # avg per bid and valuation
-    u_i_actual = torch.mean(u_i_actual,1)
-    ## average and max util_loss over all valuations
+    u_i_actual = agent.get_counterfactual_utility(a_i, p_i, v_i).view(batch_size, batch_size)
+    u_i_actual = torch.mean(u_i_actual, 1)
+
+    ## average and max regret over all valuations
     util_loss = (u_i_alternative - u_i_actual).relu().clone().detach().requires_grad_(False)
     return util_loss, agent_valuation

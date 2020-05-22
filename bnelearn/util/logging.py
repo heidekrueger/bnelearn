@@ -127,10 +127,14 @@ def process_figure(fig, epoch=None, figure_name='plot', tb_group='eval',
 
 class CustomSummaryWriter(SummaryWriter):
     """
-    Extends SummaryWriter with a method to add multiple scalars in the way
-    that we intend. The original SummaryWriter can either add a single scalar at a time
-    or multiple scalars, but in the latter case, multiple runs are created without
-    the option to control these.
+    Extends SummaryWriter with two methods:
+    
+    * a method to add multiple scalars in the way that we intend. The original 
+        SummaryWriter can either add a single scalar at a time or multiple scalars,
+        but in the latter case, multiple runs are created without
+        the option to control these.
+    * overwriting the the add_hparams method to write hparams without creating 
+        another tensorboard run file
     """
 
     def add_hparams(self, hparam_dict=None, metric_dict=None):
@@ -147,8 +151,6 @@ class CustomSummaryWriter(SummaryWriter):
         self.file_writer.add_summary(ssi)
         self.file_writer.add_summary(sei)
 
-        # Simply commenting the code below out would end up in registering no value for the metric in the hparams tab
-        # (doesn't seem like values are matched automatically in any way)
         for k, v in metric_dict.items():
             self.add_scalar(k, v)
 

@@ -16,9 +16,11 @@
 import pytest
 import torch
 from bnelearn.mechanism import LLLLGGAuction, FirstPriceSealedBidAuction
+from bnelearn.mechanism.auctions_multiunit import FPSBSplitAwardAuction
 from bnelearn.strategy import TruthfulStrategy, ClosureStrategy
 import bnelearn.util.metrics as metrics
-from bnelearn.bidder import Bidder
+from bnelearn.bidder import Bidder, ReverseBidder
+from bnelearn.experiment.multi_unit_experiment import _optimal_bid_splitaward2x2_1
 
 eps = 0.0001
 # bid candidates to be evaluated against
@@ -148,9 +150,10 @@ def test_ex_interim_util_loss_estimator_truthful(rule, mechanism, bid_profile, b
     grid_values = torch.stack([x.flatten() for x in torch.meshgrid([bids_i.squeeze()] * n_items)]).t()
 
     for i in range(n_bidders):
-        util_loss,_ = metrics.ex_interim_util_loss(mechanism, bid_profile.to(device), 
-                                           i, agents[i].valuations,
-                                           grid_values.to(device))
+        util_loss,_ = metrics.ex_interim_util_loss(                                           
+            mechanism, bid_profile.to(device), agents[i], agent_valuation=agents[i].valuations,
+            grid=grid_values.to(device))
+
         assert torch.allclose(util_loss.mean(), expected_util_loss[i,0], atol = 0.001), "Unexpected avg util_loss"
         assert torch.allclose(util_loss.max(),  expected_util_loss[i,1], atol = 0.001), "Unexpected max util_loss"
 
@@ -170,7 +173,7 @@ def test_ex_interim_util_loss_estimator_fpsb_bne():
     mechanism = FirstPriceSealedBidAuction()
 
     def optimal_bid(valuation):
-            return u_lo + (valuation - u_lo) * (n_players - 1) / (n_players - 1.0 + risk)
+        return u_lo + (valuation - u_lo) * (n_players - 1) / (n_players - 1.0 + risk)
 
     strat = ClosureStrategy(optimal_bid)
 
@@ -181,17 +184,55 @@ def test_ex_interim_util_loss_estimator_fpsb_bne():
 
     grid = torch.linspace(0,1, steps = grid_size).unsqueeze(-1)
 
-    bid_profile = torch.empty(batch_size, n_players, n_items, device = agents[0].valuations.device)
-    for i,a in enumerate(agents):
+    bid_profile = torch.empty(batch_size, n_players, n_items, device=agents[0].valuations.device)
+    for i, a in enumerate(agents):
         bid_profile[:,i,:] = a.get_action()
     # assert first player has (near) zero util_loss
-    util_loss,_ = metrics.ex_interim_util_loss(mechanism, bid_profile, player_position = 0,
-                                       agent_valuation = agents[0].valuations,
-                                       grid = grid
-                                       )
+    util_loss, _ = metrics.ex_interim_util_loss(
+        mechanism, bid_profile, agents[0], agent_valuation=agents[0].valuations, grid=grid)
+
     mean_util_loss = util_loss.mean()
     max_util_loss = util_loss.max()
 
-
     assert mean_util_loss < 0.001, "Util_loss in BNE should be (close to) zero!" # common: ~2e-4
     assert max_util_loss < 0.01, "Util_loss in BNE should be (close to) zero!" # common: 1.5e-3
+
+def test_ex_interim_util_loss_estimator_splitaward_bne():
+    """Test the util_loss in BNE of fpsb split-award auction. - ex interim util_loss should be close to zero"""
+    n_players = 2
+    grid_size = 2**5
+    batch_size = 2**12
+    n_items = 2
+
+    class SpltAwardConfig:
+        """Data class for split-award setting"""
+        u_lo = [1, 1]
+        u_hi = [1.4, 1.4]
+        efficiency_parameter = .3
+    config = SpltAwardConfig()
+
+    mechanism = FPSBSplitAwardAuction()
+    strat = ClosureStrategy(_optimal_bid_splitaward2x2_1(config))
+
+    agents = [
+        ReverseBidder.uniform(config.u_lo[0], config.u_hi[0], strat,
+                              n_units=n_items, efficiency_parameter=config.efficiency_parameter,
+                              player_position=i, batch_size=batch_size)
+        for i in range(n_players)
+    ]
+
+    grid = agents[0].get_valuation_grid(grid_size, True)
+
+    bid_profile = torch.empty(batch_size, n_players, n_items, device=agents[0].valuations.device)
+    for i, a in enumerate(agents):
+        bid_profile[:, i, :] = a.get_action()
+
+    # assert first player has (near) zero util_loss
+    util_loss, _ = metrics.ex_interim_util_loss(
+        mechanism, bid_profile, agents[0], agent_valuation=agents[0].valuations, grid=grid)
+
+    mean_util_loss = util_loss.mean()
+    max_util_loss = util_loss.max()
+
+    assert mean_util_loss < 0.001, "Util_loss in BNE should be (close to) zero!"
+    assert max_util_loss < 0.011, "Util_loss in BNE should be (close to) zero!"
