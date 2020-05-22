@@ -105,6 +105,10 @@ class LLGExperiment(LocalGlobalExperiment):
         self.mechanism = LLGAuction(rule = self.payment_rule)
 
     def _optimal_bid(self, valuation, player_position):
+        """Core selecting and vcg equilibria for the Bernoulli weigths model in Ausubel & Baranov (2019)
+        
+           Note: for gamma=0 or gamma=1, these are identical to the constant weights model.
+        """
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.tensor(valuation)
 
