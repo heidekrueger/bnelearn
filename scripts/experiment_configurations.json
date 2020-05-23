@@ -1,0 +1,81 @@
+{
+    "experiment_class": "single_item_uniform_symmetric",
+    "run_config": {
+        "n_runs": 1,
+        "n_epochs": 6,
+        "n_players": 2,
+        "seeds": [
+            0
+        ]
+    },
+    "model_config": {
+        "payment_rule": "first_price",
+        "model_sharing": true,
+        "risk": 1.0,
+        "known_bne": true,
+        "common_prior": "Uniform(low: 0.0, high: 1.0)",
+        "valuation_mean": null,
+        "valuation_std": null,
+        "u_lo": 0,
+        "u_hi": 1,
+        "gamma": 0.0,
+        "n_units": null,
+        "pretrain_transform": null,
+        "constant_marginal_values": false,
+        "item_interest_limit": null,
+        "efficiency_parameter": null,
+        "core_solver": "NoCore",
+        "parallel": 1
+    },
+    "learning_config": {
+        "learner_hyperparams": {
+            "population_size": 64,
+            "sigma": 1.0,
+            "scale_sigma_by_model_size": true
+        },
+        "optimizer_type": "adam",
+        "optimizer_hyperparams": {
+            "lr": 0.003
+        },
+        "hidden_nodes": [
+            5,
+            5,
+            5
+        ],
+        "hidden_activations": "[SELU(), SELU(), SELU()]",
+        "pretrain_iters": 10,
+        "batch_size": 1024
+    },
+    "logging_config": {
+        "enable_logging": true,
+        "log_root_dir": "/home/gleb/Projects/bnelearn/experiments",
+        "experiment_name": null,
+        "experiment_timestamp": "2020-05-23 Sat 03.11",
+        "plot_frequency": 100,
+        "plot_points": 100,
+        "plot_show_inline": true,
+        "log_metrics": {
+            "opt": true,
+            "l2": true,
+            "util_loss": true
+        },
+        "stopping_criterion_rel_util_loss_diff": 0.001,
+        "util_loss_batch_size": 16,
+        "util_loss_grid_size": 16,
+        "util_loss_frequency": 100,
+        "eval_batch_size": 65536,
+        "cache_eval_actions": true,
+        "save_tb_events_to_csv_aggregate": true,
+        "save_tb_events_to_csv_detailed": true,
+        "save_tb_events_to_binary_detailed": false,
+        "save_models": true,
+        "save_figure_to_disk_png": true,
+        "save_figure_to_disk_svg": true,
+        "save_figure_data_to_disk": true
+    },
+    "gpu_config": {
+        "cuda": false,
+        "specific_gpu": 0,
+        "fallback": true
+    }
+}

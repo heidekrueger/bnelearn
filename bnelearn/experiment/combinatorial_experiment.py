@@ -20,9 +20,8 @@ import torch
 from bnelearn.mechanism.auctions_combinatorial import LLGAuction, LLLLGGAuction
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.experiment import Experiment, GPUConfiguration
-from bnelearn.experiment.configurations import ModelConfiguration, LearningConfiguration, LoggingConfiguration, \
-    ExperimentConfiguration
+from bnelearn.experiment.configurations import ExperimentConfiguration
+from bnelearn.experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
 
 

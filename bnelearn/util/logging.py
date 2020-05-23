@@ -1,6 +1,7 @@
 """This module contains utilities for logging of experiments"""
 
 import pickle
+import string
 from typing import List
 
 import matplotlib.pyplot as plt
@@ -8,9 +9,9 @@ import pandas as pd
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from torch.utils.tensorboard.summary import hparams
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
+import torch.nn as nn
 
 from bnelearn.experiment.configurations import *
-from collections import namedtuple
 
 _full_log_file_name = 'full_results'
 _aggregate_log_file_name = 'aggregate_log'
@@ -205,6 +206,11 @@ class CustomSummaryWriter(SummaryWriter):
 
 
 def log_experiment_configurations(experiment_log_dir, experiment_configuration: ExperimentConfiguration):
+    """
+    Serializes ExperimentConfiguration into a readable JSON file
+
+    :param experiment_log_dir: full path except for the file name
+    """
     f_name = os.path.join(experiment_log_dir, _configurations_f_name)
 
     experiment_configuration.model_config.common_prior = str(experiment_configuration.model_config.common_prior)
@@ -213,14 +219,56 @@ def log_experiment_configurations(experiment_log_dir, experiment_configuration: 
     with open(f_name, 'w+') as outfile:
         json.dump(experiment_configuration, outfile, cls=EnhancedJSONEncoder, indent=4)
 
-    # default=lambda o: '<not serializable>'
 
+def get_experiment_config_from_configurations_log(experiment_log_dir=None):
+    """
+    Retrieves stored configurations from JSON and turns them into ExperimentConfiguration object
+    By default creates configuration from the file stored alongside the running script
 
-def run_experiment_from_configurations_log(experiment_log_dir):
+    :param experiment_log_dir: full path except for the file name
+    :return: ExperimentConfiguration object
+    """
+    if experiment_log_dir is None:
+        experiment_log_dir = os.path.abspath(os.getcwd())
     f_name = os.path.join(experiment_log_dir, _configurations_f_name)
-    # ToDo Deserialize from json
-    with open(f_name) as json_file:
-        data = json.load(json_file)
 
-        
-    pass
+    with open(f_name) as json_file:
+        experiment_config_as_dict = json.load(json_file)
+
+    experiment_config = ExperimentConfiguration(experiment_class=experiment_config_as_dict['experiment_class'])
+
+    config_group_names_to_config_group_object = {
+        'run_config': RunningConfiguration(),
+        'model_config': ModelConfiguration(),
+        'learning_config': LearningConfiguration(),
+        'logging_config': LoggingConfiguration(),
+        'gpu_config': GPUConfiguration()
+    }
+
+    # Parse a dictionary retrieved from JSON into ExperimentConfiguration object
+    # Attribute assignment pattern: experiment_config.config_group_name.config_group_object_attr = attr_val
+    # e.g. experiment_config.run_config.n_runs = experiment_config_as_dict['run_config']['n_runs']
+    # config_group_object assignment pattern: experiment_config.config_group_name = config_group_object
+    # e.g. experiment_config.run_config = earlier initialised and filled instance of RunningConfiguration class
+    experiment_config_as_dict = {k: v for (k, v) in experiment_config_as_dict.items() if k != 'experiment_class'}.items()
+    for config_group_name, config_group_dict in experiment_config_as_dict:
+        for config_group_object_attr, attr_val in config_group_dict.items():
+            setattr(config_group_names_to_config_group_object[config_group_name], config_group_object_attr, attr_val)
+        setattr(experiment_config, config_group_name, config_group_names_to_config_group_object[config_group_name])
+
+    # Create hidden activations object based on the loaded string
+    hidden_activations_methods = {'SELU': lambda: nn.SELU}
+    ha = str(experiment_config.learning_config.hidden_activations).split('()')
+    for symb in ['[', ']', ' ', ',']:
+        ha = list(map(lambda s: str(s).replace(symb, ''), ha))
+    ha = [i for i in ha if i != '']
+    ha = [hidden_activations_methods[layer]()() for layer in ha]
+    experiment_config.learning_config.hidden_activations = ha
+
+    # Create common_prior object based on the loaded string
+    common_priors = {'Uniform': torch.distributions.uniform.Uniform}
+    distribution = str(experiment_config.model_config.common_prior).split('(')[0]
+    experiment_config.model_config.common_prior = common_priors[distribution](low=experiment_config.model_config.u_lo,
+                                                                              high=experiment_config.model_config.u_hi)
+
+    return experiment_config

@@ -9,8 +9,11 @@ from typing import List, Type, Iterable
 
 import torch
 import torch.nn as nn
+
 from torch.optim import Optimizer
 
+
+# ToDo Perhaps all the defaults should be moved  the ConfigurationManager?
 
 class EnhancedJSONEncoder(json.JSONEncoder):
     def default(self, o):
@@ -30,7 +33,7 @@ class RunningConfiguration:
 
 @dataclass
 class ModelConfiguration:
-    payment_rule: str
+    payment_rule: str = 'first_price'
     model_sharing: bool = True
     risk: float = 1.0
     known_bne: bool = False
@@ -49,8 +52,8 @@ class ModelConfiguration:
     # LLG
     gamma: float = 0.0
     # ToDo Type? n_items is the same as n_units?
-    n_local = None
-    n_items = None
+    n_local: int = None
+    n_items: int = None
 
     # Multi-Unit
     n_units: int = None
@@ -125,14 +128,14 @@ class LoggingConfiguration:
     plot_frequency: int = 100
     plot_points: int = 100
     plot_show_inline: bool = True
-    log_metrics: list = None
+    log_metrics: dict = None
 
     # Stopping Criterion #TODO: this section should go into ExperimentConfiguration
     stopping_criterion_rel_util_loss_diff: float = None
-    stopping_criterion_frequency = 100  # how often (each x iters) to calculate the stopping criterion metric
-    stopping_criterion_duration = 3  # the x most recent evaluations will be used for calculating stationarity
-    stopping_criterion_batch_size = 2 ** 10  # TODO: ideally this should be unified with general util_loss batch and grid sizes
-    stopping_criterion_grid_size = 2 ** 9
+    stopping_criterion_frequency: int = 100  # how often (each x iters) to calculate the stopping criterion metric
+    stopping_criterion_duration: int = 3  # the x most recent evaluations will be used for calculating stationarity
+    stopping_criterion_batch_size: int = 2 ** 10  # TODO: ideally this should be unified with general util_loss batch and grid sizes
+    stopping_criterion_grid_size: int = 2 ** 9
 
     # Utility Loss calculation
     util_loss_batch_size: int = None
@@ -199,8 +202,8 @@ class GPUConfiguration:
 @dataclass
 class ExperimentConfiguration:
     experiment_class: str
-    run_config: RunningConfiguration
-    model_config: ModelConfiguration
-    learning_config: LearningConfiguration
-    logging_config: LoggingConfiguration
-    gpu_config: GPUConfiguration
+    run_config: RunningConfiguration = None
+    model_config: ModelConfiguration = None
+    learning_config: LearningConfiguration = None
+    logging_config: LoggingConfiguration = None
+    gpu_config: GPUConfiguration = None

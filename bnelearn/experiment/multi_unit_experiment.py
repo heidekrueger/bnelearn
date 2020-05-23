@@ -19,9 +19,8 @@ from scipy import integrate, interpolate
 
 from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.experiment import GPUConfiguration, Experiment
-from bnelearn.experiment.configurations import ModelConfiguration, LearningConfiguration, LoggingConfiguration, \
-    ExperimentConfiguration
+from bnelearn.experiment import  Experiment
+from bnelearn.experiment.configurations import ExperimentConfiguration
 from bnelearn.mechanism import (
     MultiUnitVickreyAuction, MultiUnitUniformPriceAuction, MultiUnitDiscriminatoryAuction,
     FPSBSplitAwardAuction
@@ -397,7 +396,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
     """
 
     def __init__(self, experiment_config: ExperimentConfiguration):
-
+        self.experiment_config = experiment_config
         self.efficiency_parameter = self.experiment_config.model_config.efficiency_parameter
 
         super().__init__(experiment_config=experiment_config)

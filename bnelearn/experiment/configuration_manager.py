@@ -29,6 +29,7 @@ class ConfigurationManager:
     Allows to init any type of experiment with some default values and get an ExperimentConfiguration object
     after selectively changing the attributes
     """
+
     def _init_single_item_uniform_symmetric(self):
         self.model_config.model_sharing = True
         self.model_config.u_lo = 0
@@ -40,24 +41,24 @@ class ConfigurationManager:
         self.model_config.valuation_std = 10
 
     def _init_single_item_asymmetric_uniform_overlapping(self):
-        self.model_config.model_sharing = True
-        self.model_config.valuation_mean = 15
-        self.model_config.valuation_std = 10
+        self.model_config.model_sharing = False
+        self.model_config.u_lo = [5, 5]
+        self.model_config.u_hi = [15, 25]
 
         if self.logging_config.eval_batch_size == 2 ** 16:
             print("Using eval_batch_size of 2**16. Use at least 2**22 for proper experiment runs!")
 
     def _init_single_item_asymmetric_uniform_disjunct(self):
         self.model_config.model_sharing = False
-        self.model_config.u_lo = [5, 5]
-        self.model_config.u_hi = [15, 25]
-        self.model_config.payment_rule = 'first_price'
+        self.model_config.u_lo = [0, 6]
+        self.model_config.u_hi = [5, 7]
 
     def _init_llg(self):
         self.model_config.model_sharing = True
         self.model_config.u_lo = [0, 0, 0]
         self.model_config.u_hi = [1, 1, 2]
         self.running_config.n_players = 3
+        self.model_config.payment_rule = 'nearest_zero'
 
     def _init_llllgg(self):
         self.model_config.model_sharing = True
@@ -67,7 +68,8 @@ class ConfigurationManager:
         self.model_config.parallel = 1
         self.running_config.n_players = 6
         self.logging_config.util_loss_frequency = 100
-        self.logging_config.log_metrics = ['util_loss']
+        # self.logging_config.log_metrics = ['util_loss']
+        self.logging_config.log_metrics['util_loss'] = True
 
     def _init_multiunit(self):
         self.model_config.payment_rule = 'vcg'
@@ -80,7 +82,6 @@ class ConfigurationManager:
         self.logging_config.plot_points = 1000
 
     def _init_splitaward(self):
-        self.model_config.payment_rule = 'first_price'
         self.model_config.n_units = 2
         self.model_config.model_sharing = True
         self.model_config.u_lo = [1, 1]
@@ -117,8 +118,7 @@ class ConfigurationManager:
                                                      pretrain_iters=10,
                                                      batch_size=2 ** 10)
         self.gpu_config = GPUConfiguration(specific_gpu=0, cuda=True)
-        self.logging_config = LoggingConfiguration(log_metrics=['opt', 'l2', 'util_loss'],
-                                                   util_loss_batch_size=2 ** 4,
+        self.logging_config = LoggingConfiguration(util_loss_batch_size=2 ** 4,
                                                    util_loss_grid_size=2 ** 4,
                                                    enable_logging=True,
                                                    eval_batch_size=2 ** 16,
@@ -133,24 +133,27 @@ class ConfigurationManager:
             ConfigurationManager.experiment_types[self.experiment_type][0](self)
 
     def get_config(self, n_runs: int = None, n_epochs: int = None, n_players: int = None, seeds: Iterable[int] = None,
-                   payment_rule: str = None, model_sharing=None, risk: float = None,
-                   known_bne=None, common_prior: torch.distributions.Distribution = None,
-                   u_lo=None, u_hi=None, gamma: float = None, n_local = None, n_items = None, n_units=None,
-                   pretrain_transform=None, constant_marginal_values=None,
-                   item_interest_limit=None, efficiency_parameter=None, core_solver=None,
-                   parallel=None, learner_hyperparams: dict = None, optimizer_type: str or Type[Optimizer] = None,
+                   payment_rule: str = None, model_sharing: bool = None, risk: float = None, known_bne: bool = None,
+                   common_prior: torch.distributions.Distribution = None, valuation_mean: float = None,
+                   valuation_std: float = None, u_lo: list = None, u_hi: list = None, gamma: float = None, n_local=None,
+                   n_items: int = None, n_units: int = None, pretrain_transform: callable = None,
+                   constant_marginal_values: bool = None, item_interest_limit: int = None,
+                   efficiency_parameter: float = None, core_solver: str = None, parallel: int = None,
+                   learner_hyperparams: dict = None, optimizer_type: str or Type[Optimizer] = None,
                    optimizer_hyperparams: dict = None, hidden_nodes: List[int] = None,
                    hidden_activations: List[nn.Module] = None, pretrain_iters: int = None, batch_size: int = None,
-                   enable_logging=None, log_root_dir=None, experiment_name=None, experiment_timestamp=None,
-                   plot_frequency=None, plot_points=None, plot_show_inline=None, log_metrics=None,
-                   stopping_criterion_rel_util_loss_diff=None, stopping_criterion_frequency=None,
-                   stopping_criterion_duration=None, stopping_criterion_batch_size=None,
-                   stopping_criterion_grid_size=None, util_loss_batch_size=None, util_loss_grid_size=None,
-                   util_loss_frequency=None, eval_batch_size=None, cache_eval_action=None,
-                   save_tb_events_to_csv_aggregate=None, save_tb_events_to_csv_detailed=None,
-                   save_tb_events_to_binary_detailed=None, save_models=None, save_figure_to_disk_png=None,
-                   save_figure_to_disk_svg=None, save_figure_data_to_disk=None,
-                   cuda=None, specific_gpu=None, fallback=None):
+                   enable_logging: bool = None, log_root_dir: str = None, experiment_name: str = None,
+                   experiment_timestamp: str = None, plot_frequency: int = None, plot_points: int = None,
+                   plot_show_inline: bool = None, log_metrics: dict = None,
+                   stopping_criterion_rel_util_loss_diff: float = None, stopping_criterion_frequency: int = None,
+                   stopping_criterion_duration: int = None, stopping_criterion_batch_size: int = None,
+                   stopping_criterion_grid_size: int = None, util_loss_batch_size: int = None,
+                   util_loss_grid_size: int = None, util_loss_frequency: int = None, eval_batch_size: int = None,
+                   cache_eval_action: bool = None,save_tb_events_to_csv_aggregate: bool = None,
+                   save_tb_events_to_csv_detailed: bool = None, save_tb_events_to_binary_detailed: bool = None,
+                   save_models: bool = None,  save_figure_to_disk_png: bool = None,
+                   save_figure_to_disk_svg: bool = None, save_figure_data_to_disk: bool = None,
+                   cuda: bool = None, specific_gpu: int = None, fallback: bool = None):
         """
         Allows to selectively override any parameter which was set to default on init
         :return: experiment configuration for the Experiment init, experiment class to run it dynamically
@@ -178,3 +181,7 @@ class ConfigurationManager:
                                                     )
 
         return experiment_config, ConfigurationManager.experiment_types[self.experiment_type][1]
+
+    @staticmethod
+    def get_class_by_experiment_type(experiment_type):
+        return ConfigurationManager.experiment_types[experiment_type][1]

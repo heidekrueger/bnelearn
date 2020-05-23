@@ -24,32 +24,33 @@ if __name__ == '__main__':
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     fire.Fire()
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
-        .get_config(cuda=False, save_tb_events_to_csv_detailed=True)
+    # Well, path is user-specific
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'Projects/bnelearn', 'experiments')
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
+    #     .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \
-    #     .get_config()
+    #     .get_config(log_root_dir=log_root_dir)
     # experiment_config, experiment_class = \
     #     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping') \
-    #     .get_config()
+    #     .get_config(log_root_dir=log_root_dir)
     # experiment_config, experiment_class = \
     #     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_disjunct') \
-    #     .get_config()
+    #     .get_config(log_root_dir=log_root_dir)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
-    #     .get_config()
+    #     .get_config(log_root_dir=log_root_dir)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg') \
-    #     .get_config()
+    #     .get_config(log_root_dir=log_root_dir)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
-    #     .get_config()
+    #     .get_config(log_root_dir=log_root_dir)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
-    #     .get_config()
+    #     .get_config(log_root_dir=log_root_dir)
 
+    # Run from a file
+    experiment_config = logging.get_experiment_config_from_configurations_log()
+    experiment_class = ConfigurationManager.get_class_by_experiment_type(experiment_config.experiment_class)
 
     try:
         experiment_class(experiment_config).run()
     except KeyboardInterrupt:
         print('\nKeyboardInterrupt: released memory after interruption')
         torch.cuda.empty_cache()
-
-    # experiment_dir = '/home/gleb/bnelearn/experiments/single_item/first_price/uniform/symmetric/risk_neutral/2p/2020-05-23 Sat 01.55'
-    # logging.run_experiment_from_configurations_log(experiment_dir)
-

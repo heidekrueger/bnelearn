@@ -23,11 +23,7 @@ import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
-from bnelearn.experiment.configurations import (ExperimentConfiguration,
-                                                ModelConfiguration,
-                                                LearningConfiguration,
-                                                LoggingConfiguration,
-                                                GPUConfiguration)
+from bnelearn.experiment.configurations import (ExperimentConfiguration)
 from bnelearn.learner import ESPGLearner, Learner
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import NeuralNetStrategy
@@ -356,10 +352,11 @@ class Experiment(ABC):
                         break
 
             if self.logging_config.enable_logging:
-                self._hparams_metrics = {
-                    'epsilon_relative': self._cur_epoch_log_params['epsilon_relative'],
-                    'epsilon_absolute': self._cur_epoch_log_params['epsilon_absolute']
-                }
+                self._hparams_metrics = {}
+                if 'epsilon_relative' in self._cur_epoch_log_params:
+                    self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
+                if 'epsilon_absolute' in self._cur_epoch_log_params:
+                    self._hparams_metrics['epsilon_absolute'] = self._cur_epoch_log_params['epsilon_absolute']
                 if 'util_loss_ex_ante' in self._cur_epoch_log_params:
                     self._hparams_metrics['util_loss_ex_ante'] = self._cur_epoch_log_params['util_loss_ex_ante']
 
