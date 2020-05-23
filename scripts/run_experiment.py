@@ -44,12 +44,12 @@ if __name__ == '__main__':
     #     .get_config()
 
 
-    # try:
-    #     experiment_class(experiment_config).run()
-    # except KeyboardInterrupt:
-    #     print('\nKeyboardInterrupt: released memory after interruption')
-    #     torch.cuda.empty_cache()
+    try:
+        experiment_class(experiment_config).run()
+    except KeyboardInterrupt:
+        print('\nKeyboardInterrupt: released memory after interruption')
+        torch.cuda.empty_cache()
 
-    experiment_dir = '/home/gleb/bnelearn/experiments/single_item/first_price/uniform/symmetric/risk_neutral/2p/2020-05-23 Sat 01.55'
-    logging.run_experiment_from_configurations_log(experiment_dir)
+    # experiment_dir = '/home/gleb/bnelearn/experiments/single_item/first_price/uniform/symmetric/risk_neutral/2p/2020-05-23 Sat 01.55'
+    # logging.run_experiment_from_configurations_log(experiment_dir)
 
