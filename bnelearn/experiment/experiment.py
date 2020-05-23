@@ -259,7 +259,7 @@ class Experiment(ABC):
 
             tic = timer()
             self._log_hyperparams()
-            logging_utils.log_experiment_configurations(self.experiment_config)
+            logging_utils.log_experiment_configurations(self.experiment_log_dir, self.experiment_config)
             elapsed = timer() - tic
         else:
             print('Logging disabled.')
@@ -304,7 +304,7 @@ class Experiment(ABC):
     def run(self):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
         if not self.run_config.seeds:
-            seeds = list(range(self.run_config.n_runs))
+            self.run_config.seeds = list(range(self.run_config.n_runs))
 
         assert sum(1 for _ in self.run_config.seeds) == self.run_config.n_runs, \
             "Number of seeds doesn't match number of runs."

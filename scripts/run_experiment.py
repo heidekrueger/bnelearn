@@ -1,25 +1,13 @@
 import os
 import sys
-
-from bnelearn.util.logging import log_experiment_configurations
-
-sys.path.append(os.path.realpath('.'))
-sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
-
+from bnelearn.experiment.configuration_manager import ConfigurationManager
 import fire
 import torch
 
-from bnelearn.experiment.configurations import (ModelConfiguration, LearningConfiguration,
-                                                LoggingConfiguration, RunningConfiguration, GPUConfiguration)
-from bnelearn.experiment import (GaussianSymmetricPriorSingleItemExperiment,
-                                 TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
-                                 UniformSymmetricPriorSingleItemExperiment,
-                                 LLGExperiment, LLLLGGExperiment, MultiUnitExperiment, SplitAwardExperiment)
-from bnelearn.experiment.presets import (llg, llllgg, multiunit,
-                                         single_item_asymmetric_uniform_disjunct,
-                                         single_item_asymmetric_uniform_overlapping,
-                                         single_item_gaussian_symmetric,
-                                         single_item_uniform_symmetric, splitaward)
+from bnelearn.util import logging
+
+sys.path.append(os.path.realpath('.'))
+sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
 if __name__ == '__main__':
     '''
@@ -33,45 +21,35 @@ if __name__ == '__main__':
         single_item_uniform_symmetric(1,20,[2,3],'first_price')
 
     '''
-
-    # General run configs (not class-specific)
-    n_runs = 1
-    n_epochs = 5
-    n_players = 2
-    model_sharing = True
-    enable_logging = True
-    cuda = False
-
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     fire.Fire()
-    experiment_config, experiment_class = \
-        single_item_uniform_symmetric(n_runs=n_runs, n_epochs=n_epochs, n_players=n_players,
-                                      payment_rule='first_price', model_sharing=model_sharing,
-                                      logging=enable_logging, cuda=cuda, save_tb_events_to_csv_detailed=True,
-                                      save_tb_events_to_binary_detailed=True,
-                                      stopping_criterion_rel_util_loss_diff=0.001,
-                                      pretrain_iters=10, batch_size=2 ** 8)
-    experiment_config, experiment_class = \
-        single_item_gaussian_symmetric(1, 7, [2], 'second_price', logging=enable_logging, eval_batch_size=2 ** 8)
-    experiment_config, experiment_class = \
-        llg(2, 100, 'nearest_zero', specific_gpu=1, logging=enable_logging)
-    experiment_config, experiment_class = \
-        llllgg(2, 10, 'first_price', model_sharing=False, logging=enable_logging)
-    experiment_config, experiment_class = \
-        multiunit(n_runs=2, n_epochs=10, n_players=[2], n_units=2, payment_rule='first_price', logging=enable_logging)
-    experiment_config, experiment_class = \
-        multiunit(n_runs=2, n_epochs=100, n_players=[2], n_units=2, payment_rule='first_price', logging=enable_logging)
-    experiment_config, experiment_class = \
-        splitaward(1, 100, [2], logging=enable_logging)
-    experiment_config, experiment_class = \
-        single_item_asymmetric_uniform_overlapping(n_runs=1, n_epochs=500, logging=enable_logging)
-    experiment_config, experiment_class = \
-        single_item_asymmetric_uniform_disjunct(n_runs=1, n_epochs=500, logging=enable_logging)
+
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
+        .get_config(cuda=False, save_tb_events_to_csv_detailed=True)
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \
+    #     .get_config()
+    # experiment_config, experiment_class = \
+    #     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping') \
+    #     .get_config()
+    # experiment_config, experiment_class = \
+    #     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_disjunct') \
+    #     .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
+    #     .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg') \
+    #     .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
+    #     .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
+    #     .get_config()
 
 
-    try:
-        experiment_class(experiment_config).run()
+    # try:
+    #     experiment_class(experiment_config).run()
+    # except KeyboardInterrupt:
+    #     print('\nKeyboardInterrupt: released memory after interruption')
+    #     torch.cuda.empty_cache()
 
-    except KeyboardInterrupt:
-        print('\nKeyboardInterrupt: released memory after interruption')
-        torch.cuda.empty_cache()
+    experiment_dir = '/home/gleb/bnelearn/experiments/single_item/first_price/uniform/symmetric/risk_neutral/2p/2020-05-23 Sat 01.55'
+    logging.run_experiment_from_configurations_log(experiment_dir)
+

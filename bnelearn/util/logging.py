@@ -10,6 +10,7 @@ from torch.utils.tensorboard.summary import hparams
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
 
 from bnelearn.experiment.configurations import *
+from collections import namedtuple
 
 _full_log_file_name = 'full_results'
 _aggregate_log_file_name = 'aggregate_log'
@@ -203,15 +204,23 @@ class CustomSummaryWriter(SummaryWriter):
                 raise ValueError('Got list of invalid length.')
 
 
-def log_experiment_configurations(experiment_configuration: ExperimentConfiguration):
-    f_name = os.path.join(experiment_configuration.logging_config.experiment_dir, _configurations_f_name)
-    # temp = json.dumps(experiment_configuration, cls=EnhancedJSONEncoder)
-    with open(f_name, 'w') as outfile:
-        json.dump(experiment_configuration, outfile, cls=EnhancedJSONEncoder)
+def log_experiment_configurations(experiment_log_dir, experiment_configuration: ExperimentConfiguration):
+    f_name = os.path.join(experiment_log_dir, _configurations_f_name)
+
+    experiment_configuration.model_config.common_prior = str(experiment_configuration.model_config.common_prior)
+    experiment_configuration.learning_config.hidden_activations = str(
+        experiment_configuration.learning_config.hidden_activations)
+    with open(f_name, 'w+') as outfile:
+        json.dump(experiment_configuration, outfile, cls=EnhancedJSONEncoder, indent=4)
+
+    # default=lambda o: '<not serializable>'
 
 
-def run_experiment_from_configurations_log(experiment_dir):
-    f_name = os.path.join(experiment_dir, _configurations_f_name)
+def run_experiment_from_configurations_log(experiment_log_dir):
+    f_name = os.path.join(experiment_log_dir, _configurations_f_name)
+    # ToDo Deserialize from json
     with open(f_name) as json_file:
         data = json.load(json_file)
+
+        
     pass

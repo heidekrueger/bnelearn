@@ -1,6 +1,7 @@
 from typing import List, Type, Iterable
 
-from tensorflow_core.python.ops import nn
+import torch
+import torch.nn as nn
 from torch.optim import Optimizer
 
 from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
@@ -20,7 +21,14 @@ from bnelearn.experiment.single_item_experiment import (
 # the lists that are defaults will never be mutated, so we're ok with using them here.
 # pylint: disable = dangerous-default-value
 
+# ToDO Some default parameters are still set inside the inheritors of Experiment, should some of the logig of which
+#  parameters go with which class be encapsulated here?
+
 class ConfigurationManager:
+    """
+    Allows to init any type of experiment with some default values and get an ExperimentConfiguration object
+    after selectively changing the attributes
+    """
     def _init_single_item_uniform_symmetric(self):
         self.model_config.model_sharing = True
         self.model_config.u_lo = 0
@@ -81,14 +89,22 @@ class ConfigurationManager:
         self.model_config.efficiency_parameter = 0.3
 
     experiment_types = {
-        'single_item_uniform_symmetric': _init_single_item_uniform_symmetric,
-        'single_item_gaussian_symmetric': _init_single_item_gaussian_symmetric,
-        'single_item_asymmetric_uniform_overlapping': _init_single_item_asymmetric_uniform_overlapping,
-        'single_item_asymmetric_uniform_disjunct': _init_single_item_asymmetric_uniform_disjunct,
-        'llg': _init_llg(),
-        'llllgg': _init_llllgg(),
-        'multiunit': _init_multiunit(),
-        'splitaward': _init_splitaward()
+        'single_item_uniform_symmetric':
+            (_init_single_item_uniform_symmetric, UniformSymmetricPriorSingleItemExperiment),
+        'single_item_gaussian_symmetric':
+            (_init_single_item_gaussian_symmetric, GaussianSymmetricPriorSingleItemExperiment),
+        'single_item_asymmetric_uniform_overlapping':
+            (_init_single_item_asymmetric_uniform_overlapping, TwoPlayerAsymmetricUniformPriorSingleItemExperiment),
+        'single_item_asymmetric_uniform_disjunct':
+            (_init_single_item_asymmetric_uniform_disjunct, TwoPlayerAsymmetricUniformPriorSingleItemExperiment),
+        'llg':
+            (_init_llg, LLGExperiment),
+        'llllgg':
+            (_init_llllgg, LLLLGGExperiment),
+        'multiunit':
+            (_init_multiunit, MultiUnitExperiment),
+        'splitaward':
+            (_init_splitaward, SplitAwardExperiment)
     }
 
     def __init__(self, experiment_type: str):
@@ -98,7 +114,7 @@ class ConfigurationManager:
         self.running_config = RunningConfiguration(n_runs=1, n_epochs=5, n_players=2)
         self.model_config = ModelConfiguration(payment_rule='first_price', risk=1.0)
         self.learning_config = LearningConfiguration(optimizer_type='adam',
-                                                     pretrain_iters=50,
+                                                     pretrain_iters=10,
                                                      batch_size=2 ** 10)
         self.gpu_config = GPUConfiguration(specific_gpu=0, cuda=True)
         self.logging_config = LoggingConfiguration(log_metrics=['opt', 'l2', 'util_loss'],
@@ -110,28 +126,48 @@ class ConfigurationManager:
                                                    save_tb_events_to_binary_detailed=False,
                                                    stopping_criterion_rel_util_loss_diff=0.001)
 
-        # Setting defaults specific to an experiment type
+        # Defaults specific to an experiment type
         if self.experiment_type not in ConfigurationManager.experiment_types:
             raise Exception('The experiment type does not exist')
         else:
-            ConfigurationManager.experiment_types[self.experiment_type]()
+            ConfigurationManager.experiment_types[self.experiment_type][0](self)
 
-    # ToDo Expand the list of params to cover all of configs
     def get_config(self, n_runs: int = None, n_epochs: int = None, n_players: int = None, seeds: Iterable[int] = None,
                    payment_rule: str = None, model_sharing=None, risk: float = None,
-                   known_bne=False, u_lo=None, u_hi=None, learner_hyperparams: dict = None,
-                   optimizer_type: str or Type[Optimizer] = None, optimizer_hyperparams: dict = None,
-                   hidden_nodes: List[int] = None, hidden_activations: List[nn.Module] = None,
-                   pretrain_iters: int = None, batch_size: int = None,
-                   log_metrics=None, util_loss_batch_size=None,
-                   util_loss_grid_size=None, specific_gpu=None, cuda=None,
-                   save_tb_events_to_csv_detailed=None,
-                   save_tb_events_to_binary_detailed=None,
-                   stopping_criterion_rel_util_loss_diff=None,
-                   logging=None, eval_batch_size=None):
+                   known_bne=None, common_prior: torch.distributions.Distribution = None,
+                   u_lo=None, u_hi=None, gamma: float = None, n_local = None, n_items = None, n_units=None,
+                   pretrain_transform=None, constant_marginal_values=None,
+                   item_interest_limit=None, efficiency_parameter=None, core_solver=None,
+                   parallel=None, learner_hyperparams: dict = None, optimizer_type: str or Type[Optimizer] = None,
+                   optimizer_hyperparams: dict = None, hidden_nodes: List[int] = None,
+                   hidden_activations: List[nn.Module] = None, pretrain_iters: int = None, batch_size: int = None,
+                   enable_logging=None, log_root_dir=None, experiment_name=None, experiment_timestamp=None,
+                   plot_frequency=None, plot_points=None, plot_show_inline=None, log_metrics=None,
+                   stopping_criterion_rel_util_loss_diff=None, stopping_criterion_frequency=None,
+                   stopping_criterion_duration=None, stopping_criterion_batch_size=None,
+                   stopping_criterion_grid_size=None, util_loss_batch_size=None, util_loss_grid_size=None,
+                   util_loss_frequency=None, eval_batch_size=None, cache_eval_action=None,
+                   save_tb_events_to_csv_aggregate=None, save_tb_events_to_csv_detailed=None,
+                   save_tb_events_to_binary_detailed=None, save_models=None, save_figure_to_disk_png=None,
+                   save_figure_to_disk_svg=None, save_figure_data_to_disk=None,
+                   cuda=None, specific_gpu=None, fallback=None):
+        """
+        Allows to selectively override any parameter which was set to default on init
+        :return: experiment configuration for the Experiment init, experiment class to run it dynamically
+        """
 
-        for arg, v in filter(lambda v: v is not None, locals().values()):
-            setattr(self, arg, v)
+        # If a specific parameter was passed, the corresponding config would be assigned
+        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not None}.items():
+            if hasattr(self.running_config, arg):
+                setattr(self.running_config, arg, v)
+            elif hasattr(self.model_config, arg):
+                setattr(self.model_config, arg, v)
+            elif hasattr(self.logging_config, arg):
+                setattr(self.logging_config, arg, v)
+            elif hasattr(self.learning_config, arg):
+                setattr(self.learning_config, arg, v)
+            elif hasattr(self.gpu_config, arg):
+                setattr(self.gpu_config, arg, v)
 
         experiment_config = ExperimentConfiguration(experiment_class=self.experiment_type,
                                                     run_config=self.running_config,
@@ -141,4 +177,4 @@ class ConfigurationManager:
                                                     gpu_config=self.gpu_config
                                                     )
 
-        return experiment_config, self.experiment_type
+        return experiment_config, ConfigurationManager.experiment_types[self.experiment_type][1]

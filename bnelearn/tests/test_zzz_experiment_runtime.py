@@ -13,11 +13,11 @@ import sys
 import pytest
 
 from bnelearn.experiment.configurations import LearningConfiguration, GPUConfiguration
-from bnelearn.experiment.presets import (llg, llllgg, multiunit,
-                                         single_item_asymmetric_uniform_overlapping,
-                                         single_item_gaussian_symmetric,
-                                         single_item_uniform_symmetric,
-                                         splitaward)
+from bnelearn.experiment.configuration_manager import (llg, llllgg, multiunit,
+                                                       single_item_asymmetric_uniform_overlapping,
+                                                       single_item_gaussian_symmetric,
+                                                       single_item_uniform_symmetric,
+                                                       splitaward)
 
 sys.path.append(os.path.realpath('.'))
 

@@ -35,6 +35,9 @@ class ModelConfiguration:
     risk: float = 1.0
     known_bne: bool = False
 
+    # SymmetricPriorSingleItemExperiment
+    common_prior: torch.distributions.Distribution = None
+
     # Gaussian Distribution
     valuation_mean: float = None
     valuation_std: float = None
@@ -45,6 +48,9 @@ class ModelConfiguration:
 
     # LLG
     gamma: float = 0.0
+    # ToDo Type? n_items is the same as n_units?
+    n_local = None
+    n_items = None
 
     # Multi-Unit
     n_units: int = None
@@ -96,6 +102,7 @@ class LearningConfiguration:
                 return torch.optim.SGD
             # add more optimizers as needed
         raise ValueError('Optimizer type could not be inferred!')
+
 
 @dataclass
 class LoggingConfiguration:
@@ -171,6 +178,7 @@ class LoggingConfiguration:
             self.save_figure_to_disk_svg = False
             self.save_figure_data_to_disk = False
 
+
 @dataclass
 class GPUConfiguration:
     cuda: bool = True
@@ -186,6 +194,7 @@ class GPUConfiguration:
 
         if self.cuda and self.specific_gpu is not None:
             torch.cuda.set_device(self.specific_gpu)
+
 
 @dataclass
 class ExperimentConfiguration:
