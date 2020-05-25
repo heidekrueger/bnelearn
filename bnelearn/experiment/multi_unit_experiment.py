@@ -22,9 +22,8 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import GPUController, Experiment
 from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
 from bnelearn.mechanism import (
-    MultiUnitVickreyAuction, MultiUnitUniformPriceAuction, MultiUnitDiscriminatoryAuction,
-    FPSBSplitAwardAuction
-)
+    MultiUnitVickreyAuction, MultiUnitUniformPriceAuction, MultiUnitDiscriminatoryAuction, 
+    FPSBSplitAwardAuction)
 from bnelearn.strategy import ClosureStrategy
 
 ########################################################################################################################
@@ -253,12 +252,11 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
 ########################################################################################################################
 
 
-class MultiUnitExperiment(Experiment, ABC):
+class MultiUnitExperiment(Experiment):
     """ Experiment class for the standard multi-unit auctions.
     """
     def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
                  logging_config: LoggingConfiguration, gpu_config: GPUController):
-
 
         self.n_units = self.n_items = experiment_config.n_units
         self.n_players =  experiment_config.n_players

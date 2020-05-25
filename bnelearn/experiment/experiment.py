@@ -298,7 +298,6 @@ class Experiment(ABC):
 
         return utilities
 
-
     def run(self, epochs, n_runs: int = 1, seeds: Iterable[int] = None):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
         if not seeds:
@@ -335,12 +334,12 @@ class Experiment(ABC):
                     start_time = timer()
 
                     # Compute relative utility loss
-                    loss_ex_ante, _ = self._calculate_metrics_util_loss(
-                        create_plot_output = False,
-                        batch_size = stopping_criterion_batch_size,
-                        grid_size = stopping_criterion_grid_size)
-                    rel_util_loss = 1 - utilities/(utilities + torch.tensor(loss_ex_ante))
-                    stopping_queue.append(rel_util_loss)
+                    # loss_ex_ante, _ = self._calculate_metrics_util_loss(
+                    #     create_plot_output = False,
+                    #     batch_size = stopping_criterion_batch_size,
+                    #     grid_size = stopping_criterion_grid_size)
+                    # rel_util_loss = 1 - utilities/(utilities + torch.tensor(loss_ex_ante))
+                    # stopping_queue.append(rel_util_loss)
 
                     # Check for convergence when enough data is available
                     if len(stopping_queue) == stopping_queue.maxlen:
@@ -387,11 +386,6 @@ class Experiment(ABC):
         self.writer.add_metrics_dict(log_params, self._model_names, epoch, group_prefix = 'meta')
 
         return diffs.max().le(stopping_criterion).item()
-
-    ########################################################################################################
-    ####################################### Moved logging to here ##########################################
-    ########################################################################################################
-
 
     # TODO Stefan: method only uses self in eval and for output point
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
@@ -596,7 +590,6 @@ class Experiment(ABC):
             self.writer.add_metrics_dict(log_params, self._model_names, epoch, group_prefix = 'eval')
         return timer() - start_time
 
-
     def _calculate_metrics_known_bne(self):
         """
         Compare performance to BNE and return:
@@ -660,7 +653,7 @@ class Experiment(ABC):
             grid_size = self.logging_config.util_loss_grid_size
 
         assert batch_size <= env.batch_size, "Util_loss for larger than actual batch size not implemented."
-        bid_profile = torch.zeros(batch_size, env.n_players, env.agents[0].n_items,
+        bid_profile = torch.zeros(batch_size, env.n_players, env.agents[0].get_action().shape[-1],
                                   dtype=env.agents[0].valuations.dtype, device=env.mechanism.device)
 
         # Only supports regret_batch_size <= batch_size
@@ -695,7 +688,7 @@ class Experiment(ABC):
         """Calculate (Bayesian) Price of Anarchy"""
 
         # calculate actual allocations
-        bid_profile = torch.zeros(self.env.batch_size, self.env.n_players, self.env.agents[0].n_items,
+        bid_profile = torch.zeros(self.env.batch_size, self.env.n_players, self.env.agents[0].get_action().shape[-1],
                                   device=self.env.mechanism.device)
         for pos, bid in self.env._generate_agent_actions():
             bid_profile[:, pos, :] = bid

@@ -216,6 +216,9 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
         # max per valuations
         u_i_alternative, _ = torch.max(u_i_alternative, 1) #batch
 
+        # Clean up storage
+        del v_i, a_i, p_i
+
     except RuntimeError as err:
         print("Failed computing util_loss as batch. Trying sequential valuations computation. Decrease dimensions to fix. Error:\n {0}".format(err))
         try:
@@ -239,8 +242,6 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
             print("Failed computing util_loss as batch with sequential valuations. Decrease dimensions to fix. Error:\n {0}".format(err))
             u_i_alternative = torch.ones(batch_size, device = p_i.device) * -9999999
 
-    # Clean up storage
-    del v_i, a_i, p_i
     torch.cuda.empty_cache()
 
     ### Evaluate actual bids

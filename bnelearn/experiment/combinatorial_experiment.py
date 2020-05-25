@@ -17,8 +17,8 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
 
-from bnelearn.mechanism.auctions_combinatorial import LLGAuction, LLLLGGAuction
-from bnelearn.bidder import Bidder
+from bnelearn.mechanism import (LLGAuction, LLLLGGAuction, FirstPriceSealedBidAuction, VickreyAuction)
+from bnelearn.bidder import Bidder, CombinatorialItemBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment, GPUController
 from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
@@ -186,10 +186,103 @@ class LLLLGGExperiment(LocalGlobalExperiment):
         return os.path.join(*name)
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
-                xlim: list=None, ylim: list=None, labels: list=None,
-                x_label="valuation", y_label="bid", fmts=['o'],
-                figure_name: str='bid_function', plot_points=100):
+              xlim: list=None, ylim: list=None, labels: list=None,
+              x_label="valuation", y_label="bid", fmts=['o'],
+              figure_name: str='bid_function', plot_points=100):
 
         super()._plot(plot_data, writer, epoch, xlim, ylim, labels,
-                    x_label, y_label, fmts, figure_name, plot_points)
+                      x_label, y_label, fmts, figure_name, plot_points)
         super()._plot_3d(plot_data, writer, epoch, figure_name)
+
+class CAItemBiddingExperiment(Experiment):
+    """
+    A combinatorial Experiment where items are sold simultaneously but bidder might have
+    complex preferences.
+    """
+    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
+                 logging_config: LoggingConfiguration, gpu_config: GPUController):
+
+        self.n_items = experiment_config.n_units
+        self.n_bundles = (2 ** self.n_items) - 1
+        self.n_players = experiment_config.n_players
+        self.payment_rule = experiment_config.payment_rule
+
+        self.u_lo = experiment_config.u_lo
+        self.u_hi = experiment_config.u_hi
+
+        self.model_sharing = experiment_config.model_sharing
+        if self.model_sharing:
+            self.n_models = 1
+            self._bidder2model = [0] * self.n_players
+        else:
+            self.n_models = self.n_players
+            self._bidder2model = list(range(self.n_players))
+
+        if not hasattr(self, 'positive_output_point'):
+            self.positive_output_point = torch.tensor([[self.u_hi[0]] * self.n_bundles], dtype=torch.float)
+
+        known_bne = False
+
+        if experiment_config.pretrain_transform is not None:
+            self.pretrain_transform = experiment_config.pretrain_transform
+        else:
+            self.pretrain_transform = self.default_pretrain_transform
+
+        self.input_length = self.n_bundles
+
+        self.plot_xmin = self.plot_ymin = min(self.u_lo)
+        self.plot_xmax = self.plot_ymax = max(self.u_hi)
+
+        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
+
+        print('\n=== Hyperparameters ===')
+        for k in learning_config.learner_hyperparams.keys():
+            print('{}: {}'.format(k, learning_config.learner_hyperparams[k]))
+        print('=======================\n')
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+        """
+        Standard strat_to_bidder method.
+        """
+        return CombinatorialItemBidder.uniform(
+            lower=self.u_lo[player_position], upper=self.u_hi[player_position],
+            strategy=strategy,
+            n_items=self.n_bundles,
+            player_position=player_position,
+            batch_size=batch_size,
+            cache_actions=cache_actions
+        )
+
+    def _setup_mechanism(self):
+        """Setup the mechanism"""
+        if self.payment_rule == 'first_price':
+            self.mechanism_type = FirstPriceSealedBidAuction
+        elif self.payment_rule in ('vcg', 'second_price'):
+            self.mechanism_type = VickreyAuction
+        else:
+            raise ValueError('payment rule unknown')
+
+        self.mechanism = self.mechanism_type(cuda=self.gpu_config.cuda)
+
+    def _setup_eval_environment(self):
+        """Setup the BNE envierment for later evaluation of the learned strategies"""
+        print('no BNE known.')
+
+    def _get_logdir_hierarchy(self):
+        name = ['CAItemBidding', self.payment_rule, str(self.n_players) + 'players_' + str(self.n_items) + 'units']
+        return os.path.join(*name)
+
+    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
+              xlim: list=None, ylim: list=None, labels: list=None,
+              x_label="valuation", y_label="bid", fmts=['o'],
+              figure_name: str='bid_function', plot_points=100):
+
+        super()._plot(plot_data, writer, epoch, xlim, ylim, labels,
+                      x_label, y_label, fmts, figure_name, plot_points)
+
+        if self.n_bundles == 2:
+            super()._plot_3d(plot_data, writer, epoch, figure_name)
+
+    def default_pretrain_transform(self, input_tensor):
+        """Default pretrain transformation: truthful bidding"""
+        return torch.clone(input_tensor[...,:self.n_items])

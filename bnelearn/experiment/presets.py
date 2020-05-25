@@ -1,14 +1,17 @@
 from typing import List
 
-from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
-                                                          LLLLGGExperiment)
-from bnelearn.experiment.configurations import (ExperimentConfiguration,
-                                                LearningConfiguration,
-                                                LoggingConfiguration,
-                                                RunningConfiguration)
-from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment,
-                                                       SplitAwardExperiment)
-from bnelearn.experiment.single_item_experiment import (
+from bnelearn.experiment.combinatorial_experiment import (
+    LLGExperiment,
+    LLLLGGExperiment)
+from bnelearn.experiment.configurations import (
+    ExperimentConfiguration,
+    LearningConfiguration,
+    LoggingConfiguration,
+    RunningConfiguration)
+from bnelearn.experiment import (
+    MultiUnitExperiment,
+    SplitAwardExperiment,
+    CAItemBiddingExperiment,
     GaussianSymmetricPriorSingleItemExperiment,
     TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
     UniformSymmetricPriorSingleItemExperiment)
@@ -82,7 +85,7 @@ def single_item_asymmetric_uniform_overlapping(
         util_loss_grid_size=2 ** 8,
         specific_gpu=1,
         logging=True
-):
+    ):
     n_players = [2]
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs,
                                                  specific_gpu=specific_gpu, n_players=n_players)
@@ -96,6 +99,7 @@ def single_item_asymmetric_uniform_overlapping(
                                                        u_lo=u_lo, u_hi=u_hi, risk=risk)
     experiment_class = TwoPlayerAsymmetricUniformPriorSingleItemExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
+
 
 def single_item_asymmetric_uniform_disjunct(
         n_runs: int,
@@ -111,7 +115,7 @@ def single_item_asymmetric_uniform_disjunct(
         util_loss_grid_size=2 ** 8,
         specific_gpu=1,
         logging=True
-):
+    ):
     n_players = [2]
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs,
                                                  specific_gpu=specific_gpu, n_players=n_players)
@@ -190,10 +194,10 @@ def multiunit(
         util_loss_grid_size=2 ** 8,
         specific_gpu=0,
         logging=True
-):
+    ):
     running_configuration = RunningConfiguration(
         n_runs=n_runs, n_epochs=n_epochs,
-        specific_gpu=specific_gpu, n_players=[2]
+        specific_gpu=specific_gpu, n_players=n_players
     )
     logging_configuration = LoggingConfiguration(
         log_metrics=log_metrics,
@@ -229,10 +233,10 @@ def splitaward(
         util_loss_grid_size=2 ** 8,
         specific_gpu=1,
         logging=True
-):
+    ):
     running_configuration = RunningConfiguration(
         n_runs=n_runs, n_epochs=n_epochs,
-        specific_gpu=specific_gpu, n_players=[2]
+        specific_gpu=specific_gpu, n_players=n_players
     )
     logging_configuration = LoggingConfiguration(
         log_metrics=log_metrics,
@@ -250,4 +254,42 @@ def splitaward(
         efficiency_parameter=efficiency_parameter
     )
     experiment_class = SplitAwardExperiment
+    return running_configuration, logging_configuration, experiment_configuration, experiment_class
+
+
+def itembidding(
+        n_runs: int, n_epochs: int,
+        n_players: list = [2],
+        payment_rule: str = 'vcg',
+        n_items=2,
+        log_metrics=['PoA'],
+        model_sharing=True,
+        u_lo=[0], u_hi=[1],
+        risk=1.0,
+        util_loss_batch_size=2 ** 8,
+        util_loss_grid_size=2 ** 8,
+        specific_gpu=0,
+        logging=True
+    ):
+    n_bundles = (2 ** n_items) - 1
+    if len(u_lo) < n_items:
+        u_lo = [u_lo[0]] * n_bundles
+        u_hi = [u_hi[0]] * n_bundles
+    running_configuration = RunningConfiguration(
+        n_runs=n_runs, n_epochs=n_epochs,
+        specific_gpu=specific_gpu, n_players=n_players
+    )
+    logging_configuration = LoggingConfiguration(
+        log_metrics=log_metrics,
+        util_loss_batch_size=util_loss_batch_size,
+        util_loss_grid_size=util_loss_grid_size,
+        plot_points=1000,
+        enable_logging=logging
+    )
+    experiment_configuration = ExperimentConfiguration(
+        payment_rule=payment_rule, n_units=n_items,
+        model_sharing=model_sharing,
+        u_lo=u_lo, u_hi=u_hi, risk=risk
+    )
+    experiment_class = CAItemBiddingExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class

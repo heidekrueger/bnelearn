@@ -41,6 +41,7 @@ class Player(ABC):
         """Calculates player's utility based on outcome of a game."""
         raise NotImplementedError
 
+
 class MatrixGamePlayer(Player):
     """ A player playing a matrix game"""
     def __init__(self, strategy, player_position=None, batch_size=1, cuda=True):
@@ -61,6 +62,7 @@ class MatrixGamePlayer(Player):
             return self.strategy.play(self.player_position)
 
         raise ValueError("Invalid Strategy Type for Matrix game: {}".format(type(self.strategy)))
+
 
 class Bidder(Player):
     """ A player in an auction game. Has a distribution over valuations/types that is
@@ -146,7 +148,7 @@ class Bidder(Player):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
             self._valuations_changed =True
 
-    def get_valuation_grid(self, n_points, extended_valuation_grid=False):
+    def get_valuation_grid(self, n_points, extended_valuation_grid=False, n_dimensions=None):
         """ Returns a grid of approximately `n_points` valuations that are
             equidistant (in each dimension) on the support of self.value_distribution.
             If the support is unbounded, the 0.1th and 99.9th percentiles are used instead.
@@ -167,7 +169,10 @@ class Bidder(Player):
                       then throws most of them away
         """
 
-        if extended_valuation_grid and hasattr(self, '_grid_lb_util_loss'):   
+        if n_dimensions is None:
+            n_dimensions = self.n_items
+
+        if extended_valuation_grid and hasattr(self, '_grid_lb_util_loss'):
             lb = self._grid_lb_util_loss
             ub = self._grid_ub_util_loss
         else:
@@ -177,19 +182,19 @@ class Bidder(Player):
         # change batch_size s.t. it'll approx. end up at intended n_points in the end
         adapted_size = n_points
         if self.descending_valuations:
-            adapted_size = n_points * math.factorial(self.n_items)
+            adapted_size = n_points * math.factorial(n_dimensions)
 
-        batch_size_per_dim = math.ceil(adapted_size ** (1/self.n_items))
+        batch_size_per_dim = math.ceil(adapted_size ** (1/n_dimensions))
         lin = torch.linspace(lb, ub, batch_size_per_dim, device=self.device)
 
         grid_values = torch.stack([
-            x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()
+            x.flatten() for x in torch.meshgrid([lin] * n_dimensions)]).t()
 
         if isinstance(self.item_interest_limit, int):
             grid_values[:,self.item_interest_limit:] = 0
         if self.constant_marginal_values:
-            grid_values.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
-                                    grid_values[:,0:1].repeat(1, self.n_items-1))
+            grid_values.index_copy_(1, torch.arange(1, n_dimensions, device=self.device),
+                                    grid_values[:,0:1].repeat(1, n_dimensions-1))
         if self.descending_valuations:
             grid_values = grid_values.sort(dim=1, descending=True)[0].unique(dim=0)
 
@@ -385,3 +390,83 @@ class ReverseBidder(Bidder):
         """For reverse bidders, returns are inverted.
         """
         return - super().get_counterfactual_utility(allocations, payments, counterfactual_valuations)
+
+
+class CombinatorialItemBidder(Bidder):
+    """
+    Bidder that has complex preferences but participates in simultaneous auctions.
+
+        valuations have shape (batch_size, n_items), where it's meant as `n_bundles`
+        bids have shape (batch_size, n_bids)
+    """
+    def __init__(self, value_distribution: Distribution, strategy, n_items, **kwargs):
+        self.n_bids = int(math.log(n_items + 1, 2))
+        assert int(self.n_bids) == self.n_bids, 'bids must be integer'
+        self.n_bids = int(self.n_bids)
+        super().__init__(value_distribution=value_distribution, strategy=strategy,
+                         n_items=n_items, **kwargs)
+
+    @classmethod
+    def uniform(cls, lower, upper, strategy, **kwargs):
+        """Constructs a bidder with uniform valuation prior."""
+        dist = torch.distributions.uniform.Uniform(low=lower, high=upper)
+        return cls(dist, strategy, **kwargs)
+
+    def draw_valuations_(self):
+        """
+        Sample a new batch of valuations from the bidder's prior.
+        """
+        self.valuations = super().draw_valuations_()
+        combinations = []
+        for r in range(self.n_bids):
+            for c in torch.combinations(torch.arange(self.n_bids), r+1).tolist():
+                combinations.append(c)
+
+        # additive valuations
+        for i, c in [(i, c) for i, c in enumerate(combinations) if len(c) > 1]:
+            self.valuations[:,i] = self.valuations[:,c].sum(1)
+
+        return self.valuations
+
+    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
+        """
+        For a batch of allocations, payments and counterfactual valuations return the
+        player's utilities.
+
+        Can handle multiple batch dimensions, e.g. for allocations a shape of
+        (..., batch_size, n_items). These batch dimensions are kept in returned
+        payoff.
+        """
+        welfare = self.get_welfare(allocations, counterfactual_valuations)
+
+        payoff = welfare - payments
+
+        if self.risk == 1.0:
+            return payoff
+        else:
+            # payoff^alpha not well defined in negative domain for risk averse agents
+            return payoff.relu()**self.risk - (-payoff).relu()**self.risk
+
+    def get_welfare(self, allocations, valuations=None):
+        """
+        For a batch of allocations and payments return the player's welfare.
+        If valuations are not specified, welfare is calculated for `self.valuations`.
+
+        Can handle multiple batch dimensions, e.g. for valuations a shape of
+        (..., batch_size, n_items). These batch dimensions are kept in returned
+        welfare.
+        """
+
+        assert allocations.dim() == 2 # batch_size x items
+        if valuations is None:
+            valuations = self.valuations
+
+        # check if allocation is only based on subset of all bundles
+        if allocations.shape[-1] < valuations.shape[-1]:
+            # cut off valuations for bundles which were not for sale
+            valuations = valuations[...,:allocations.shape[-1]]
+
+        item_dimension = valuations.dim() - 1
+        welfare = (valuations * allocations).sum(dim=item_dimension)
+
+        return welfare

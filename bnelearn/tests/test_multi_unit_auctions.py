@@ -3,17 +3,17 @@
 import pytest
 import torch
 
-from bnelearn.mechanism import (MultiUnitDiscriminatoryAuction,
+from bnelearn.mechanism import (VickreyAuction,
+                                MultiUnitDiscriminatoryAuction,
                                 MultiUnitUniformPriceAuction,
-                                MultiUnitVickreyAuction,
-                                CAItemBidding)
+                                MultiUnitVickreyAuction)
 
 cuda = torch.cuda.is_available()
 
 mida = MultiUnitDiscriminatoryAuction(cuda=cuda)
 miup = MultiUnitUniformPriceAuction(cuda=cuda)
 miva = MultiUnitVickreyAuction(cuda=cuda)
-caib = CAItemBidding('vcg' ,cuda=cuda)
+caib = VickreyAuction(cuda=cuda)
 
 device = mida.device
 
@@ -128,7 +128,10 @@ def test_miva_correctness():
         device = payments.device))
 
 def test_caib_correctness():
-    """Test of allocation and payments in MultiUnitVickreyAuction."""
+    """
+    Test of allocation and payments in combinatorial auction with item
+    bidding and a second-price payment rule.
+    """
 
     true_allocations = torch.tensor([
         [[0., 0., 0.],
