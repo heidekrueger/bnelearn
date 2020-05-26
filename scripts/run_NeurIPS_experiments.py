@@ -21,7 +21,7 @@ if __name__ == '__main__':
     lr: ->0.003 vs 0.001
     optimizer: ->adam vs SGD
     '''
-    specific_gpu = 6
+    specific_gpu = 7
     #LLG: first_price, VCG, nearest_vcg, nearest_zero, nearest_bid
     #LLLLGG: first_price, VCG, nearest_vcg
     payment_rule = 'nearest_bid'
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     experiment_class = LLGExperiment 
 
     running_configuration = RunningConfiguration(n_runs = 2, n_epochs = 5000, specific_gpu = specific_gpu, n_players = [3])
-    logging_configuration = LoggingConfiguration(log_metrics = ['opt','l2','util_loss'],#['util_loss'],#
+    logging_configuration = LoggingConfiguration(log_metrics =['opt','l2','util_loss'],#['opt','l2','util_loss'],#['util_loss'],#
                                                  util_loss_batch_size = 2**12,util_loss_grid_size = 2**10, util_loss_frequency = 100,
                                                  #stopping_criterion_rel_util_loss_diff = 0.0005, stopping_criterion_batch_size = 2**10,
                                                  #stopping_criterion_grid_size = 2**9,
@@ -44,11 +44,14 @@ if __name__ == '__main__':
 
     gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
     learning_configuration = LearningConfiguration(
+        hidden_nodes = [10,10], #<-----new design!
         pretrain_iters=500,
         batch_size=2**18,
-        learner_hyperparams = {'population_size': 128,
+        optimizer_type='adam',
+        learner_hyperparams = {'population_size': 64,
                                'sigma': 1.,
-                               'scale_sigma_by_model_size': True})
+                               'scale_sigma_by_model_size': True},
+        optimizer_hyperparams= {'lr': 3e-3})
 
     try:
         for i in running_configuration.n_players:
