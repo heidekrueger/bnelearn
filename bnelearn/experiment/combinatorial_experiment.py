@@ -20,7 +20,7 @@ import torch
 from bnelearn.mechanism.auctions_combinatorial import LLGAuction, LLLLGGAuction
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.experiment.configurations import ExperimentConfiguration
+from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
 
@@ -31,15 +31,15 @@ class LocalGlobalExperiment(Experiment, ABC):
     It serves only to provide common logic and parameters for LLG and LLLLGG.
     """
 
-    def __init__(self, experiment_config: ExperimentConfiguration):
-        self.experiment_config = experiment_config
-        self.n_players = self.experiment_config.run_config.n_players
-        self.n_local = self.experiment_config.model_config.n_local
-        self.n_items = self.experiment_config.model_config.n_items
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        self.n_players = self.config.running.n_players
+        self.n_local = self.config.setting.n_local
+        self.n_items = self.config.setting.n_items
 
-        assert self.experiment_config.model_config.u_lo is not None, """Missing prior information!"""
-        assert self.experiment_config.model_config.u_hi is not None, """Missing prior information!"""
-        u_lo = self.experiment_config.model_config.u_lo
+        assert self.config.setting.u_lo is not None, """Missing prior information!"""
+        assert self.config.setting.u_hi is not None, """Missing prior information!"""
+        u_lo = self.config.setting.u_lo
         # Frontend could either provide single number u_lo that is shared or a list for each player.
         if isinstance(u_lo, Iterable):
             assert len(u_lo) == self.n_players
@@ -48,27 +48,27 @@ class LocalGlobalExperiment(Experiment, ABC):
             u_lo = [float(u_lo)] * self.n_players
         self.u_lo = u_lo
 
-        u_hi = self.experiment_config.model_config.u_hi
+        u_hi = self.config.setting.u_hi
         assert isinstance(u_hi, Iterable)
         assert len(u_hi) == self.n_players
-        assert u_hi[1:self.experiment_config.model_config.n_local] == \
-               u_hi[:self.experiment_config.model_config.n_local - 1], "local bidders should be identical"
+        assert u_hi[1:self.config.setting.n_local] == \
+               u_hi[:self.config.setting.n_local - 1], "local bidders should be identical"
         assert u_hi[0] < \
-               u_hi[self.experiment_config.model_config.n_local], "local bidders must be weaker than global bidder"
+               u_hi[self.config.setting.n_local], "local bidders must be weaker than global bidder"
         self.u_hi = [float(h) for h in u_hi]
 
         self.positive_output_point = torch.tensor([min(self.u_hi)] * self.n_items)
 
-        self.model_sharing = self.experiment_config.model_config.model_sharing
+        self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
             self.n_models = 2
-            self._bidder2model: List[int] = [0] * self.experiment_config.model_config.n_local \
-                                            + [1] * (self.n_players - self.experiment_config.model_config.n_local)
+            self._bidder2model: List[int] = [0] * self.config.setting.n_local \
+                                            + [1] * (self.n_players - self.config.setting.n_local)
         else:
             self.n_models = self.n_players
             self._bidder2model: List[int] = list(range(self.n_players))
 
-        super().__init__(experiment_config=experiment_config)
+        super().__init__(config=config)
 
         self.plot_xmin = min(u_lo)
         self.plot_xmax = max(u_hi)
@@ -95,22 +95,22 @@ class LLGExperiment(LocalGlobalExperiment):
     Ausubel and Baranov (2018) provide closed form solutions for the 3 core selecting rules.
     """
 
-    def __init__(self, experiment_config: ExperimentConfiguration):
-        self.experiment_config = experiment_config
-        assert self.experiment_config.run_config.n_players == 3, "Incorrect number of players specified."
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        assert self.config.running.n_players == 3, "Incorrect number of players specified."
 
-        self.gamma = self.experiment_config.model_config.gamma
+        self.gamma = self.config.setting.gamma
         assert self.gamma == 0, "Gamma > 0 implemented yet."
 
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
         #  (i.e. uniformity, bounds, etc)
-        self.experiment_config.model_config.known_bne = self.experiment_config.model_config.payment_rule in \
-                                                        ['vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']
+        self.known_bne = self.config.setting.payment_rule in \
+                         ['vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']
         self.input_length = 1
-        self.experiment_config.run_config.n_players = 3
-        self.experiment_config.model_config.n_local = 2
-        self.experiment_config.model_config.n_items = 1
-        super().__init__(experiment_config=experiment_config)
+        self.config.running.n_players = 3
+        self.config.setting.n_local = 2
+        self.config.setting.n_items = 1
+        super().__init__(config=config)
 
     def _setup_mechanism(self):
         self.mechanism = LLGAuction(rule=self.payment_rule)
@@ -138,29 +138,31 @@ class LLGExperiment(LocalGlobalExperiment):
         raise ValueError('optimal bid not implemented for other rules')
 
     def _setup_eval_environment(self):
-        bne_strategies = [
-            ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
-            for i in range(self.n_players)
-        ]
+        if self.known_bne:
+            bne_strategies = [
+                ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
+                for i in range(self.n_players)
+            ]
 
-        bne_env = AuctionEnvironment(
-            mechanism=self.mechanism,
-            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                          batch_size=self.logging_config.eval_batch_size)
-                    for i in range(self.n_players)],
-            n_players=self.n_players,
-            batch_size=self.logging_config.eval_batch_size,
-            strategy_to_player_closure=self._strat_to_bidder
-        )
+            bne_env = AuctionEnvironment(
+                mechanism=self.mechanism,
+                agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
+                                              batch_size=self.logging.eval_batch_size)
+                        for i in range(self.n_players)],
+                n_players=self.n_players,
+                batch_size=self.logging.eval_batch_size,
+                strategy_to_player_closure=self._strat_to_bidder
+            )
 
-        self.bne_env = bne_env
+            self.bne_env = bne_env
 
-        bne_utilities_sampled = torch.tensor(
-            [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
+            bne_utilities_sampled = torch.tensor(
+                [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
 
-        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
-        print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
-        self.bne_utilities = bne_utilities_sampled
+            print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
+            print(
+                "No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
+            self.bne_utilities = bne_utilities_sampled
 
     def _get_logdir_hierarchy(self):
         name = ['LLG', self.payment_rule]
@@ -182,20 +184,20 @@ class LLLLGGExperiment(LocalGlobalExperiment):
         - Implement eval_env for VCG
     """
 
-    def __init__(self, experiment_config: ExperimentConfiguration):
-        self.experiment_config = experiment_config
-        assert self.experiment_config.run_config.n_players == 6, "not right number of players for setting"
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        assert self.config.running.n_players == 6, "not right number of players for setting"
         self.input_length = 2
 
-        self.experiment_config.model_config.known_bne = False
-        self.experiment_config.run_config.n_players = 6
-        self.experiment_config.model_config.n_local = 4
-        self.experiment_config.model_config.n_items = 2
-        super().__init__(experiment_config=experiment_config)
+        self.known_bne = False
+        self.config.running.n_players = 6
+        self.config.setting.n_local = 4
+        self.config.setting.n_items = 2
+        super().__init__(config=config)
 
     def _setup_mechanism(self):
-        self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver=self.model_config.core_solver,
-                                       parallel=self.model_config.parallel, cuda=self.gpu_config.cuda)
+        self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver=self.setting.core_solver,
+                                       parallel=self.hardware.max_cpu_threads, cuda=self.hardware.cuda)
 
     def _get_logdir_hierarchy(self):
         name = ['LLLLGG', self.payment_rule, str(self.n_players) + 'p']
@@ -208,3 +210,6 @@ class LLLLGGExperiment(LocalGlobalExperiment):
         super()._plot(plot_data, writer, epoch, xlim, ylim, labels,
                       x_label, y_label, fmts, figure_name, plot_points)
         super()._plot_3d(plot_data, writer, epoch, figure_name)
+
+    def _setup_eval_environment(self):
+        pass

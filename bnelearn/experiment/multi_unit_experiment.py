@@ -20,7 +20,7 @@ from scipy import integrate, interpolate
 from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import  Experiment
-from bnelearn.experiment.configurations import ExperimentConfiguration
+from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.mechanism import (
     MultiUnitVickreyAuction, MultiUnitUniformPriceAuction, MultiUnitDiscriminatoryAuction,
     FPSBSplitAwardAuction
@@ -268,17 +268,17 @@ class MultiUnitExperiment(Experiment, ABC):
     Experiment class for the standard multi-unit auctions.
     """
 
-    def __init__(self, experiment_config: ExperimentConfiguration):
-        self.experiment_config = experiment_config
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
 
-        self.n_units = self.n_items = self.experiment_config.model_config.n_units
-        self.n_players = self.experiment_config.run_config.n_players
-        self.payment_rule = self.experiment_config.model_config.payment_rule
+        self.n_units = self.n_items = self.config.setting.n_units
+        self.n_players = self.config.running.n_players
+        self.payment_rule = self.config.setting.payment_rule
 
-        self.u_lo = self.experiment_config.model_config.u_lo
-        self.u_hi = self.experiment_config.model_config.u_hi
+        self.u_lo = self.config.setting.u_lo
+        self.u_hi = self.config.setting.u_hi
 
-        self.model_sharing = self.experiment_config.model_config.model_sharing
+        self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
             self.n_models = 1
             self._bidder2model = [0] * self.n_players
@@ -292,32 +292,32 @@ class MultiUnitExperiment(Experiment, ABC):
         # check for available BNE strategy
         self._optimal_bid = None
         if not isinstance(self, SplitAwardExperiment):
-            self._optimal_bid = _multiunit_bne(self.experiment_config.model_config,
-                                               self.experiment_config.model_config.payment_rule)
+            self._optimal_bid = _multiunit_bne(self.config.setting,
+                                               self.config.setting.payment_rule)
         else:
-            if self.experiment_config.model_config.n_units == 2 and self.experiment_config.run_config.n_players == 2:
-                self._optimal_bid = _optimal_bid_splitaward2x2_1(self.experiment_config.model_config)
+            if self.config.setting.n_units == 2 and self.config.running.n_players == 2:
+                self._optimal_bid = _optimal_bid_splitaward2x2_1(self.config.setting)
                 # self._optimal_bid = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
-        self.experiment_config.model_config.known_bne = self._optimal_bid is not None
+        self.known_bne = self._optimal_bid is not None
 
-        self.constant_marginal_values = self.experiment_config.model_config.constant_marginal_values
-        self.item_interest_limit = self.experiment_config.model_config.item_interest_limit
+        self.constant_marginal_values = self.config.setting.constant_marginal_values
+        self.item_interest_limit = self.config.setting.item_interest_limit
 
-        if self.experiment_config.model_config.pretrain_transform is not None:
-            self.pretrain_transform = self.experiment_config.model_config.pretrain_transform
+        if self.config.setting.pretrain_transform is not None:
+            self.pretrain_transform = self.config.setting.pretrain_transform
         else:
             self.pretrain_transform = self.default_pretrain_transform
 
-        self.input_length = self.experiment_config.model_config.n_units
+        self.input_length = self.config.setting.n_units
 
         self.plot_xmin = self.plot_ymin = min(self.u_lo)
         self.plot_xmax = self.plot_ymax = max(self.u_hi)
 
-        super().__init__(experiment_config=experiment_config)
+        super().__init__(config=config)
 
         print('\n=== Hyperparameters ===')
-        for k in self.experiment_config.learning_config.learner_hyperparams.keys():
-            print('{}: {}'.format(k, self.experiment_config.learning_config.learner_hyperparams[k]))
+        for k in self.config.learning.learner_hyperparams.keys():
+            print('{}: {}'.format(k, self.config.learning.learner_hyperparams[k]))
         print('=======================\n')
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
@@ -347,27 +347,28 @@ class MultiUnitExperiment(Experiment, ABC):
         else:
             raise ValueError('payment rule unknown')
 
-        self.mechanism = self.mechanism_type(cuda=self.gpu_config.cuda)
+        self.mechanism = self.mechanism_type(cuda=self.hardware.cuda)
 
     def _setup_eval_environment(self):
         """Setup the BNE envierment for later evaluation of the learned strategies"""
-        self.bne_strategies = [
-            ClosureStrategy(self._optimal_bid) for i in range(self.n_players)
-        ]
+        if self.known_bne:
+            self.bne_strategies = [
+                ClosureStrategy(self._optimal_bid) for i in range(self.n_players)
+            ]
 
-        self.bne_env = AuctionEnvironment(
-            mechanism=self.mechanism,
-            agents=[
-                self._strat_to_bidder(bne_strategy, self.logging_config.eval_batch_size, i)
-                for i, bne_strategy in enumerate(self.bne_strategies)
-            ],
-            n_players=self.n_players,
-            batch_size=self.logging_config.eval_batch_size,
-            strategy_to_player_closure=self._strat_to_bidder
-        )
+            self.bne_env = AuctionEnvironment(
+                mechanism=self.mechanism,
+                agents=[
+                    self._strat_to_bidder(bne_strategy, self.logging.eval_batch_size, i)
+                    for i, bne_strategy in enumerate(self.bne_strategies)
+                ],
+                n_players=self.n_players,
+                batch_size=self.logging.eval_batch_size,
+                strategy_to_player_closure=self._strat_to_bidder
+            )
 
-        self.bne_utilities = [self.bne_env.get_reward(agent, draw_valuations=True)
-                              for agent in self.bne_env.agents]
+            self.bne_utilities = [self.bne_env.get_reward(agent, draw_valuations=True)
+                                  for agent in self.bne_env.agents]
 
     def _get_logdir_hierarchy(self):
         name = ['MultiUnit', self.payment_rule, str(self.n_players) + 'players_' + str(self.n_units) + 'units']
@@ -395,13 +396,13 @@ class SplitAwardExperiment(MultiUnitExperiment):
     Experiment class of the first-price sealed bid split-award auction.
     """
 
-    def __init__(self, experiment_config: ExperimentConfiguration):
-        self.experiment_config = experiment_config
-        self.efficiency_parameter = self.experiment_config.model_config.efficiency_parameter
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        self.efficiency_parameter = self.config.setting.efficiency_parameter
 
-        super().__init__(experiment_config=experiment_config)
+        super().__init__(config=config)
 
-        assert all(u_lo > 0 for u_lo in self.experiment_config.model_config.u_lo), \
+        assert all(u_lo > 0 for u_lo in self.config.setting.u_lo), \
             '100% Unit must be valued > 0'
 
         self.positive_output_point = torch.tensor(
@@ -409,14 +410,14 @@ class SplitAwardExperiment(MultiUnitExperiment):
 
         # ToDO Implicit type conversion, OK?
         self.plot_xmin = [self.u_lo[0], self.u_hi[0]]
-        self.plot_xmax = [self.model_config.efficiency_parameter * self.u_lo[0],
-                          self.model_config.efficiency_parameter * self.u_hi[0]]
+        self.plot_xmax = [self.setting.efficiency_parameter * self.u_lo[0],
+                          self.setting.efficiency_parameter * self.u_hi[0]]
         self.plot_ymin = [0, 2 * self.u_hi[0]]
         self.plot_ymax = [0, 2 * self.u_hi[0]]
 
     def _setup_mechanism(self):
         if self.payment_rule == 'first_price':
-            self.mechanism = FPSBSplitAwardAuction(cuda=self.gpu_config.cuda)
+            self.mechanism = FPSBSplitAwardAuction(cuda=self.hardware.cuda)
         else:
             raise NotImplementedError('for the split-award auction only the ' + 'first-price payment rule is supported')
 

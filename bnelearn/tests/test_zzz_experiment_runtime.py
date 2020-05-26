@@ -12,7 +12,7 @@ import sys
 
 import pytest
 
-from bnelearn.experiment.configurations import LearningConfiguration, GPUConfiguration
+from bnelearn.experiment.configurations import LearningConfig, HardwareConfig
 from bnelearn.experiment.configuration_manager import (llg, llllgg, multiunit,
                                                        single_item_asymmetric_uniform_overlapping,
                                                        single_item_gaussian_symmetric,
@@ -57,7 +57,7 @@ ids_multi_unit, testdata_multi_unit = zip(*[
     ])
 
 def run_auction_test(create_auction_function):
-    learning_configuration = LearningConfiguration(pretrain_iters=20)
+    learning_configuration = LearningConfig(pretrain_iters=20)
     running_configuration, logging_configuration, experiment_configuration, experiment_class = create_auction_function
     # Log and plot frequent but few
     logging_configuration.enable_logging = False
@@ -69,7 +69,7 @@ def run_auction_test(create_auction_function):
     learning_configuration.batch_size = 2**2
     experiment_configuration.n_players = running_configuration.n_players[0]
     # Create and run the experiment
-    gpu_configuration = GPUConfiguration(specific_gpu=0)
+    gpu_configuration = HardwareConfig(specific_gpu=0)
     experiment = experiment_class(experiment_configuration, learning_configuration,
                                     logging_configuration, gpu_configuration)
     experiment.run(epochs=running_configuration.n_epochs, n_runs=running_configuration.n_runs)

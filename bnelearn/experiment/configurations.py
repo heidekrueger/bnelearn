@@ -13,7 +13,7 @@ import torch.nn as nn
 from torch.optim import Optimizer
 
 
-# ToDo Perhaps all the defaults should be moved  the ConfigurationManager?
+# ToDo Perhaps all the defaults should be moved to the ConfigurationManager?
 
 class EnhancedJSONEncoder(json.JSONEncoder):
     def default(self, o):
@@ -24,7 +24,7 @@ class EnhancedJSONEncoder(json.JSONEncoder):
 
 # Only used on front end
 @dataclass
-class RunningConfiguration:
+class RunningConfig:
     n_runs: int = 1
     n_epochs: int = 1000
     n_players: int = None
@@ -32,11 +32,12 @@ class RunningConfiguration:
 
 
 @dataclass
-class ModelConfiguration:
+class SettingConfig:
+    n_players: int = None
     payment_rule: str = 'first_price'
-    model_sharing: bool = True
+    # model_sharing: bool = True now in learning
     risk: float = 1.0
-    known_bne: bool = False
+    # known_bne: bool = False
 
     # SymmetricPriorSingleItemExperiment
     common_prior: torch.distributions.Distribution = None
@@ -51,7 +52,8 @@ class ModelConfiguration:
 
     # LLG
     gamma: float = 0.0
-    # ToDo Type? n_items is the same as n_units?
+    # ToDo please don't include these (n_local, n_global, n_items) here,
+    #  they are deterministically determined by the experiment subclasses.
     n_local: int = None
     n_items: int = None
 
@@ -66,11 +68,12 @@ class ModelConfiguration:
 
     # LLLLGG
     core_solver: str = 'NoCore'
-    parallel: int = 1
+    # parallel: int = 1 in hardware config now
 
 
 @dataclass
-class LearningConfiguration:
+class LearningConfig:
+    model_sharing: bool = True
     learner_hyperparams: dict = None
     optimizer_type: str or Type[Optimizer] = 'adam'
     optimizer_hyperparams: dict = None
@@ -78,6 +81,7 @@ class LearningConfiguration:
     hidden_activations: List[nn.Module] = None
     pretrain_iters: int = 500
     batch_size: int = 2 ** 18
+
 
     def __post_init__(self):
         self.optimizer: Type[Optimizer] = self._set_optimizer(self.optimizer_type)
@@ -108,7 +112,7 @@ class LearningConfiguration:
 
 
 @dataclass
-class LoggingConfiguration:
+class LoggingConfig:
     """Controls logging and evaluation aspects of an experiment suite.
 
     If logging is enabled, the experiment runs will be logged to the following
@@ -183,10 +187,11 @@ class LoggingConfiguration:
 
 
 @dataclass
-class GPUConfiguration:
+class HardwareConfig:
     cuda: bool = True
     specific_gpu: int = 0
     fallback: bool = False
+    max_cpu_threads: int = 1
 
     def __post_init__(self):
         if self.cuda and not torch.cuda.is_available():
@@ -200,10 +205,10 @@ class GPUConfiguration:
 
 
 @dataclass
-class ExperimentConfiguration:
+class ExperimentConfig:
     experiment_class: str
-    run_config: RunningConfiguration = None
-    model_config: ModelConfiguration = None
-    learning_config: LearningConfiguration = None
-    logging_config: LoggingConfiguration = None
-    gpu_config: GPUConfiguration = None
+    running: RunningConfig = None
+    setting: SettingConfig = None
+    learning: LearningConfig = None
+    logging: LoggingConfig = None
+    hardware: HardwareConfig = None

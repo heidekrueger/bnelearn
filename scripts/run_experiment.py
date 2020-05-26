@@ -24,12 +24,19 @@ if __name__ == '__main__':
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     fire.Fire()
 
+    # Run from a file
+    # experiment_config = logging.get_experiment_config_from_configurations_log()
+    # experiment_class = ConfigurationManager.get_class_by_experiment_type(experiment_config.experiment_class)
+
     # Well, path is user-specific
     log_root_dir = os.path.join(os.path.expanduser('~'), 'Projects/bnelearn', 'experiments')
+
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
     #     .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \
     #     .get_config(log_root_dir=log_root_dir)
+
+    # All three next experiments get AssertionError: scalar should be 0D
     # experiment_config, experiment_class = \
     #     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping') \
     #     .get_config(log_root_dir=log_root_dir)
@@ -38,16 +45,15 @@ if __name__ == '__main__':
     #     .get_config(log_root_dir=log_root_dir)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
     #     .get_config(log_root_dir=log_root_dir)
+
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg') \
     #     .get_config(log_root_dir=log_root_dir)
+    
+    # RuntimeError: Sizes of tensors must match
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
     #     .get_config(log_root_dir=log_root_dir)
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
-    #     .get_config(log_root_dir=log_root_dir)
-
-    # Run from a file
-    experiment_config = logging.get_experiment_config_from_configurations_log()
-    experiment_class = ConfigurationManager.get_class_by_experiment_type(experiment_config.experiment_class)
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
+        .get_config(log_root_dir=log_root_dir)
 
     try:
         experiment_class(experiment_config).run()

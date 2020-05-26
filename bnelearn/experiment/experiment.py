@@ -23,7 +23,7 @@ import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
-from bnelearn.experiment.configurations import (ExperimentConfiguration)
+from bnelearn.experiment.configurations import (ExperimentConfig)
 from bnelearn.learner import ESPGLearner, Learner
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import NeuralNetStrategy
@@ -64,18 +64,18 @@ class Experiment(ABC):
     bne_env: AuctionEnvironment
     _optimal_bid: callable
 
-    def __init__(self, experiment_config: ExperimentConfiguration):
+    def __init__(self, config: ExperimentConfig):
         # Configs, params are duplicated for the ease of usage and brevity
-        self.experiment_config = experiment_config
-        self.run_config = experiment_config.run_config
-        self.model_config = experiment_config.model_config
-        self.learning_config = experiment_config.learning_config
-        self.logging_config = experiment_config.logging_config
-        self.gpu_config = experiment_config.gpu_config
+        self.config = config
+        self.running = config.running
+        self.setting = config.setting
+        self.learning = config.learning
+        self.logging = config.logging
+        self.hardware = config.hardware
 
         # Global Stuff that should be initiated here
-        self.plot_frequency = self.logging_config.plot_frequency
-        self.plot_points = min(self.logging_config.plot_points, self.learning_config.batch_size)
+        self.plot_frequency = self.logging.plot_frequency
+        self.plot_points = min(self.logging.plot_points, self.learning.batch_size)
 
         # Everything that will be set up per run initiated with none
         self.run_log_dir = None
@@ -94,22 +94,22 @@ class Experiment(ABC):
         self._hparams_metrics = {}
         ### Save locally - can haves
         # Logging
-        if self.logging_config.util_loss_batch_size is not None:
-            self.util_loss_batch_size = self.logging_config.util_loss_batch_size
-        if self.logging_config.util_loss_grid_size is not None:
-            self.util_loss_grid_size = self.logging_config.util_loss_grid_size
+        if self.logging.util_loss_batch_size is not None:
+            self.util_loss_batch_size = self.logging.util_loss_batch_size
+        if self.logging.util_loss_grid_size is not None:
+            self.util_loss_grid_size = self.logging.util_loss_grid_size
 
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
         if not hasattr(self, 'n_players'):
-            self.n_players = self.model_config.n_players
+            self.n_players = self.setting.n_players
         if not hasattr(self, 'payment_rule'):
-            self.payment_rule = self.model_config.payment_rule
+            self.payment_rule = self.setting.payment_rule
 
         # sets log dir for experiment. Individual runs will log to subdirectories of this.
-        self.experiment_log_dir = os.path.join(self.logging_config.log_root_dir,
+        self.experiment_log_dir = os.path.join(self.logging.log_root_dir,
                                                self._get_logdir_hierarchy(),
-                                               self.logging_config.experiment_dir)
+                                               self.logging.experiment_dir)
 
         ### actual logic
         # Inverse of bidder --> model lookup table
@@ -121,13 +121,13 @@ class Experiment(ABC):
         self._setup_mechanism()
 
         # needs to be set in subclass and either specified as input or set there
-        self.known_bne = self.model_config.known_bne
+        # self.known_bne = known_bne
         # Cannot log 'opt' without known bne
-        if self.logging_config.log_metrics['opt'] or self.logging_config.log_metrics['l2']:
-            assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
-
-        if self.known_bne:
-            self._setup_eval_environment()
+        # if self.logging.log_metrics['opt'] or self.logging.log_metrics['l2']:
+        #     assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
+        #
+        # if self.known_bne:
+        self._setup_eval_environment()
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -157,9 +157,9 @@ class Experiment(ABC):
         self.learners = [
             ESPGLearner(model=model,
                         environment=self.env,
-                        hyperparams=self.learning_config.learner_hyperparams,
-                        optimizer_type=self.learning_config.optimizer,
-                        optimizer_hyperparams=self.learning_config.optimizer_hyperparams,
+                        hyperparams=self.learning.learner_hyperparams,
+                        optimizer_type=self.learning.optimizer,
+                        optimizer_hyperparams=self.learning.optimizer_hyperparams,
                         strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]})
             for m_id, model in enumerate(self.models)]
 
@@ -174,20 +174,20 @@ class Experiment(ABC):
         for i in range(len(self.models)):
             self.models[i] = NeuralNetStrategy(
                 self.input_length,
-                hidden_nodes=self.learning_config.hidden_nodes,
-                hidden_activations=self.learning_config.hidden_activations,
+                hidden_nodes=self.learning.hidden_nodes,
+                hidden_activations=self.learning.hidden_activations,
                 ensure_positive_output=self.positive_output_point,
                 output_length=self.n_items
-            ).to(self.gpu_config.device)
+            ).to(self.hardware.device)
 
         self.bidders = [
-            self._strat_to_bidder(self.models[m_id], batch_size=self.learning_config.batch_size, player_position=i)
+            self._strat_to_bidder(self.models[m_id], batch_size=self.learning.batch_size, player_position=i)
             for i, m_id in enumerate(self._bidder2model)]
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
                              self.models]
 
-        if self.learning_config.pretrain_iters > 0:
+        if self.learning.pretrain_iters > 0:
             print('\tpretraining...')
 
             if hasattr(self, 'pretrain_transform'):
@@ -197,7 +197,7 @@ class Experiment(ABC):
 
             for i, model in enumerate(self.models):
                 model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
-                               self.learning_config.pretrain_iters, pretrain_transform)
+                               self.learning.pretrain_iters, pretrain_transform)
 
     def _setup_eval_environment(self):
         """Overwritten by subclasses with known BNE.
@@ -207,7 +207,7 @@ class Experiment(ABC):
     def _setup_learning_environment(self):
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
-                                      batch_size=self.learning_config.batch_size,
+                                      batch_size=self.learning.batch_size,
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder)
 
@@ -219,7 +219,7 @@ class Experiment(ABC):
 
         output_dir = self.run_log_dir
 
-        if self.logging_config.log_metrics['opt'] and hasattr(self, 'bne_env'):
+        if self.logging.log_metrics['opt'] and hasattr(self, 'bne_env'):
             # dim: [points, bidders, items]
             self.v_opt = torch.stack(
                 [b.get_valuation_grid(self.plot_points)
@@ -240,13 +240,13 @@ class Experiment(ABC):
             from IPython import display
         plt.rcParams['figure.figsize'] = [8, 5]
 
-        if self.logging_config.enable_logging:
+        if self.logging.enable_logging:
             os.makedirs(output_dir, exist_ok=False)
-            if self.logging_config.save_figure_to_disk_png:
+            if self.logging.save_figure_to_disk_png:
                 os.mkdir(os.path.join(output_dir, 'png'))
-            if self.logging_config.save_figure_to_disk_svg:
+            if self.logging.save_figure_to_disk_svg:
                 os.mkdir(os.path.join(output_dir, 'svg'))
-            if self.logging_config.save_models:
+            if self.logging.save_models:
                 os.mkdir(os.path.join(output_dir, 'models'))
 
             print('Started run. Logging to {}'.format(output_dir))
@@ -255,7 +255,7 @@ class Experiment(ABC):
 
             tic = timer()
             self._log_hyperparams()
-            logging_utils.log_experiment_configurations(self.experiment_log_dir, self.experiment_config)
+            logging_utils.log_experiment_configurations(self.experiment_log_dir, self.config)
             elapsed = timer() - tic
         else:
             print('Logging disabled.')
@@ -264,13 +264,13 @@ class Experiment(ABC):
 
     def _exit_run(self):
         """Cleans up a run after it is completed"""
-        if self.logging_config.enable_logging and self.logging_config.save_models:
+        if self.logging.enable_logging and self.logging.save_models:
             self._save_models(directory=self.run_log_dir)
 
         del self.writer  # make this explicit to force cleanup and closing of tb-logfiles
         self.writer = None
 
-        if self.gpu_config.cuda:
+        if self.hardware.cuda:
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
         # if torch.cuda.memory_allocated() > 0:
@@ -289,7 +289,7 @@ class Experiment(ABC):
             for learner in self.learners
         ])
 
-        if self.logging_config.enable_logging:
+        if self.logging.enable_logging:
             self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
             print('epoch {}:\t elapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead))
@@ -299,13 +299,13 @@ class Experiment(ABC):
 
     def run(self):
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
-        if not self.run_config.seeds:
-            self.run_config.seeds = list(range(self.run_config.n_runs))
+        if not self.running.seeds:
+            self.running.seeds = list(range(self.running.n_runs))
 
-        assert sum(1 for _ in self.run_config.seeds) == self.run_config.n_runs, \
+        assert sum(1 for _ in self.running.seeds) == self.running.n_runs, \
             "Number of seeds doesn't match number of runs."
 
-        for run_id, seed in enumerate(self.run_config.seeds):
+        for run_id, seed in enumerate(self.running.seeds):
             print(f'Running experiment {run_id} (using seed {seed})')
             self.run_log_dir = os.path.join(
                 self.experiment_log_dir,
@@ -313,23 +313,23 @@ class Experiment(ABC):
             torch.random.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
             np.random.seed(seed)
-            if self.logging_config.stopping_criterion_rel_util_loss_diff:
+            if self.logging.stopping_criterion_rel_util_loss_diff:
                 # stopping_list = np.empty((self.n_models,0))
-                stopping_criterion_length = self.logging_config.stopping_criterion_duration
+                stopping_criterion_length = self.logging.stopping_criterion_duration
                 stopping_queue = deque(maxlen=stopping_criterion_length)
-                stopping_criterion_batch_size = min(self.logging_config.util_loss_batch_size,
-                                                    self.logging_config.stopping_criterion_batch_size)
-                stopping_criterion_grid_size = self.logging_config.stopping_criterion_grid_size
-                stopping_criterion_frequency = self.logging_config.stopping_criterion_frequency
+                stopping_criterion_batch_size = min(self.logging.util_loss_batch_size,
+                                                    self.logging.stopping_criterion_batch_size)
+                stopping_criterion_grid_size = self.logging.stopping_criterion_grid_size
+                stopping_criterion_frequency = self.logging.stopping_criterion_frequency
                 stop = False
 
             self._init_new_run()
 
-            for e in range(self.run_config.n_epochs + 1):
+            for e in range(self.running.n_epochs + 1):
                 utilities = self._training_loop(epoch=e)
 
                 # Check stopping criterion
-                if self.logging_config.stopping_criterion_rel_util_loss_diff is not None and \
+                if self.logging.stopping_criterion_rel_util_loss_diff is not None and \
                         e > 0 and not e % stopping_criterion_frequency:
                     start_time = timer()
 
@@ -351,7 +351,7 @@ class Experiment(ABC):
                         print(f'Stopping criterion reached after {e} iterations.')
                         break
 
-            if self.logging_config.enable_logging:
+            if self.logging.enable_logging:
                 self._hparams_metrics = {}
                 if 'epsilon_relative' in self._cur_epoch_log_params:
                     self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
@@ -365,16 +365,16 @@ class Experiment(ABC):
             self._exit_run()
 
         # Once all runs are done, convert tb event files to csv
-        if self.logging_config.enable_logging and (
-                self.logging_config.save_tb_events_to_csv_detailed or
-                self.logging_config.save_tb_events_to_csv_aggregate or
-                self.logging_config.save_tb_events_to_binary_detailed):
+        if self.logging.enable_logging and (
+                self.logging.save_tb_events_to_csv_detailed or
+                self.logging.save_tb_events_to_csv_aggregate or
+                self.logging.save_tb_events_to_binary_detailed):
             print('Tabulating tensorboard logs...')
             logging_utils.tabulate_tensorboard_logs(
                 experiment_dir=self.experiment_log_dir,
-                write_detailed=self.logging_config.save_tb_events_to_csv_detailed,
-                write_aggregate=self.logging_config.save_tb_events_to_csv_aggregate,
-                write_binary=self.logging_config.save_tb_events_to_binary_detailed)
+                write_detailed=self.logging.save_tb_events_to_csv_detailed,
+                write_aggregate=self.logging.save_tb_events_to_csv_aggregate,
+                write_binary=self.logging.save_tb_events_to_binary_detailed)
 
             # logging_utils.print_aggregate_tensorboard_logs(self.experiment_log_dir)
             print('Finished.')
@@ -389,7 +389,7 @@ class Experiment(ABC):
         returns: bool (True if stopping criterion fulfilled)
         """
         if stopping_criterion is None:
-            stopping_criterion = self.logging_config.stopping_criterion_rel_util_loss_diff
+            stopping_criterion = self.logging.stopping_criterion_rel_util_loss_diff
 
         diffs = values.max(0)[0] - values.min(0)[0]  # size: n_models
         log_params = {'stopping_criterion': diffs}
@@ -487,10 +487,10 @@ class Experiment(ABC):
         title('iteration {}'.format(epoch))
 
         logging_utils.process_figure(fig, epoch=epoch, figure_name=figure_name, tb_group='eval',
-                                     tb_writer=writer, display=self.logging_config.plot_show_inline,
+                                     tb_writer=writer, display=self.logging.plot_show_inline,
                                      output_dir=self.run_log_dir,
-                                     save_png=self.logging_config.save_figure_to_disk_png,
-                                     save_svg=self.logging_config.save_figure_to_disk_svg)
+                                     save_png=self.logging.save_figure_to_disk_png,
+                                     save_svg=self.logging.save_figure_to_disk_svg)
         return fig
 
     # TODO: stefan only uses self in output_dir, nowhere else --> can we move this to utils.plotting? etc?
@@ -528,10 +528,10 @@ class Experiment(ABC):
         fig.tight_layout()
 
         logging_utils.process_figure(fig, epoch=epoch, figure_name=figure_name + '_3d', tb_group='eval',
-                                     tb_writer=writer, display=self.logging_config.plot_show_inline,
+                                     tb_writer=writer, display=self.logging.plot_show_inline,
                                      output_dir=self.run_log_dir,
-                                     save_png=self.logging_config.save_figure_to_disk_png,
-                                     save_svg=self.logging_config.save_figure_to_disk_svg)
+                                     save_png=self.logging.save_figure_to_disk_png,
+                                     save_svg=self.logging.save_figure_to_disk_svg)
         return fig
 
     def _evaluate_and_log_epoch(self, epoch: int) -> float:
@@ -553,21 +553,21 @@ class Experiment(ABC):
         del self._cur_epoch_log_params['prev_params']
 
         # logging metrics
-        if self.logging_config.log_metrics['opt']:
+        if self.logging.log_metrics['opt']:
             self._cur_epoch_log_params['utility_vs_bne'], self._cur_epoch_log_params['epsilon_relative'], \
             self._cur_epoch_log_params['epsilon_absolute'] = self._calculate_metrics_known_bne()
 
-        if self.logging_config.log_metrics['l2']:
+        if self.logging.log_metrics['l2']:
             self._cur_epoch_log_params['L_2'], self._cur_epoch_log_params[
                 'L_inf'] = self._calculate_metrics_action_space_norms()
 
-        if self.logging_config.log_metrics['util_loss'] and (epoch % self.logging_config.util_loss_frequency) == 0:
-            create_plot_output = epoch % self.logging_config.plot_frequency == 0
+        if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
+            create_plot_output = epoch % self.logging.plot_frequency == 0
             self._cur_epoch_log_params['util_loss_ex_ante'], self._cur_epoch_log_params['util_loss_ex_interim'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
 
         # plotting
-        if epoch % self.logging_config.plot_frequency == 0:
+        if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
 
             unique_bidders = [self.env.agents[i[0]] for i in self._model2bidder]
@@ -580,7 +580,7 @@ class Experiment(ABC):
 
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
-            if self.logging_config.log_metrics['opt']:
+            if self.logging.log_metrics['opt']:
                 print(
                     "\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})" \
                         .format(
@@ -620,7 +620,7 @@ class Experiment(ABC):
             self.bne_env.get_reward(
                 self._strat_to_bidder(
                     model, player_position=m2b(i),
-                    batch_size=self.logging_config.eval_batch_size
+                    batch_size=self.logging.eval_batch_size
                 ),
                 draw_valuations=False  # False because we want to use cached actions when set, reevaluation is expensive
             ) for i, model in enumerate(self.models)
@@ -661,9 +661,9 @@ class Experiment(ABC):
 
         env = self.env
         if batch_size is None:
-            batch_size = self.logging_config.util_loss_batch_size
+            batch_size = self.logging.util_loss_batch_size
         if grid_size is None:
-            grid_size = self.logging_config.util_loss_grid_size
+            grid_size = self.logging.util_loss_grid_size
 
         assert batch_size <= env.batch_size, "Util_loss for larger than actual batch size not implemented."
         bid_profile = torch.zeros(batch_size, env.n_players, env.agents[0].n_items,
@@ -701,12 +701,12 @@ class Experiment(ABC):
         # TODO: write out all experiment params (complete dict) #See issue #113
         # TODO: Stefan: this currently called _per run_. is this desired behavior?
 
-        h_params = {'hyperparameters/batch_size': self.learning_config.batch_size,
-                    'hyperparameters/pretrain_iters': self.learning_config.pretrain_iters,
-                    'hyperparameters/hidden_nodes': str(self.learning_config.hidden_nodes),
-                    'hyperparameters/hidden_activations': str(self.learning_config.hidden_activations),
-                    'hyperparameters/optimizer_hyperparams': str(self.learning_config.optimizer_hyperparams),
-                    'hyperparameters/optimizer_type': self.learning_config.optimizer_type}
+        h_params = {'hyperparameters/batch_size': self.learning.batch_size,
+                    'hyperparameters/pretrain_iters': self.learning.pretrain_iters,
+                    'hyperparameters/hidden_nodes': str(self.learning.hidden_nodes),
+                    'hyperparameters/hidden_activations': str(self.learning.hidden_activations),
+                    'hyperparameters/optimizer_hyperparams': str(self.learning.optimizer_hyperparams),
+                    'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
 
