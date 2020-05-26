@@ -11,8 +11,6 @@ import os
 import sys
 
 import pytest
-
-from bnelearn.experiment.configurations import LearningConfig, HardwareConfig
 from bnelearn.experiment.configuration_manager import ConfigurationManager
 
 sys.path.append(os.path.realpath('.'))
@@ -73,22 +71,20 @@ ids_multi_unit, testdata_multi_unit = zip(*[
 
 
 def run_auction_test(create_auction_function):
-    learning_configuration = LearningConfig(pretrain_iters=20)
-    running_configuration, logging_configuration, experiment_configuration, experiment_class = create_auction_function
+
+    experiment_configuration, experiment_class = create_auction_function
+    experiment_configuration.learning.pretrain_iters = 20
     # Log and plot frequent but few
-    logging_configuration.enable_logging = False
-    logging_configuration.plot_frequency = 1
-    logging_configuration.util_loss_frequency = 1
-    logging_configuration.plot_points = 10
-    logging_configuration.util_loss_batch_size = 2 ** 2
-    logging_configuration.util_loss_grid_size = 2 ** 2
-    learning_configuration.batch_size = 2 ** 2
-    experiment_configuration.n_players = running_configuration.n_players[0]
+    experiment_configuration.logging.enable_logging = False
+    experiment_configuration.logging.plot_frequency = 1
+    experiment_configuration.logging.util_loss_frequency = 1
+    experiment_configuration.logging.plot_points = 10
+    experiment_configuration.logging.util_loss_batch_size = 2 ** 2
+    experiment_configuration.logging.util_loss_grid_size = 2 ** 2
+    experiment_configuration.learning.batch_size = 2 ** 2
     # Create and run the experiment
-    gpu_configuration = HardwareConfig(specific_gpu=0)
-    experiment = experiment_class(experiment_configuration, learning_configuration,
-                                  logging_configuration, gpu_configuration)
-    experiment.run(epochs=running_configuration.n_epochs, n_runs=running_configuration.n_runs)
+    experiment_configuration.hardware.specific_gpu = 0
+    experiment_class(experiment_configuration).run()
 
 
 @pytest.mark.parametrize("auction_function_with_params", testdata_single_item, ids=ids_single_item)
