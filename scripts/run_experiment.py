@@ -31,8 +31,8 @@ if __name__ == '__main__':
     # Well, path is user-specific
     log_root_dir = os.path.join(os.path.expanduser('~'), 'Projects/bnelearn', 'experiments')
 
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
-    #     .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir)
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
+        .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \
     #     .get_config(log_root_dir=log_root_dir)
 
@@ -52,8 +52,8 @@ if __name__ == '__main__':
     # RuntimeError: Sizes of tensors must match
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
     #     .get_config(log_root_dir=log_root_dir)
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
-        .get_config(log_root_dir=log_root_dir)
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
+    #     .get_config(log_root_dir=log_root_dir)
 
     try:
         experiment_class(experiment_config).run()
