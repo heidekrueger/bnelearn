@@ -457,14 +457,14 @@ class CombinatorialItemBidder(Bidder):
         welfare.
         """
 
-        assert allocations.dim() == 2 # batch_size x items
+        # assert allocations.dim() == 2 # batch_size x items
         if valuations is None:
             valuations = self.valuations
 
         # check if allocation is only based on subset of all bundles
         if allocations.shape[-1] < valuations.shape[-1]:
             # cut off valuations for bundles which were not for sale
-            valuations = valuations[...,:allocations.shape[-1]]
+            valuations = valuations[..., :allocations.shape[-1]]
 
         item_dimension = valuations.dim() - 1
         welfare = (valuations * allocations).sum(dim=item_dimension)

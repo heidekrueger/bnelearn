@@ -12,6 +12,8 @@ from copy import deepcopy
 from typing import Tuple, Set, Type, Callable
 import torch
 import numpy as np
+from itertools import product
+import math
 
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism
@@ -296,35 +298,70 @@ class AuctionEnvironment(Environment):
                 agent.draw_valuations_()
 
     def get_welfare_max(self):
-        """Returns welfare-maximising allocation
+        """ Returns welfare-maximising allocation
         """
+        n_bundles = self.agents[0].n_items
+        n_items = int(math.log(n_bundles + 1, 2))
+        n_players = self.n_players
 
-        # collect all bundle valuations
-        valuations = torch.zeros(
-            self.batch_size, self.n_players, self.agents[0].n_items,
-            device=self.mechanism.device
-        )
-        for i, a in enumerate(self.agents):
-            valuations[:, i, :] = a.valuations
+        # collect all bundles
+        bundles = []
+        for r in range(n_items):
+            for c in torch.combinations(torch.arange(n_items), r+1).tolist():
+                bundles.append(c)
+        item_prod = torch.tensor(list(product(list(range(n_players)), repeat=n_items)))
 
         # allocate to highest valuation
-        allocations = torch.zeros_like(valuations).scatter_(1, valuations.topk(1, dim=1)[1], 1)
+        def get_bundle_idx(player_allo):
+            """
+            Based on a boolean tensor of length n_items returns the idx of correspunding bundle
+            """
+            won_items = torch.arange(n_items)[player_allo].tolist()
+            bundle_idx = bundles.index(won_items)
+            return bundle_idx
+
+        def get_allo(item_allo):
+            """
+            Based on a item allocations return the correspunding bundle allocations
+            """
+            a = torch.zeros((n_players, 2**n_items - 1), dtype=int)
+            for player_position in range(n_players):
+                player_allo = item_allo == player_position
+                if player_allo.any():
+                    bundle_idx = get_bundle_idx(player_allo)
+                    a[player_position, bundle_idx] = 1
+            return a
+
+        possible_allocations = torch.zeros(
+            (n_players**n_items, n_players, n_bundles),
+            dtype=int, device=self.mechanism.device
+        )
+        for i, p in enumerate(item_prod):
+            possible_allocations[i, :, :] = get_allo(p)
+
+        # brute force: all combinations for each batch
+        allocations = possible_allocations.repeat(self.batch_size, 1, 1, 1).view(
+            self.batch_size, n_players**n_items, n_players, n_bundles
+        )
 
         # calculate walfare
-        welfares = torch.zeros(
-            self.batch_size, self.n_players,
-            device=self.mechanism.device
-        )
-        for i, a in enumerate(self.agents):
-            welfares[:, i] = a.get_welfare(allocations[:, i, :])
+        welfares = torch.zeros_like(allocations[:, :, :, 0], dtype=torch.float32)
+        for i, agent in enumerate(self.agents):
+            agent_valuations = agent.valuations.repeat(1, 1, n_players**n_items).view(
+                self.batch_size, n_players**n_items, n_bundles)
+            welfares[:, :, i] = agent.get_welfare(
+                allocations[:, :, i, :],
+                agent_valuations
+            )
+        max_welfares, _ = welfares.sum(axis=2).max(axis=1)
 
-        return allocations, welfares
+        return max_welfares
 
     def get_PoA(self, allocations):
         """Returns (Bayesian) Price of Anarchy
         """
 
-        max_welfares = self.get_welfare_max()[1].sum(1).mean(0)
+        max_welfares = self.get_welfare_max().mean()
 
         actual_welfares = torch.zeros(
             self.batch_size, self.n_players,
@@ -332,6 +369,6 @@ class AuctionEnvironment(Environment):
         )
         for i, a in enumerate(self.agents):
             actual_welfares[:, i] = a.get_welfare(allocations[:, i, :])
-        actual_welfares = actual_welfares.sum(1).mean(0)
+        actual_welfares = actual_welfares.sum(axis=1).mean()
 
-        return float(max_welfares / actual_welfares)
+        return torch.div(max_welfares, actual_welfares)
