@@ -5,8 +5,8 @@ from bnelearn.mechanism import LLLLGGAuction
 """Testing for identical results from solvers for the LLLLGG combinatorial auction implementations."""
 torch.manual_seed(1)
 torch.cuda.manual_seed(1)
-bids_1 = torch.rand([2**5,6,2], dtype = torch.float)
-# TODO: qpth becomes too inaccurate when batch > 2**5. Can we solve this?
+bids_1 = torch.rand([2**9,6,2], dtype = torch.float)
+# qpth becomes too inaccurate when batch > 2**9.
 # Console: pytest bnelearn/tests/test_llllgg_core_solver_comp.py -s
 # (parallel, payment rule, bids, device)
 ids, testdata = zip(*[

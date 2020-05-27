@@ -36,7 +36,7 @@ if __name__ == '__main__':
 
     # General run configs
     n_runs = 1
-    n_epochs = 20000
+    n_epochs = 100
     n_players = []
 
 
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     # running_configuration, logging_configuration, experiment_configuration, experiment_class =\
     #    llg(2,100,'nearest_zero',specific_gpu=1, logging=enable_logging)
     running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-       llllgg(n_runs,n_epochs, util_loss_batch_size=2**2, util_loss_frequency=1000,
+       llllgg(n_runs,n_epochs, util_loss_batch_size=2**2, util_loss_frequency=1000,log_metrics=[],
               payment_rule='nearest_vcg',core_solver="qpth",parallel = 1, model_sharing=True, logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #  multiunit(n_runs=2, n_epochs=100, n_players=[2], n_units=2, payment_rule='first_price', logging=enable_logging)
@@ -73,9 +73,9 @@ if __name__ == '__main__':
     )
 
     # General logging configs
-    logging_configuration.stopping_criterion_rel_util_loss_diff = 0.001
-    logging_configuration.save_tb_events_to_csv_detailed=True
-    logging_configuration.save_tb_events_to_binary_detailed=True
+    #logging_configuration.stopping_criterion_rel_util_loss_diff = 0.001
+    #logging_configuration.save_tb_events_to_csv_detailed=True
+    #logging_configuration.save_tb_events_to_binary_detailed=True
 
     try:
         for i in running_configuration.n_players:
