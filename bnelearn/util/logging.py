@@ -7,10 +7,12 @@ import warnings
 from typing import List
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import torch
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
+from bnelearn.bidder import Bidder
 
 _full_log_file_name = 'full_results'
 _aggregate_log_file_name = 'aggregate_log'
@@ -123,6 +125,24 @@ def process_figure(fig, epoch=None, figure_name='plot', tb_group='eval',
     if display:
         plt.show()
 
+
+def stepwise_linear_bid_exporter(experiment_dir, bidders: List[Bidder], grid_size):
+    """
+    expoerting grid valuations and corresponding bids for usage of verifier.
+
+    Args
+    ----
+
+    Returns
+    -------
+        to disk: List[csv]
+    """
+    for bidder in bidders:
+        val = bidder.get_valuation_grid(grid_size)
+        bid = bidder.strategy.forward(val)
+        cat = torch.cat((val, bid), axis=1)
+        file_dir = experiment_dir + '/bidder_' + str(bidder.player_position) + '_export.csv'
+        np.savetxt(file_dir, cat.detach().cpu().numpy(), delimiter=",")
 
 class CustomSummaryWriter(SummaryWriter):
     """
