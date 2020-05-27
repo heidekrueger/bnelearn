@@ -271,10 +271,9 @@ def itembidding(
         specific_gpu=0,
         logging=True
     ):
-    n_bundles = (2 ** n_items) - 1
-    if len(u_lo) < n_items:
-        u_lo = [u_lo[0]] * n_bundles
-        u_hi = [u_hi[0]] * n_bundles
+    if len(u_lo) < n_players[0]:
+        u_lo = [u_lo[0]] * n_players[0]
+        u_hi = [u_hi[0]] * n_players[0]
     running_configuration = RunningConfiguration(
         n_runs=n_runs, n_epochs=n_epochs,
         specific_gpu=specific_gpu, n_players=n_players
