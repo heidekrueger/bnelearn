@@ -218,12 +218,13 @@ class Bidder(Player):
             # TODO Stefan: Does correlation interere with Nils' implementations of descending valuations
             #              Or Item interest limits? --> Test!
         """
-        if weights is None:
-            weights = torch.tensor(0.)
         if isinstance(weights, float):
             weights = torch.tensor(weights)
 
-        # do NOT force-move weights and common_component to self.device until required!
+        assert weights.shape in {torch.Size([]), torch.Size([self.batch_size, self.n_items])}, \
+            "Weights have invalid shape!"
+
+        # Note: do NOT force-move weights and common_component to self.device until required!
 
         ### 1. For perfect correlation, no need to calculate individual component
         if torch.all(weights == 1.0):

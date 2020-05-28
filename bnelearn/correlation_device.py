@@ -41,7 +41,7 @@ class IndependentValuationDevice(CorrelationDevice):
         super().__init__(None, None, None, 'independent_valuations', 0.0)
     
     def get_weights(self):
-        return None
+        return torch.tensor(0.)
 
 class BernoulliWeightsCorrelationDevice(CorrelationDevice):
     def __init__(self, common_component_dist: Distribution, 
