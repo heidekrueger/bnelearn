@@ -152,7 +152,8 @@ class LLGExperiment(LocalGlobalExperiment):
         ]
 
         # TODO Stefan: this is ugly.
-        if self.correlation_devices:
+        bne_env_corr_devices = None
+        if self.correlation_groups:
             bne_env_corr_devices = [
                 BernoulliWeightsCorrelationDevice(
                     common_component_dist = torch.distributions.Uniform(self.experiment_config.u_lo[0],
