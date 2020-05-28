@@ -113,8 +113,8 @@ def test_perfectly_correlated_valuation_draw():
     batch_size = 2**10
     dist = torch.distributions.Uniform(u_lo, u_hi)
 
-    bidder1 = b.Bidder(dist, strat, batch_size)
-    bidder2 = b.Bidder(dist, strat, batch_size)
+    bidder1 = b.Bidder(dist, strat, batch_size = batch_size)
+    bidder2 = b.Bidder(dist, strat, batch_size = batch_size)
 
     corrdev = cd.BernoulliWeightsCorrelationDevice(dist, batch_size, 1, 1.0)
     common_part, weights = corrdev.get_component_and_weights()
