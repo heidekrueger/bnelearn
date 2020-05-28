@@ -561,7 +561,7 @@ class Experiment(ABC):
             log_params['util_loss_ex_ante'], log_params['util_loss_ex_interim'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
 
-        logging_utils.stepwise_linear_bid_exporter(self.run_log_dir, self.bidders, 10002)
+        logging_utils.stepwise_linear_bid_exporter(self.run_log_dir, self.bidders, 1e-2)
 
         # plotting
         if epoch % self.logging_config.plot_frequency == 0:

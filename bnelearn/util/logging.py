@@ -126,7 +126,7 @@ def process_figure(fig, epoch=None, figure_name='plot', tb_group='eval',
         plt.show()
 
 
-def stepwise_linear_bid_exporter(experiment_dir, bidders: List[Bidder], grid_size):
+def stepwise_linear_bid_exporter(experiment_dir, bidders: List[Bidder], step=1e-2):
     """
     expoerting grid valuations and corresponding bids for usage of verifier.
 
@@ -138,7 +138,7 @@ def stepwise_linear_bid_exporter(experiment_dir, bidders: List[Bidder], grid_siz
         to disk: List[csv]
     """
     for bidder in bidders:
-        val = bidder.get_valuation_grid(grid_size, dtype=torch.float64)
+        val = bidder.get_valuation_grid(n_points=None, step=step, dtype=torch.float64)
         bid = bidder.strategy.forward(val.to(torch.float32)).to(torch.float64)
         cat = torch.cat((val, bid), axis=1)
         file_dir = experiment_dir + '/bidder_' + str(bidder.player_position) + '_export.csv'

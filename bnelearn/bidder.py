@@ -146,7 +146,7 @@ class Bidder(Player):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
             self._valuations_changed =True
 
-    def get_valuation_grid(self, n_points, extended_valuation_grid=False, dtype=torch.float32):
+    def get_valuation_grid(self, n_points, extended_valuation_grid=False, dtype=torch.float32, step=None):
         """ Returns a grid of approximately `n_points` valuations that are
             equidistant (in each dimension) on the support of self.value_distribution.
             If the support is unbounded, the 0.1th and 99.9th percentiles are used instead.
@@ -173,6 +173,9 @@ class Bidder(Player):
         else:
             lb = self._grid_lb
             ub = self._grid_ub
+
+        if n_points is None:
+            n_points = math.ceil((ub - lb) / step) + 1
 
         # change batch_size s.t. it'll approx. end up at intended n_points in the end
         adapted_size = n_points
