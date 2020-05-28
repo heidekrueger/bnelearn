@@ -8,6 +8,7 @@ import torch
 
 import bnelearn.bidder as b
 import bnelearn.strategy as s
+import bnelearn.correlation_device as cd
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 u_lo = 0.
@@ -86,18 +87,57 @@ def test_action_caching_with_manual_valuation_change():
     bidder.valuations = zeros
     assert torch.allclose(bidder.get_action(), zeros), "Bidder returned incorrect actions!"
 
+def test_independent_correlation_device_draw():
+    strat = s.TruthfulStrategy()
+    bidder1 = b.Bidder.uniform(u_lo,u_hi,strat, batch_size = 2**18)
+    bidder2 = b.Bidder.uniform(u_lo,u_hi,strat, batch_size = 2**18)
+
+    corrdev = cd.IndependentValuationDevice()
+    common_part, weights = corrdev.get_component_and_weights()
+
+    bidder1.draw_valuations_(common_part, weights)
+    bidder2.draw_valuations_(common_part, weights)
+
+    corr = np.corrcoef(torch.stack((bidder1.valuations.flatten(),
+                                    bidder2.valuations.flatten())
+                           ).cpu())
+        
+    assert abs(corr[0,1] ) < 0.01, \
+            f'Bidders are not independent! Found correlation {corr[0,1]:.3f}, exp. {0.000:.3f}!'
+
+
 def test_perfectly_correlated_valuation_draw():
     """Drawing valuations perfectly correlated to some tensor should lead to that tensor"""
 
     strat = s.TruthfulStrategy()
-    bidder = b.Bidder.uniform(u_lo,u_hi,strat, batch_size = 2**10)
+    batch_size = 2**10
+    dist = torch.distributions.Uniform(u_lo, u_hi)
 
-    common_part = torch.ones_like(bidder.valuations)
+    bidder1 = b.Bidder(dist, strat, batch_size)
+    bidder2 = b.Bidder(dist, strat, batch_size)
 
-    bidder.draw_valuations_(correlation_type='anything_except_none', correlation_strength=1.0,
-                            common_component=common_part)
+    corrdev = cd.BernoulliWeightsCorrelationDevice(dist, batch_size, 1, 1.0)
+    common_part, weights = corrdev.get_component_and_weights()
 
-    assert torch.equal(bidder.valuations, common_part), "valuations are not perfectly correlated!"
+    bidder1.draw_valuations_(common_part, weights)
+    bidder2.draw_valuations_(common_part, weights)
+
+    corr = np.corrcoef(torch.stack((bidder1.valuations.flatten(),
+                                    bidder2.valuations.flatten())).cpu())
+        
+    assert abs(corr[0,1] - 1.0) < 1e-4, f"valuations are not perfectly correlated! got {corr[0,1]:.3f}"
+
+    corrdev = cd.ConstantWeightsCorrelationDevice(dist, batch_size, 1, 1.0)
+    common_part, weights = corrdev.get_component_and_weights()
+
+    bidder1.draw_valuations_(common_part, weights)
+    bidder2.draw_valuations_(common_part, weights)
+
+    corr = np.corrcoef(torch.stack((bidder1.valuations.flatten(),
+                                    bidder2.valuations.flatten())
+                           ).cpu())
+        
+    assert abs(corr[0,1] - 1.0) < 1e-4, f"valuations are not perfectly correlated! got {corr[0,1]:.3f}"
 
 def test_correlated_valuation_draw_constant_weights():
     """Tests whether the constant weights model returns valuations with the correct correlation.
@@ -108,27 +148,30 @@ def test_correlated_valuation_draw_constant_weights():
     """
 
     strat = s.TruthfulStrategy()
-    bidder1 = b.Bidder.uniform(u_lo,u_hi,strat, batch_size = 2**16)
-    bidder2 = b.Bidder.uniform(u_lo,u_hi,strat, batch_size = 2**16)
+    batch_size = 2**16
+    dist = torch.distributions.Uniform(u_lo, u_hi)
+
+    bidder1 = b.Bidder(dist, strat, batch_size=batch_size)
+    bidder2 = b.Bidder(dist, strat, batch_size=batch_size)
 
     correlations = torch.linspace(0, 1, 10)
 
-    # Note: relu in valuations might break correlation, so ensure no negative common parts
-    common = torch.ones_like(bidder1.valuations).uniform_(u_lo, u_hi)#uniform_(u_lo, u_hi)
-
     for gamma in correlations:
-        bidder1.draw_valuations_('constant_weights', gamma, common)
-        bidder2.draw_valuations_('constant_weights', gamma, common)
+        corrdev = cd.ConstantWeightsCorrelationDevice(dist, batch_size, 1, gamma)
+        common_part, weights = corrdev.get_component_and_weights()
 
-        corr = np.corrcoef(torch.stack((common.flatten(),
-                                        bidder1.valuations.flatten(),
-                                        bidder2.valuations.flatten())
-                           ).cpu())
+        bidder1.draw_valuations_(common_part, weights)
+        bidder2.draw_valuations_(common_part, weights)
+
+        corr = np.corrcoef(torch.stack((common_part.flatten().cpu(),
+                                        bidder1.valuations.flatten().cpu(),
+                                        bidder2.valuations.flatten().cpu())
+                           ))
         
         assert abs(corr[0,1]**2 - gamma) < 0.01, \
-            f'Wrong cor between common and bidder 1, got {corr[0,1]:.3f}, exp. {gamma:.3f}!'
+            f'Wrong cor between common and bidder 1, got {corr[0,1]:.3f}, exp. {gamma.sqrt():.3f}!'
         assert abs(corr[0,2]**2 - gamma) < 0.01, \
-            f'Wrong cor between common and bidder 2, got {corr[0,2]:.3f}, exp. {gamma:.3f}!'
+            f'Wrong cor between common and bidder 2, got {corr[0,2]:.3f}, exp. {gamma.sqrt():.3f}!'
         assert abs(corr[1,2] - gamma) < 0.01, \
             f'Wrong cor between bidder 1 and bidder 2, got {corr[1,2]:.3f}, exp. {gamma:.3f}!'
 
@@ -138,22 +181,25 @@ def test_correlated_valuation_draw_Bernoulli_weights():
     Note: this requires affected bidders and the common component to be drawn from the same distribution!
     """
     strat = s.TruthfulStrategy()
-    bidder1 = b.Bidder.uniform(u_lo,u_hi,strat, batch_size = 2**16)
-    bidder2 = b.Bidder.uniform(u_lo,u_hi,strat, batch_size = 2**16)
+    batch_size = 2**16
+    dist = torch.distributions.Uniform(u_lo, u_hi)
+
+    bidder1 = b.Bidder(dist, strat, batch_size=batch_size)
+    bidder2 = b.Bidder(dist, strat, batch_size=batch_size)
 
     correlations = torch.linspace(0, 1, 10)
 
-    # Note: relu in valuations might break correlation, so ensure no negative common parts
-    common = torch.ones_like(bidder1.valuations).uniform_(u_lo, u_hi)#uniform_(u_lo, u_hi)
-
     for gamma in correlations:
-        bidder1.draw_valuations_('Bernoulli_weights', gamma, common)
-        bidder2.draw_valuations_('Bernoulli_weights', gamma, common)
+        corrdev = cd.BernoulliWeightsCorrelationDevice(dist, batch_size, 1, gamma)
+        common_part, weights = corrdev.get_component_and_weights()
 
-        corr = np.corrcoef(torch.stack((common.flatten(),
-                                        bidder1.valuations.flatten(),
-                                        bidder2.valuations.flatten())
-                           ).cpu())
+        bidder1.draw_valuations_(common_part, weights)
+        bidder2.draw_valuations_(common_part, weights)
+
+        corr = np.corrcoef(torch.stack((common_part.flatten().cpu(),
+                                        bidder1.valuations.flatten().cpu(),
+                                        bidder2.valuations.flatten().cpu())
+                           ))
         
         assert abs(corr[0,1] - gamma) < 0.01, \
             f'Wrong cor between common and bidder 1, got {corr[0,1]:.3f}, exp. {gamma:.3f}!'

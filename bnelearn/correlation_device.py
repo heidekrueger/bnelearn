@@ -17,7 +17,6 @@ class CorrelationDevice(ABC):
                  correlation: float):
 
         assert 0.0 <= correlation <= 1.0, "Invalid correlation!"
-        
         self.corr = correlation
         self.dist = common_component_dist
         self.batch_size = batch_size
@@ -28,11 +27,14 @@ class CorrelationDevice(ABC):
         if self.dist is None:
             return None
 
-        return self.dist.sample(self.batch_size, self.n_items)
+        return self.dist.sample([self.batch_size, self.n_items])
 
     @abstractmethod
     def get_weights(self):
         pass
+
+    def get_component_and_weights(self):
+        return self.draw_common_component(), self.get_weights()
 
 class IndependentValuationDevice(CorrelationDevice):
     def __init__(self):
@@ -58,7 +60,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
                  batch_size: int, n_items: int, correlation: float):
         self.weight = 0.5 if correlation == 0.5 \
             else (correlation - math.sqrt(correlation*(1-correlation))) / (2*correlation - 1)
-        super().__init__(common_component_dist, batch_size, "constant_weights_model", correlation)
+        super().__init__(common_component_dist, batch_size, n_items, "constant_weights_model", correlation)
 
     def get_weights(self):
         return self.weight
