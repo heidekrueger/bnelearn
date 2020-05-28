@@ -198,37 +198,36 @@ class Bidder(Player):
         # assert grid_values.shape[0] >= n_points, "grid_size is lower than expected!"
         return grid_values
 
-    def draw_valuations_(self, correlation_type = None, correlation_strength = 0.0, common_component = None):
+    def draw_valuations_(self, common_component = None, weights: torch.Tensor or float = 0.0):
         """ Sample a new batch of valuations from the Bidder's prior. Negative
             draws will be clipped at 0.0!
 
-            When correlation info is given, valuations are drawn correlated to a common component.
+            When correlation info is given, valuations are drawn according to a mixture of the
+            individually drawn component and the provided common component according to the provided weights.
 
             If ´descending_valuations´ is true, the valuations will be returned
             in decreasing order.
 
             Args:
-                correlation_type (optional): 'Bernoulli_weights' or 'constant' weights or None
-                    Defines the correlation model (compare Ausubel & Baranov). For the LLG setting, BNE are known for
-                    the Bernoulli weights model.
-                    If specified, the following two are also required:
-                correlation_strength: (float, [0,1])
-                    specifies the correlation coefficient between two bidders' valuations that are drawn according
-                    to the model.
-                    NOTE: In the constant_weights model this is NOT the same as the correlation between
-                        the common_component and a bidder's resulting valuations! (See tests for details)
-                        For the Bernoulli weights model, these two are identical.
-                common_component: torch.tensor (batch_size x n_items)
+                common_component (optional): torch.tensor (batch_size x n_items)
                     Tensor of (hidden) common component, same dimension as self.valuation.
+                weights: (float, [0,1]) or tensor (batch_size x n_items) with values in [0,1]
+                    defines how much to weigh the common component. If float, weighs entire tensor. If tensor
+                    weighs component-wise.
 
             # TODO Stefan: Does correlation interere with Nils' implementations of descending valuations
             #              Or Item interest limits? --> Test!
         """
+        if weights is None:
+            weights = torch.tensor(0.)
+        if isinstance(weights, float):
+            weights = torch.tensor(weights)
+
+        # do NOT force-move weights and common_component to self.device until required!
 
         ### 1. For perfect correlation, no need to calculate individual component
-        if float(correlation_strength) == 1.0 and common_component is not None:
-            
-            self.valuations = common_component.relu()
+        if torch.all(weights == 1.0):
+            self.valuations = common_component.to(self.device).relu()
             return self.valuations
 
         ### 2. Otherwise determine individual component
@@ -250,23 +249,9 @@ class Bidder(Player):
             self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device)
 
         ### 3. Determine mixture of individual an common component
-        if float(correlation_strength > 0.0):
-            assert common_component.shape == self.valuations.shape, "invalid shape of common component!"
-            if correlation_type == 'Bernoulli_weights':
-                # choose individual component with prob (1-gamma), common component with prob gamma
-                w = torch.bernoulli(torch.tensor(correlation_strength, device = self.device) \
-                                    .repeat(self.batch_size, 1)             # different weight for each batch 
-                                   ).repeat(1              , self.n_items)  # same weight for each item in batch
-            elif correlation_type == 'constant_weights':
-                # calculate appropriate weight (s.t. desired correlation is achieved)
-                # See Ausubel & Baranov (2019) for details. Note: here w is a constant, while above it's a tensor!
-                w = correlation_strength
-                if w != 0.5:
-                    w = (w - math.sqrt(w*(1-w))) / (2*w - 1)
-            else:
-                raise ValueError('unknown correlation model!')
-
-            self.valuations = w * common_component.to(self.device) + (1-w) * self.valuations
+        if torch.any(weights>0):
+            weights = weights.to(self.device)
+            self.valuations = weights * common_component.to(self.device) + (1-weights) * self.valuations
 
         ### 4. Finishing up
         self.valuations.relu_() #ensure nonnegativity for unbounded-support distributions
