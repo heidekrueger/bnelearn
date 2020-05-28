@@ -138,11 +138,11 @@ def stepwise_linear_bid_exporter(experiment_dir, bidders: List[Bidder], grid_siz
         to disk: List[csv]
     """
     for bidder in bidders:
-        val = bidder.get_valuation_grid(grid_size)
-        bid = bidder.strategy.forward(val)
+        val = bidder.get_valuation_grid(grid_size, dtype=torch.float64)
+        bid = bidder.strategy.forward(val.to(torch.float32)).to(torch.float64)
         cat = torch.cat((val, bid), axis=1)
         file_dir = experiment_dir + '/bidder_' + str(bidder.player_position) + '_export.csv'
-        np.savetxt(file_dir, cat.detach().cpu().numpy(), delimiter=",")
+        np.savetxt(file_dir, cat.detach().cpu().numpy(), fmt='%1.16f', delimiter=",")
 
 class CustomSummaryWriter(SummaryWriter):
     """
