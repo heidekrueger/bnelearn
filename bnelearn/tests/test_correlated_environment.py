@@ -147,7 +147,7 @@ def test_correlated_drawing_in_environment():
     mechanism = FirstPriceSealedBidAuction()
 
     dist = torch.distributions.Uniform(u_lo, u_hi)
-    batch = 2**16
+    batch = 2**18
     items = 1
     n = 6
     
