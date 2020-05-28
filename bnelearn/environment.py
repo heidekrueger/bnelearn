@@ -137,8 +137,7 @@ class MatrixGameEnvironment(Environment):
         self.game = game
 
     def get_reward(self, agent, **kwargs) -> torch.tensor: #pylint: disable=arguments-differ
-        """
-            Simulates one batch of the environment and returns the average reward for `agent` as a scalar tensor.
+        """Simulates one batch of the environment and returns the average reward for `agent` as a scalar tensor.
         """
 
         if isinstance(agent, Strategy):
@@ -166,13 +165,13 @@ class MatrixGameEnvironment(Environment):
 
 class AuctionEnvironment(Environment):
     """
-        An environment of agents to play against and evaluate strategies.
+    An environment of agents to play against and evaluate strategies.
 
-        In particular this means:
-            - an iterable of sets of -i players that a strategy of a single player can be tested against
-            - accept strategy as argument, then play batch_size rounds and return the reward
+    In particular this means:
+        - an iterable of sets of -i players that a strategy of a single player can be tested against
+        - accept strategy as argument, then play batch_size rounds and return the reward
 
-        Args:
+    Args:
         ... (TODO: document)
 
         strategy_to_bidder_closure: A closure (strategy, batch_size) -> Bidder to
@@ -221,7 +220,8 @@ class AuctionEnvironment(Environment):
         # draw valuations
         if draw_valuations:
             agent.prepare_iteration()
-            self.draw_valuations_(exclude = set([player_position]))
+            #TODO Stefan: why do we eclude player_position here? causes problems when valuations are not independent!
+            self.draw_valuations_(exclude = set([player_position])) 
 
         # get agent_bid
         agent_bid = agent.get_action()
