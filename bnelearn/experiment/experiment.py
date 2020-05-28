@@ -351,11 +351,12 @@ class Experiment(ABC):
                     if stop:
                         print(f'Stopping criterion reached after {e} iterations.')
                         break
-            
+
             bidders = [self.bidders[i] for i in [min(b) for b in self._model2bidder]]
             if self.logging_config.export_step_wise_linear_bid_function_size is not None:
-                logging_utils.stepwise_linear_bid_exporter(self.run_log_dir, bidders, 
-                                                           self.logging_config.export_step_wise_linear_bid_function_size)
+                logging_utils.stepwise_linear_bid_exporter(
+                    experiment_dir=self.run_log_dir, bidders=bidders,
+                    step=self.logging_config.export_step_wise_linear_bid_function_size)
 
             self._exit_run()
 
@@ -560,8 +561,6 @@ class Experiment(ABC):
             create_plot_output = epoch % self.logging_config.plot_frequency == 0
             log_params['util_loss_ex_ante'], log_params['util_loss_ex_interim'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
-
-        logging_utils.stepwise_linear_bid_exporter(self.run_log_dir, self.bidders, 1e-2)
 
         # plotting
         if epoch % self.logging_config.plot_frequency == 0:

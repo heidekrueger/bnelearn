@@ -175,14 +175,15 @@ class Bidder(Player):
             ub = self._grid_ub
 
         if n_points is None:
-            n_points = math.ceil((ub - lb) / step) + 1
+            batch_size_per_dim = math.ceil((ub - lb) / step + 1)
+        else:
+            # change batch_size s.t. it'll approx. end up at intended n_points in the end
+            adapted_size = n_points
+            if self.descending_valuations:
+                adapted_size = n_points * math.factorial(self.n_items)
 
-        # change batch_size s.t. it'll approx. end up at intended n_points in the end
-        adapted_size = n_points
-        if self.descending_valuations:
-            adapted_size = n_points * math.factorial(self.n_items)
+            batch_size_per_dim = math.ceil(adapted_size ** (1/self.n_items))
 
-        batch_size_per_dim = math.ceil(adapted_size ** (1/self.n_items))
         lin = torch.linspace(lb, ub, batch_size_per_dim, device=self.device, dtype=dtype)
 
         grid_values = torch.stack([
