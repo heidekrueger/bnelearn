@@ -70,6 +70,7 @@ class LoggingConfiguration:
     plot_points: int = 100
     plot_show_inline: bool = True
     log_metrics: list = None
+    export_step_wise_linear_bid_function_size = None
 
     # Stopping Criterion #TODO: this section should go into ExperimentConfiguration
     stopping_criterion_rel_util_loss_diff = None
