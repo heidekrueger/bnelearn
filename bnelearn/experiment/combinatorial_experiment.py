@@ -131,7 +131,20 @@ class LLGExperiment(LocalGlobalExperiment):
         if self.payment_rule in ['vcg', 'proxy', 'nearest_zero', 'nearest_bid',
                                    'nearest_vcg'] and player_position == 2:
             return valuation
-        # local bidders:
+        ##### Local bidders:
+
+        ## perfect correlation
+        if self.gamma == 1.0: #limit case, others not well defined
+            sigma = 1.0 # TODO: implement for other valuation profiles!
+            bid = valuation
+            if self.payment_rule == 'nearest_vcg':
+                bid.mul_(sigma / (1 + sigma - 2**(-sigma)))
+            elif self.payment_rule == 'nearest_bid':
+                bid.mul_(sigma / (1 + sigma))
+            
+            # truthful for vcg and proxy/nearest-zero
+            return bid
+        ## no or imperfect correlation
         if self.payment_rule == 'vcg':
             return valuation
         if self.payment_rule in ['proxy', 'nearest_zero']:
