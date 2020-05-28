@@ -184,7 +184,7 @@ class LLGExperiment(LocalGlobalExperiment):
         self.bne_utilities = bne_utilities_sampled
 
     def _get_logdir_hierarchy(self):
-        name = ['LLG', self.payment_rule]
+        name = ['LLG', self.payment_rule, f"gamma_{self.gamma:.3}"]
         return os.path.join(*name)
 
 class LLLLGGExperiment(LocalGlobalExperiment):
