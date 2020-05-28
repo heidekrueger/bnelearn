@@ -407,10 +407,10 @@ class ReverseBidder(Bidder):
 
         return grid_values
 
-    def draw_valuations_(self):
+    def draw_valuations_(self, common_component = None, weights: torch.Tensor or float = 0.0):
         """ Extends `Bidder.draw_valuations_` with efiiciency parameter
         """
-        _ = super().draw_valuations_()
+        _ = super().draw_valuations_(common_component, weights)
 
         assert self.valuations.shape[1] == 2, \
             'linear valuations are only defined for two items.'
