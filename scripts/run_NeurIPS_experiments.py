@@ -19,9 +19,9 @@ if __name__ == '__main__':
     -------------------testing------------------
     pertubation size: ->64 vs 128 
     lr: ->0.003 vs 0.001
-    optimizer: ->adam vs SGD
+    optimizer: adam vs ->SGD
     '''
-    specific_gpu = 7
+    specific_gpu = 5
     #LLG: first_price, VCG, nearest_vcg, nearest_zero, nearest_bid
     #LLLLGG: first_price, VCG, nearest_vcg
     payment_rule = 'nearest_bid'
@@ -47,7 +47,7 @@ if __name__ == '__main__':
         hidden_nodes = [10,10], #<-----new design!
         pretrain_iters=500,
         batch_size=2**18,
-        optimizer_type='adam',
+        optimizer_type='SGD',
         learner_hyperparams = {'population_size': 64,
                                'sigma': 1.,
                                'scale_sigma_by_model_size': True},
