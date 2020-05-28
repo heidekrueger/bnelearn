@@ -23,6 +23,7 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment, GPUController
 from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
 from bnelearn.strategy import ClosureStrategy
+from bnelearn.correlation_device import BernoulliWeightsCorrelationDevice, IndependentValuationDevice
 
 class LocalGlobalExperiment(Experiment, ABC):
     """
@@ -92,8 +93,22 @@ class LLGExperiment(LocalGlobalExperiment):
 
         assert experiment_config.n_players == 3, "Incorrect number of players specified."
 
-        self.gamma = experiment_config.gamma
-        assert self.gamma == 0, "Gamma > 0 implemented yet."
+        if experiment_config.correlation_groups:
+            self.correlation_groups = experiment_config.correlation_groups
+            assert self.correlation_groups == [[0,1], [2]], \
+                "other settings not implemented properly yet"
+            assert len(experiment_config.correlation_coefficients) == 2
+            self.gamma = experiment_config.correlation_coefficients[0]
+            self.correlation_devices = [
+                BernoulliWeightsCorrelationDevice(
+                    common_component_dist = torch.distributions.Uniform(experiment_config.u_lo[0],
+                                                                        experiment_config.u_hi[0]),
+                    batch_size=learning_config.batch_size,
+                    n_items=1,
+                    correlation = self.gamma),
+                IndependentValuationDevice()]
+        else:
+            self.gamma = 0.0
 
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known! (i.e. uniformity, bounds, etc)
         known_bne = experiment_config.payment_rule in \
@@ -136,13 +151,26 @@ class LLGExperiment(LocalGlobalExperiment):
             for i in range(self.n_players)
         ]
 
+        # TODO Stefan: this is ugly.
+        if self.correlation_devices:
+            bne_env_corr_devices = [
+                BernoulliWeightsCorrelationDevice(
+                    common_component_dist = torch.distributions.Uniform(self.experiment_config.u_lo[0],
+                                                                        self.experiment_config.u_hi[0]),
+                    batch_size=self.logging_config.eval_batch_size,
+                    n_items=1,
+                    correlation = self.gamma),
+                IndependentValuationDevice()]
+
         bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
             agents=[self._strat_to_bidder(bne_strategies[i], player_position=i, batch_size=self.logging_config.eval_batch_size)
                     for i in range(self.n_players)],
             n_players=self.n_players,
             batch_size=self.logging_config.eval_batch_size,
-            strategy_to_player_closure=self._strat_to_bidder
+            strategy_to_player_closure=self._strat_to_bidder,
+            correlation_groups=self.correlation_groups,
+            correlation_devices=bne_env_corr_devices
         )
 
         self.bne_env = bne_env

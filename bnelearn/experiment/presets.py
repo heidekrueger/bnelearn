@@ -1,5 +1,9 @@
 from typing import List
+import torch
 
+from bnelearn.correlation_device import (BernoulliWeightsCorrelationDevice,
+                                         ConstantWeightsCorrelationDevice,
+                                         IndependentValuationDevice)
 from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
                                                           LLLLGGExperiment)
 from bnelearn.experiment.configurations import (ExperimentConfiguration,
@@ -12,7 +16,6 @@ from bnelearn.experiment.single_item_experiment import (
     GaussianSymmetricPriorSingleItemExperiment,
     TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
     UniformSymmetricPriorSingleItemExperiment)
-
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
 # pylint: disable = dangerous-default-value 
@@ -128,8 +131,10 @@ def single_item_asymmetric_uniform_disjunct(
 
 
 def llg(n_runs: int, n_epochs: int,
-        payment_rule: str, model_sharing=True,
+        payment_rule: str, 
+        model_sharing=True,
         u_lo=[0, 0, 0], u_hi=[1, 1, 2],
+        gamma = 0.0, #correlation between local bidders
         risk=1.0,
         log_metrics=['opt', 'l2', 'util_loss'], util_loss_batch_size=2 ** 8, util_loss_grid_size=2 ** 8,
         specific_gpu=1,
@@ -142,9 +147,24 @@ def llg(n_runs: int, n_epochs: int,
                                                  util_loss_grid_size=util_loss_grid_size,
                                                  enable_logging=logging
                                                  )
+    groups = None
+    corr_type = 'independent'
+    corr_coefficients = 0.0
 
-    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
-                                                       u_lo=u_lo, u_hi=u_hi, risk=risk)
+    if gamma > 0.0:
+        assert gamma <= 1.0
+        groups = [[0,1], [2]]
+        corr_type = 'Bernoulli_weights'
+        corr_coefficients = [gamma, 0.0]
+
+
+    experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule,
+                                                       model_sharing=model_sharing,
+                                                       u_lo=u_lo, u_hi=u_hi, risk=risk,
+                                                       correlation_types=corr_type,
+                                                       correlation_groups=groups,
+                                                       correlation_coefficients= corr_coefficients
+                                                       )
     experiment_class = LLGExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 

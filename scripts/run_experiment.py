@@ -49,8 +49,8 @@ if __name__ == '__main__':
 
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #      single_item_gaussian_symmetric(2, 100, [2], 'second_price', logging=enable_logging, specific_gpu=0)
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class =\
-    #    llg(2,100,'nearest_zero',specific_gpu=1, logging=enable_logging)
+    running_configuration, logging_configuration, experiment_configuration, experiment_class =\
+        llg(2,100,'nearest_zero', gamma = 0.0, specific_gpu=1, logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #    llllgg(n_runs,n_epochs, util_loss_batch_size=2**12, util_loss_frequency=1000,
     #           payment_rule='first_price',core_solver="NoCore",parallel = 1, model_sharing=True, logging=enable_logging)
@@ -58,8 +58,8 @@ if __name__ == '__main__':
     #  multiunit(n_runs=2, n_epochs=100, n_players=[2], n_units=2, payment_rule='first_price', logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #   splitaward(1, 100, [2], logging=enable_logging)
-    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-       single_item_asymmetric_uniform_overlapping(n_runs=1, n_epochs=500, logging=enable_logging)
+    #running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+    #   single_item_asymmetric_uniform_overlapping(n_runs=1, n_epochs=500, logging=enable_logging)
     #running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #   single_item_asymmetric_uniform_disjunct(n_runs=1, n_epochs=500, logging=enable_logging)
 

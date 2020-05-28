@@ -104,6 +104,10 @@ class Experiment(ABC):
             self.n_players = experiment_config.n_players
         if not hasattr(self, 'payment_rule'):
             self.payment_rule = experiment_config.payment_rule
+        if not hasattr(self, 'correlation_groups'):
+            # TODO Stefan: quick hack, only works properly for LLG
+            self.correlation_groups = None
+            self.correlation_devices = None
 
         # sets log dir for experiment. Individual runs will log to subdirectories of this.
         self.experiment_log_dir = os.path.join(logging_config.log_root_dir,
