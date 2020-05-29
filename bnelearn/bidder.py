@@ -146,7 +146,7 @@ class Bidder(Player):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
             self._valuations_changed =True
 
-    def get_valuation_grid(self, n_points, extended_valuation_grid=False):
+    def get_valuation_grid(self, n_points, extended_valuation_grid=False, dtype=torch.float32, step=None):
         """ Returns a grid of approximately `n_points` valuations that are
             equidistant (in each dimension) on the support of self.value_distribution.
             If the support is unbounded, the 0.1th and 99.9th percentiles are used instead.
@@ -167,20 +167,24 @@ class Bidder(Player):
                       then throws most of them away
         """
 
-        if extended_valuation_grid and hasattr(self, '_grid_lb_util_loss'):   
+        if extended_valuation_grid and hasattr(self, '_grid_lb_util_loss'):
             lb = self._grid_lb_util_loss
             ub = self._grid_ub_util_loss
         else:
             lb = self._grid_lb
             ub = self._grid_ub
 
-        # change batch_size s.t. it'll approx. end up at intended n_points in the end
-        adapted_size = n_points
-        if self.descending_valuations:
-            adapted_size = n_points * math.factorial(self.n_items)
+        if n_points is None:
+            batch_size_per_dim = math.ceil((ub - lb) / step + 1)
+        else:
+            # change batch_size s.t. it'll approx. end up at intended n_points in the end
+            adapted_size = n_points
+            if self.descending_valuations:
+                adapted_size = n_points * math.factorial(self.n_items)
 
-        batch_size_per_dim = math.ceil(adapted_size ** (1/self.n_items))
-        lin = torch.linspace(lb, ub, batch_size_per_dim, device=self.device)
+            batch_size_per_dim = math.ceil(adapted_size ** (1/self.n_items))
+
+        lin = torch.linspace(lb, ub, batch_size_per_dim, device=self.device, dtype=dtype)
 
         grid_values = torch.stack([
             x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()

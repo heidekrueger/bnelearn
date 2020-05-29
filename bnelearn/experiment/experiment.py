@@ -352,6 +352,12 @@ class Experiment(ABC):
                         print(f'Stopping criterion reached after {e} iterations.')
                         break
 
+            bidders = [self.bidders[i] for i in [min(b) for b in self._model2bidder]]
+            if self.logging_config.export_step_wise_linear_bid_function_size is not None:
+                logging_utils.stepwise_linear_bid_exporter(
+                    experiment_dir=self.run_log_dir, bidders=bidders,
+                    step=self.logging_config.export_step_wise_linear_bid_function_size)
+
             self._exit_run()
 
         # Once all runs are done, convert tb event files to csv
