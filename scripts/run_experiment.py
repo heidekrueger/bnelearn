@@ -52,7 +52,7 @@ if __name__ == '__main__':
     # running_configuration, logging_configuration, experiment_configuration, experiment_class =\
     #    llg(2,100,'nearest_zero',specific_gpu=1, logging=enable_logging)
     running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-       llllgg(n_runs,n_epochs, util_loss_batch_size=2**2, util_loss_frequency=1000,log_metrics=[],
+       llllgg(n_runs,n_epochs, util_loss_batch_size=2**4, util_loss_frequency=1000,log_metrics=[],
               payment_rule='nearest_vcg',core_solver="qpth",parallel = 1, model_sharing=True, logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #  multiunit(n_runs=2, n_epochs=100, n_players=[2], n_units=2, payment_rule='first_price', logging=enable_logging)
@@ -66,7 +66,7 @@ if __name__ == '__main__':
     gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
     learning_configuration = LearningConfiguration(
         pretrain_iters=500,
-        batch_size=2**2,
+        batch_size=2**4,
         learner_hyperparams = {'population_size': 4,
                                'sigma': 1.,
                                'scale_sigma_by_model_size': True}

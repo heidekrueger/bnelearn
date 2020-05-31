@@ -17,6 +17,7 @@ from qpth.qp import QPFunction
 
 from .mechanism import Mechanism
 from bnelearn.util import mpc
+# from bnelearn.util import qpth_class
 
 class _OptNet_for_LLLLGG(nn.Module):
     def __init__(self, device, A, beta, b, payment_vcg, precision=torch.double):
@@ -57,8 +58,8 @@ class _OptNet_for_LLLLGG(nn.Module):
                 torch.zeros([self.n_batch, self.n_player], dtype=precision, device=self.device)
             ), 1)
         
-        self.e = torch.zeros(0, dtype=precision, device=self.device, requires_grad=True)
-        self.mu = torch.zeros(0, dtype=precision, device=self.device, requires_grad=True)
+        # self.e = torch.zeros(0, dtype=precision, device=self.device, requires_grad=True)
+        # self.mu = torch.zeros(0, dtype=precision, device=self.device, requires_grad=True)
 
         #for mpc
         self.e_=None
@@ -88,20 +89,18 @@ class _OptNet_for_LLLLGG(nn.Module):
         q = -2p_0
         """
         if min_payments is not None:
-            self.e = torch.ones([self.n_batch, 1, self.n_player], dtype=self.precision, device=self.device)
-            self.mu = min_payments.sum(1).reshape(self.n_batch, 1)
-            #for mpc
+            # self.e = torch.ones([self.n_batch, 1, self.n_player], dtype=self.precision, device=self.device)
+            # self.mu = min_payments.sum(1).reshape(self.n_batch, 1)
+            # #for mpc
             self.e_= torch.ones([self.n_batch, 1, self.n_player], dtype=self.precision, device=self.device)
-            #adding slack 1e-5 for easing precision
-            self.mu_ = min_payments.sum(1).reshape(self.n_batch, 1)+ 1e-5 * torch.ones(1, dtype=self.precision, device=self.device)
+            self.mu_ = min_payments.sum(1).reshape(self.n_batch, 1)#
 
         payment_vcg = torch.as_tensor(self.payment_vcg, dtype=self.precision, device=self.device)
         self.Q = torch.diag(torch.tensor([2, ] * self.n_player, dtype=self.precision, device=self.device)).repeat(self.n_batch,1,1)
         self.q = -2 * payment_vcg
-
     def forward(self, input=None):
         """input is not used, as problem is fully specified"""
-        mpc_solver=mpc.mpc_class()
+        mpc_solver=mpc.mpc_class(max_iter=20)
         # detach all variables to set requires_grad=False
         self.Q_no_grad=self.Q.detach()
         self.q_no_grad=self.q.detach()
@@ -109,24 +108,33 @@ class _OptNet_for_LLLLGG(nn.Module):
         self.h_no_grad=self.h.detach()
         if self.e_!=None:
             #append to e,mu to inequality constraints
-            self.G_no_grad=torch.cat((self.G_no_grad,self.e_),1).detach()
-            self.h_no_grad=torch.cat((self.h,self.mu_),1).detach()
-        #no equality constraints
-        self.e_no_grad=None
-        self.mu_no_grad=None
-            
+            # self.G_no_grad=torch.cat((self.G_no_grad,self.e_),1).detach()
+            # self.h_no_grad=torch.cat((self.h,self.mu_),1).detach()
+            self.e_no_grad=self.e_.detach()
+            self.mu_no_grad=self.mu_.detach()
+        else:
+            self.e_no_grad=None
+            self.mu_no_grad=None
         x_mpc,opt_mpc=mpc_solver.solve(self.Q_no_grad, self.q_no_grad, self.G_no_grad,
                                          self.h_no_grad, self.e_no_grad, self.mu_no_grad,
                                          print_warning=False)
+
+        # Q_LU, S_LU, R = qpth_class.pre_factor_kkt(self.Q, self.G, self.e)
+        # x_qp,s,z,y=qpth_class.forward(self.Q, self.q, self.G, self.h, self.e, self.mu, 
+        #                 Q_LU, S_LU, R, eps=1e-12, verbose=0, notImprovedLim=3, maxIter=25)
+        # print("____________qpth results________________")
+        # print(x_qp)
         # x_qp=QPFunction(
         #     verbose=-1, eps=1e-19, maxIter=100, notImprovedLim=10, check_Q_spd=False
         # )(self.Q, self.q, self.G, self.h, self.e, self.mu)
         # return QPFunction(
         #     verbose=-1, eps=1e-19, maxIter=100, notImprovedLim=10, check_Q_spd=False
         # )(self.Q, self.q, self.G, self.h, self.e, self.mu)
-        # if (any(torch.isnan(x_mpc).view(-1))):
         # print solution returned by mpc
-        print(x_mpc.view(self.n_batch,self.n_player))
+        # print("____________mpc results________________")
+        # print(x_mpc.view(self.n_batch,self.n_player))
+        # if torch.isnan(x_mpc).any():
+        #     print(x_mpc)
         return x_mpc
 
 class LLGAuction(Mechanism):
