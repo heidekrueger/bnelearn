@@ -32,7 +32,7 @@ if __name__ == '__main__':
         single_item_uniform_symmetric(1,20,[2,3],'first_price')
 
     '''
-    enable_logging = True
+    enable_logging = False
 
     # General run configs
     n_runs = 1
