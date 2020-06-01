@@ -16,25 +16,27 @@ if __name__ == '__main__':
     '''
     Experiments performed for NeurIPS submission.
     Only payment_rule, n_players and log_metrics are changed accordingly.
-    -------------------testing------------------
-    pertubation size: ->64 vs 128 
-    lr: ->0.003 vs 0.001
-    optimizer: adam vs ->SGD
+    -------------------architecture------------------
+    size: ->[10,10]
+    pertubation size: ->64
+    lr: ->0.001
+    optimizer: ->adam
     '''
     specific_gpu = 2
     #LLG: first_price, VCG, nearest_vcg, nearest_zero, nearest_bid
     #LLLLGG: first_price, VCG, nearest_vcg
-    payment_rule = 'first_price'
+    payment_rule = 'nearest_bid'
     #LLLLGGExperiment
-    experiment_class = LLLLGGExperiment 
+    experiment_class = LLGExperiment
+    n_players = 6 if experiment_class==LLLLGGExperiment else 3
+    log_metrics = ['util_loss'] if payment_rule=='first_price' else ['opt','l2','util_loss']
 
-    running_configuration = RunningConfiguration(n_runs = 10, n_epochs = 5000, specific_gpu = specific_gpu, n_players = [6])
-    logging_configuration = LoggingConfiguration(log_metrics =['util_loss'],#['opt','l2','util_loss'],#['opt','l2','util_loss'],#['util_loss'],#
-                                                 util_loss_batch_size = 2**13,util_loss_grid_size = 2**13, util_loss_frequency = 100,
-                                                 #stopping_criterion_rel_util_loss_diff = 0.0005, stopping_criterion_batch_size = 2**10,
-                                                 #stopping_criterion_grid_size = 2**9,
+    running_configuration = RunningConfiguration(n_runs = 10, n_epochs = 5000, specific_gpu = specific_gpu, n_players = [n_players])
+    logging_configuration = LoggingConfiguration(log_metrics = log_metrics,
+                                                 util_loss_batch_size = 2**12,util_loss_grid_size = 2**13, util_loss_frequency = 100,
                                                  save_tb_events_to_binary_detailed = True, save_tb_events_to_csv_detailed = True)
-
+    # Export models as piecewise linear functions.
+    logging_configuration.export_step_wise_linear_bid_function_size = 1e-3
     if experiment_class is LLGExperiment:
         experiment_configuration = ExperimentConfiguration(payment_rule, u_lo = [0,0,0], u_hi = [1,1,2])
     elif experiment_class is LLLLGGExperiment:
@@ -44,7 +46,7 @@ if __name__ == '__main__':
 
     gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
     learning_configuration = LearningConfiguration(
-        hidden_nodes = [10,10], #<-----new design!
+        hidden_nodes = [10,10],
         pretrain_iters=500,
         batch_size=2**18,
         optimizer_type='adam',
