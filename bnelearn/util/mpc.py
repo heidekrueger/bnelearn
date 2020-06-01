@@ -70,7 +70,6 @@ class mpc_class():
   
   def is_Q_pd(self):
     try:
-        # np.linalg
         torch.cholesky(self.Q)
     except:
         raise RuntimeError("Q is not PD")
@@ -132,8 +131,6 @@ class mpc_class():
     else:
       F=torch.cat((rx,rs,rz), dim=1)
     step=F.lu_solve(self.J_lu,self.J_piv)
-    if any(torch.isnan(step).view(-1)):
-      torch.set_printoptions(profile="full")
     dx=step[:,:self.nx,:]
     ds=step[:,self.nx:self.nx+self.nineq,:]
     if self.neq!=None:
@@ -180,6 +177,15 @@ class mpc_class():
   #   else:
   #     dy=None
   #   return (dx,ds,dz,dy)
+
+  def remove_nans(self,dx,ds,dz,dy):
+    wh= torch.where(dx[:,0,:]!=dx[:,0,:])[0] #find NaN positions
+    dx[wh,:,:]=torch.zeros(len(wh),dx.size()[1],dx.size()[2]).type_as(dx)
+    ds[wh,:,:]=torch.zeros(len(wh),ds.size()[1],ds.size()[2]).type_as(dx)
+    dz[wh,:,:]=torch.zeros(len(wh),dz.size()[1],dz.size()[2]).type_as(dx)
+    if self.neq!=None:
+      dy[wh,:,:]=torch.zeros(len(wh),dy.size()[1],dy.size()[2]).type_as(dx)
+    return dx,ds,dz,dy,wh
 
   def mpc_opt(self,print_warning=True):
     count=0
@@ -274,12 +280,7 @@ class mpc_class():
           # dz[torch.isnan(dz)]=0
           # if self.neq!=None:
           #   dy[torch.isnan(dy)]=0
-          wh= torch.where(dx[:,0,:]!=dx[:,0,:])[0]
-          dx[wh,:,:]=torch.zeros(len(wh),dx.size()[1],dx.size()[2]).type_as(dx)
-          ds[wh,:,:]=torch.zeros(len(wh),ds.size()[1],ds.size()[2]).type_as(dx)
-          dz[wh,:,:]=torch.zeros(len(wh),dz.size()[1],dz.size()[2]).type_as(dx)
-          if self.neq!=None:
-            dy[wh,:,:]=torch.zeros(len(wh),dy.size()[1],dy.size()[2]).type_as(dx)
+          dx,ds,dz,dy,wh= self.remove_nans(dx,ds,dz,dy)
           if len(wh)== self.nbatch:
             return(self.x,self.s,self.z,self.y)
           # dx[dx!=dx]=0
@@ -300,7 +301,6 @@ class mpc_class():
             self.y+=alpha*dy
           else:
             self.y=None
-
           # do not update problems that already converged
           # self.x+=torch.bmm(alpha*dx, this_problem_not_converged)
           # self.s+=torch.bmm(alpha*ds, this_problem_not_converged)

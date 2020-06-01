@@ -115,6 +115,8 @@ class _OptNet_for_LLLLGG(nn.Module):
         else:
             self.e_no_grad=None
             self.mu_no_grad=None
+        
+        
         x_mpc,opt_mpc=mpc_solver.solve(self.Q_no_grad, self.q_no_grad, self.G_no_grad,
                                          self.h_no_grad, self.e_no_grad, self.mu_no_grad,
                                          print_warning=False)
