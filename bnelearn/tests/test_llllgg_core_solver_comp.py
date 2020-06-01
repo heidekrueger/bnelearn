@@ -24,20 +24,20 @@ def run_LLLLGG_test(parallel, rule, bids, device):
         pytest.skip("This test needs CUDA, but it's not available.")
 
     game_gurobi = LLLLGGAuction(rule=rule, cuda=cuda, core_solver='gurobi', parallel=parallel)
-    game_cvxpy = LLLLGGAuction(rule=rule,cuda=cuda, core_solver='cvxpy')
+    #game_cvxpy = LLLLGGAuction(rule=rule,cuda=cuda, core_solver='cvxpy')
     game_qpth = LLLLGGAuction(rule=rule,cuda=cuda, core_solver='qpth')
 
     allocation_gurobi, payments_gurobi = game_gurobi.run(bids.to(device))
-    allocation_cvxpy, payments_cvxpy = game_cvxpy.run(bids.to(device))
+    #allocation_cvxpy, payments_cvxpy = game_cvxpy.run(bids.to(device))
     allocation_qpth, payments_qpth = game_qpth.run(bids.to(device))
     
-    assert torch.equal(allocation_gurobi, allocation_cvxpy), "Allocation gap between gurobi and cvxpy"
+    #assert torch.equal(allocation_gurobi, allocation_cvxpy), "Allocation gap between gurobi and cvxpy"
     assert torch.equal(allocation_gurobi, allocation_qpth), "Allocation gap between gurobi and qpth"
-    assert torch.equal(allocation_qpth, allocation_cvxpy), "Allocation gap between qpth and cvxpy"
+    #assert torch.equal(allocation_qpth, allocation_cvxpy), "Allocation gap between qpth and cvxpy"
 
-    assert torch.allclose(payments_gurobi, payments_cvxpy, atol = 0.01), "Payments gap between gurobi and cvxpy"
-    assert torch.allclose(payments_gurobi.double(), payments_qpth, atol = 0.01), "Payments gap between gurobi and qpth"
-    assert torch.allclose(payments_qpth, payments_cvxpy.double(), atol = 0.01), "Payments gap between qpth and cvxpy"
+    #assert torch.allclose(payments_gurobi, payments_cvxpy, atol = 0.01), "Payments gap between gurobi and cvxpy"
+    assert torch.allclose(payments_gurobi.double(), payments_qpth.squeeze(), atol = 0.01), "Payments gap between gurobi and qpth"
+    #assert torch.allclose(payments_qpth, payments_cvxpy.double(), atol = 0.01), "Payments gap between qpth and cvxpy"
 
 @pytest.mark.parametrize("parallel, rule, bids, device", testdata, ids=ids)
 def test_LLLLGG(parallel,rule,bids, device):
