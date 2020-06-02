@@ -115,11 +115,11 @@ class _OptNet_for_LLLLGG(nn.Module):
         else:
             self.e_no_grad=None
             self.mu_no_grad=None
-        start=time.time()
+        # start=time.time()
         x_mpc,opt_mpc=mpc_solver.solve(self.Q_no_grad, self.q_no_grad, self.G_no_grad,
                                          self.h_no_grad, self.e_no_grad, self.mu_no_grad,
-                                         print_warning=False,check_Q_psd=False)
-        print(time.time()-start)    
+                                         print_warning=False)#,check_Q_psd=False)
+        # print(time.time()-start)    
         # print(x_mpc.device, opt_mpc.device)
         # Q_LU, S_LU, R = qpth_class.pre_factor_kkt(self.Q, self.G, self.e)
         # x_qp,s,z,y=qpth_class.forward(self.Q, self.q, self.G, self.h, self.e, self.mu, 
