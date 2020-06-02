@@ -8,10 +8,11 @@ library(kableExtra)
 options(dplyr.print_max = 200)
 options(dplyr.width = 300)
 ### Read in data
+subfolder="NeurIPS"
 experiment = "LLLLGG"
-payment_rule = "first_price/6p"
-run="2020-05-29 Fri 15:61"
-tb_full_raw = read_delim(str_c("../experiments",experiment,payment_rule,run,"full_results.csv", 
+payment_rule = "first_price"
+run="6p/2020-05-29 Fri 16.51"
+tb_full_raw = read_delim(str_c("experiments",subfolder,experiment,payment_rule,run,"/full_results.csv",
                               sep = "/", collapse = NULL), ",")
 
 ### Preprocess data
@@ -154,3 +155,4 @@ tb_final %>%
   select(subrun, contains("eval_util_loss_rel"), contains("eval_L_2"), eval_util_loss_ex_ante, 
          eval_util_loss_ex_interim, contains("stop_diff_2_e"), time) %>%
   kable("latex", booktabs = T)
+
