@@ -11,7 +11,7 @@ class mpc_class():
   def __init__(self,max_iter=20):
     self.max_iter=max_iter
 
-  def solve(self,Q,q,G,h,A,b,refine=False,print_warning=True):
+  def solve(self,Q,q,G,h,A,b,refine=False,print_warning=False,check_Q_psd=True):
     self.Q=Q
     self.q=q
     self.G=G
@@ -22,11 +22,14 @@ class mpc_class():
     if self.A != None:
       self.A_T=torch.transpose(self.A,dim0=2,dim1=1)
     self.nbatch, self.nx, self.nineq, self.neq = self.get_sizes()
-    self.is_Q_pd()
+    self.device= self.Q.device
+    if check_Q_psd: #necessary for qp to be convex 
+      self.is_Q_pd()
     self.refine=refine 
     self.J=self.get_Jacobian()
     self.J=self.get_lu_J()
-    #initial solution
+    
+    #get initial solution
     if self.neq!=None:
       self.b_unsqueezed=self.b.unsqueeze(-1)
     else:
@@ -34,20 +37,17 @@ class mpc_class():
     self.x,self.s,self.z,self.y=self.solve_kkt(-self.q.unsqueeze(-1),
                                                torch.zeros(self.nbatch,self.nineq).unsqueeze(-1).type_as(self.Q),
                                                self.h.unsqueeze(-1),self.b_unsqueezed)
-    # alpha_p=self.get_step(-self.z,torch.ones(self.z.size()).type_as(self.z))
-    # alpha_d=self.get_step(self.z,torch.ones(self.z.size()).type_as(self.z))
+    
     alpha_p=self.get_initial(-self.z)
     alpha_d=self.get_initial(self.z)
     self.s=-self.z+alpha_p*(torch.ones(self.z.size()).type_as(self.z))
     self.z=self.z+alpha_d*(torch.ones(self.z.size()).type_as(self.z))
+    
     #main iterations
-    start = time.time()
     self.x,self.s,self.z,self.y=self.mpc_opt(print_warning=print_warning)
     op_val=0.5*torch.bmm(torch.transpose(self.x,dim0=2,dim1=1),
                          torch.bmm(self.Q,self.x))+torch.bmm(
                          torch.transpose(self.q.unsqueeze(-1),dim0=2,dim1=1),self.x)
-    t = time.time() - start
-    # print("Optimization - time taken:", t)
     return self.x, op_val
 
   def get_sizes(self):
@@ -57,9 +57,9 @@ class mpc_class():
       self.q=self.q.unsqueeze(0)
       self.G=self.G.unsqueeze(0)
       self.h=self.h.unsqueeze(0)
-      if (self.A is not None) and (self.A.dim()==2):
-        self.A=self.A.unsqueeze(0)
-        self.b=self.b.unsqueeze(0)
+    if (self.A is not None) and (self.A.dim()==2):
+      self.A=self.A.unsqueeze(0)
+      self.b=self.b.unsqueeze(0)
     #get sizes
     nbatch, nineq, nx = self.G.size()
     if self.A is not None:
@@ -73,7 +73,7 @@ class mpc_class():
         torch.cholesky(self.Q)
     except:
         raise RuntimeError("Q is not PD")
-    pass
+    
   def lu_factorize(self,x):
     #do lu factorization of x
     #avoid pivoting when possible, i.e when on cuda
@@ -87,30 +87,30 @@ class mpc_class():
   def get_diag_matrix(self,d):
     #return diagonal matrix with diagonal entries d
     nBatch, n, _ = d.size()
-    Diag = torch.zeros(nBatch, n, n).type_as(d)
-    I = torch.eye(n).repeat(nBatch, 1, 1).type_as(d).bool()
+    Diag = torch.zeros((nBatch, n, n),device=self.device).type_as(d)
+    I = torch.eye(n,device=self.device).repeat(nBatch, 1, 1).type_as(d).bool()
     Diag[I] = d.view(-1)
     return Diag
   
   def get_Jacobian(self):
     #get the jacobian kkt matrix as concatenation of 4 blocks, B2=transpose(B3)
-    B1=torch.zeros(self.nbatch,self.nx+self.nineq,self.nx+self.nineq).type_as(self.Q)
+    B1=torch.zeros((self.nbatch,self.nx+self.nineq,self.nx+self.nineq),device=self.device).type_as(self.Q)
     if self.neq==None:
-        B3=torch.zeros(self.nbatch,self.nineq,self.nx+self.nineq).type_as(self.Q)
-        B4=torch.zeros(self.nbatch,self.nineq,self.nineq).type_as(self.Q)
+        B3=torch.zeros((self.nbatch,self.nineq,self.nx+self.nineq),device=self.device).type_as(self.Q)
+        B4=torch.zeros((self.nbatch,self.nineq,self.nineq),device=self.device).type_as(self.Q)
     else:
-        B3=torch.zeros(self.nbatch,self.neq+self.nineq,self.nx+self.nineq).type_as(self.Q)
-        B4=torch.zeros(self.nbatch,self.neq+self.nineq,self.neq+self.nineq).type_as(self.Q)
+        B3=torch.zeros((self.nbatch,self.neq+self.nineq,self.nx+self.nineq),device=self.device).type_as(self.Q)
+        B4=torch.zeros((self.nbatch,self.neq+self.nineq,self.neq+self.nineq),device=self.device).type_as(self.Q)
 
     B1[:,:self.nx,:self.nx]=self.Q
     #D here is unit identity matrix (initial case)
-    self.D=torch.eye(self.nineq).repeat(self.nbatch,1,1).type_as(self.Q)
+    self.D=torch.eye((self.nineq),device=self.device).repeat(self.nbatch,1,1).type_as(self.Q)
     B1[:,-self.nineq:,-self.nineq:]=self.D
 
     B3[:,:self.nineq,:self.nx]=self.G
     if self.A!=None:
       B3[:,-self.neq:,:self.nx]=self.A
-    B3[:,:self.nineq,-self.nineq:]=torch.eye(self.nineq).repeat(self.nbatch,1,1).type_as(self.Q)
+    B3[:,:self.nineq,-self.nineq:]=torch.eye((self.nineq),device=self.device).repeat(self.nbatch,1,1).type_as(self.Q)
 
     B2=torch.transpose(B3, dim0=2, dim1=1)
     self.J=torch.cat((torch.cat((B1,B2),dim=2),torch.cat((B3,B4),dim=2)),dim=1)
@@ -180,18 +180,18 @@ class mpc_class():
 
   def remove_nans(self,dx,ds,dz,dy):
     wh= torch.where(dx[:,0,:]!=dx[:,0,:])[0] #find NaN positions
-    dx[wh,:,:]=torch.zeros(len(wh),dx.size()[1],dx.size()[2]).type_as(dx)
-    ds[wh,:,:]=torch.zeros(len(wh),ds.size()[1],ds.size()[2]).type_as(dx)
-    dz[wh,:,:]=torch.zeros(len(wh),dz.size()[1],dz.size()[2]).type_as(dx)
+    dx[wh,:,:]=torch.zeros((len(wh),dx.size()[1],dx.size()[2]),device=self.device).type_as(dx)
+    ds[wh,:,:]=torch.zeros((len(wh),ds.size()[1],ds.size()[2]),device=self.device).type_as(dx)
+    dz[wh,:,:]=torch.zeros((len(wh),dz.size()[1],dz.size()[2]),device=self.device).type_as(dx)
     if self.neq!=None:
-      dy[wh,:,:]=torch.zeros(len(wh),dy.size()[1],dy.size()[2]).type_as(dx)
+      dy[wh,:,:]=torch.zeros((len(wh),dy.size()[1],dy.size()[2]),device=self.device).type_as(dx)
     return dx,ds,dz,dy,wh
 
   def mpc_opt(self,print_warning=True):
     count=0
     bat=np.array([i for i in range(self.nbatch)])
     n_iter=0
-    this_problem_not_converged= torch.ones(self.nbatch).type_as(self.Q).view(self.nbatch,1,1)
+    # this_problem_not_converged= torch.ones(self.nbatch).type_as(self.Q).view(self.nbatch,1,1)
     while (n_iter<=3):
       if n_iter>0:
         print(n_iter)
@@ -253,11 +253,11 @@ class mpc_class():
           sigma=(mu_aff/mu)**3
 
           #find centering+correction steps
-          rx=torch.zeros(rx.size()).type_as(self.Q)
+          rx=torch.zeros((rx.size()),device=self.device).type_as(self.Q)
           rs=((sigma*mu).unsqueeze(-1).repeat(1,self.nineq,1)-ds_aff*dz_aff)/self.s
-          rz=torch.zeros(rz.size()).type_as(self.Q)
+          rz=torch.zeros((rz.size()),device=self.device).type_as(self.Q)
           if self.neq!=None:
-            ry=torch.zeros(ry.size()).type_as(self.Q)
+            ry=torch.zeros((ry.size()),device=self.device).type_as(self.Q)
           dx_cor,ds_cor,dz_cor,dy_cor=self.solve_kkt(rx,rs,rz,ry)
 
           dx=dx_aff+dx_cor
@@ -268,7 +268,7 @@ class mpc_class():
           else:
             dy=None
           # find update step size
-          alpha = torch.min(torch.ones(self.nbatch).type_as(self.Q).view(self.nbatch,1,1),0.99*torch.min(self.get_step(self.z, dz),self.get_step(self.s, ds)))
+          alpha = torch.min(torch.ones((self.nbatch),device=self.device).type_as(self.Q).view(self.nbatch,1,1),0.99*torch.min(self.get_step(self.z, dz),self.get_step(self.s, ds)))
           
           #check for early exit
           # if torch.isnan(dx).all():
@@ -330,16 +330,16 @@ class mpc_class():
     v=v.squeeze(2)
     dv=dv.squeeze(2)
     div= -v/dv
-    ones=torch.ones_like(div)
+    ones=torch.ones_like(div,device=self.device)
     div=torch.where(torch.isinf(div),ones,div)
     div=torch.where(torch.isnan(div),ones,div)
     div[dv>0]=max(1.0,div.max())
     return (div.min(1)[0]).view(v.size()[0],1,1)
   def get_initial(self,z):
-      #get step size using line search for initialization 
-      nbatch,_,_=z.size()
-      dz=torch.ones(z.size()).type_as(z)
-      div= -z/dz
-      alpha=torch.max(div,dim=1).values.view(nbatch,1,1)+1#0.00001
-      return alpha.view(nbatch,1,1)
+    #get step size using line search for initialization 
+    nbatch,_,_=z.size()
+    dz=torch.ones((z.size()),device=self.device).type_as(z)
+    div= -z/dz
+    alpha=torch.max(div,dim=1).values.view(nbatch,1,1)+1#0.00001
+    return alpha.view(nbatch,1,1)
       

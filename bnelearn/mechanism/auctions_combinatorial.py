@@ -18,7 +18,7 @@ from qpth.qp import QPFunction
 from .mechanism import Mechanism
 from bnelearn.util import mpc
 # from bnelearn.util import qpth_class
-
+import time
 class _OptNet_for_LLLLGG(nn.Module):
     def __init__(self, device, A, beta, b, payment_vcg, precision=torch.double):
         """
@@ -58,8 +58,8 @@ class _OptNet_for_LLLLGG(nn.Module):
                 torch.zeros([self.n_batch, self.n_player], dtype=precision, device=self.device)
             ), 1)
         
-        # self.e = torch.zeros(0, dtype=precision, device=self.device, requires_grad=True)
-        # self.mu = torch.zeros(0, dtype=precision, device=self.device, requires_grad=True)
+        self.e = torch.zeros(0, dtype=precision, device=self.device, requires_grad=True)
+        self.mu = torch.zeros(0, dtype=precision, device=self.device, requires_grad=True)
 
         #for mpc
         self.e_=None
@@ -89,8 +89,8 @@ class _OptNet_for_LLLLGG(nn.Module):
         q = -2p_0
         """
         if min_payments is not None:
-            # self.e = torch.ones([self.n_batch, 1, self.n_player], dtype=self.precision, device=self.device)
-            # self.mu = min_payments.sum(1).reshape(self.n_batch, 1)
+            self.e = torch.ones([self.n_batch, 1, self.n_player], dtype=self.precision, device=self.device)
+            self.mu = min_payments.sum(1).reshape(self.n_batch, 1)
             # #for mpc
             self.e_= torch.ones([self.n_batch, 1, self.n_player], dtype=self.precision, device=self.device)
             self.mu_ = min_payments.sum(1).reshape(self.n_batch, 1)#
@@ -115,20 +115,21 @@ class _OptNet_for_LLLLGG(nn.Module):
         else:
             self.e_no_grad=None
             self.mu_no_grad=None
-        
-        
+        start=time.time()
         x_mpc,opt_mpc=mpc_solver.solve(self.Q_no_grad, self.q_no_grad, self.G_no_grad,
                                          self.h_no_grad, self.e_no_grad, self.mu_no_grad,
-                                         print_warning=False)
-
+                                         print_warning=False,check_Q_psd=False)
+        print(time.time()-start)    
+        # print(x_mpc.device, opt_mpc.device)
         # Q_LU, S_LU, R = qpth_class.pre_factor_kkt(self.Q, self.G, self.e)
         # x_qp,s,z,y=qpth_class.forward(self.Q, self.q, self.G, self.h, self.e, self.mu, 
         #                 Q_LU, S_LU, R, eps=1e-12, verbose=0, notImprovedLim=3, maxIter=25)
-        # print("____________qpth results________________")
-        # print(x_qp)
+        
         # x_qp=QPFunction(
         #     verbose=-1, eps=1e-19, maxIter=100, notImprovedLim=10, check_Q_spd=False
         # )(self.Q, self.q, self.G, self.h, self.e, self.mu)
+        # print("____________qpth results________________")
+        # print(x_qp)
         # return QPFunction(
         #     verbose=-1, eps=1e-19, maxIter=100, notImprovedLim=10, check_Q_spd=False
         # )(self.Q, self.q, self.G, self.h, self.e, self.mu)
