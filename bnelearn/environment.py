@@ -212,7 +212,7 @@ class AuctionEnvironment(Environment):
             assert len(correlation_groups) == len(correlation_devices)
             self.correlation_groups = correlation_groups
             self.correlation_devices = correlation_devices
-        
+
         assert sorted([a for g in self.correlation_groups for a in g]) == list(range(n_players)), \
             "Each agent should be in exactly one correlation group!"
 

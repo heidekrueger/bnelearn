@@ -79,8 +79,9 @@ class LocalGlobalExperiment(Experiment, ABC):
             return super()._get_model_names()
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0):
+        correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
-                              batch_size=batch_size, n_items = self.n_items)
+                              batch_size=batch_size, n_items = self.n_items, correlation_type=correlation_type)
 
 class LLGExperiment(LocalGlobalExperiment):
     """

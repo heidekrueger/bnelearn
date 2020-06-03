@@ -83,7 +83,8 @@ class Bidder(Player):
                  descending_valuations = False,
                  risk: float = 1.0,
                  item_interest_limit = None,
-                 constant_marginal_values = False
+                 constant_marginal_values = False,
+                 correlation_type = None,
                  ):
 
         super().__init__(strategy, player_position, batch_size, cuda)
@@ -93,13 +94,14 @@ class Bidder(Player):
         self.descending_valuations = descending_valuations
         self.item_interest_limit = item_interest_limit
         self.constant_marginal_values = constant_marginal_values
+        self.correlation_type = correlation_type
         self.risk = risk
         self._cache_actions = cache_actions
         self._valuations_changed = False # true if new valuation drawn since actions calculated
         self._valuations = torch.zeros(batch_size, n_items, device=self.device)
         if self._cache_actions:
             self.actions = torch.zeros(batch_size, n_items, device=self.device)
-        self.draw_valuations_()
+        #self.draw_valuations_()
 
         # Compute lower and upper bounds for grid computation
         self._grid_lb = self.value_distribution.support.lower_bound \
@@ -218,6 +220,8 @@ class Bidder(Player):
             # TODO Stefan: Does correlation interere with Nils' implementations of descending valuations
             #              Or Item interest limits? --> Test!
         """
+        if common_component is None: raise ValueError()
+
         if isinstance(weights, float):
             weights = torch.tensor(weights)
 
@@ -230,6 +234,8 @@ class Bidder(Player):
         if torch.all(weights == 1.0):
             self.valuations = common_component.to(self.device).relu()
             return self.valuations
+
+        # TODO Nils: check that draw_valuations_ is always called with common component
 
         ### 2. Otherwise determine individual component
 
@@ -251,8 +257,13 @@ class Bidder(Player):
 
         ### 3. Determine mixture of individual an common component
         if torch.any(weights>0):
-            weights = weights.to(self.device)
-            self.valuations = weights * common_component.to(self.device) + (1-weights) * self.valuations
+            if self.correlation_type == 'additive':
+                weights = weights.to(self.device)
+                self.valuations = weights * common_component.to(self.device) + (1-weights) * self.valuations
+            elif self.correlation_type == 'multiplicative':
+                self.valuations = 2 * common_component.to(self.device) * self.valuations
+            else:
+                raise NotImplementedError('correlation type unknown')
 
         ### 4. Finishing up
         self.valuations.relu_() #ensure nonnegativity for unbounded-support distributions

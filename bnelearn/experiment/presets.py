@@ -15,7 +15,8 @@ from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment,
 from bnelearn.experiment.single_item_experiment import (
     GaussianSymmetricPriorSingleItemExperiment,
     TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
-    UniformSymmetricPriorSingleItemExperiment)
+    UniformSymmetricPriorSingleItemExperiment,
+    MineralRightsExperiment)
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
 # pylint: disable = dangerous-default-value 
@@ -127,6 +128,30 @@ def single_item_asymmetric_uniform_disjunct(
     experiment_configuration = ExperimentConfiguration(payment_rule=payment_rule, model_sharing=model_sharing,
                                                        u_lo=u_lo, u_hi=u_hi, risk=risk)
     experiment_class = TwoPlayerAsymmetricUniformPriorSingleItemExperiment
+    return running_configuration, logging_configuration, experiment_configuration, experiment_class
+
+
+def mineral_rights(
+        n_runs: int, n_epochs: int,
+        model_sharing=True,
+        log_metrics=['util_loss', 'opt', 'l2'],
+        util_loss_batch_size=2**4,
+        util_loss_grid_size=2**4,
+        specific_gpu=0,
+        logging=True
+    ):
+    running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu,
+                                                 n_players=[3])
+    logging_configuration = LoggingConfiguration(log_metrics=log_metrics,
+                                                 util_loss_batch_size=util_loss_batch_size,
+                                                 util_loss_grid_size=util_loss_grid_size,
+                                                 enable_logging=logging)
+    experiment_configuration = ExperimentConfiguration(payment_rule='second_price', model_sharing=model_sharing,
+                                                       u_lo=0, u_hi=1, risk=1.0,
+                                                       correlation_types='corr_type',
+                                                       correlation_groups=[[0, 1, 2]],
+                                                       correlation_coefficients=[1.0])
+    experiment_class = MineralRightsExperiment
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
 
 
