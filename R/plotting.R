@@ -21,7 +21,7 @@ tb_wide <- tb_full_raw %>%
   select(-c(hyperparameters_batch_size,hyperparameters_pretrain_iters, eval_overhead_hours))
 
 ### Plotting
-font_size = 15
+font_size = 30
 
 tb_wide %>% 
   filter(subrun != ".",
@@ -30,21 +30,25 @@ tb_wide %>%
   
   select(c(run,subrun,epoch,eval_utilities,eval_util_loss_ex_ante)) %>% 
   pivot_longer(cols=-c(run,subrun,epoch),names_to="tag",values_to="value") %>% 
-  
+ 
   mutate(tag = factor(tag), 
-         tag = recode_factor(tag,eval_utilities = "utility loss",
-                             eval_util_loss_ex_ante = "ex ante utility loss")) %>% 
-  ggplot() + 
-    
-  geom_point(aes(x=epoch,y=value, group=tag, color=subrun, shape=as.factor(tag)) ,size=2) +
-    
+         tag = recode_factor(tag,eval_utilities = "utility",
+                             eval_util_loss_ex_ante = "ex ante utility loss"),
+         supertag = str_c(tag,subrun, sep = " - ", collapse = NULL)) %>% 
+          
+  ggplot(aes(x=epoch,y=value, group=supertag, color=subrun)) + 
+  #geom_point(aes(x=epoch,y=value, group=tag, color=subrun, shape=as.factor(tag)) ,size=2) +
+  
+  stat_summary(geom="ribbon", fun.min="min", fun.max="max", aes(fill=tag), alpha=0.4) +
+  
   #geom_point(aes(x=epoch,y=eval_utilities, group=subrun, color=subrun), shape=1 ,size=2) +
   #geom_point(aes(x=epoch,y=eval_util_loss_ex_ante, group=subrun, color=subrun), shape=2, size=2) +
   #geom_smooth(aes(x=epoch,y=eval_util_loss_ex_ante, group=subrun, color=subrun),size=1, level=0.99) +
   theme_bw() + theme_classic() +
   guides(group = guide_legend(reverse=TRUE)) +
-  labs(x ="iteration", y = "utility", legend = "bidder type") +
+  labs(x ="iteration", y = "utility (loss)", legend = "bidder type") +
   theme(legend.title = element_blank(),
+        legend.text = element_text(size=font_size),
         axis.title.y = element_text(size=font_size),
         axis.text.y = element_text(size=font_size),
         axis.title.x = element_text(size=font_size),

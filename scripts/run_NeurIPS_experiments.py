@@ -22,10 +22,10 @@ if __name__ == '__main__':
     lr: ->0.001
     optimizer: ->adam
     '''
-    specific_gpu = 2
+    specific_gpu = 3
     #LLG: first_price, VCG, nearest_vcg, nearest_zero, nearest_bid
     #LLLLGG: first_price, VCG, nearest_vcg
-    payment_rule = 'nearest_zero'
+    payment_rule = 'nearest_bid'
     #LLLLGGExperiment
     experiment_class = LLGExperiment
     n_players = 6 if experiment_class==LLLLGGExperiment else 3
@@ -33,7 +33,7 @@ if __name__ == '__main__':
         experiment_class==LLLLGGExperiment \
         else ['opt','l2','util_loss']
 
-    running_configuration = RunningConfiguration(n_runs = 1, n_epochs = 5000, specific_gpu = specific_gpu, n_players = [n_players])
+    running_configuration = RunningConfiguration(n_runs = 10, n_epochs = 5000, specific_gpu = specific_gpu, n_players = [n_players])
     logging_configuration = LoggingConfiguration(log_metrics = log_metrics,
                                                  util_loss_batch_size = 2**12,util_loss_grid_size = 2**13, util_loss_frequency = 100,
                                                  save_tb_events_to_binary_detailed = True, save_tb_events_to_csv_detailed = True)
