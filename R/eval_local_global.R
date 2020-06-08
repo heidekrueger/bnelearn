@@ -9,8 +9,8 @@ options(dplyr.print_max = 200)
 options(dplyr.width = 300)
 ### Read in data
 subfolder="NeurIPS"
-experiment = "LLG"
-payment_rule = "nearest_zero"
+experiment = "LLLLGG"
+payment_rule = "first_price"
 tb_full_raw = read_delim(str_c("experiments",subfolder,experiment,payment_rule,"/full_results.csv",
                               sep = "/", collapse = NULL), ",")
 
@@ -21,6 +21,9 @@ stop_criterium_1 = 0.0005
 stop_criterium_2 = 0.0001
 stop_criterium_interval = 100
 results_epoch = 5000
+#nearest_zero = c(0.13399262726306915, 0.46403446793556213) 
+#nearest_bid = c(0.12500184774398804, 0.49999746680259705)
+#nearest_vcg = c(0.13316573202610016, 0.4673408269882202)
 utility_in_bne_exact = c(0.13399262726306915, 0.46403446793556213)
 # Current stopping criterium: eval_util_loss_ex_ante. Alternatives: eval_util_loss_rel_estimate
 # further assumptions:
@@ -113,7 +116,6 @@ tb_stop_print <- tb_stop_print %>%
   summarize(avg = mean(value),
             std = sqrt(var(value)))
 
-#######TODO: WIP: prepare summary on full_results.csv only with flexibel eval period###
 ### Analyse eval data###############
 if(payment_rule == 'first_price'){
   tb_eval <- tb_full_raw %>% 
@@ -152,11 +154,12 @@ tb_eval <- tb_eval %>%
 tb_final = rbind(tb_eval,tb_stop_print)
 tb_final
 
-# TODO: create latex export table
+# TODO: create nice latex export table
 tb_final %>% 
-  mutate(avg = sprintf("%0.4f", avg)) %>% 
-  pivot_wider(id_cols=subrun,names_from=tag, values_from=avg) %>% 
-  select(subrun, contains("eval_epsilon_absolute"), contains("eval_util_loss_bne_rel"), contains("eval_L_2"), eval_util_loss_ex_ante, 
-         eval_util_loss_ex_interim, contains("stop_diff_2_e"), time) %>%
+  mutate(avg = sprintf("%0.5f", avg),
+         std = sprintf("%0.5f", std)) %>% 
+  #pivot_wider(id_cols=subrun,names_from=tag, values_from=avg) %>% 
+  #select(subrun, contains("eval_epsilon_absolute"), contains("eval_util_loss_bne_rel"), contains("eval_L_2"), eval_util_loss_ex_ante, 
+  #       eval_util_loss_ex_interim, contains("stop_diff_2_e"), time) %>%
   kable("latex", booktabs = T)
 
