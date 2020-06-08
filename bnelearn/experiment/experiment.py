@@ -354,7 +354,7 @@ class Experiment(ABC):
 
             if self.logging_config.enable_logging and (
                     self.logging_config.export_step_wise_linear_bid_function_size is not None):
-                bidders = [self._model2bidder[m][0] for m in range(self.n_models)]
+                bidders = [self.bidders[self._model2bidder[m][0]] for m in range(self.n_models)]
                 logging_utils.export_stepwise_linear_bid(
                     experiment_dir=self.run_log_dir, bidders=bidders,
                     step=self.logging_config.export_step_wise_linear_bid_function_size)
