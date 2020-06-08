@@ -146,7 +146,7 @@ class Bidder(Player):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
             self._valuations_changed =True
 
-    def get_valuation_grid(self, n_points, extended_valuation_grid=False):
+    def get_valuation_grid(self, n_points=None, extended_valuation_grid=False, dtype=torch.float32, step=None):
         """ Returns a grid of approximately `n_points` valuations that are
             equidistant (in each dimension) on the support of self.value_distribution.
             If the support is unbounded, the 0.1th and 99.9th percentiles are used instead.
@@ -159,6 +159,7 @@ class Bidder(Player):
             Args:
                 n_points: int, minimum number of total points in the grid
                 extended_valuation_grid: bool, switch for bounds of interval
+                step: float, step length. Only used when `n_points` is None
             returns:
                 grid_values (dim: [ceil(n_points^(1/n_items)]*n_items)
 
@@ -166,6 +167,9 @@ class Bidder(Player):
                     - with descending_valuations, this currently draws many more points than needed
                       then throws most of them away
         """
+
+        assert n_points is None or step is None, \
+            'Use only one of `n_points` or `step`'
 
         if extended_valuation_grid and hasattr(self, '_grid_lb_util_loss'):
             # pylint: disable=no-member
@@ -175,13 +179,17 @@ class Bidder(Player):
             lb = self._grid_lb
             ub = self._grid_ub
 
-        # change batch_size s.t. it'll approx. end up at intended n_points in the end
-        adapted_size = n_points
-        if self.descending_valuations:
-            adapted_size = n_points * math.factorial(self.n_items)
+        if n_points is None:
+            batch_size_per_dim = math.ceil((ub - lb) / step + 1)
+        else:
+            # change batch_size s.t. it'll approx. end up at intended n_points in the end
+            adapted_size = n_points
+            if self.descending_valuations:
+                adapted_size = n_points * math.factorial(self.n_items)
 
-        batch_size_per_dim = math.ceil(adapted_size ** (1/self.n_items))
-        lin = torch.linspace(lb, ub, batch_size_per_dim, device=self.device)
+            batch_size_per_dim = math.ceil(adapted_size ** (1/self.n_items))
+
+        lin = torch.linspace(lb, ub, batch_size_per_dim, device=self.device, dtype=dtype)
 
         grid_values = torch.stack([
             x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()
