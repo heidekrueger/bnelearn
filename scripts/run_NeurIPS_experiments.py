@@ -22,12 +22,12 @@ if __name__ == '__main__':
     lr: ->0.001
     optimizer: ->adam
     '''
-    specific_gpu = 3
-    #LLG: first_price, VCG, nearest_vcg, nearest_zero, nearest_bid
-    #LLLLGG: first_price, VCG, nearest_vcg
-    payment_rule = 'nearest_bid'
-    #LLLLGGExperiment
+    specific_gpu = 1
+    #Parameter Experiment: LLGExperiment, LLLLGGExperiment
     experiment_class = LLGExperiment
+    #Parameter LLG: first_price, nearest_vcg, nearest_zero, nearest_bid
+    #Parameter LLLLGG: first_price
+    payment_rule = 'first_price'
     n_players = 6 if experiment_class==LLLLGGExperiment else 3
     log_metrics = ['util_loss'] if payment_rule=='first_price' or \
         experiment_class==LLLLGGExperiment \
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     if experiment_class is LLGExperiment:
         experiment_configuration = ExperimentConfiguration(payment_rule, u_lo = [0,0,0], u_hi = [1,1,2])
     elif experiment_class is LLLLGGExperiment:
-        experiment_configuration = ExperimentConfiguration(payment_rule, u_lo = [0]*6, u_hi = [1,1,1,1,2,2], core_solver='qpth')
+        experiment_configuration = ExperimentConfiguration(payment_rule, u_lo = [0]*6, u_hi = [1,1,1,1,2,2], core_solver='NoCore')
     else:
         SystemExit("Only local global experiments.")
 

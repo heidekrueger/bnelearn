@@ -13,10 +13,9 @@ from typing import Tuple, Set, Type, Callable
 import torch
 import numpy as np
 
-from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
-from bnelearn.mechanism import MatrixGame, Mechanism
+from bnelearn.bidder import Bidder, Player
+from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import Strategy
-from bnelearn.mechanism import FPSBSplitAwardAuction
 
 class Environment(ABC):
     """Environment
@@ -113,56 +112,6 @@ class Environment(ABC):
     def is_empty(self):
         """True if no agents in the environment"""
         return len(self) == 0
-
-
-class MatrixGameEnvironment(Environment):
-    """ An environment for matrix games.
-
-        Important features of matrix games for implementation:
-        - not necessarily symmetric, i.e. each player has a fixed position
-        - agents strategies do not take any input, the actions only depend
-           on the game itself (no Bayesian Game)
-    """
-
-    def __init__(self,
-                 game: MatrixGame,
-                 agents,
-                 n_players=2,
-                 batch_size=1,
-                 strategy_to_player_closure=None,
-                 **kwargs):
-
-        super().__init__(agents, n_players=n_players, batch_size=batch_size,
-                         strategy_to_player_closure=strategy_to_player_closure)
-        self.game = game
-
-    def get_reward(self, agent, **kwargs) -> torch.tensor: #pylint: disable=arguments-differ
-        """
-            Simulates one batch of the environment and returns the average reward for `agent` as a scalar tensor.
-        """
-
-        if isinstance(agent, Strategy):
-            agent: MatrixGamePlayer = self._strategy_to_player(
-                agent,
-                batch_size=self.batch_size,
-                **kwargs
-                )
-        player_position = agent.player_position
-
-        action_profile = torch.zeros(self.batch_size, self.game.n_players,
-                                     dtype=torch.long, device=agent.device)
-
-        action_profile[:, player_position] = agent.get_action().view(self.batch_size)
-
-        for opponent_action in self._generate_agent_actions(exclude = set([player_position])):
-            position, action = opponent_action
-            action_profile[:, position] = action.view(self.batch_size)
-
-        allocation, payments = self.game.play(action_profile.view(self.batch_size, self.n_players, -1))
-        utilities =  agent.get_utility(allocation[:,player_position,:], payments[:,player_position])
-
-        return utilities.mean()
-
 
 class AuctionEnvironment(Environment):
     """

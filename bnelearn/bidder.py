@@ -10,7 +10,6 @@ import warnings
 import math
 import torch
 from torch.distributions import Distribution
-from bnelearn.strategy import MatrixGameStrategy, FictitiousPlayStrategy, FictitiousNeuralPlayStrategy
 
 
 class Player(ABC):
@@ -40,27 +39,6 @@ class Player(ABC):
     def get_utility(self, **kwargs):
         """Calculates player's utility based on outcome of a game."""
         raise NotImplementedError
-
-class MatrixGamePlayer(Player):
-    """ A player playing a matrix game"""
-    def __init__(self, strategy, player_position=None, batch_size=1, cuda=True):
-        super().__init__(strategy, player_position=player_position,
-                         batch_size=batch_size, cuda=cuda)
-
-
-    def get_utility(self, *outcome): #pylint: disable=arguments-differ
-        """ get player's utility for a batch of outcomes"""
-        # for now, outcome is (allocation, payment)
-        _, payments = outcome
-        return -payments
-
-    def get_action(self):
-        if (isinstance(self.strategy, MatrixGameStrategy) or isinstance(self.strategy, FictitiousNeuralPlayStrategy)):
-            return self.strategy.play(batch_size=self.batch_size)
-        if isinstance(self.strategy, FictitiousPlayStrategy):
-            return self.strategy.play(self.player_position)
-
-        raise ValueError("Invalid Strategy Type for Matrix game: {}".format(type(self.strategy)))
 
 class Bidder(Player):
     """ A player in an auction game. Has a distribution over valuations/types that is
@@ -302,90 +280,3 @@ class Bidder(Player):
             self.actions = actions
 
         return actions
-
-
-class ReverseBidder(Bidder):
-    """
-    Bidder that has reversed utility (*(-1)) as valuations correspond to
-    their costs and payments to what they get payed.
-    """
-    def __init__(self,
-                 value_distribution: Distribution,
-                 strategy,
-                 player_position = None,
-                 batch_size = 1,
-                 n_units = 1,
-                 cuda = True,
-                 cache_actions: bool = False,
-                 descending_valuations = False,
-                 risk: float = 1.0,
-                 item_interest_limit = None,
-                 constant_marginal_values = False,
-                 efficiency_parameter = None,
-                 ):
-
-        self.efficiency_parameter = efficiency_parameter
-        super().__init__(
-            value_distribution,
-            strategy,
-            player_position,
-            batch_size,
-            n_units,
-            cuda,
-            cache_actions,
-            descending_valuations,
-            risk,
-            item_interest_limit,
-            constant_marginal_values
-        )
-        self._grid_lb_util_loss = 0
-        self._grid_ub_util_loss = float(2 * self._grid_ub)
-
-    @classmethod
-    def uniform(cls, lower, upper, strategy, **kwargs):
-        """Constructs a bidder with uniform valuation prior."""
-        dist = torch.distributions.uniform.Uniform(low=lower, high=upper)
-        return cls(dist, strategy, **kwargs)
-
-    @classmethod
-    def normal(cls, mean, stddev, strategy, **kwargs):
-        """Constructs a bidder with Gaussian valuation prior."""
-        dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
-        return cls(dist, strategy, **kwargs)
-
-    def get_valuation_grid(self, n_points, extended_valuation_grid=False):
-        """ Extends `Bidder.draw_values_grid` with efficiency parameter
-
-        Args
-        ----
-            extended_valuation_grid: bool, if True returns legitimate valuations, otherwise it returns
-                a larger grid, which can be used as ``all reasonable bids`` as needed for
-                estiamtion of regret.
-        """
-
-        grid_values = torch.zeros(n_points, self.n_items, device=self.device)
-
-        if extended_valuation_grid:
-            grid_values = super().get_valuation_grid(n_points, extended_valuation_grid)
-        else:
-            grid_values[:, 0] = torch.linspace(self._grid_lb, self._grid_ub, n_points,
-                                               device=self.device)
-            grid_values[:, 1] = self.efficiency_parameter * grid_values[:, 0]
-
-        return grid_values
-
-    def draw_valuations_(self):
-        """ Extends `Bidder.draw_valuations_` with efiiciency parameter
-        """
-        _ = super().draw_valuations_()
-
-        assert self.valuations.shape[1] == 2, \
-            'linear valuations are only defined for two items.'
-        self.valuations[:, 1] = self.efficiency_parameter * self.valuations[:, 0]
-
-        return self.valuations
-
-    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
-        """For reverse bidders, returns are inverted.
-        """
-        return - super().get_counterfactual_utility(allocations, payments, counterfactual_valuations)
