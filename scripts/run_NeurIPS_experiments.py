@@ -24,7 +24,7 @@ if __name__ == '__main__':
     '''
     specific_gpu = 1
     #Parameter Experiment: LLGExperiment, LLLLGGExperiment
-    experiment_class = LLGExperiment
+    experiment_class = LLLLGGExperiment
     #Parameter LLG: first_price, nearest_vcg, nearest_zero, nearest_bid
     #Parameter LLLLGG: first_price
     payment_rule = 'first_price'
