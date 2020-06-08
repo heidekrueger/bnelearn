@@ -352,9 +352,10 @@ class Experiment(ABC):
                         print(f'Stopping criterion reached after {e} iterations.')
                         break
 
-            bidders = [self.bidders[i] for i in [min(b) for b in self._model2bidder]]
-            if self.logging_config.export_step_wise_linear_bid_function_size is not None:
-                logging_utils.stepwise_linear_bid_exporter(
+            if self.logging_config.enable_logging and (
+                    self.logging_config.export_step_wise_linear_bid_function_size is not None):
+                bidders = [self._model2bidder[m][0] for m in range(self.n_models)]
+                logging_utils.export_stepwise_linear_bid(
                     experiment_dir=self.run_log_dir, bidders=bidders,
                     step=self.logging_config.export_step_wise_linear_bid_function_size)
 

@@ -126,12 +126,15 @@ def process_figure(fig, epoch=None, figure_name='plot', tb_group='eval',
         plt.show()
 
 
-def stepwise_linear_bid_exporter(experiment_dir, bidders: List[Bidder], step=1e-2):
+def export_stepwise_linear_bid(experiment_dir, bidders: List[Bidder], step=1e-2):
     """
     expoerting grid valuations and corresponding bids for usage of verifier.
 
     Args
     ----
+        experiment_dir: str, dir where export is going to be saved
+        bidders: List[Bidder], to be evaluated here
+        step: float, step length
 
     Returns
     -------
