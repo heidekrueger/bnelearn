@@ -50,7 +50,7 @@ if __name__ == '__main__':
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #      single_item_gaussian_symmetric(2, 100, [2], 'second_price', logging=enable_logging, specific_gpu=0)
     running_configuration, logging_configuration, experiment_configuration, experiment_class =\
-        llg(2,100,'nearest_zero', gamma = 0.0, specific_gpu=1, logging=enable_logging)
+        llg(3,200,'nearest_bid', gamma = 0.5, model_sharing=True, specific_gpu=1, logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #    llllgg(n_runs,n_epochs, util_loss_batch_size=2**12, util_loss_frequency=1000,
     #           payment_rule='first_price',core_solver="NoCore",parallel = 1, model_sharing=True, logging=enable_logging)
@@ -66,7 +66,7 @@ if __name__ == '__main__':
     gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
     learning_configuration = LearningConfiguration(
         pretrain_iters=500,
-        batch_size=2**12,
+        batch_size=2**18,
         learner_hyperparams = {'population_size': 64,
                                'sigma': 1.,
                                'scale_sigma_by_model_size': True}

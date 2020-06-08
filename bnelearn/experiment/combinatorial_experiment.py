@@ -140,8 +140,7 @@ class LLGExperiment(LocalGlobalExperiment):
             if self.payment_rule == 'nearest_vcg':
                 bid.mul_(sigma / (1 + sigma - 2**(-sigma)))
             elif self.payment_rule == 'nearest_bid':
-                bid.mul_(sigma / (1 + sigma))
-            
+                bid.mul_(sigma / (1 + sigma))            
             # truthful for vcg and proxy/nearest-zero
             return bid
         ## no or imperfect correlation
@@ -191,7 +190,7 @@ class LLGExperiment(LocalGlobalExperiment):
 
         bne_utilities_sampled = torch.tensor(
             [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
-
+        print(f'Setting up BNE env with batch size 2**{np.log2(self.logging_config.eval_batch_size)}.')
         print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
         print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
         self.bne_utilities = bne_utilities_sampled

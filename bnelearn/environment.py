@@ -56,15 +56,29 @@ class Environment(ABC):
         pass #pylint: disable=unnecessary-pass
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
-                            draw_valuations=False, aggregate_batch = True,
+                            draw_valuations=False, aggregate_batch = True, 
+                            use_env_valuations = True,
                             **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
+
+        Args:
+            strategy: the strategy to be evaluated
+            player_position: the player position at which the agent will be evaluated
+            draw_valuation: whether to redraw valuations (default false)
+            aggregate_batch: whether to aggregate rewards into a single scalar (True),
+                or return batch_size many rewards (one for each sample). Default True
+            use_env_valuations: if True, strategy will be evaluated using the valuations
+                of self.agents[player_position] (default True)
+            strat_to_player_kwargs: further arguments needed for agent creation
+
         """
         if not self._strategy_to_player:
             raise NotImplementedError('This environment has no strategy_to_player closure!')
         agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
+        if use_env_valuations:
+            agent.valuations = self.agents[player_position].valuations
         return self.get_reward(agent, draw_valuations=draw_valuations, aggregate=aggregate_batch)
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,

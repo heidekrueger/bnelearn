@@ -32,9 +32,9 @@ class Player(ABC):
         """Chooses an action according to the player's strategy."""
         raise NotImplementedError
 
-    def prepare_iteration(self):
-        """ Prepares one iteration of environment-observation."""
-        pass #pylint: disable=unnecessary-pass
+    # def prepare_iteration(self):
+    #     """ Prepares one iteration of environment-observation."""
+    #     pass #pylint: disable=unnecessary-pass
 
     @abstractmethod
     def get_utility(self, **kwargs):
@@ -123,9 +123,9 @@ class Bidder(Player):
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
 
-    ### Members ####################
-    def prepare_iteration(self):
-        self.draw_valuations_()
+    # ### Members ####################
+    # def prepare_iteration(self):
+    #     self.draw_valuations_()
 
     @property
     def valuations(self):
