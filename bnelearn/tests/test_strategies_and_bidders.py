@@ -40,7 +40,7 @@ def test_closure_strategy_invalid_input():
 def test_bidder_with_cached_actions():
     """Bidder with action caching should not re-evaluate until valuations have changed."""
     def closure(x):
-        time.sleep(0.5)
+        time.sleep(0.25)
         return x
 
     strat = s.ClosureStrategy(closure)
@@ -55,7 +55,7 @@ def test_bidder_with_cached_actions():
     new_actions = bidder.get_action()
     toc = time.time()
 
-    assert toc - tic < 0.5, "Call took too long, was the closure re-evaluated?"
+    assert toc - tic < 0.25, "Call took too long, was the closure re-evaluated?"
     assert torch.equal(actions, new_actions), "Second call returned different result."
 
     # Rerunning with new evaluations should reevaluate the closure!
@@ -65,12 +65,12 @@ def test_bidder_with_cached_actions():
     new_actions = bidder.get_action()
     toc = time.time()
 
-    assert toc - tic > 0.5, "Call was too fast, closure can't have been reevaluated."
+    assert toc - tic > 0.25, "Call was too fast, closure can't have been reevaluated."
     assert torch.equal(bidder.valuations, new_actions), "invalid results of re-evaluation."
 
 
 def test_action_caching_with_manual_valuation_change():
-    """Manually changing bidder valuations should not break action cachin logic."""
+    """Manually changing bidder valuations should not break action caching logic."""
     def closure(x):
         return x
 
@@ -84,8 +84,6 @@ def test_action_caching_with_manual_valuation_change():
     
     bidder.valuations = zeros
     assert torch.allclose(bidder.get_action(), zeros), "Bidder returned incorrect actions!"
-
-
 
 def test_parallel_closure_evaluation():
     """Parallelism of closure evaluation should work as expected."""
