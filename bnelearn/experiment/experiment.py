@@ -613,10 +613,7 @@ class Experiment(ABC):
         # length: n_models
         utility_vs_bne = torch.tensor([
             self.bne_env.get_reward(
-                self._strat_to_bidder(
-                    model, player_position=m2b(i),
-                    batch_size=self.logging_config.eval_batch_size
-                ),
+                model, player_position=m2b(i),
                 draw_valuations=False # False because we want to use cached actions when set, reevaluation is expensive
             ) for i, model in enumerate(self.models)
         ])

@@ -134,7 +134,7 @@ def single_item_asymmetric_uniform_disjunct(
 def mineral_rights(
         n_runs: int, n_epochs: int,
         model_sharing=True,
-        log_metrics=['util_loss', 'opt', 'l2'],
+        log_metrics=['opt', 'l2'],
         util_loss_batch_size=2**4,
         util_loss_grid_size=2**4,
         specific_gpu=0,

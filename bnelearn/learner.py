@@ -73,7 +73,7 @@ class GradientBasedLearner(Learner):
         self.update_strategy(closure)
         return self.environment.get_strategy_reward(
             self.model,
-            **self.strat_to_player_kwargs
+            player_position = self.strat_to_player_kwargs['player_position']
         ).detach()
 
 
@@ -193,7 +193,7 @@ class ESPGLearner(GradientBasedLearner):
             for tensors in zip(*(
                 (
                     self.environment.get_strategy_reward(
-                        model, **self.strat_to_player_kwargs).detach().view(1),
+                        model, player_position=self.strat_to_player_kwargs['player_position']).detach().view(1),
                     epsilon
                 )
                 for (model, epsilon) in population
@@ -203,7 +203,7 @@ class ESPGLearner(GradientBasedLearner):
         # See ES_Analysis notebook in repository for more information about where
         # these choices come from.
         baseline = \
-            self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach().view(1) \
+            self.environment.get_strategy_reward(self.model, player_position=self.strat_to_player_kwargs['player_position']).detach().view(1) \
                 if self.baseline == 'current_reward' \
             else rewards.mean(dim=0) if self.baseline == 'mean_reward' \
             else self.baseline # a float

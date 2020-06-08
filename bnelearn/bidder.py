@@ -101,7 +101,7 @@ class Bidder(Player):
         self._valuations = torch.zeros(batch_size, n_items, device=self.device)
         if self._cache_actions:
             self.actions = torch.zeros(batch_size, n_items, device=self.device)
-        #self.draw_valuations_()
+        self.draw_valuations_()
 
         # Compute lower and upper bounds for grid computation
         self._grid_lb = self.value_distribution.support.lower_bound \
@@ -220,7 +220,6 @@ class Bidder(Player):
             # TODO Stefan: Does correlation interere with Nils' implementations of descending valuations
             #              Or Item interest limits? --> Test!
         """
-        if common_component is None: raise ValueError()
 
         if isinstance(weights, float):
             weights = torch.tensor(weights)
@@ -262,6 +261,7 @@ class Bidder(Player):
                 self.valuations = weights * common_component.to(self.device) + (1-weights) * self.valuations
             elif self.correlation_type == 'multiplicative':
                 self.valuations = 2 * common_component.to(self.device) * self.valuations
+                self._unkown_valuation = common_component.to(self.device)
             else:
                 raise NotImplementedError('correlation type unknown')
 
@@ -287,7 +287,12 @@ class Bidder(Player):
         For a batch of allocations and payments return the player's utilities at
         current valuations.
         """
-        return self.get_counterfactual_utility(allocations, payments, self.valuations)
+        if hasattr(self, '_unkown_valuation'):
+            valuations = self._unkown_valuation
+        else:
+            valuations = self.valuations
+
+        return self.get_counterfactual_utility(allocations, payments, valuations)
 
     def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
         """

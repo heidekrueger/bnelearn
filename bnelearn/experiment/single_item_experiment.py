@@ -559,44 +559,10 @@ class MineralRightsExperiment(SingleItemExperiment):
             # This should never happen due to check in init
             raise ValueError("Trying to set up unknown BNE..." )
 
-    def _get_analytical_bne_utility(self) -> torch.Tensor:
-        """Calculates utility in BNE from known closed-form solution (possibly using numerical integration)"""
-        if self.payment_rule == 'first_price':
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
-                # don't print scipy accuracy warnings
-                bne_utility, error_estimate = integrate.dblquad(
-                    lambda x, v: self.common_prior.cdf(x) ** (self.n_players - 1) * self.common_prior.log_prob(
-                        v).exp(),
-                    0, float('inf'),  # outer boundaries
-                    lambda v: 0, lambda v: v)  # inner boundaries
-                if error_estimate > 1e-6:
-                    warnings.warn('Error in optimal utility might not be negligible')
-        elif self.payment_rule == 'second_price':
-            F = self.common_prior.cdf
-            f = lambda x: self.common_prior.log_prob(torch.tensor(x)).exp()
-            f1n = lambda x, n: n * F(x) ** (n - 1) * f(x)
-
-            bne_utility, error_estimate = integrate.dblquad(
-                lambda x, v: (v - x) * f1n(x, self.n_players - 1) * f(v),
-                0, float('inf'),  # outer boundaries
-                lambda v: 0, lambda v: v)  # inner boundaries
-
-            if error_estimate > 1e-6:
-                warnings.warn('Error bound on analytical bne utility is not negligible!')
-        else:
-            raise ValueError("Invalid auction mechanism.")
-
-        return torch.tensor(bne_utility, device=self.gpu_config.device)
-
     def _setup_eval_environment(self):
 
         self._set_symmetric_bne_closure()
-
-        # TODO: parallelism should be taken from elsewhere. Should be moved to config. Assigned @Stefan
-        n_processes_optimal_strategy = 44 if self.valuation_prior != 'uniform' and \
-                                             self.payment_rule != 'second_price' else 0
-        bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
+        bne_strategy = ClosureStrategy(self._optimal_bid)
 
         # define bne agents once then use them in all runs
         agents = [
@@ -628,22 +594,15 @@ class MineralRightsExperiment(SingleItemExperiment):
         )
 
         # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
-        #TODO: This is not very precise. Instead we should consider taking the mean over all agents
-        bne_utility_sampled = self.bne_env.get_reward(self.bne_env.agents[0], draw_valuations=True)
-        bne_utility_analytical = self._get_analytical_bne_utility()
+        self.bne_utilities = torch.zeros((3,), device=self.gpu_config.device)
+        for i, a in enumerate(self.bne_env.agents):
+            self.bne_utilities[i] = self.bne_env.get_reward(a.strategy, i, draw_valuations=True)
 
-        print('Utility in BNE (sampled): \t{:.5f}'.format(bne_utility_sampled))
-        print('Utility in BNE (analytic): \t{:.5f}'.format(bne_utility_analytical))
-        # TODO: make atol dynamic based on batch size to avoid false positives in test runs.
-        if not torch.allclose(bne_utility_analytical, bne_utility_sampled, atol=5e-2):
-            warnings.warn("Analytical BNE Utility does not match sampled utility from parent class! \n\t sampled {}, analytic {}".format(
-                          bne_utility_sampled, bne_utility_analytical))
-        print('Using analytical BNE utility.')
-        self.bne_utility = bne_utility_analytical
-        self.bne_utilities = [self.bne_utility]*self.n_models
+        print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities))
+        self.bne_utility = torch.tensor(self.bne_utilities).mean()
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
-        correlation_type = 'multiplicative' if hasattr(self, 'correlation_groups') else None
+        correlation_type = 'multiplicative'
         return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions,
                       risk=self.risk, correlation_type=correlation_type)
 
