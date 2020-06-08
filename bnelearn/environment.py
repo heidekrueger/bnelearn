@@ -77,7 +77,8 @@ class Environment(ABC):
             raise NotImplementedError('This environment has no strategy_to_player closure!')
         agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
-        if use_env_valuations:
+        # TODO: this should rally be in AuctionEnv subclass
+        if use_env_valuations and hasattr(agent, 'valuations'):
             agent.valuations = self.agents[player_position].valuations
         return self.get_reward(agent, draw_valuations=draw_valuations, aggregate=aggregate_batch)
 
