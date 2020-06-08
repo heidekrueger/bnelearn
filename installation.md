@@ -15,14 +15,11 @@ To use the bnelearn software, the following is required:
 * For tensorboard vizualizations, a running version of tensorboard
     * Tested with tb-nightly 1.15.0a20190624. (tensorboard stable 1.14 is incompatible with some of the logging we use.)
 
-The easiest way to achieve the above is to create a conda environment. If you want to use the latest tensorboard features, you may want to create separate environments,
-separating the bnelearn/pytorch and tensorboard/tensorflow because different release schedules
-of pytorch and TensorFlow regularly lead to incompatible dependencies of the latest versions of both frameworks.
+The easiest way to achieve the above is to create a conda environment. If you want to use the latest tensorboard features, you may want to create separate environments, separating the bnelearn/pytorch and tensorboard/tensorflow because different release schedules of pytorch and TensorFlow regularly lead to incompatible dependencies of the latest versions of both frameworks.
 
-There's a standalone Tensorboard installation that can just be installed in the bnelearn pytorch env. However, a full-blown tensorflow installation is
-required for the R parsing to work. _Improve documentation on this._
+There's a standalone Tensorboard installation that can just be installed in the bnelearn pytorch env. However, a full-blown tensorflow installation is required for the R parsing to work.
 
-On srvbichler14, the following two conda envs are installed for all users:
+On our server, the following two conda envs are installed for all users:
 * `bnelearn` for everyrthing required to run the experiments. (especially pytorch+tensorboard, see requirements.txt)
  `/opt/anaconda/anaconda3/envs/bnelearn/bin/python`
 * `r-tensorflow` with full tensorflow, for R-interoperability.  `/opt/anaconda/anaconda3/envs/r-tensorflow/bin/python`
@@ -31,7 +28,7 @@ On srvbichler14, the following two conda envs are installed for all users:
 
 ### Install conda
 
-As all workloads will usually be run in specialized conda environments, installing `miniconda` is sufficient.
+As all workloads will usually be run in specialized conda environments, installing `miniconda` is sufficient. 
 https://docs.conda.io/en/latest/miniconda.html
 On windows: Install in user mode, **do NOT** choose 'install for all users'/admin mode as this will inevitably lead to permission problems later on.
 
@@ -43,9 +40,7 @@ Once conda is running, update to latest version
 
 #### Create a conda environment named `bnelearn` (or name of your choice)
 
-This environment will contain all required dependencies to run the experiment code, i.e.
-numpy, matplotlib, jupyter, pytorch and tensorboard.
-Start by creating the environment:
+This environment will contain all required dependencies to run the experiment code, i.e. numpy, matplotlib, jupyter, pytorch and tensorboard. Start by creating the environment:
 
 `conda create -n bnelearn python=3.7`
 
@@ -63,9 +58,7 @@ Using conda from the pytorch-channel on Windows:
 or equivalent command for your system (https://pytorch.org/get-started/locally/)
 
 #### Install tensorboard
-Tensorboard is part of the `tensorflow` family and since TF 1.14 is available as a standalone app that's compatible with other DL frameworks - like pytorch.
-Currently (25.08.2019) the latest stable version tensorboard 1.14 but this contains a bug that prevents the dashboard from updating when using with pytorch.
-As a workaround, we'll temporarily install the tensorboard nightly build using `pip`. The easiest way to install it is
+Tensorboard is part of the `tensorflow` family and since TF 1.14 is available as a standalone app that's compatible with other DL frameworks - like pytorch. Currently (25.08.2019) the latest stable version tensorboard 1.14 but this contains a bug that prevents the dashboard from updating when using with pytorch. As a workaround, we'll temporarily install the tensorboard nightly build using `pip`. The easiest way to install it is
 
 * Install `pip` inside the bnelearn environment (with activated environment as above)
 `conda install pip`

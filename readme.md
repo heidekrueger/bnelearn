@@ -10,7 +10,7 @@ This repository contains a framework for finding Bayes Nash Equilibria through l
 ### What's implemented
 
 Running experiments for n-player Matrix and single-item one-shot auction Games with either
-* "Neural Self Play" using ES strategy learning.:
+* "Neural Pseudogradient Ascent" using ES strategy learning:
   * Players are kept track of in an 'environment', each player's strategy is updated using an 'optimizer'.
   * Players can have distinct strategy models (that are updated with distinct optimizers) or share a strategy model in symmetric settings.
 * Fictitious Play, Stochastic Fictitious Play, Mixed Fictitious Play
