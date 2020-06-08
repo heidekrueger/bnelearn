@@ -168,7 +168,7 @@ class Bidder(Player):
                       then throws most of them away
         """
 
-        assert n_points is not None and step is not None, \
+        assert n_points is None or step is None, \
             'Use only one of `n_points` or `step`'
 
         if extended_valuation_grid and hasattr(self, '_grid_lb_util_loss'):
