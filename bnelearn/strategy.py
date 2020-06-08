@@ -355,7 +355,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         model_dict = torch.load(path)
 
-        # TODO Nils: WIP! Needs careful handling as it's not a default ´torch.nn.Module´.
+        # TODO : WIP! Needs careful handling as it's not a default ´torch.nn.Module´.
         #            Read out the needed parameters
         params = {}
 

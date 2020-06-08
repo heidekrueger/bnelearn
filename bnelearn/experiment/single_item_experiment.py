@@ -277,7 +277,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
         self._set_symmetric_bne_closure()
 
-        # TODO: parallelism should be taken from elsewhere. Should be moved to config. Assigned @Stefan
+        # TODO: parallelism should be taken from elsewhere. Should be moved to config. Assigned @
         n_processes_optimal_strategy = 44 if self.valuation_prior != 'uniform' and \
                                              self.payment_rule != 'second_price' else 0
         bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
@@ -445,7 +445,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
     def _setup_eval_environment(self):
 
         if len(set(self.u_lo)) != 1: # BNE for differnt u_lo for each player
-            print('Warning: only one of multiple BNE selected!') # TODO @Nils
+            print('Warning: only one of multiple BNE selected!') # TODO @
             # BNE 1
             # # self._optimal_bid = _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
             #     u_lo=self.u_lo, u_hi=self.u_hi

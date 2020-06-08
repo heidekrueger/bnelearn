@@ -120,7 +120,7 @@ def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: B
     elif n_items >= 2:
         if len(grid.shape) == 1:
             grid = torch.combinations(grid, r=n_items, with_replacement=True).to(bid_profile.device) #grid_size**n_items x n_items
-            # Stefan: this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
+            # : this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
     grid_size, _ = grid.shape # this _new_ grid size refers to all combinations, whereas the previous one was 1D only
 
 
@@ -171,7 +171,7 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
         - Only for risk neutral bidders
     TODO:
         - Add check for risk neutral bidders.
-        - Move grid_creation out of util_loss for Nils special cases
+        - Move grid_creation out of util_loss for  special cases
     """
     player_position = agent.player_position
     agent_bid_actual = bid_profile[:,player_position,:]

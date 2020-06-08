@@ -133,7 +133,7 @@ class Experiment(ABC):
     def _setup_mechanism(self):
         pass
 
-    # TODO: move entire name/dir logic out of logger into run. Assigned to Stefan
+    # TODO: move entire name/dir logic out of logger into run. Assigned to 
     @abstractmethod
     def _get_logdir_hierarchy(self):
         pass
@@ -399,7 +399,7 @@ class Experiment(ABC):
     ########################################################################################################
 
 
-    # TODO Stefan: method only uses self in eval and for output point
+    # TODO : method only uses self in eval and for output point
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts: list = None,
@@ -491,7 +491,7 @@ class Experiment(ABC):
                                      save_svg = self.logging_config.save_figure_to_disk_svg)
         return fig
 
-    # TODO: stefan only uses self in output_dir, nowhere else --> can we move this to utils.plotting? etc?
+    # TODO:  only uses self in output_dir, nowhere else --> can we move this to utils.plotting? etc?
     def _plot_3d(self, plot_data, writer, epoch, figure_name):
         """
         Creating 3d plots. Provide grid if no plot_data is provided
@@ -537,7 +537,7 @@ class Experiment(ABC):
         Checks which metrics have to be logged and performs logging and plotting.
         Returns:
             - elapsed time in seconds
-            - Stefan todos / understanding quesitons
+            -  todos / understanding quesitons
             - TODO: takes log_params. can it be
         """
         start_time = timer()
@@ -696,7 +696,7 @@ class Experiment(ABC):
 
     def _log_experiment_params(self):
         # TODO: write out all experiment params (complete dict) #See issue #113
-        # TODO: Stefan: this currently called _per run_. is this desired behavior?
+        # TODO: : this currently called _per run_. is this desired behavior?
         pass
 
     def _log_hyperparams(self, epoch=0):
@@ -715,7 +715,7 @@ class Experiment(ABC):
 
     def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to
-        # use it to make nicer plots for a publication? --> will be done elsewhere. Logging. Assigned to @Hlib/@Stefan
+        # use it to make nicer plots for a publication? --> will be done elsewhere. Logging. Assigned to @/@
         for model, player_position in zip(self.models, self._model2bidder):
             name = 'model_' + str(player_position[0]) + '.pt'
             torch.save(model.state_dict(), os.path.join(directory, 'models', name))

@@ -124,7 +124,7 @@ When creating subdirectories, please set their permissions to 777.
 
 # Remote development on GPU-Server
 
-Since the June 2019 release, Visual Studio Code supports remote development via SSH which should be the most comfortable way to work with this package. Come and ask me (Stefan) how to set it up.
+Since the June 2019 release, Visual Studio Code supports remote development via SSH which should be the most comfortable way to work with this package. Come and ask me () how to set it up.
 
 # Non-Python Requirements
 

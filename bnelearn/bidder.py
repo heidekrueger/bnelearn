@@ -197,7 +197,7 @@ class Bidder(Player):
         if self.descending_valuations:
             grid_values = grid_values.sort(dim=1, descending=True)[0].unique(dim=0)
 
-        # TODO Nils: is this from @Stefan? Paul and me agreed on over-sampleing rather than introducing a bias
+        # TODO : is this from @?  and me agreed on over-sampleing rather than introducing a bias
         # assert grid_values.shape[0] >= n_points, "grid_size is lower than expected!"
         return grid_values
 

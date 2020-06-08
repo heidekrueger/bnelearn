@@ -90,7 +90,7 @@ expected_util_loss_1_6_2 = torch.tensor([
         [0,                 0                ]
     ], dtype = torch.float)
 #TODO, later: Add one test with other pricing rule (-> and positive utility in agent)
-#TODO, Paul: @Nils add tests for your settings
+#TODO, : @ add tests for your settings
 
 
 

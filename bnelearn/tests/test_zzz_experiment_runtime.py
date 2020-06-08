@@ -3,9 +3,9 @@ This file tests the run of experiments at runtime, so simply whether it technica
 It chooses only 2 runs, with 3 epochs but plots and logs every period. Logging and plotting is not written to disc.
 It considers each implemented experiment with each payment rule. Fo each experiment no model_sharing is tested once.
 TODO:
-    - Paul: InputLength should become obsolete Stefan: yes! @assigned Paul
-    - Paul: Maybe later: Add bne metric to LLLLGG and test for failure
-    - Stefan: Later: gaussian with fpsb and util_loss
+    - : InputLength should become obsolete : yes! @assigned 
+    - : Maybe later: Add bne metric to LLLLGG and test for failure
+    - : Later: gaussian with fpsb and util_loss
 """
 import os
 import sys
