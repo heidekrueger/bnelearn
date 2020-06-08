@@ -102,6 +102,10 @@ class Experiment(ABC):
             self.n_players = experiment_config.n_players
         if not hasattr(self, 'payment_rule'):
             self.payment_rule = experiment_config.payment_rule
+        if not hasattr(self, 'correlation_groups'):
+            # TODO Stefan: quick hack, only works properly for LLG
+            self.correlation_groups = None
+            self.correlation_devices = None
 
         # sets log dir for experiment. Individual runs will log to subdirectories of this.
         self.experiment_log_dir = os.path.join(logging_config.log_root_dir,
@@ -201,11 +205,14 @@ class Experiment(ABC):
         raise NotImplementedError("This Experiment has no implemented BNE!")
 
     def _setup_learning_environment(self):
+        print(f'Learning env correlation {self.correlation_groups} \n {self.correlation_devices}.')
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
                                       batch_size=self.learning_config.batch_size,
                                       n_players=self.n_players,
-                                      strategy_to_player_closure=self._strat_to_bidder)
+                                      strategy_to_player_closure=self._strat_to_bidder,
+                                      correlation_groups=self.correlation_groups,
+                                      correlation_devices=self.correlation_devices)
 
     def _init_new_run(self):
         """Setup everything that is specific to an individual run, including everything nondeterministic"""
@@ -627,14 +634,18 @@ class Experiment(ABC):
 
         for bne_idx, bne_env in enumerate(self.bne_env):
             # length: n_models
+            # TODO Stefan: this seems to be false in most settings, even when not desired.
+            redraw_bne_vals = not self.logging_config.cache_eval_actions
+            # length: n_models
             utility_vs_bne[bne_idx] = torch.tensor([
-                bne_env.get_reward(
-                    self._strat_to_bidder(
-                        model, player_position=m2b(i),
-                        batch_size=self.logging_config.eval_batch_size
-                    ),
-                    draw_valuations=False # False b/c we want to use cached actions when set, reevaluation expensive
-                ) for i, model in enumerate(self.models)
+                bne_env.get_strategy_reward(
+                    model,
+                    player_position = m2b(m),
+                    draw_valuations=redraw_bne_vals,
+                    use_env_valuations= not redraw_bne_vals
+                    # TODO: Stefan. Is strat_to_player_kwargs needed here?
+                    # if yes, get from self.learners[m] (???)
+                ) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(
                 [1 - utility_vs_bne[bne_idx][i] / self.bne_utilities[bne_idx][m2b(i)]

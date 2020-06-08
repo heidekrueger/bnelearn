@@ -39,6 +39,8 @@ ids_local_global, testdata_local_global = zip(*[
     ['LLG-fp-no_model_sharing', (llg(2,3,'first_price', model_sharing=False,log_metrics=['util_loss']))],
     ['LLG-vcg', (llg(2,3,'vcg'))],
     ['LLG-nearest_bid', (llg(2,3,'nearest_bid'))],
+    ['LLG-nearest_bid-correlated', (llg(2,3, 'nearest_bid', gamma = 0.5))],
+    ['LLG-nearest_bid-perfect-correlation', (llg(2,3, 'nearest_bid', gamma = 1.0))], # failed when 0.5 didn't, due to neg bids
     #['LLG-nearest_zero', (llg(2,3,'nearest_zero'))],
     #['LLG-nearest_vcg', (llg(2,3,'nearest_vcg'))],
     # LLLLGG

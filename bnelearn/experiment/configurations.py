@@ -32,8 +32,10 @@ class ExperimentConfiguration:
     u_lo: list = None
     u_hi: list = None
 
-    # LLG
-    gamma: float = 0.0
+    # Correlated Valuations, independent by default
+    correlation_types: str = 'independent'
+    correlation_groups: List[List[int]] = None #player_ids in each group
+    correlation_coefficients: List[float] = None #coefficients in each group
 
     # Multi-Unit
     n_units: int = None
