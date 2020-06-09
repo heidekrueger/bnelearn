@@ -2,16 +2,19 @@
 
 ©2020 the authors, all rights reserved. For Review at NeurIPS only. Do not distribute.
 
-This repository contains the code to reproduce the experiments in the paper. It is a minimal excerpt of a larger repository under development by the authors.
+This repository contains the code to fully reproduce the experiments in the paper and supplementary material.
+It is a minimal, anonymized excerpt of a larger repository under development by the authors.
 
 # Experiment Results
 
-The subdirectory `Experiments` contains the raw data of the experiments presented in the paper.
-Some artefacts (e.g. plots) have been ommitted due to file size limitations.
+The subdirectory `Experiments` contains the raw artefacts of the experiments presented in the paper.
+Some artefacts (e.g. intermediate plots, tensorboard logs) have been ommitted due to file size limitations.
+The `R` repository contains code to reproduce the tables and figures from these raw artefacts.
 
-the following are included
-* full evaluation logs (after each iteration of every repitition)
-* Trained model for each setting (of a single run)
+The following are included
+* full evaluation logs in csv format (containing metrics for every iteration of each repitition) for each setting
+* aggregate logs for each setting (containing only the last iteration of each repitition)
+* Trained `pytorch` models for each setting (of the first run, i.e. with seed `0`). `model_0.pt` refers to the model of the local bidders, `model_2` (LLG) or `model_4` (LLLLGG) to that of the global bidders.
 
 
 # How to run the code
