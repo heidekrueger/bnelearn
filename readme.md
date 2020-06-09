@@ -24,4 +24,4 @@ The code should run on CPU-only systems with sufficient RAM but is expected to f
 
 A full list of requirements can be found in `requirements.txt`. Note that we use a `conda` environment, but some dependencies have to be installed via `pip` (see comments in requirements file.)
 
-The experiments can be run by executing the script `scripts/`
+The experiments can be run by executing the script `scripts/run_NeurIPS_experiments.py`. It will run each setting 10 times (with seeds 0,1,...,9).
