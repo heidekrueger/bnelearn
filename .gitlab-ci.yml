@@ -24,24 +24,23 @@ lint:
     # pylint-exit used as below modifies pylint exit code to prevent false-positive pipeline fails.
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
   - source activate bnelearn
-  #- pylint bnelearn/*.py bnelearn/**/*.py | tee pylint.txt || pylint-exit $?
-  #- score=$(sed -n 's/^Your code has been rated at \([-0-9.]*\)\/.*/\1/p' pylint.txt)
-  #- pylint -f pylint2codeclimate.CodeClimateReporter bnelearn/*.py bnelearn/**/*.py > codeclimate.json || pylint-exit $?
-  - pylint --exit-zero --output-format=pylint_gitlab.GitlabCodeClimateReporter bnelearn/* > codeclimate.json
-  #- echo "pylint_score $score" > metrics.txt
-  #- echo "Pylint score was $score"
+  - pylint --exit-zero -f colorized bnelearn | tee pylint.txt
+  - score=$(sed -n 's/^Your code has been rated at \([-0-9.]*\)\/.*/\1/p' pylint.txt)
+  - pylint --exit-zero -j 8 --output-format=pylint_gitlab.GitlabCodeClimateReporter bnelearn/* > codeclimate.json
+  - echo "pylint_score $score" > metrics.txt
+  - echo "Pylint score was $score"
   # applying this workaround to upload artifacts https://stackoverflow.com/questions/56545429/gitlab-ci-build-not-uploading-artifacts-of-codeception/56675792#56675792
   #- echo ${CI_PROJECT_DIR}
   after_script:
   - mkdir ${CI_PROJECT_DIR}/artifacts
-  - cp codeclimate.json ${CI_PROJECT_DIR}/artifacts
+  - cp metrics.txt codeclimate.json ${CI_PROJECT_DIR}/artifacts
   artifacts:
     reports:
       codequality: ${CI_PROJECT_DIR}/artifacts/codeclimate.json
-      #metrics: ${CI_PROJECT_DIR}/artifacts/metrics.txt
+      metrics: ${CI_PROJECT_DIR}/artifacts/metrics.txt
     paths:
     - ${CI_PROJECT_DIR}/artifacts/codeclimate.json
-   # - ${CI_PROJECT_DIR}/artifacts/metrics.txt
+    - ${CI_PROJECT_DIR}/artifacts/metrics.txt
   
   # get the json with all badge urls via API and regex the id of the badge with 'blue.svg' in it
   # this works with a personal access token but doesn't seem to work with deploy token / project token or
