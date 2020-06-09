@@ -32,4 +32,5 @@ A full list of requirements can be found in `requirements.txt`. Note that we use
 
 ## Running the code.
 
-The experiments can be run by executing the script `scripts/run_NeurIPS_experiments.py`. It will run each setting 10 times (with seeds 0,1,...,9).
+The experiments can be run by executing the script `scripts/run_NeurIPS_experiments.py`. The script will run a single setting  10 times (with seeds 0,1,...,9).
+To adjust the settings, change the parameters in lines 27 (LLG or LLLLGG) and 30 (pricing rule).
