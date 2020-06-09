@@ -108,8 +108,8 @@ def test_correlated_valuation_draw_Bernoulli_weights():
     batch_size = 2**16
     dist = torch.distributions.Uniform(u_lo, u_hi)
 
-    bidder1 = b.Bidder(dist, strat, batch_size=batch_size)
-    bidder2 = b.Bidder(dist, strat, batch_size=batch_size)
+    bidder1 = b.Bidder(dist, strat, batch_size=batch_size, correlation_type='additive')
+    bidder2 = b.Bidder(dist, strat, batch_size=batch_size, correlation_type='additive')
 
     correlations = torch.linspace(0, 1, 10)
 
@@ -151,7 +151,7 @@ def test_correlated_drawing_in_environment():
     items = 1
     n = 6
     
-    bidders = [b.Bidder(dist, strat, batch_size=batch) for _ in range(n)]
+    bidders = [b.Bidder(dist, strat, batch_size=batch, correlation_type='additive') for _ in range(n)]
     gamma1 = 0.5
     gamma2 = 0.75
 
