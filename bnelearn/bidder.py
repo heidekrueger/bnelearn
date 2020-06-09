@@ -83,7 +83,8 @@ class Bidder(Player):
                  descending_valuations = False,
                  risk: float = 1.0,
                  item_interest_limit = None,
-                 constant_marginal_values = False
+                 constant_marginal_values = False,
+                 correlation_type = None,
                  ):
 
         super().__init__(strategy, player_position, batch_size, cuda)
@@ -93,6 +94,7 @@ class Bidder(Player):
         self.descending_valuations = descending_valuations
         self.item_interest_limit = item_interest_limit
         self.constant_marginal_values = constant_marginal_values
+        self.correlation_type = correlation_type
         self.risk = risk
         self._cache_actions = cache_actions
         self._valuations_changed = False # true if new valuation drawn since actions calculated
@@ -258,9 +260,15 @@ class Bidder(Player):
             self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device)
 
         ### 3. Determine mixture of individual an common component
-        if torch.any(weights>0):
-            weights = weights.to(self.device)
-            self.valuations = weights * common_component.to(self.device) + (1-weights) * self.valuations
+        if torch.any(weights > 0):
+            if self.correlation_type == 'additive':
+                weights = weights.to(self.device)
+                self.valuations = weights * common_component.to(self.device) + (1-weights) * self.valuations
+            elif self.correlation_type == 'multiplicative':
+                self.valuations = 2 * common_component.to(self.device) * self.valuations
+                self._unkown_valuation = common_component.to(self.device)
+            else:
+                raise NotImplementedError('correlation type unknown')
 
         ### 4. Finishing up
         self.valuations.relu_() #ensure nonnegativity for unbounded-support distributions
@@ -284,7 +292,12 @@ class Bidder(Player):
         For a batch of allocations and payments return the player's utilities at
         current valuations.
         """
-        return self.get_counterfactual_utility(allocations, payments, self.valuations)
+        if hasattr(self, '_unkown_valuation'):
+            valuations = self._unkown_valuation # case: signal != valuation
+        else:
+            valuations = self.valuations
+
+        return self.get_counterfactual_utility(allocations, payments, valuations)
 
     def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
         """

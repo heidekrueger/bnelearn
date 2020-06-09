@@ -453,6 +453,7 @@ class Experiment(ABC):
             axs = [axs]  # one plot only
 
         cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+        n_colors = int(len(fmts) / 2) if self.logging_config.log_metrics['opt'] else len(fmts)
 
         # actual plotting
         for plot_idx in range(n_bundles):
@@ -461,7 +462,7 @@ class Experiment(ABC):
                     x[:, agent_idx, plot_idx], y[:, agent_idx, plot_idx],
                     fmts[agent_idx % len(fmts)],
                     label=None if labels is None else labels[agent_idx % len(labels)],
-                    color=cycle[agent_idx % len(set(fmts))],
+                    color=cycle[agent_idx % n_colors],
                 )
 
             # formating
