@@ -75,8 +75,8 @@ def test_correlated_valuation_draw_constant_weights():
     batch_size = 2**16
     dist = torch.distributions.Uniform(u_lo, u_hi)
 
-    bidder1 = b.Bidder(dist, strat, batch_size=batch_size)
-    bidder2 = b.Bidder(dist, strat, batch_size=batch_size)
+    bidder1 = b.Bidder(dist, strat, batch_size=batch_size, correlation_type='additive')
+    bidder2 = b.Bidder(dist, strat, batch_size=batch_size, correlation_type='additive')
 
     correlations = torch.linspace(0, 1, 10)
 
