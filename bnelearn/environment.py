@@ -56,8 +56,8 @@ class Environment(ABC):
         pass #pylint: disable=unnecessary-pass
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
-                            draw_valuations=False, aggregate_batch = True, 
-                            use_env_valuations = True,
+                            draw_valuations=False, aggregate_batch=True,
+                            use_env_valuations=True,
                             **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
@@ -78,8 +78,11 @@ class Environment(ABC):
         agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
         # TODO: this should rally be in AuctionEnv subclass
-        if use_env_valuations and hasattr(agent, 'valuations'):
-            agent.valuations = self.agents[player_position].valuations
+        env_agent = self.agents[player_position]
+        if use_env_valuations and hasattr(env_agent, 'valuations'):
+            agent.valuations = env_agent.valuations
+        if use_env_valuations and hasattr(env_agent, '_unkown_valuation'):
+            agent._unkown_valuation = env_agent._unkown_valuation
         return self.get_reward(agent, draw_valuations=draw_valuations, aggregate=aggregate_batch)
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
