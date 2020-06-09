@@ -19,12 +19,17 @@ The following are included
 
 # How to run the code
 
+
 You may also run the code to generate experiment results yourself.
 
+The main implementation is contained in the `bnelearn` subdirectory, which constitutes a python package.
+
 ## Requirements
-The main dependency of this repo is `pytorch 1.4`. The code is designed to run on a `cuda` GPU with 11GB of RAM (e.g. Nvidia GeForce 2080TI). 
+The main dependencies of this repo are `python=3.7`and `pytorch=1.4`. The code is designed to run on a `cuda` GPU with 11GB of RAM (e.g. Nvidia GeForce 2080TI). 
 The code should run on CPU-only systems with sufficient RAM but is expected to fail on systems with smaller GPUs.
 
 A full list of requirements can be found in `requirements.txt`. Note that we use a `conda` environment, but some dependencies have to be installed via `pip` (see comments in requirements file.)
+
+## Running the code.
 
 The experiments can be run by executing the script `scripts/run_NeurIPS_experiments.py`. It will run each setting 10 times (with seeds 0,1,...,9).
