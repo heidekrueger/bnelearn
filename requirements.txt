@@ -11,8 +11,7 @@ pytest
 pytest-cov
 pytest-xdist #parallel tests
 pylint
-pylint-exit #pip
-pylint2codeclimate #pip
+pylint-gitlab #pip
 scipy # for numeric integration
 tqdm #for progress bars
 fire #conda -c conda-forge
