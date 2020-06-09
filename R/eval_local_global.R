@@ -9,8 +9,8 @@ options(dplyr.print_max = 200)
 options(dplyr.width = 300)
 ### Read in data
 subfolder="NeurIPS"
-experiment = "LLLLGG"
-payment_rule = "first_price"
+experiment = "LLG"
+payment_rule = "nearest_vcg"
 tb_full_raw = read_delim(str_c("experiments",subfolder,experiment,payment_rule,"/full_results.csv",
                               sep = "/", collapse = NULL), ",")
 
@@ -24,7 +24,7 @@ results_epoch = 5000
 #nearest_zero = c(0.13399262726306915, 0.46403446793556213) 
 #nearest_bid = c(0.12500184774398804, 0.49999746680259705)
 #nearest_vcg = c(0.13316573202610016, 0.4673408269882202)
-utility_in_bne_exact = c(0.13399262726306915, 0.46403446793556213)
+utility_in_bne_exact = c(0.13316573202610016, 0.4673408269882202)
 # Current stopping criterium: eval_util_loss_ex_ante. Alternatives: eval_util_loss_rel_estimate
 # further assumptions:
 # - stopping criteria is fullfilled during 3 consecutive periods, each 100 epochs
@@ -143,6 +143,7 @@ if(payment_rule == 'first_price'){
              "eval_util_loss_rel_estimate"))
 }
 tb_eval <- tb_eval %>% 
+  filter(epoch == results_epoch) %>% 
   pivot_longer(colnames(tb_eval)[4:length(colnames(tb_eval))], names_to="tag", 
                values_to="value", values_drop_na = TRUE) %>% 
   group_by(subrun, tag) %>% 
@@ -156,8 +157,11 @@ tb_final
 
 # TODO: create nice latex export table
 tb_final %>% 
-  mutate(avg = sprintf("%0.5f", avg),
-         std = sprintf("%0.5f", std)) %>% 
+  # Create to format 10^-4
+  mutate(avg = avg * 10^4,
+         std = std * 10^4,
+         avg = sprintf("%0.1f", avg),
+         std = sprintf("%0.1f", std))  
   #pivot_wider(id_cols=subrun,names_from=tag, values_from=avg) %>% 
   #select(subrun, contains("eval_epsilon_absolute"), contains("eval_util_loss_bne_rel"), contains("eval_L_2"), eval_util_loss_ex_ante, 
   #       eval_util_loss_ex_interim, contains("stop_diff_2_e"), time) %>%
