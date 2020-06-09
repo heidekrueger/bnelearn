@@ -1,33 +1,27 @@
-# Learning Equilibria in Bayesian Games
+# Code for NeurIPS Submission
+
+©2020 the authors, all rights reserved. For Review at NeurIPS only. Do not distribute.
+
+This repository contains the code to reproduce the experiments in the paper. It is a minimal excerpt of a larger repository under development by the authors.
+
+# Experiment Results
+
+The subdirectory `Experiments` contains the raw data of the experiments presented in the paper.
+Some artefacts (e.g. plots) have been ommitted due to file size limitations.
+
+the following are included
+* full evaluation logs (after each iteration of every repitition)
+* Trained model for each setting (of a single run)
 
 
-[![pipeline status](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/pipeline.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master) | [![coverage report](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/coverage.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master)
+# How to run the code
 
-This repository contains a framework for finding Bayes Nash Equilibria through learning with Neural Networks.
+You may also run the code to generate experiment results yourself.
 
-# Current Status
+## Requirements
+The main dependency of this repo is `pytorch 1.4`. The code is designed to run on a `cuda` GPU with 11GB of RAM (e.g. Nvidia GeForce 2080TI). 
+The code should run on CPU-only systems with sufficient RAM but is expected to fail on systems with smaller GPUs.
 
-### What's implemented
+A full list of requirements can be found in `requirements.txt`. Note that we use a `conda` environment, but some dependencies have to be installed via `pip` (see comments in requirements file.)
 
-Running experiments for n-player Matrix and single-item one-shot auction Games with either
-* "Neural Pseudogradient Ascent" using ES strategy learning:
-  * Players are kept track of in an 'environment', each player's strategy is updated using an 'optimizer'.
-  * Players can have distinct strategy models (that are updated with distinct optimizers) or share a strategy model in symmetric settings.
-* Fictitious Play, Stochastic Fictitious Play, Mixed Fictitious Play
-
-### What's next
-* Combinatorial Auctions
-* Sequential Games
-* Algorithmic changes
-
-## Installation and Running the software
-See [Installation](installation.md)
-
-### git filters
-When developing on a new machine, run 
-```git config --local include.path ../.gitconfig```
-in your repository root once.
-This ensures the filters in `.gitconfig` will be applied to commits (e.g. cleaning up notebook output)
-
-### git lfs
-On a new machine, please make sure you have git-lfs installed and configured for this repository. (See [contributing.md](contributing.md) for details.
+The experiments can be run by executing the script `scripts/`
