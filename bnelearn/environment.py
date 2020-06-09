@@ -56,15 +56,31 @@ class Environment(ABC):
         pass #pylint: disable=unnecessary-pass
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
-                            draw_valuations=False, aggregate_batch = True,
+                            draw_valuations=False, aggregate_batch = True, 
+                            use_env_valuations = True,
                             **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
+
+        Args:
+            strategy: the strategy to be evaluated
+            player_position: the player position at which the agent will be evaluated
+            draw_valuation: whether to redraw valuations (default false)
+            aggregate_batch: whether to aggregate rewards into a single scalar (True),
+                or return batch_size many rewards (one for each sample). Default True
+            use_env_valuations: if True, strategy will be evaluated using the valuations
+                of self.agents[player_position] (default True)
+            strat_to_player_kwargs: further arguments needed for agent creation
+
         """
         if not self._strategy_to_player:
             raise NotImplementedError('This environment has no strategy_to_player closure!')
-        return self.get_reward(strategy, player_position=player_position, draw_valuations=draw_valuations,
-                               aggregate=aggregate_batch)
+        agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
+                                         player_position=player_position, **strat_to_player_kwargs)
+        # TODO: this should rally be in AuctionEnv subclass
+        if use_env_valuations and hasattr(agent, 'valuations'):
+            agent.valuations = self.agents[player_position].valuations
+        return self.get_reward(agent, draw_valuations=draw_valuations, aggregate=aggregate_batch)
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
                                        draw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
@@ -215,11 +231,9 @@ class AuctionEnvironment(Environment):
         assert sorted([a for g in self.correlation_groups for a in g]) == list(range(n_players)), \
             "Each agent should be in exactly one correlation group!"
 
-
     def get_reward(
             self,
-            strategy,
-            player_position: int,
+            agent: Bidder,
             draw_valuations = False,
             aggregate = True
         ) -> torch.Tensor: #pylint: disable=arguments-differ
@@ -227,19 +241,27 @@ class AuctionEnvironment(Environment):
            Reward is calculated as average utility for each of the batch_size x env_size games
         """
 
+        if not isinstance(agent, Bidder):
+            raise ValueError("Agent must be of type Bidder")
+
+        assert agent.batch_size == self.batch_size, \
+            "Agent batch_size does not match the environment!"
+
+        player_position = agent.player_position if agent.player_position else 0
+
         # draw valuations
         if draw_valuations:
             self.draw_valuations_()
 
         # get agent_bid
-        agent_bid = strategy.play(self.agents[player_position].valuations)
+        agent_bid = agent.get_action()
         action_length = agent_bid.shape[1]
 
         if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
             allocation, payments = self.mechanism.play(
-                agent_bid.view(self.agents[player_position].batch_size, 1, action_length)
+                agent_bid.view(agent.batch_size, 1, action_length)
             )
-            utility = self.agents[player_position].get_utility(allocation[:,0,:], payments[:,0])
+            utility = agent.get_utility(allocation[:,0,:], payments[:,0])
         else: # at least 2 environment agent --> build bid_profile, then play
             # get bid profile
             bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
@@ -261,18 +283,14 @@ class AuctionEnvironment(Environment):
                 # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
                 if opponent_pos is None:
                     opponent_pos = counter
-                    if opponent_pos == player_position:
-                        opponent_pos += 1
-                        counter += 1
                 bid_profile[:, opponent_pos, :] = opponent_bid
                 counter = counter + 1
 
             allocation, payments = self.mechanism.play(bid_profile)
 
             # average over batch against this opponent
-            utility = self.agents[player_position].get_utility(
-                allocation[:, player_position, :], payments[:, player_position]
-            )
+            utility = agent.get_utility(allocation[:,player_position,:],
+                                        payments[:,player_position])
 
         if aggregate:
             utility = utility.mean()
@@ -292,7 +310,6 @@ class AuctionEnvironment(Environment):
                 A set of player positions to exclude.
                 Used e.g. to generate action profile of all but currently
                 learning player.
-
 
         returns/yields:
             nothing

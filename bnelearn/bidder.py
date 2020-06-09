@@ -32,9 +32,9 @@ class Player(ABC):
         """Chooses an action according to the player's strategy."""
         raise NotImplementedError
 
-    def prepare_iteration(self):
-        """ Prepares one iteration of environment-observation."""
-        pass #pylint: disable=unnecessary-pass
+    # def prepare_iteration(self):
+    #     """ Prepares one iteration of environment-observation."""
+    #     pass #pylint: disable=unnecessary-pass
 
     @abstractmethod
     def get_utility(self, **kwargs):
@@ -125,9 +125,9 @@ class Bidder(Player):
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
 
-    ### Members ####################
-    def prepare_iteration(self):
-        self.draw_valuations_()
+    # ### Members ####################
+    # def prepare_iteration(self):
+    #     self.draw_valuations_()
 
     @property
     def valuations(self):
@@ -148,7 +148,7 @@ class Bidder(Player):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
             self._valuations_changed =True
 
-    def get_valuation_grid(self, n_points, extended_valuation_grid=False):
+    def get_valuation_grid(self, n_points=None, extended_valuation_grid=False, dtype=torch.float32, step=None):
         """ Returns a grid of approximately `n_points` valuations that are
             equidistant (in each dimension) on the support of self.value_distribution.
             If the support is unbounded, the 0.1th and 99.9th percentiles are used instead.
@@ -161,6 +161,7 @@ class Bidder(Player):
             Args:
                 n_points: int, minimum number of total points in the grid
                 extended_valuation_grid: bool, switch for bounds of interval
+                step: float, step length. Only used when `n_points` is None
             returns:
                 grid_values (dim: [ceil(n_points^(1/n_items)]*n_items)
 
@@ -168,6 +169,9 @@ class Bidder(Player):
                     - with descending_valuations, this currently draws many more points than needed
                       then throws most of them away
         """
+
+        assert n_points is None or step is None, \
+            'Use only one of `n_points` or `step`'
 
         if extended_valuation_grid and hasattr(self, '_grid_lb_util_loss'):
             # pylint: disable=no-member
@@ -177,13 +181,17 @@ class Bidder(Player):
             lb = self._grid_lb
             ub = self._grid_ub
 
-        # change batch_size s.t. it'll approx. end up at intended n_points in the end
-        adapted_size = n_points
-        if self.descending_valuations:
-            adapted_size = n_points * math.factorial(self.n_items)
+        if n_points is None:
+            batch_size_per_dim = math.ceil((ub - lb) / step + 1)
+        else:
+            # change batch_size s.t. it'll approx. end up at intended n_points in the end
+            adapted_size = n_points
+            if self.descending_valuations:
+                adapted_size = n_points * math.factorial(self.n_items)
 
-        batch_size_per_dim = math.ceil(adapted_size ** (1/self.n_items))
-        lin = torch.linspace(lb, ub, batch_size_per_dim, device=self.device)
+            batch_size_per_dim = math.ceil(adapted_size ** (1/self.n_items))
+
+        lin = torch.linspace(lb, ub, batch_size_per_dim, device=self.device, dtype=dtype)
 
         grid_values = torch.stack([
             x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()
@@ -220,7 +228,6 @@ class Bidder(Player):
             # TODO Stefan: Does correlation interere with Nils' implementations of descending valuations
             #              Or Item interest limits? --> Test!
         """
-
         if isinstance(weights, float):
             weights = torch.tensor(weights)
 
@@ -233,8 +240,6 @@ class Bidder(Player):
         if torch.all(weights == 1.0):
             self.valuations = common_component.to(self.device).relu()
             return self.valuations
-
-        # TODO Nils: check that draw_valuations_ is always called with common component
 
         ### 2. Otherwise determine individual component
 
@@ -255,7 +260,7 @@ class Bidder(Player):
             self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device)
 
         ### 3. Determine mixture of individual an common component
-        if torch.any(weights>0):
+        if torch.any(weights > 0):
             if self.correlation_type == 'additive':
                 weights = weights.to(self.device)
                 self.valuations = weights * common_component.to(self.device) + (1-weights) * self.valuations
@@ -288,7 +293,7 @@ class Bidder(Player):
         current valuations.
         """
         if hasattr(self, '_unkown_valuation'):
-            valuations = self._unkown_valuation
+            valuations = self._unkown_valuation # case: signal != valuation
         else:
             valuations = self.valuations
 

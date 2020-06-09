@@ -541,17 +541,6 @@ class MineralRightsExperiment(SingleItemExperiment):
 
         super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne=known_bne)
 
-    def _setup_learning_environment(self):
-        self.env = AuctionEnvironment(
-            self.mechanism,
-            agents=self.bidders,
-            batch_size=self.learning_config.batch_size,
-            n_players=self.n_players,
-            strategy_to_player_closure=self._strat_to_bidder,
-            correlation_groups=self.correlation_groups,
-            correlation_devices=self.correlation_devices
-        )
-
     def _set_symmetric_bne_closure(self):
         if self.payment_rule == 'second_price':
             self._optimal_bid = partial(_optimal_bid_single_item_mineral_rights)
@@ -596,7 +585,7 @@ class MineralRightsExperiment(SingleItemExperiment):
         # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
         self.bne_utilities = torch.zeros((3,), device=self.gpu_config.device)
         for i, a in enumerate(self.bne_env.agents):
-            self.bne_utilities[i] = self.bne_env.get_reward(a.strategy, i, draw_valuations=True)
+            self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
 
         print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities))
         self.bne_utility = torch.tensor(self.bne_utilities).mean()

@@ -73,4 +73,3 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
 
     def get_weights(self):
         return torch.tensor(.5) # must be strictly between 0, 1 to trigger right case
-        

@@ -137,7 +137,7 @@ def mineral_rights(
         log_metrics=['opt', 'l2'],
         util_loss_batch_size=2**4,
         util_loss_grid_size=2**4,
-        specific_gpu=0,
+        specific_gpu=7,
         logging=True
     ):
     running_configuration = RunningConfiguration(n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu,

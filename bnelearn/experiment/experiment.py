@@ -209,11 +209,14 @@ class Experiment(ABC):
         raise NotImplementedError("This Experiment has no implemented BNE!")
 
     def _setup_learning_environment(self):
+        print(f'Learning env correlation {self.correlation_groups} \n {self.correlation_devices}.')
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
                                       batch_size=self.learning_config.batch_size,
                                       n_players=self.n_players,
-                                      strategy_to_player_closure=self._strat_to_bidder)
+                                      strategy_to_player_closure=self._strat_to_bidder,
+                                      correlation_groups=self.correlation_groups,
+                                      correlation_devices=self.correlation_devices)
 
     def _init_new_run(self):
         """Setup everything that is specific to an individual run, including everything nondeterministic"""
@@ -355,6 +358,13 @@ class Experiment(ABC):
                     if stop:
                         print(f'Stopping criterion reached after {e} iterations.')
                         break
+
+            if self.logging_config.enable_logging and (
+                    self.logging_config.export_step_wise_linear_bid_function_size is not None):
+                bidders = [self.bidders[self._model2bidder[m][0]] for m in range(self.n_models)]
+                logging_utils.export_stepwise_linear_bid(
+                    experiment_dir=self.run_log_dir, bidders=bidders,
+                    step=self.logging_config.export_step_wise_linear_bid_function_size)
 
             self._exit_run()
 
@@ -611,12 +621,20 @@ class Experiment(ABC):
         # shorthand for model to bidder index conversion
         m2b = lambda m: self._model2bidder[m][0]
 
+        # generally redraw bne_vals, except when this is expensive!
+        # TODO Stefan: this seems to be false in most settings, even when not 
+        # desired.
+        redraw_bne_vals = not self.logging_config.cache_eval_actions
         # length: n_models
         utility_vs_bne = torch.tensor([
-            self.bne_env.get_reward(
-                model, player_position=m2b(i),
-                draw_valuations=False # False because we want to use cached actions when set, reevaluation is expensive
-            ) for i, model in enumerate(self.models)
+            self.bne_env.get_strategy_reward(
+                model,
+                player_position = m2b(m),
+                draw_valuations=redraw_bne_vals,
+                use_env_valuations= not redraw_bne_vals
+                # TODO: Stefan. Is strat_to_player_kwargs needed here?
+                # if yes, get from self.learners[m] (???)
+            ) for m, model in enumerate(self.models)
         ])
         epsilon_relative = torch.tensor(
             [1 - utility_vs_bne[i] / self.bne_utilities[m2b(i)] for i, model in enumerate(self.models)])
