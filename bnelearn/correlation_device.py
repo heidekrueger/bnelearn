@@ -64,4 +64,12 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
 
     def get_weights(self):
         return self.weight
-        
+
+class MineralRightsCorrelationDevice(CorrelationDevice):
+    """Draw valuations according to the constant weights model in Ausubel & Baranov"""
+    def __init__(self, common_component_dist: Distribution,
+                 batch_size: int, n_items: int, correlation: float):
+        super().__init__(common_component_dist, batch_size, n_items, "mineral_rights_model", correlation)
+
+    def get_weights(self):
+        return torch.tensor(.5) # must be strictly between 0, 1 to trigger right case

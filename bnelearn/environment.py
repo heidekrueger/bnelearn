@@ -56,8 +56,8 @@ class Environment(ABC):
         pass #pylint: disable=unnecessary-pass
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
-                            draw_valuations=False, aggregate_batch = True, 
-                            use_env_valuations = True,
+                            draw_valuations=False, aggregate_batch=True,
+                            use_env_valuations=True,
                             **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
@@ -78,8 +78,11 @@ class Environment(ABC):
         agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
         # TODO: this should rally be in AuctionEnv subclass
-        if use_env_valuations and hasattr(agent, 'valuations'):
-            agent.valuations = self.agents[player_position].valuations
+        env_agent = self.agents[player_position]
+        if use_env_valuations and hasattr(env_agent, 'valuations'):
+            agent.valuations = env_agent.valuations
+        if use_env_valuations and hasattr(env_agent, '_unkown_valuation'):
+            agent._unkown_valuation = env_agent._unkown_valuation
         return self.get_reward(agent, draw_valuations=draw_valuations, aggregate=aggregate_batch)
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
@@ -227,10 +230,9 @@ class AuctionEnvironment(Environment):
             assert len(correlation_groups) == len(correlation_devices)
             self.correlation_groups = correlation_groups
             self.correlation_devices = correlation_devices
-        
+
         assert sorted([a for g in self.correlation_groups for a in g]) == list(range(n_players)), \
             "Each agent should be in exactly one correlation group!"
-
 
     def get_reward(
             self,
@@ -311,7 +313,6 @@ class AuctionEnvironment(Environment):
                 A set of player positions to exclude.
                 Used e.g. to generate action profile of all but currently
                 learning player.
-
 
         returns/yields:
             nothing
