@@ -456,6 +456,7 @@ class LLLLGGAuction(Mechanism):
         b = torch.sum(allocation.view(n_batch, n_player, n_bundle) * bids.view(n_batch, n_player, n_bundle), dim=2)
         payments_vcg = self._calculate_payments_vcg(bids, allocation, welfare)
 
+        A, beta, payments_vcg, b = self._reduce_nearest_vcg(A, beta, payments_vcg, b)
         # Choose core solver
         if self.core_solver == 'gurobi':
             payment = self._run_batch_nearest_vcg_core_gurobi(A, beta, payments_vcg, b)
@@ -466,6 +467,28 @@ class LLLLGGAuction(Mechanism):
         else:
             raise NotImplementedError(":/")
         return payment
+
+    def _reduce_nearest_vcg(self, A, beta, payments_vcg, b):
+        n_batch, n_coalition, n_player = A.shape
+        # remove coalitions that pay no extra (<=0)
+        # TODO, Paul: speed up?
+        min_true = min((beta <= 0).sum(1))
+        remove = torch.topk(beta.to(torch.long), min_true, dim = 1, sorted=False).indices
+        keep = torch.ones((n_batch, n_coalition), device = self.device, dtype=bool).scatter_(1,remove,False)
+        keep2 = torch.stack([keep]*n_player,2)
+        beta = beta.masked_select(keep).view(n_batch, n_coalition-min_true) #.shape
+        A = A.masked_select(keep2).view(n_batch, n_coalition-min_true, n_player) #.shape
+        print("Reduced by %s constraints" %min_true)
+
+        ### For each coalition, consider only the highest bid
+        # Get identical coalitions ()
+
+        A.unique(sorted=False,dim=1,return_counts=True,return_inverse=True)
+        # get remove tensor with indices of values to remove: shape (n_batch,remove_rows)
+
+        # Filter only those rows (similar to above with keep)
+
+        return A, beta, payments_vcg, b
 
     def _run_batch_nearest_vcg_core_gurobi(self, A, beta, payments_vcg, b):
         n_batch, n_coalitions, n_player = A.shape
