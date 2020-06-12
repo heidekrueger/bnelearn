@@ -473,7 +473,7 @@ class LLLLGGAuction(Mechanism):
         # remove coalitions that pay no extra (<=0)
         # TODO, Paul: speed up?
         min_true = min((beta <= 0).sum(1))
-        remove = torch.topk(beta.to(torch.long), min_true, dim = 1, sorted=False).indices
+        remove = torch.topk(beta.to(torch.float32), min_true, dim = 1, sorted=False, largest=False).indices #, largest=False
         keep = torch.ones((n_batch, n_coalition), device = self.device, dtype=bool).scatter_(1,remove,False)
         keep2 = torch.stack([keep]*n_player,2)
         beta = beta.masked_select(keep).view(n_batch, n_coalition-min_true) #.shape
@@ -483,7 +483,7 @@ class LLLLGGAuction(Mechanism):
         ### For each coalition, consider only the highest bid
         # Get identical coalitions ()
 
-        A.unique(sorted=False,dim=1,return_counts=True,return_inverse=True)
+        #A_uniq = A.unique(sorted=False,dim=1,return_counts=True,return_inverse=True)
         # get remove tensor with indices of values to remove: shape (n_batch,remove_rows)
 
         # Filter only those rows (similar to above with keep)
