@@ -36,7 +36,6 @@ ids_single_item, testdata_single_item = zip(*[
 ])
 ids_local_global, testdata_local_global = zip(*[
     # LLG
-<<<<<<< HEAD
     ['LLG-fp', ConfigurationManager(experiment_type='llg').get_config(n_runs=2, n_epochs=3)],
     ['LLG-fp-no_model_sharing', ConfigurationManager(experiment_type='llg')
                                               .get_config(n_runs=2, n_epochs=3, model_sharing=False)],
@@ -45,16 +44,7 @@ ids_local_global, testdata_local_global = zip(*[
                                               .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid')],
     # ['LLG-nearest_zero', (llg(2,3,'nearest_zero'))],
     # ['LLG-nearest_vcg', (llg(2,3,'nearest_vcg'))],
-=======
-    ['LLG-fp', (llg(2,3,'first_price',log_metrics=['util_loss']))],
-    ['LLG-fp-no_model_sharing', (llg(2,3,'first_price', model_sharing=False,log_metrics=['util_loss']))],
-    ['LLG-vcg', (llg(2,3,'vcg'))],
-    ['LLG-nearest_bid', (llg(2,3,'nearest_bid'))],
-    ['LLG-nearest_bid-correlated', (llg(2,3, 'nearest_bid', gamma = 0.5))],
-    ['LLG-nearest_bid-perfect-correlation', (llg(2,3, 'nearest_bid', gamma = 1.0))], # failed when 0.5 didn't, due to neg bids
-    #['LLG-nearest_zero', (llg(2,3,'nearest_zero'))],
-    #['LLG-nearest_vcg', (llg(2,3,'nearest_vcg'))],
->>>>>>> master
+
     # LLLLGG
     # ['LLLLGG-fp', (llllgg(2,2,'first_price'))],
     ['LLLLGG-fp-no_model_sharing', ConfigurationManager(experiment_type='llllgg')
