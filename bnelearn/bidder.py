@@ -403,14 +403,9 @@ class CombinatorialItemBidder(Bidder):
         self.n_bids = int(math.log(n_items + 1, 2))
         assert int(self.n_bids) == self.n_bids, 'bids must be integer'
         self.n_bids = int(self.n_bids)
+        self.n_collections = 2 # TODO make variable
         super().__init__(value_distribution=value_distribution, strategy=strategy,
                          n_items=n_items, **kwargs)
-
-    @classmethod
-    def uniform(cls, lower, upper, strategy, **kwargs):
-        """Constructs a bidder with uniform valuation prior."""
-        dist = torch.distributions.uniform.Uniform(low=lower, high=upper)
-        return cls(dist, strategy, **kwargs)
 
     def draw_valuations_(self):
         """
@@ -422,30 +417,19 @@ class CombinatorialItemBidder(Bidder):
             for c in torch.combinations(torch.arange(self.n_bids), r+1).tolist():
                 combinations.append(c)
 
-        # additive valuations
-        for i, c in [(i, c) for i, c in enumerate(combinations) if len(c) > 1]:
-            self.valuations[:,i] = self.valuations[:,c].sum(1)
+        def additive(v):
+            """additive valuations"""
+            for i, c in [(i, c) for i, c in enumerate(combinations) if len(c) > 1]:
+                v[..., i] = v[..., c].sum(1)
+            return v
+
+        vals = torch.zeros_like(self.valuations).repeat(1, self.n_collections) \
+            .view(self.valuations.shape[0], self.n_items, self.n_collections)
+        for i in range(self.n_collections):
+            vals[:,:,i] = additive(super().draw_valuations_())
+        self.valuations = vals.max(dim=2)[0]
 
         return self.valuations
-
-    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
-        """
-        For a batch of allocations, payments and counterfactual valuations return the
-        player's utilities.
-
-        Can handle multiple batch dimensions, e.g. for allocations a shape of
-        (..., batch_size, n_items). These batch dimensions are kept in returned
-        payoff.
-        """
-        welfare = self.get_welfare(allocations, counterfactual_valuations)
-
-        payoff = welfare - payments
-
-        if self.risk == 1.0:
-            return payoff
-        else:
-            # payoff^alpha not well defined in negative domain for risk averse agents
-            return payoff.relu()**self.risk - (-payoff).relu()**self.risk
 
     def get_welfare(self, allocations, valuations=None):
         """

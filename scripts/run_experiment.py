@@ -65,7 +65,7 @@ if __name__ == '__main__':
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     single_item_asymmetric_uniform_disjunct(n_runs=1, n_epochs=500, logging=enable_logging)
     running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-        itembidding(n_runs=1, n_epochs=1000, n_players=[2], n_items=4, payment_rule='first_price',
+        itembidding(n_runs=1, n_epochs=1000, n_players=[2], n_items=2, payment_rule='first_price',
                     logging=enable_logging)
 
     gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
