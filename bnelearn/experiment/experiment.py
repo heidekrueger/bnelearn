@@ -567,7 +567,8 @@ class Experiment(ABC):
             log_params['L_2'], log_params['L_inf'] = self._calculate_metrics_action_space_norms()
 
         if self.logging_config.log_metrics['util_loss'] and (epoch % self.logging_config.util_loss_frequency) == 0:
-            create_plot_output = epoch % self.logging_config.plot_frequency == 0 and self.logging_config.plot_points > 0
+            # TODO, Paul: Set this temporarily to False to avoid plotting error
+            create_plot_output = epoch % self.logging_config.plot_frequency == 0 and False
             log_params['util_loss_ex_ante'], log_params['util_loss_ex_interim'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
 
