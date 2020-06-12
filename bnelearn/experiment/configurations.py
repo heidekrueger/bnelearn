@@ -50,12 +50,10 @@ class SettingConfig:
     u_lo: list = None
     u_hi: list = None
 
-    # LLG
-    gamma: float = 0.0
-    # ToDo please don't include these (n_local, n_global, n_items) here,
-    #  they are deterministically determined by the experiment subclasses.
-    n_local: int = None
-    n_items: int = None
+    # Correlated Valuations, independent by default
+    correlation_types: str = 'independent'
+    correlation_groups: List[List[int]] = None  # player_ids in each group
+    correlation_coefficients: List[float] = None  # coefficients in each group
 
     # Multi-Unit
     n_units: int = None
@@ -81,7 +79,6 @@ class LearningConfig:
     hidden_activations: List[nn.Module] = None
     pretrain_iters: int = 500
     batch_size: int = 2 ** 18
-
 
     def __post_init__(self):
         self.optimizer: Type[Optimizer] = self._set_optimizer(self.optimizer_type)
@@ -133,6 +130,7 @@ class LoggingConfig:
     plot_points: int = 100
     plot_show_inline: bool = True
     log_metrics: dict = None
+    export_step_wise_linear_bid_function_size = None
 
     # Stopping Criterion #TODO: this section should go into ExperimentConfiguration
     stopping_criterion_rel_util_loss_diff: float = None

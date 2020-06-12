@@ -105,6 +105,10 @@ class Experiment(ABC):
             self.n_players = self.setting.n_players
         if not hasattr(self, 'payment_rule'):
             self.payment_rule = self.setting.payment_rule
+        if not hasattr(self, 'correlation_groups'):
+            # TODO Stefan: quick hack, only works properly for LLG
+            self.correlation_groups = None
+            self.correlation_devices = None
 
         # sets log dir for experiment. Individual runs will log to subdirectories of this.
         self.experiment_log_dir = os.path.join(self.logging.log_root_dir,
@@ -205,11 +209,14 @@ class Experiment(ABC):
         raise NotImplementedError("This Experiment has no implemented BNE!")
 
     def _setup_learning_environment(self):
+        print(f'Learning env correlation {self.correlation_groups} \n {self.correlation_devices}.')
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
                                       batch_size=self.learning.batch_size,
                                       n_players=self.n_players,
-                                      strategy_to_player_closure=self._strat_to_bidder)
+                                      strategy_to_player_closure=self._strat_to_bidder,
+                                      correlation_groups=self.correlation_groups,
+                                      correlation_devices=self.correlation_devices)
 
     def _init_new_run(self):
         """Setup everything that is specific to an individual run, including everything nondeterministic"""
@@ -351,16 +358,24 @@ class Experiment(ABC):
                         print(f'Stopping criterion reached after {e} iterations.')
                         break
 
-            if self.logging.enable_logging:
-                self._hparams_metrics = {}
-                if 'epsilon_relative' in self._cur_epoch_log_params:
-                    self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
-                if 'epsilon_absolute' in self._cur_epoch_log_params:
-                    self._hparams_metrics['epsilon_absolute'] = self._cur_epoch_log_params['epsilon_absolute']
-                if 'util_loss_ex_ante' in self._cur_epoch_log_params:
-                    self._hparams_metrics['util_loss_ex_ante'] = self._cur_epoch_log_params['util_loss_ex_ante']
 
-                self._log_experiment_params()
+            # if self.logging.enable_logging:
+            #     self._hparams_metrics = {}
+            #     if 'epsilon_relative' in self._cur_epoch_log_params:
+            #         self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
+            #     if 'epsilon_absolute' in self._cur_epoch_log_params:
+            #         self._hparams_metrics['epsilon_absolute'] = self._cur_epoch_log_params['epsilon_absolute']
+            #     if 'util_loss_ex_ante' in self._cur_epoch_log_params:
+            #         self._hparams_metrics['util_loss_ex_ante'] = self._cur_epoch_log_params['util_loss_ex_ante']
+            #
+            #     self._log_experiment_params()
+
+            if self.logging.enable_logging and (
+                    self.logging.export_step_wise_linear_bid_function_size is not None):
+                bidders = [self.bidders[self._model2bidder[m][0]] for m in range(self.n_models)]
+                logging_utils.export_stepwise_linear_bid(
+                    experiment_dir=self.run_log_dir, bidders=bidders,
+                    step=self.logging.export_step_wise_linear_bid_function_size)
 
             self._exit_run()
 
@@ -440,6 +455,7 @@ class Experiment(ABC):
             axs = [axs]  # one plot only
 
         cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+        # n_colors = int(len(fmts) / 2) if self.config.logging.log_metrics['opt'] else len(fmts)
 
         # actual plotting
         for plot_idx in range(n_bundles):
@@ -448,7 +464,7 @@ class Experiment(ABC):
                     x[:, agent_idx, plot_idx], y[:, agent_idx, plot_idx],
                     fmts[agent_idx % len(fmts)],
                     label=None if labels is None else labels[agent_idx % len(labels)],
-                    color=cycle[agent_idx % len(set(fmts))],
+                    # color=cycle[agent_idx % n_colors],
                 )
 
             # formating
@@ -615,15 +631,20 @@ class Experiment(ABC):
         # shorthand for model to bidder index conversion
         m2b = lambda m: self._model2bidder[m][0]
 
+        # generally redraw bne_vals, except when this is expensive!
+        # TODO Stefan: this seems to be false in most settings, even when not 
+        # desired.
+        redraw_bne_vals = not self.config.logging.cache_eval_actions
         # length: n_models
         utility_vs_bne = torch.tensor([
-            self.bne_env.get_reward(
-                self._strat_to_bidder(
-                    model, player_position=m2b(i),
-                    batch_size=self.logging.eval_batch_size
-                ),
-                draw_valuations=False  # False because we want to use cached actions when set, reevaluation is expensive
-            ) for i, model in enumerate(self.models)
+            self.bne_env.get_strategy_reward(
+                model,
+                player_position = m2b(m),
+                draw_valuations=redraw_bne_vals,
+                use_env_valuations= not redraw_bne_vals
+                # TODO: Stefan. Is strat_to_player_kwargs needed here?
+                # if yes, get from self.learners[m] (???)
+            ) for m, model in enumerate(self.models)
         ])
         epsilon_relative = torch.tensor(
             [1 - utility_vs_bne[i] / self.bne_utilities[m2b(i)] for i, model in enumerate(self.models)])

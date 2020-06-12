@@ -4,10 +4,12 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager
 import fire
 import torch
 
+
 from bnelearn.util import logging
 
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
+
 
 if __name__ == '__main__':
     '''
@@ -54,6 +56,7 @@ if __name__ == '__main__':
     #     .get_config(log_root_dir=log_root_dir)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
     #     .get_config(log_root_dir=log_root_dir)
+
 
     try:
         experiment_class(experiment_config).run()

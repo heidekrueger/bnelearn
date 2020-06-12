@@ -23,6 +23,7 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
+from bnelearn.correlation_device import BernoulliWeightsCorrelationDevice, IndependentValuationDevice
 
 
 class LocalGlobalExperiment(Experiment, ABC):
@@ -82,10 +83,12 @@ class LocalGlobalExperiment(Experiment, ABC):
         else:
             return super()._get_model_names()
 
+
+
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
-        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
-                              player_position=player_position,
-                              batch_size=batch_size, n_items=self.n_items)
+        correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
+        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
+                              batch_size=batch_size, n_items = self.n_items, correlation_type=correlation_type)
 
 
 class LLGExperiment(LocalGlobalExperiment):
@@ -99,8 +102,23 @@ class LLGExperiment(LocalGlobalExperiment):
         self.config = config
         assert self.config.running.n_players == 3, "Incorrect number of players specified."
 
-        self.gamma = self.config.setting.gamma
-        assert self.gamma == 0, "Gamma > 0 implemented yet."
+        if config.setting.correlation_groups:
+            self.correlation_groups = config.setting.correlation_groups
+            assert self.correlation_groups == [[0,1], [2]], \
+                "other settings not implemented properly yet"
+            assert len(config.setting.correlation_coefficients) == 2
+            self.gamma = config.setting.correlation_coefficients[0]
+            self.correlation_devices = [
+                BernoulliWeightsCorrelationDevice(
+                    common_component_dist = torch.distributions.Uniform(config.setting.u_lo[0],
+                                                                        config.setting.u_hi[0]),
+                    batch_size=config.learning.batch_size,
+                    n_items=1,
+                    correlation = self.gamma),
+                IndependentValuationDevice()]
+        else:
+            self.gamma = 0.0
+
 
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
         #  (i.e. uniformity, bounds, etc)
@@ -116,6 +134,10 @@ class LLGExperiment(LocalGlobalExperiment):
         self.mechanism = LLGAuction(rule=self.payment_rule)
 
     def _optimal_bid(self, valuation, player_position):
+        """Core selecting and vcg equilibria for the Bernoulli weigths model in Ausubel & Baranov (2019)
+        
+           Note: for gamma=0 or gamma=1, these are identical to the constant weights model.
+        """
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.tensor(valuation)
 
@@ -123,7 +145,19 @@ class LLGExperiment(LocalGlobalExperiment):
         if self.payment_rule in ['vcg', 'proxy', 'nearest_zero', 'nearest_bid',
                                  'nearest_vcg'] and player_position == 2:
             return valuation
-        # local bidders:
+        ##### Local bidders:
+
+        ## perfect correlation
+        if self.gamma == 1.0: #limit case, others not well defined
+            sigma = 1.0 # TODO: implement for other valuation profiles!
+            bid = valuation
+            if self.payment_rule == 'nearest_vcg':
+                bid.mul_(sigma / (1 + sigma - 2**(-sigma)))
+            elif self.payment_rule == 'nearest_bid':
+                bid.mul_(sigma / (1 + sigma))
+            # truthful for vcg and proxy/nearest-zero
+            return bid
+        ## no or imperfect correlation
         if self.payment_rule == 'vcg':
             return valuation
         if self.payment_rule in ['proxy', 'nearest_zero']:
@@ -144,28 +178,42 @@ class LLGExperiment(LocalGlobalExperiment):
                 for i in range(self.n_players)
             ]
 
+            # TODO Stefan: this is ugly.
+            bne_env_corr_devices = None
+            if self.correlation_groups:
+                bne_env_corr_devices = [
+                    BernoulliWeightsCorrelationDevice(
+                        common_component_dist=torch.distributions.Uniform(self.config.setting.u_lo[0],
+                                                                          self.config.setting.u_hi[0]),
+                        batch_size=self.config.logging.eval_batch_size,
+                        n_items=1,
+                        correlation=self.gamma),
+                    IndependentValuationDevice()]
+
             bne_env = AuctionEnvironment(
                 mechanism=self.mechanism,
                 agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                              batch_size=self.logging.eval_batch_size)
+                                              batch_size=self.config.logging.eval_batch_size)
                         for i in range(self.n_players)],
                 n_players=self.n_players,
-                batch_size=self.logging.eval_batch_size,
-                strategy_to_player_closure=self._strat_to_bidder
+                batch_size=self.config.logging.eval_batch_size,
+                strategy_to_player_closure=self._strat_to_bidder,
+                correlation_groups=self.correlation_groups,
+                correlation_devices=bne_env_corr_devices
             )
 
             self.bne_env = bne_env
 
             bne_utilities_sampled = torch.tensor(
                 [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
-
+            print(f'Setting up BNE env with batch size 2**{np.log2(self.config.logging.eval_batch_size)}.')
             print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
             print(
                 "No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
             self.bne_utilities = bne_utilities_sampled
 
     def _get_logdir_hierarchy(self):
-        name = ['LLG', self.payment_rule]
+        name = ['LLG', self.payment_rule, f"gamma_{self.gamma:.3}"]
         return os.path.join(*name)
 
 
