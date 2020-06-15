@@ -37,27 +37,32 @@ if __name__ == '__main__':
     # Logging Config
     enable_logging = True
     # Running Config
-    n_players = [2]
+    n_players = [3]
     # GPU Config
-    specific_gpu = 5
+    specific_gpu = 4
 
     # Single Item
-    _, logging_configuration, experiment_configuration, experiment_class = \
-        single_item_asymmetric_uniform_disjunct(0, 0, 'first_price', logging=enable_logging)
+    # _, logging_configuration, experiment_configuration, experiment_class = \
+    #     single_item_asymmetric_uniform_disjunct(0, 0, 'first_price', logging=enable_logging)
         # single_item_asymmetric_uniform_overlapping(0, 0, 'first_price', logging=enable_logging)
         # single_item_gaussian_symmetric(0, 0, [0], 'first_price', model_sharing=True, logging=enable_logging)
+        # single_item_uniform_symmetric(0, 0, [0], 'first_price', model_sharing=True, logging=enable_logging)
 
     # Multi Unit
     # _, logging_configuration, experiment_configuration, experiment_class = \
-    #     splitaward(0, 0, [0], logging=enable_logging)
-        #multiunit(0, 0, 0, n_units=2, payment_rule='uniform', logging=enable_logging)
-        #multiunit(0, 0, 0, n_units=2, payment_rule='first_price', logging=enable_logging)
+    #     multiunit(0, 0, 0, n_units=2, payment_rule='first_price', logging=enable_logging)
+        # multiunit(0, 0, 0, n_units=2, payment_rule='uniform', logging=enable_logging)
+        # splitaward(0, 0, [0], logging=enable_logging)
+        
+        
 
-    # LLG - correlated
-    # _, logging_configuration, experiment_configuration, experiment_class =\
-        #llg(0,0,'nearest_bid', gamma = 0.5, model_sharing=True, logging=enable_logging)
-        #llg(0,0,'nearest_vcg', gamma = 0.5, model_sharing=True, logging=enable_logging)
-        # llg(0,0,'nearest_zero', gamma = 0.5, model_sharing=True, logging=enable_logging)
+    # LLG - correlated  <----continue
+    _, logging_configuration, experiment_configuration, experiment_class =\
+        llg(0,0,'nearest_zero', gamma = 0.5, model_sharing=True, logging=enable_logging)
+        # llg(0,0,'nearest_vcg', gamma = 0.5, model_sharing=True, logging=enable_logging)
+        # llg(0,0,'nearest_bid', gamma = 0.5, model_sharing=True, logging=enable_logging)
+        
+        
 
     running_configuration = RunningConfiguration(n_runs = 2, n_epochs = 5000, specific_gpu = specific_gpu, n_players = n_players)
     logging_configuration = LoggingConfiguration(log_metrics = logging_configuration.log_metrics,
