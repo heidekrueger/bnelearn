@@ -406,6 +406,7 @@ class CombinatorialItemBidder(Bidder):
         self.n_collections = 2 # TODO make variable
         super().__init__(value_distribution=value_distribution, strategy=strategy,
                          n_items=n_items, **kwargs)
+        self.n_bundles = self.n_items
 
     def draw_valuations_(self):
         """
@@ -426,10 +427,14 @@ class CombinatorialItemBidder(Bidder):
         vals = torch.zeros_like(self.valuations).repeat(1, self.n_collections) \
             .view(self.valuations.shape[0], self.n_items, self.n_collections)
         for i in range(self.n_collections):
-            vals[:,:,i] = additive(super().draw_valuations_())
+            vals[:, :, i] = additive(super().draw_valuations_())
         self.valuations = vals.max(dim=2)[0]
 
         return self.valuations
+
+    def get_valuation_grid(self, n_points, extended_valuation_grid=False, n_dimensions=None):
+        grid = super().get_valuation_grid(n_points, extended_valuation_grid, n_dimensions)
+        return grid[:, :self.n_bids]
 
     def get_welfare(self, allocations, valuations=None):
         """
@@ -447,8 +452,15 @@ class CombinatorialItemBidder(Bidder):
 
         # check if allocation is only based on subset of all bundles
         if allocations.shape[-1] < valuations.shape[-1]:
-            # cut off valuations for bundles which were not for sale
-            valuations = valuations[..., :allocations.shape[-1]]
+            """
+            Here we transform the allocation of (perhaps multiple) items to a bundle allocation that
+            has a larger dimension and contains at most one `1` per batch.
+            """
+            i = allocations * (2**torch.arange(self.n_bids, device=allocations.device).unsqueeze(0))
+            i = i.sum(1)[None].t_().to(int)
+            allocations = torch.zeros((allocations.shape[0], self.n_bundles+1), device=allocations.device)
+            allocations.scatter_(1, i, 1)
+            allocations = allocations[:, 1:] # cut off when no all zeros
 
         item_dimension = valuations.dim() - 1
         welfare = (valuations * allocations).sum(dim=item_dimension)

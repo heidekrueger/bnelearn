@@ -149,7 +149,7 @@ def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: B
 
 def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
                          agent: Bidder, agent_valuation: torch.Tensor,
-                         grid: torch.Tensor, half_precision = False):
+                         grid: torch.Tensor, n_bundles=None, half_precision=False):
     """
     Estimates a bidder's util_loss/utility loss in the current bid_profile, i.e. the potential benefit of deviating from
     the current strategy, evaluated at each point of the agent_valuations.
@@ -187,6 +187,9 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     batch_size, n_players, n_items = bid_profile.shape # pylint: disable=unused-variable
     grid_size, _ = grid.shape
 
+    if n_bundles is None:
+        n_bundles = n_items
+
     ### Evaluate alternative bids on grid
     bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile_origin) # grid_size x n_players x n_items
 
@@ -204,7 +207,7 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     # Calculate realized valuations given allocation
     try:
         # valuation is batch x items
-        v_i = agent_valuation.repeat(1, grid_size * batch_size).view(batch_size, grid_size * batch_size, n_items)
+        v_i = agent_valuation.repeat(1, grid_size * batch_size).view(batch_size, grid_size * batch_size, n_bundles)
         p_i = p_i.repeat(batch_size, 1)
 
         ## Calculate utilities
@@ -226,7 +229,7 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
             # valuations sequential
             u_i_alternative = torch.zeros(batch_size, device=p_i.device)
             for idx in tqdm(range(batch_size)):
-                v_i = agent_valuation[idx].repeat(1, grid_size * batch_size).view(batch_size * grid_size, n_items)
+                v_i = agent_valuation[idx].repeat(1, grid_size * batch_size).view(batch_size * grid_size, n_bundles)
                 ## Calculate utilities
                 u_i_alternative_v = agent.get_counterfactual_utility(a_i, p_i, v_i)
                 u_i_alternative_v = u_i_alternative_v.view(grid_size, batch_size) #(grid x batch)
@@ -253,7 +256,7 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     p_i = payments[:, player_position].view(batch_size * batch_size)
 
     ## Calculate realized valuations given allocation
-    v_i = agent_valuation.repeat(1, batch_size).view(batch_size * batch_size, n_items)
+    v_i = agent_valuation.repeat(1, batch_size).view(batch_size * batch_size, n_bundles)
 
     ## Calculate utilities
     u_i_actual = agent.get_counterfactual_utility(a_i, p_i, v_i).view(batch_size, batch_size)

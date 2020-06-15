@@ -127,7 +127,7 @@ class Experiment(ABC):
         if self.known_bne:
             self._setup_eval_environment()
 
-
+        self.using_bid_language = False
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -665,7 +665,8 @@ class Experiment(ABC):
             metrics.ex_interim_util_loss(
                 env.mechanism, bid_profile, self.bidders[player_positions[0]],
                 self.bidders[player_positions[0]].valuations[:batch_size, ...],
-                self.bidders[player_positions[0]].get_valuation_grid(grid_size, True)
+                self.bidders[player_positions[0]].get_valuation_grid(grid_size, True),
+                n_bundles = self.n_bundles if self.using_bid_language else None
             )
             for player_positions in self._model2bidder
         ]

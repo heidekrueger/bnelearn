@@ -262,7 +262,7 @@ def itembidding(
         n_players: list = [2],
         payment_rule: str = 'vcg',
         n_items=2,
-        log_metrics=['PoA'],
+        log_metrics=['util_loss', 'PoA'],
         model_sharing=True,
         u_lo=[0], u_hi=[1],
         risk=1.0,

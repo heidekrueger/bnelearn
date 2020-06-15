@@ -322,7 +322,7 @@ class AuctionEnvironment(Environment):
 
         def get_allo(item_allo):
             """
-            Based on a item allocations return the correspunding bundle allocations
+            Based on an item allocations returns the correspunding bundle allocations
             """
             a = torch.zeros((n_players, 2**n_items - 1), dtype=int)
             for player_position in range(n_players):
@@ -342,9 +342,9 @@ class AuctionEnvironment(Environment):
         # brute force: all combinations for each batch
         allocations = possible_allocations.repeat(self.batch_size, 1, 1, 1).view(
             self.batch_size, n_players**n_items, n_players, n_bundles
-        )
+        ) # shape (batch_size, possible_combinations, n_players, n_bundles)
 
-        # calculate walfare
+        # calculate welfare
         welfares = torch.zeros_like(allocations[:, :, :, 0], dtype=torch.float32)
         for i, agent in enumerate(self.agents):
             agent_valuations = agent.valuations.repeat(1, 1, n_players**n_items).view(
@@ -358,7 +358,8 @@ class AuctionEnvironment(Environment):
         return max_welfares
 
     def get_PoA(self, allocations):
-        """Returns (Bayesian) Price of Anarchy
+        """
+        Returns (Bayesian) Price of Anarchy
         """
 
         max_welfares = self.get_welfare_max().mean()

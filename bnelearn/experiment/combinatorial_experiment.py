@@ -234,6 +234,7 @@ class CAItemBiddingExperiment(Experiment):
         self.plot_xmax = self.plot_ymax = max(self.u_hi)
 
         super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        self.using_bid_language = True
 
         print('\n=== Hyperparameters ===')
         for k in learning_config.learner_hyperparams.keys():
