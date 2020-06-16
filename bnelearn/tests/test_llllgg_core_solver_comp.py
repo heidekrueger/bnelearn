@@ -36,7 +36,7 @@ def run_LLLLGG_test(parallel, rule, bids, device):
     #assert torch.equal(allocation_qpth, allocation_cvxpy), "Allocation gap between qpth and cvxpy"
 
     #assert torch.allclose(payments_gurobi, payments_cvxpy, atol = 0.01), "Payments gap between gurobi and cvxpy"
-    assert torch.allclose(payments_gurobi.double(), payments_qpth.squeeze(), atol = 0.01), "Payments gap between gurobi and qpth"
+    assert torch.allclose(payments_gurobi.double(), payments_qpth, atol = 0.01), "Payments gap between gurobi and qpth"
     #assert torch.allclose(payments_qpth, payments_cvxpy.double(), atol = 0.01), "Payments gap between qpth and cvxpy"
 
 @pytest.mark.parametrize("parallel, rule, bids, device", testdata, ids=ids)

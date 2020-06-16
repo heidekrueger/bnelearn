@@ -464,7 +464,7 @@ class LLLLGGAuction(Mechanism):
             payment = self._run_batch_nearest_vcg_core_cvxpy(A, beta, payments_vcg, b)
         elif self.core_solver == 'qpth':
             A, beta = self._reduce_nearest_vcg(A, beta)
-            payment = self._run_batch_nearest_vcg_core_qpth(A, beta, payments_vcg, b)
+            payment = self._run_batch_nearest_vcg_core_qpth(A, beta, payments_vcg, b).squeeze()
         else:
             raise NotImplementedError(":/")
         return payment
@@ -494,13 +494,13 @@ class LLLLGGAuction(Mechanism):
         
         ##HerE: New TRY: Do everything for both beta and A#################
         # Also sort A like beta
-        A_unique_sort = torch.gather(torch.stack(([A_unique_idx]*n_batch)),1,beta_sort_idx)
+        A_unique_sort = torch.gather(torch.stack(([A_unique_idx]*n_batch)).view(n_batch,n_coalition),1,beta_sort_idx.view(n_batch,n_coalition))
         #TODO: Add very small number increasing by index to the A_unique_sort to prevent random sorting and keep order in beta
         A_unique_sort2 = A_unique_sort + torch.linspace(0.00001,0.9,n_coalition,device=self.device)
         # Sort both by the groups now
         A_unique_sort_complete, A_unique_sort_complete_idx = A_unique_sort2.sort(dim=1,descending=False)
         A_unique_sort_complete = A_unique_sort_complete.type(torch.int)
-        beta_sort_complete = torch.gather(beta_sort,1,A_unique_sort_complete_idx)
+        beta_sort_complete = torch.gather(beta_sort.view(n_batch,n_coalition),1,A_unique_sort_complete_idx.view(n_batch,n_coalition))
 
         # Create tensor to select only the first of a group
         tmp_select_first = torch.zeros((n_batch,n_coalition), dtype=int, device=self.device)
