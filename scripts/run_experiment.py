@@ -1,14 +1,15 @@
 import os
 import sys
-from bnelearn.experiment.configuration_manager import ConfigurationManager
+
 import fire
 import torch
 
-
-from bnelearn.util import logging
-
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
+
+from bnelearn.experiment.configuration_manager import ConfigurationManager
+from bnelearn.util import logging
+
 
 
 if __name__ == '__main__':
@@ -31,10 +32,10 @@ if __name__ == '__main__':
     # experiment_class = ConfigurationManager.get_class_by_experiment_type(experiment_config.experiment_class)
 
     # Well, path is user-specific
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'Projects/bnelearn', 'experiments')
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
 
     experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
-        .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir)
+        .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir, n_runs=1, n_epochs=500)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \
     #     .get_config(log_root_dir=log_root_dir)
 
