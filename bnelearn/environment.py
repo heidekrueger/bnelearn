@@ -311,6 +311,8 @@ class AuctionEnvironment(Environment):
                 bundles.append(c)
         item_prod = torch.tensor(list(product(list(range(n_players)), repeat=n_items)))
 
+        # TODO Nils: use transform here as well...
+        raise NotImplementedError()
         # allocate to highest valuation
         def get_bundle_idx(player_allo):
             """

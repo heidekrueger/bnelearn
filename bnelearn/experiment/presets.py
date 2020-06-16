@@ -1,4 +1,5 @@
 from typing import List
+import torch
 
 from bnelearn.experiment.combinatorial_experiment import (
     LLGExperiment,
@@ -291,4 +292,26 @@ def itembidding(
         u_lo=u_lo, u_hi=u_hi, risk=risk
     )
     experiment_class = CAItemBiddingExperiment
+    n_bundles = (2 ** n_items) - 1
+
+    global item2bundle_transform
+    """
+    Returns a tensor of shape (self.n_bundles, self.n_bundles) that can be used to
+    multiply a tensor that only contains values for the n_items into a format that
+    translates it to the bundles of items.
+    """
+    item2bundle_transform = torch.zeros((n_bundles, n_bundles),
+        device=running_configuration.specific_gpu
+    )
+    for idx, b in enumerate(range(1, n_bundles + 1)):
+        i = [0] * n_items
+        j = 0
+        while b > 0:
+            i[j] = b % 2
+            b = int(b / 2)
+            j += 1
+        item2bundle_transform[torch.arange(n_items), idx] = torch.tensor(
+            i, dtype=item2bundle_transform.dtype, device=running_configuration.specific_gpu
+        )
+
     return running_configuration, logging_configuration, experiment_configuration, experiment_class
