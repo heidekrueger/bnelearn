@@ -456,13 +456,14 @@ class LLLLGGAuction(Mechanism):
         b = torch.sum(allocation.view(n_batch, n_player, n_bundle) * bids.view(n_batch, n_player, n_bundle), dim=2)
         payments_vcg = self._calculate_payments_vcg(bids, allocation, welfare)
 
-        A, beta = self._reduce_nearest_vcg(A, beta)
+        
         # Choose core solver
         if self.core_solver == 'gurobi':
             payment = self._run_batch_nearest_vcg_core_gurobi(A, beta, payments_vcg, b)
         elif self.core_solver == 'cvxpy':
             payment = self._run_batch_nearest_vcg_core_cvxpy(A, beta, payments_vcg, b)
         elif self.core_solver == 'qpth':
+            A, beta = self._reduce_nearest_vcg(A, beta)
             payment = self._run_batch_nearest_vcg_core_qpth(A, beta, payments_vcg, b)
         else:
             raise NotImplementedError(":/")
@@ -490,35 +491,59 @@ class LLLLGGAuction(Mechanism):
         ## Phase 1: For each coalition duplicate, find the max bid
         # Sort coalition bids decreasing per batch
         beta_sort, beta_sort_idx = beta.squeeze().sort(descending=True)
-        # Sort the A unique indexing (matching unique to original) decreasing by beta -> coalitions with highest bid up
-        A_unique_idx_sorted_by_beta = A_unique_idx[beta_sort_idx]
-        # Now sort it increasing by its index -> starting with coalition 0, 1, 2,... always the one with highest bid on top
-        A_unique_idx_sorted_complete, A_unique_idx_sorted_complete_idx = A_unique_idx_sorted_by_beta.sort(dim = 1, descending=False)
+        
+        ##HerE: New TRY: Do everything for both beta and A#################
+        # Also sort A like beta
+        A_unique_sort = torch.gather(torch.stack(([A_unique_idx]*n_batch)),1,beta_sort_idx)
+        #TODO: Add very small number increasing by index to the A_unique_sort to prevent random sorting and keep order in beta
+        A_unique_sort2 = A_unique_sort + torch.linspace(0.00001,0.9,n_coalition,device=self.device)
+        # Sort both by the groups now
+        A_unique_sort_complete, A_unique_sort_complete_idx = A_unique_sort2.sort(dim=1,descending=False)
+        A_unique_sort_complete = A_unique_sort_complete.type(torch.int)
+        beta_sort_complete = torch.gather(beta_sort,1,A_unique_sort_complete_idx)
 
-        ## Phase 2: Keep only the coalition duplicate with max bid
         # Create tensor to select only the first of a group
         tmp_select_first = torch.zeros((n_batch,n_coalition), dtype=int, device=self.device)
         tmp_select_first[:,0] = -1 
-        tmp_select_first[:,1:] = A_unique_idx_sorted_complete[:,0:(n_coalition-1)]
-        tmp_select_first = torch.tensor(A_unique_idx_sorted_complete - tmp_select_first, dtype=torch.bool, device=self.device)
+        tmp_select_first[:,1:] = A_unique_sort_complete[:,0:(n_coalition-1)]
+        tmp_select_first = torch.tensor(A_unique_sort_complete - tmp_select_first, dtype=torch.bool, device=self.device)
 
-        ## Phase 3: Compute back the beta indices matching to A_uniq with max bid
-        # Select only the first unique coalition (indices!)
-        A_unique_idx_sorted_complete_idx_Only_first = torch.masked_select(A_unique_idx_sorted_complete_idx, 
-                                                                          tmp_select_first).view(n_batch,max(tmp_select_first.sum(1)))
-        # Only keep the first indices of beta
-        beta_sort_idx_Only_first = torch.gather(beta_sort_idx,1,A_unique_idx_sorted_complete_idx_Only_first)
+        # select only those betas
+        beta_final = torch.masked_select(beta_sort_complete,tmp_select_first).view(n_batch,max(tmp_select_first.sum(1)))
+        A_final = torch.masked_select(A_unique_sort_complete,tmp_select_first).view(n_batch,max(tmp_select_first.sum(1)))
+        ##########################
 
-        # Combine the betas to keep with the "unique" A set
-        beta_only_first = torch.gather(beta,1,beta_sort_idx_Only_first)
+
+        # # Sort the A unique indexing (matching unique to original) decreasing by beta -> coalitions with highest bid up
+        # A_unique_idx_sorted_by_beta = A_unique_idx[beta_sort_idx]
+        # # Now sort it increasing by its index -> starting with coalition 0, 1, 2,... always the one with highest bid on top
+        # A_unique_idx_sorted_complete, A_unique_idx_sorted_complete_idx = A_unique_idx_sorted_by_beta.sort(dim = 1, descending=False)
+
+        # ## Phase 2: Keep only the coalition duplicate with max bid
+        # # Create tensor to select only the first of a group
+        # tmp_select_first = torch.zeros((n_batch,n_coalition), dtype=int, device=self.device)
+        # tmp_select_first[:,0] = -1 
+        # tmp_select_first[:,1:] = A_unique_idx_sorted_complete[:,0:(n_coalition-1)]
+        # tmp_select_first = torch.tensor(A_unique_idx_sorted_complete - tmp_select_first, dtype=torch.bool, device=self.device)
+
+        # ## Phase 3: Compute back the beta indices matching to A_uniq with max bid
+        # # Select only the first unique coalition (indices!)
+        # A_unique_idx_sorted_complete_idx_Only_first = torch.masked_select(A_unique_idx_sorted_complete_idx, 
+        #                                                                   tmp_select_first).view(n_batch,max(tmp_select_first.sum(1)))
+        # # Only keep the first indices of beta
+        # beta_sort_idx_Only_first = torch.gather(beta_sort_idx,1,A_unique_idx_sorted_complete_idx_Only_first)
+
+        # # Combine the betas to keep with the "unique" A set
+        # beta_only_first = torch.gather(beta,1,beta_sort_idx_Only_first)
         print("Reduced by {} constraints, in {:0.2f}. seconds".format((A.shape[1]-A_unique.shape[1]), (timer() - start_time)))
 
-        return A_unique, beta_only_first
+        #return A_unique, beta_only_first
+        return A_unique, beta_final
 
     def _run_batch_nearest_vcg_core_gurobi(self, A, beta, payments_vcg, b):
         n_batch, n_coalitions, n_player = A.shape
         # Change this to 2**x to solve larger problems at once (optimal ~x=4?)
-        gurobi_mini_batch_size = min(n_batch, 2 ** 3)
+        gurobi_mini_batch_size = min(n_batch, 2 ** 0) #TODO, Paul: Set this to 3 instead of 0 again.
         n_mini_batch = (int)(n_batch / gurobi_mini_batch_size)
         pool_size = min(self.parallel, n_batch)
 
@@ -580,14 +605,14 @@ class LLLLGGAuction(Mechanism):
             m.setParam('FeasibilityTol', 1e-9)
             m.setParam('MIPGap', 1e-9)
             m.setParam('OutputFlag', 0)
-            m, mu = self._add_objective_min_payments_and_solve(m, n_mini_batch, n_player)
+            m, mu = self._add_objective_min_payments_and_solve(m, n_mini_batch, n_player, True)
             # add minimal payments constraint to minimizing vcg distance problem
             m = self._add_constraint_min_payments(m, mu, n_mini_batch, n_player)
 
         # setup and solve minimizing vcg distance
         m.setParam('FeasibilityTol', 1e-9)
         m.setParam('MIPGap', 1e-9)
-        payments = self._add_objective_min_vcg_distance_and_solve(m, payments_vcg, n_mini_batch, n_player)
+        payments = self._add_objective_min_vcg_distance_and_solve(m, payments_vcg, n_mini_batch, n_player, True)
 
         return payments
 
@@ -607,9 +632,10 @@ class LLLLGGAuction(Mechanism):
         # pA >= beta
         for batch_k in range(n_mini_batch):
             for coalition_k, coalition_v in enumerate(beta[batch_k]):
-                # Consider only coalitions with >0 blocking value
-                if coalition_v <= 0:
-                    continue
+                # Consider only coalitions with >0 blocking value TODO, Paul: Add check again!
+                # if coalition_v <= 0:
+                #     continue
+                # TODO, Paul: Can add another check whether coalition is already existing and only pick highest value for it
                 sum_payments = 0
                 for payment_k in range(len(payment[batch_k])):
                     sum_payments += payment[batch_k][payment_k] * A[batch_k, coalition_k, payment_k]
