@@ -33,6 +33,7 @@ if __name__ == '__main__':
     # Well, path is user-specific
     log_root_dir = os.path.join(os.path.expanduser('~'), 'Projects/bnelearn', 'experiments')
 
+    # ToDo reset all the commented out settings to the same number of runs and epochs as before
     experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
         .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \

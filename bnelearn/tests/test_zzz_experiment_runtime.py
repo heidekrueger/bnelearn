@@ -42,9 +42,14 @@ ids_local_global, testdata_local_global = zip(*[
     ['LLG-vcg', ConfigurationManager(experiment_type='llg').get_config(n_runs=2, n_epochs=3, payment_rule='vcg')],
     ['LLG-nearest_bid', ConfigurationManager(experiment_type='llg')
                                               .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid')],
+    ['LLG-vcg', ConfigurationManager(experiment_type='llg')
+                                              .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid', gamma=0.5)],
+    # failed when 0.5 didn't, due to neg bids
+    ['LLG-nearest_bid', ConfigurationManager(experiment_type='llg')
+                                              .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid', gamma=1.0)],
+
     # ['LLG-nearest_zero', (llg(2,3,'nearest_zero'))],
     # ['LLG-nearest_vcg', (llg(2,3,'nearest_vcg'))],
-
     # LLLLGG
     # ['LLLLGG-fp', (llllgg(2,2,'first_price'))],
     ['LLLLGG-fp-no_model_sharing', ConfigurationManager(experiment_type='llllgg')
@@ -72,7 +77,6 @@ ids_multi_unit, testdata_multi_unit = zip(*[
 
 
 def run_auction_test(create_auction_function):
-
     experiment_configuration, experiment_class = create_auction_function
     experiment_configuration.learning.pretrain_iters = 20
     # Log and plot frequent but few

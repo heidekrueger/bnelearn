@@ -67,6 +67,7 @@ class SettingConfig:
     # LLLLGG
     core_solver: str = 'NoCore'
     # parallel: int = 1 in hardware config now
+    gamma: float = 0.0
 
 
 @dataclass

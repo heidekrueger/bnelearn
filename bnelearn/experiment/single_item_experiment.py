@@ -399,10 +399,8 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
     def __init__(self, config: ExperimentConfig):
         self.config = config
-        assert self.config.setting.valuation_mean is not None, """Valuation mean and/or std not 
-        specified! """
-        assert self.config.setting.valuation_std is not None, """Valuation mean and/or std not 
-        specified! """
+        assert self.config.setting.valuation_mean is not None, """Valuation mean and/or std not specified! """
+        assert self.config.setting.valuation_std is not None, """Valuation mean and/or std not specified! """
         self.valuation_prior = 'normal'
         self.valuation_mean = self.config.setting.valuation_mean
         self.valuation_std = self.config.setting.valuation_std

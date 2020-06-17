@@ -231,6 +231,7 @@ def log_experiment_configurations(experiment_log_dir, experiment_configuration: 
     Serializes ExperimentConfiguration into a readable JSON file
 
     :param experiment_log_dir: full path except for the file name
+    :param experiment_configuration: experiment configuration as given by ConfigurationManager
     """
     f_name = os.path.join(experiment_log_dir, _configurations_f_name)
 

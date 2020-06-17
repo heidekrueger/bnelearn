@@ -359,17 +359,6 @@ class Experiment(ABC):
                         break
 
 
-            # if self.logging.enable_logging:
-            #     self._hparams_metrics = {}
-            #     if 'epsilon_relative' in self._cur_epoch_log_params:
-            #         self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
-            #     if 'epsilon_absolute' in self._cur_epoch_log_params:
-            #         self._hparams_metrics['epsilon_absolute'] = self._cur_epoch_log_params['epsilon_absolute']
-            #     if 'util_loss_ex_ante' in self._cur_epoch_log_params:
-            #         self._hparams_metrics['util_loss_ex_ante'] = self._cur_epoch_log_params['util_loss_ex_ante']
-            #
-            #     self._log_experiment_params()
-
             if self.logging.enable_logging and (
                     self.logging.export_step_wise_linear_bid_function_size is not None):
                 bidders = [self.bidders[self._model2bidder[m][0]] for m in range(self.n_models)]

@@ -15,13 +15,14 @@ from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment,
 from bnelearn.experiment.single_item_experiment import (
     GaussianSymmetricPriorSingleItemExperiment,
     TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
-    UniformSymmetricPriorSingleItemExperiment)
+    UniformSymmetricPriorSingleItemExperiment,
+    MineralRightsExperiment)
 
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
 # pylint: disable = dangerous-default-value
 
-# ToDO Some default parameters are still set inside the inheritors of Experiment, should some of the logig of which
+# ToDO Some default parameters are still set inside the inheritors of Experiment, should some of the loging of which
 #  parameters go with which class be encapsulated here?
 
 class ConfigurationManager:
@@ -53,12 +54,26 @@ class ConfigurationManager:
         self.setting.u_lo = [0, 6]
         self.setting.u_hi = [5, 7]
 
+    def _init_mineral_rights(self):
+        self.setting.n_players = 3
+        self.logging.log_metrics = {'opt': True,
+                                    'l2': True,
+                                    'util_loss': False}
+        self.setting.correlation_groups = [[0, 1, 2]]
+        self.setting.correlation_types = 'corr_type'
+        self.setting.correlation_coefficients = [1.0]
+
     def _init_llg(self):
         self.learning.model_sharing = True
         self.setting.u_lo = [0, 0, 0]
         self.setting.u_hi = [1, 1, 2]
         self.running.n_players = 3
         self.setting.payment_rule = 'nearest_zero'
+        if self.setting.gamma > 0.0:
+            assert self.setting.gamma <= 1.0
+            self.setting.correlation_groups = [[0, 1], [2]]
+            self.setting.correlation_types = 'Bernoulli_weights'
+            self.setting.correlation_coefficients = [self.setting.gamma, 0.0]
 
     def _init_llllgg(self):
         self.learning.model_sharing = True
@@ -99,6 +114,7 @@ class ConfigurationManager:
             (_init_single_item_asymmetric_uniform_overlapping, TwoPlayerAsymmetricUniformPriorSingleItemExperiment),
         'single_item_asymmetric_uniform_disjunct':
             (_init_single_item_asymmetric_uniform_disjunct, TwoPlayerAsymmetricUniformPriorSingleItemExperiment),
+        'mineral_rights': (_init_mineral_rights, MineralRightsExperiment),
         'llg':
             (_init_llg, LLGExperiment),
         'llllgg':
@@ -137,6 +153,7 @@ class ConfigurationManager:
         else:
             ConfigurationManager.experiment_types[self.experiment_type][0](self)
 
+    # pylint: disable=too-many-arguments, unused-argument
     def get_config(self, n_runs: int = None, n_epochs: int = None, n_players: int = None, seeds: Iterable[int] = None,
                    payment_rule: str = None, risk: float = None,
                    common_prior: torch.distributions.Distribution = None, valuation_mean: float = None,
@@ -145,10 +162,10 @@ class ConfigurationManager:
                    correlation_coefficients: List[float] = None, n_units: int = None,
                    pretrain_transform: callable = None, constant_marginal_values: bool = None,
                    item_interest_limit: int = None, efficiency_parameter: float = None,
-                   core_solver: str = None, model_sharing: bool = None, learner_hyperparams: dict = None,
-                   optimizer_type: str or Type[Optimizer] = None, optimizer_hyperparams: dict = None,
-                   hidden_nodes: List[int] = None, hidden_activations: List[nn.Module] = None,
-                   pretrain_iters: int = None, batch_size: int = None,
+                   core_solver: str = None, gamma: float = None, model_sharing: bool = None,
+                   learner_hyperparams: dict = None, optimizer_type: str or Type[Optimizer] = None,
+                   optimizer_hyperparams: dict = None, hidden_nodes: List[int] = None,
+                   hidden_activations: List[nn.Module] = None, pretrain_iters: int = None, batch_size: int = None,
                    enable_logging: bool = None, log_root_dir: str = None, experiment_name: str = None,
                    experiment_timestamp: str = None, plot_frequency: int = None, plot_points: int = None,
                    plot_show_inline: bool = None, log_metrics: dict = None,
