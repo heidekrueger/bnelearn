@@ -472,6 +472,9 @@ class LLLLGGAuction(Mechanism):
         return payment
 
     def _reduce_nearest_vcg_remove_duplicates(self, A, beta):
+        """
+        For each coalition keep only the instance with the highest bid (beta)
+        """
         start_time = timer()
         n_batch, n_coalition, n_player = A.shape
 
@@ -498,13 +501,13 @@ class LLLLGGAuction(Mechanism):
         ## Phase 3: Select only the highest betas for the groups in A unique
         beta_final = torch.masked_select(beta_sort_complete,tmp_select_first).view(n_batch,max(tmp_select_first.sum(1)))
 
-        print("Removed {} redundand constraints in {:0.2f} seconds".format((A.shape[1]-A_unique.shape[1]), (timer() - start_time)))
+        #print("Removed {} redundand constraints in {:0.2f} seconds".format((A.shape[1]-A_unique.shape[1]), (timer() - start_time)))
         return A_unique, beta_final
 
 
     def _reduce_nearest_vcg_remove_zeros(self, A, beta):
         """
-        remove coalitions that pay no extra (beta <= 0)
+        Remove coalitions that pay no extra (beta <= 0)
         """
         start_time = timer()
         n_batch, n_coalition, n_player = A.shape
@@ -513,11 +516,11 @@ class LLLLGGAuction(Mechanism):
         remove = torch.topk(beta.to(torch.float32), min_true, dim = 1, sorted=False, largest=False).indices
         keep = torch.ones((n_batch, n_coalition), device = self.device, dtype=bool).scatter_(1,remove,False)
         keep2 = torch.stack([keep]*n_player,2)
-        beta = beta.masked_select(keep).view(n_batch, n_coalition-min_true)
-        A = A.masked_select(keep2).view(n_batch, n_coalition-min_true, n_player)
+        beta_non_zero = beta.masked_select(keep).view(n_batch, n_coalition-min_true)
+        A_non_zero = A.masked_select(keep2).view(n_batch, n_coalition-min_true, n_player)
 
-        print("Removed {} zero constraints in {:0.2f} seconds".format(min_true,(timer() - start_time)))
-        return A, beta
+        #print("Removed {} zero constraints in {:0.2f} seconds".format(min_true,(timer() - start_time)))
+        return A_non_zero, beta_non_zero
 
     def _run_batch_nearest_vcg_core_gurobi(self, A, beta, payments_vcg, b):
         n_batch, n_coalitions, n_player = A.shape
