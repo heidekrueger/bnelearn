@@ -11,8 +11,12 @@ def compare_two_experiments(exp1: Experiment, exp2: Experiment) -> bool:
 
 
 def test_experiments_equality():
-    # Not sure about the proper path to use
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
+    log_root_dir =  os.path.join(os.getcwd(), 'temp')
+    try:
+        os.mkdir(log_root_dir)
+    except OSError:
+        print("Creation of the directory %s failed" % log_root_dir)
+
     experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
         .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir)
     # some parts of the config are changed in the children of the experiment class, so it's necessary to instantiate it
@@ -24,9 +28,10 @@ def test_experiments_equality():
 
     retrieved_experiment = retrieved_experiment_class(retrieved_experiment_config)
     equality = compare_two_experiments(retrieved_experiment, experiment)
-    path = os.path.join(log_root_dir, logging._configurations_f_name)
-    if os.path.exists(path):
-        os.remove(path)
+    file_path = os.path.join(log_root_dir, logging._configurations_f_name)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        os.removedirs(log_root_dir)
 
     assert equality
 
