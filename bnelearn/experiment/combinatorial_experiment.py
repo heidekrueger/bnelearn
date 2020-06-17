@@ -209,6 +209,7 @@ class CAItemBiddingExperiment(Experiment):
 
         self.u_lo = experiment_config.u_lo
         self.u_hi = experiment_config.u_hi
+        self.n_collections = experiment_config.n_collections
 
         self.model_sharing = experiment_config.model_sharing
         if self.model_sharing:
@@ -249,6 +250,7 @@ class CAItemBiddingExperiment(Experiment):
             lower=self.u_lo[player_position], upper=self.u_hi[player_position],
             strategy=strategy,
             n_items=self.n_bundles,
+            n_collections=self.n_collections,
             player_position=player_position,
             batch_size=batch_size,
             cache_actions=cache_actions
@@ -270,13 +272,20 @@ class CAItemBiddingExperiment(Experiment):
         print('no BNE known.')
 
     def _get_logdir_hierarchy(self):
-        name = ['CAItemBidding', self.payment_rule, str(self.n_players) + 'players_' + str(self.n_items) + 'units']
+        name = ['CAItemBidding', self.payment_rule,
+                str(self.n_players) + 'players_' +
+                str(self.n_collections) + 'collections_' +
+                str(self.n_items) + 'units']
         return os.path.join(*name)
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list=None, ylim: list=None, labels: list=None,
               x_label="valuation", y_label="bid", fmts=['o'],
               figure_name: str='bid_function', plot_points=100):
+
+        plot_data = list(plot_data)
+        single_item_bundles = self.env.agents[0].transformation[:self.n_items,:].sum(0) == 1
+        plot_data[0] = plot_data[0][..., single_item_bundles]
 
         super()._plot(plot_data, writer, epoch, xlim, ylim, labels,
                       x_label, y_label, fmts, figure_name, plot_points)
@@ -286,4 +295,4 @@ class CAItemBiddingExperiment(Experiment):
 
     def default_pretrain_transform(self, input_tensor):
         """Default pretrain transformation: truthful bidding"""
-        return torch.clone(input_tensor[...,:self.n_items])
+        return torch.clone(input_tensor[..., :self.n_items])

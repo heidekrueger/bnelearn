@@ -304,45 +304,49 @@ class AuctionEnvironment(Environment):
         n_items = int(math.log(n_bundles + 1, 2))
         n_players = self.n_players
 
-        # collect all bundles
-        bundles = []
-        for r in range(n_items):
-            for c in torch.combinations(torch.arange(n_items), r+1).tolist():
-                bundles.append(c)
-        item_prod = torch.tensor(list(product(list(range(n_players)), repeat=n_items)))
+        if not hasattr(self, 'possible_allocations'):
 
-        # TODO Nils: use transform here as well...
-        raise NotImplementedError()
-        # allocate to highest valuation
-        def get_bundle_idx(player_allo):
-            """
-            Based on a boolean tensor of length n_items returns the idx of correspunding bundle
-            """
-            won_items = torch.arange(n_items)[player_allo].tolist()
-            bundle_idx = bundles.index(won_items)
-            return bundle_idx
+            # TODO Nils: alternative:
+            #   1) use itertools product to asign each item to a bidder
+            #   2) for each bidder, trasnform allocation to bundle allocation via transform
 
-        def get_allo(item_allo):
-            """
-            Based on an item allocations returns the correspunding bundle allocations
-            """
-            a = torch.zeros((n_players, 2**n_items - 1), dtype=int)
-            for player_position in range(n_players):
-                player_allo = item_allo == player_position
-                if player_allo.any():
-                    bundle_idx = get_bundle_idx(player_allo)
-                    a[player_position, bundle_idx] = 1
-            return a
+            # collect all bundles
+            bundles = []
+            for r in range(n_items):
+                for c in torch.combinations(torch.arange(n_items), r+1).tolist():
+                    bundles.append(c)
+            item_prod = torch.tensor(list(product(list(range(n_players)), repeat=n_items)))
 
-        possible_allocations = torch.zeros(
-            (n_players**n_items, n_players, n_bundles),
-            dtype=int, device=self.mechanism.device
-        )
-        for i, p in enumerate(item_prod):
-            possible_allocations[i, :, :] = get_allo(p)
+            # allocate to highest valuation
+            def get_bundle_idx(player_allo):
+                """
+                Based on a boolean tensor of length n_items returns the idx of correspunding bundle
+                """
+                won_items = torch.arange(n_items)[player_allo].tolist()
+                bundle_idx = bundles.index(won_items)
+                return bundle_idx
+
+            def get_allo(item_allo):
+                """
+                Based on an item allocations returns the correspunding bundle allocations
+                """
+                a = torch.zeros((n_players, 2**n_items - 1), dtype=int)
+                for player_position in range(n_players):
+                    player_allo = item_allo == player_position
+                    if player_allo.any():
+                        bundle_idx = get_bundle_idx(player_allo)
+                        a[player_position, bundle_idx] = 1
+                return a
+
+            self.possible_allocations = torch.zeros(
+                (n_players**n_items, n_players, n_bundles),
+                dtype=int, device=self.mechanism.device
+            )
+            for i, p in enumerate(item_prod):
+                self.possible_allocations[i, :, :] = get_allo(p)
 
         # brute force: all combinations for each batch
-        allocations = possible_allocations.repeat(self.batch_size, 1, 1, 1).view(
+        allocations = self.possible_allocations.repeat(self.batch_size, 1, 1, 1).view(
             self.batch_size, n_players**n_items, n_players, n_bundles
         ) # shape (batch_size, possible_combinations, n_players, n_bundles)
 

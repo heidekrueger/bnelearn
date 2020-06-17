@@ -12,7 +12,6 @@ import torch
 from torch.distributions import Distribution
 from bnelearn.strategy import MatrixGameStrategy, FictitiousPlayStrategy, FictitiousNeuralPlayStrategy
 
-
 class Player(ABC):
     """
         A player in a game, determined by her
@@ -399,27 +398,54 @@ class CombinatorialItemBidder(Bidder):
         valuations have shape (batch_size, n_items), where it's meant as `n_bundles`
         bids have shape (batch_size, n_bids)
     """
-    def __init__(self, value_distribution: Distribution, strategy, n_items, **kwargs):
+    def __init__(self, value_distribution: Distribution, strategy, n_items, n_collections, **kwargs):
         self.n_bids = int(math.log(n_items + 1, 2))
         assert int(self.n_bids) == self.n_bids, 'bids must be integer'
         self.n_bids = int(self.n_bids)
-        self.n_collections = 1 # TODO make variable
+        self.n_collections = n_collections
+        self.n_bundles = n_items
+        self.transformation = self._get_item2bundle_transformation()
         super().__init__(value_distribution=value_distribution, strategy=strategy,
                          n_items=n_items, **kwargs)
-        self.n_bundles = self.n_items
+        self.transformation = self.transformation.to(self.device)
+
+    def _get_item2bundle_transformation(self) -> torch.tensor:
+        """
+        Returns a tensor of shape (self.n_bundles, self.n_bundles) that can be used to
+        multiply a tensor that only contains values for the n_items into a format that
+        translates it to the bundles of items.
+        """
+        transformation = torch.zeros((self.n_bundles, self.n_bundles))
+        for idx, b in enumerate(range(1, self.n_bundles + 1)):
+            i = [0] * self.n_bids
+            j = 0
+            while b > 0:
+                i[j] = b % 2
+                b = int(b / 2)
+                j += 1
+            transformation[torch.arange(self.n_bids), idx] = torch.tensor(
+                i, dtype=transformation.dtype
+            )
+        return transformation
 
     def draw_valuations_(self):
         """
         Sample a new batch of valuations from the bidder's prior.
         """
-        vals = torch.zeros_like(self.valuations).repeat(1, self.n_collections) \
-            .view(self.valuations.shape[0], self.n_items, self.n_collections)
-        # TODO Nils: left off here: for-loop can surly be deleted as well...
-        raise NotImplementedError()
-        for i in range(self.n_collections):
-            vals[:, :, i] = torch.mm(self.valuations, item2bundle_transform)
-        self.valuations = vals.max(dim=2)[0]
+        valuations = torch.zeros(self.valuations.shape[0], self.n_collections, self.valuations.shape[1],
+                                 device=self.valuations.device)
 
+        # uniform
+        if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
+            valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
+        else:
+            raise NotImplementedError('unknonwn distibution')
+        valuations[:, :, self.n_bids:] = 0
+
+        vals = torch.matmul(valuations, self.transformation.to(self.device))
+        self.valuations = vals.max(dim=1)[0]
+
+        self._valuations_changed = True
         return self.valuations
 
     def get_valuation_grid(self, n_points, extended_valuation_grid=False, n_dimensions=None):
@@ -446,13 +472,14 @@ class CombinatorialItemBidder(Bidder):
             Here we transform the allocation of (perhaps multiple) items to a bundle allocation that
             has a larger dimension and contains at most one `1` per batch.
             """
+            # TODO Nils: make consistent to `self.transformation`
             i = allocations * (2**torch.arange(self.n_bids, device=allocations.device).unsqueeze(0))
-            i = i.sum(1)[None].t_().to(int)
-            allocations = torch.zeros((allocations.shape[0], self.n_bundles+1), device=allocations.device)
+            i = i.sum(1, keepdim=True).to(int)
+            shape = list(allocations.shape)
+            shape[-1] = self.n_bundles + 1
+            allocations = torch.zeros(shape, device=allocations.device)
             allocations.scatter_(1, i, 1)
-            allocations = allocations[:, 1:] # cut off when no all zeros
-            # TODO Nils: use transform here as well...
-            raise NotImplementedError()
+            allocations = allocations[..., 1:] # cut off when all zeros
 
         item_dimension = valuations.dim() - 1
         welfare = (valuations * allocations).sum(dim=item_dimension)
