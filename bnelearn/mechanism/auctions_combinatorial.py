@@ -463,82 +463,61 @@ class LLLLGGAuction(Mechanism):
         elif self.core_solver == 'cvxpy':
             payment = self._run_batch_nearest_vcg_core_cvxpy(A, beta, payments_vcg, b)
         elif self.core_solver == 'qpth':
-            A, beta = self._reduce_nearest_vcg(A, beta)
+            A, beta = self._reduce_nearest_vcg_remove_duplicates(A, beta)
+            # Not efficient. Takes longer than it brings speed advancate
+            #A, beta = self._reduce_nearest_vcg_remove_zeros(A, beta)
             payment = self._run_batch_nearest_vcg_core_qpth(A, beta, payments_vcg, b).squeeze()
         else:
             raise NotImplementedError(":/")
         return payment
 
-    def _reduce_nearest_vcg(self, A, beta):
+    def _reduce_nearest_vcg_remove_duplicates(self, A, beta):
         start_time = timer()
-        # TODO, Paul: speed up?
         n_batch, n_coalition, n_player = A.shape
 
-        # remove coalitions that pay no extra (<=0)
-        # min_true = min((beta <= 0).sum(1))
-        # remove = torch.topk(beta.to(torch.float32), min_true, dim = 1, sorted=False, largest=False).indices #, largest=False
-        # keep = torch.ones((n_batch, n_coalition), device = self.device, dtype=bool).scatter_(1,remove,False)
-        # keep2 = torch.stack([keep]*n_player,2)
-        # beta = beta.masked_select(keep).view(n_batch, n_coalition-min_true) #.shape
-        # A = A.masked_select(keep2).view(n_batch, n_coalition-min_true, n_player) #.shape
-        # print("Reduced by %s constraints" %min_true)
-        # n_batch, n_coalition, n_player = A.shape
-
-        ### For each coalition, consider only the highest bid
+        ## Phase 1: For each coalition duplicates, find the max bid
         # Get identical coalitions s.t. dimension are kept over all batches
         A_unique, A_unique_idx = A.unique(sorted=False,dim=1,return_inverse=True)
-        
-        ## Phase 1: For each coalition duplicate, find the max bid
         # Sort coalition bids decreasing per batch
         beta_sort, beta_sort_idx = beta.squeeze().sort(descending=True)
+        # Sort the A unique indexing (matching unique to original) decreasing by beta -> coalitions with highest bid up
+        # And: Add very small number increasing by index to the A_unique_sort to prevent random sorting and keep order in beta
+        A_unique_idx_sorted_by_beta = A_unique_idx[beta_sort_idx] + torch.linspace(0.00001,0.9,n_coalition,device=self.device)
+        # Sort A_unique_idx_sorted_by_beta and beta_sort by groups now in increasing order
+        A_unique_idx_sorted_complete, A_unique_idx_sorted_complete_idx = A_unique_idx_sorted_by_beta.view(n_batch,n_coalition).sort(dim = 1, descending=False)
+        A_unique_idx_sorted_complete = A_unique_idx_sorted_complete.type(torch.int)
+        beta_sort_complete = torch.gather(beta_sort.view(n_batch,n_coalition),1,A_unique_idx_sorted_complete_idx.view(n_batch,n_coalition))
         
-        ##HerE: New TRY: Do everything for both beta and A#################
-        # Also sort A like beta
-        A_unique_sort = torch.gather(torch.stack(([A_unique_idx]*n_batch)).view(n_batch,n_coalition),1,beta_sort_idx.view(n_batch,n_coalition))
-        #TODO: Add very small number increasing by index to the A_unique_sort to prevent random sorting and keep order in beta
-        A_unique_sort2 = A_unique_sort + torch.linspace(0.00001,0.9,n_coalition,device=self.device)
-        # Sort both by the groups now
-        A_unique_sort_complete, A_unique_sort_complete_idx = A_unique_sort2.sort(dim=1,descending=False)
-        A_unique_sort_complete = A_unique_sort_complete.type(torch.int)
-        beta_sort_complete = torch.gather(beta_sort.view(n_batch,n_coalition),1,A_unique_sort_complete_idx.view(n_batch,n_coalition))
-
+        ## Phase 2: Keep only the coalition duplicate with max bid
         # Create tensor to select only the first of a group
         tmp_select_first = torch.zeros((n_batch,n_coalition), dtype=int, device=self.device)
         tmp_select_first[:,0] = -1 
-        tmp_select_first[:,1:] = A_unique_sort_complete[:,0:(n_coalition-1)]
-        tmp_select_first = torch.tensor(A_unique_sort_complete - tmp_select_first, dtype=torch.bool, device=self.device)
+        tmp_select_first[:,1:] = A_unique_idx_sorted_complete[:,0:(n_coalition-1)]
+        tmp_select_first = torch.tensor(A_unique_idx_sorted_complete - tmp_select_first, dtype=torch.bool, device=self.device)
 
-        # select only those betas
+        ## Phase 3: Select only the highest betas for the groups in A unique
         beta_final = torch.masked_select(beta_sort_complete,tmp_select_first).view(n_batch,max(tmp_select_first.sum(1)))
-        A_final = torch.masked_select(A_unique_sort_complete,tmp_select_first).view(n_batch,max(tmp_select_first.sum(1)))
-        ##########################
 
-
-        # # Sort the A unique indexing (matching unique to original) decreasing by beta -> coalitions with highest bid up
-        # A_unique_idx_sorted_by_beta = A_unique_idx[beta_sort_idx]
-        # # Now sort it increasing by its index -> starting with coalition 0, 1, 2,... always the one with highest bid on top
-        # A_unique_idx_sorted_complete, A_unique_idx_sorted_complete_idx = A_unique_idx_sorted_by_beta.sort(dim = 1, descending=False)
-
-        # ## Phase 2: Keep only the coalition duplicate with max bid
-        # # Create tensor to select only the first of a group
-        # tmp_select_first = torch.zeros((n_batch,n_coalition), dtype=int, device=self.device)
-        # tmp_select_first[:,0] = -1 
-        # tmp_select_first[:,1:] = A_unique_idx_sorted_complete[:,0:(n_coalition-1)]
-        # tmp_select_first = torch.tensor(A_unique_idx_sorted_complete - tmp_select_first, dtype=torch.bool, device=self.device)
-
-        # ## Phase 3: Compute back the beta indices matching to A_uniq with max bid
-        # # Select only the first unique coalition (indices!)
-        # A_unique_idx_sorted_complete_idx_Only_first = torch.masked_select(A_unique_idx_sorted_complete_idx, 
-        #                                                                   tmp_select_first).view(n_batch,max(tmp_select_first.sum(1)))
-        # # Only keep the first indices of beta
-        # beta_sort_idx_Only_first = torch.gather(beta_sort_idx,1,A_unique_idx_sorted_complete_idx_Only_first)
-
-        # # Combine the betas to keep with the "unique" A set
-        # beta_only_first = torch.gather(beta,1,beta_sort_idx_Only_first)
-        print("Reduced by {} constraints, in {:0.2f}. seconds".format((A.shape[1]-A_unique.shape[1]), (timer() - start_time)))
-
-        #return A_unique, beta_only_first
+        print("Removed {} redundand constraints in {:0.2f} seconds".format((A.shape[1]-A_unique.shape[1]), (timer() - start_time)))
         return A_unique, beta_final
+
+
+    def _reduce_nearest_vcg_remove_zeros(self, A, beta):
+        """
+        remove coalitions that pay no extra (beta <= 0)
+        """
+        start_time = timer()
+        n_batch, n_coalition, n_player = A.shape
+
+        min_true = min((beta <= 0).sum(1))
+        remove = torch.topk(beta.to(torch.float32), min_true, dim = 1, sorted=False, largest=False).indices
+        keep = torch.ones((n_batch, n_coalition), device = self.device, dtype=bool).scatter_(1,remove,False)
+        keep2 = torch.stack([keep]*n_player,2)
+        beta = beta.masked_select(keep).view(n_batch, n_coalition-min_true)
+        A = A.masked_select(keep2).view(n_batch, n_coalition-min_true, n_player)
+
+        print("Removed {} zero constraints in {:0.2f} seconds".format(min_true,(timer() - start_time)))
+        return A, beta
 
     def _run_batch_nearest_vcg_core_gurobi(self, A, beta, payments_vcg, b):
         n_batch, n_coalitions, n_player = A.shape
@@ -605,14 +584,14 @@ class LLLLGGAuction(Mechanism):
             m.setParam('FeasibilityTol', 1e-9)
             m.setParam('MIPGap', 1e-9)
             m.setParam('OutputFlag', 0)
-            m, mu = self._add_objective_min_payments_and_solve(m, n_mini_batch, n_player, True)
+            m, mu = self._add_objective_min_payments_and_solve(m, n_mini_batch, n_player, False)
             # add minimal payments constraint to minimizing vcg distance problem
             m = self._add_constraint_min_payments(m, mu, n_mini_batch, n_player)
 
         # setup and solve minimizing vcg distance
         m.setParam('FeasibilityTol', 1e-9)
         m.setParam('MIPGap', 1e-9)
-        payments = self._add_objective_min_vcg_distance_and_solve(m, payments_vcg, n_mini_batch, n_player, True)
+        payments = self._add_objective_min_vcg_distance_and_solve(m, payments_vcg, n_mini_batch, n_player, False)
 
         return payments
 
