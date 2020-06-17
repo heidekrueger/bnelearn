@@ -206,12 +206,14 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
 
     # Calculate realized valuations given allocation
     try:
+        # TODO Nils: try to estimate memory consumption beforhand and don't try/catch
+        # (previously, there was a bug when reaching the overwritting of p_i which is used in the `exccept`-block)
+
         ## Calculate utilities
         u_i_alternative = agent.get_counterfactual_utility(
             a_i,
             p_i.repeat(batch_size, 1),
             agent_valuation.repeat(1, grid_size * batch_size).view(batch_size, grid_size * batch_size, n_bundles)
-            # TODO Nils: try to estimate memory consumption beforhand and don't try/catch
         )
         u_i_alternative = u_i_alternative.view(batch_size, grid_size, batch_size) #(batch x grid x batch)
 

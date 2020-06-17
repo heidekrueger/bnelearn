@@ -283,6 +283,7 @@ class CAItemBiddingExperiment(Experiment):
               x_label="valuation", y_label="bid", fmts=['o'],
               figure_name: str='bid_function', plot_points=100):
 
+        # subselection of single-item valuations
         plot_data = list(plot_data)
         single_item_bundles = self.env.agents[0].transformation[:self.n_items,:].sum(0) == 1
         plot_data[0] = plot_data[0][..., single_item_bundles]
