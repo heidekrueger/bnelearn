@@ -45,7 +45,7 @@ ids_local_global, testdata_local_global = zip(*[
     ['LLG-vcg', ConfigurationManager(experiment_type='llg')
                                               .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid', gamma=0.5)],
     # failed when 0.5 didn't, due to neg bids
-    ['LLG-nearest_bid', ConfigurationManager(experiment_type='llg')
+    ['LLG-nearest_bid_perfectly_correlated', ConfigurationManager(experiment_type='llg')
                                               .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid', gamma=1.0)],
 
     # ['LLG-nearest_zero', (llg(2,3,'nearest_zero'))],
