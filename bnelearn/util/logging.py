@@ -147,6 +147,7 @@ def export_stepwise_linear_bid(experiment_dir, bidders: List[Bidder], step=1e-2)
         file_dir = experiment_dir + '/bidder_' + str(bidder.player_position) + '_export.csv'
         np.savetxt(file_dir, cat.detach().cpu().numpy(), fmt='%1.16f', delimiter=",")
 
+
 class CustomSummaryWriter(SummaryWriter):
     """
     Extends SummaryWriter with two methods:
@@ -235,11 +236,18 @@ def log_experiment_configurations(experiment_log_dir, experiment_configuration: 
     """
     f_name = os.path.join(experiment_log_dir, _configurations_f_name)
 
+    temp_cp = experiment_configuration.setting.common_prior
+    temp_ha = experiment_configuration.learning.hidden_activations
+
     experiment_configuration.setting.common_prior = str(experiment_configuration.setting.common_prior)
     experiment_configuration.learning.hidden_activations = str(
         experiment_configuration.learning.hidden_activations)
     with open(f_name, 'w+') as outfile:
         json.dump(experiment_configuration, outfile, cls=EnhancedJSONEncoder, indent=4)
+
+    # Doesn't look so shiny, but probably the quickest way to prevent compromising the object
+    experiment_configuration.setting.common_prior = temp_cp
+    experiment_configuration.learning.hidden_activations = temp_ha
 
 
 def get_experiment_config_from_configurations_log(experiment_log_dir=None):
@@ -251,7 +259,7 @@ def get_experiment_config_from_configurations_log(experiment_log_dir=None):
     :return: ExperimentConfiguration object
     """
     if experiment_log_dir is None:
-            experiment_log_dir = os.path.abspath(os.getcwd())
+        experiment_log_dir = os.path.abspath(os.getcwd())
     f_name = os.path.join(experiment_log_dir, _configurations_f_name)
 
     with open(f_name) as json_file:
@@ -272,12 +280,14 @@ def get_experiment_config_from_configurations_log(experiment_log_dir=None):
     # e.g. experiment_config.run_config.n_runs = experiment_config_as_dict['run_config']['n_runs']
     # config_group_object assignment pattern: experiment_config.config_group_name = config_group_object
     # e.g. experiment_config.run_config = earlier initialised and filled instance of RunningConfiguration class
-    experiment_config_as_dict = {k: v for (k, v) in experiment_config_as_dict.items() if k != 'experiment_class'}.items()
+    experiment_config_as_dict = {k: v for (k, v) in experiment_config_as_dict.items() if
+                                 k != 'experiment_class'}.items()
     for config_set_name, config_group_dict in experiment_config_as_dict:
         for config_set_obj_attr, attr_val in config_group_dict.items():
             setattr(config_set_name_to_obj[config_set_name], config_set_obj_attr, attr_val)
         setattr(experiment_config, config_set_name, config_set_name_to_obj[config_set_name])
 
+    # ToDO Extend the dict to all the possible activations
     # Create hidden activations object based on the loaded string
     hidden_activations_methods = {'SELU': lambda: nn.SELU}
     ha = str(experiment_config.learning.hidden_activations).split('()')
@@ -287,10 +297,46 @@ def get_experiment_config_from_configurations_log(experiment_log_dir=None):
     ha = [hidden_activations_methods[layer]()() for layer in ha]
     experiment_config.learning.hidden_activations = ha
 
-    # Create common_prior object based on the loaded string
-    common_priors = {'Uniform': torch.distributions.uniform.Uniform}
-    distribution = str(experiment_config.setting.common_prior).split('(')[0]
-    experiment_config.setting.common_prior = common_priors[distribution](low=experiment_config.setting.u_lo,
-                                                                         high=experiment_config.setting.u_hi)
+    if experiment_config.setting.common_prior != 'None':
+        # Create common_prior object based on the loaded string
+        common_priors = {'Uniform': torch.distributions.uniform.Uniform,
+                         'Normal': torch.distributions.normal.Normal}
+        distribution = str(experiment_config.setting.common_prior).split('(')[0]
+        if distribution == 'Uniform':
+            experiment_config.setting.common_prior = common_priors[distribution](experiment_config.setting.u_lo,
+                                                                                 experiment_config.setting.u_hi)
+        elif distribution == 'Normal':
+            experiment_config.setting.common_prior = common_priors[distribution](experiment_config.setting.valuation_mean,
+                                                                                 experiment_config.setting.valuation_std)
+        else:
+            raise NotImplementedError
 
     return experiment_config
+
+
+def compare_two_experiment_configs(conf1: ExperimentConfig, conf2: ExperimentConfig) -> bool:
+    """
+    Checks whether two given configurations are identical
+    """
+    if str(conf1.setting.common_prior) != str(conf2.setting.common_prior) \
+            or str(conf1.learning.hidden_activations) != str(conf2.learning.hidden_activations):
+        return False
+
+    temp_cp = conf1.setting.common_prior
+    temp_ha = conf1.learning.hidden_activations
+
+    conf1.setting.common_prior = str(conf1.setting.common_prior)
+    conf1.learning.hidden_activations = str(conf1.learning.hidden_activations)
+    conf2.setting.common_prior = str(conf2.setting.common_prior)
+    conf2.learning.hidden_activations = str(conf2.learning.hidden_activations)
+
+    c1 = json.dumps(conf1, cls=EnhancedJSONEncoder)
+    c2 = json.dumps(conf2, cls=EnhancedJSONEncoder)
+
+    # To prevent compromising the objects
+    conf1.setting.common_prior = temp_cp
+    conf1.learning.hidden_activations = temp_ha
+    conf2.setting.common_prior = temp_cp
+    conf2.learning.hidden_activations = temp_ha
+
+    return c1 == c2

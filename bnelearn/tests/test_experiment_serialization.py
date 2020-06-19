@@ -1,52 +1,11 @@
-import os
-
-from bnelearn.experiment import Experiment
 from bnelearn.experiment.configuration_manager import ConfigurationManager
-from bnelearn.util import logging
 
 
-# ToDO Implement the comparison
-def compare_two_experiments(exp1: Experiment, exp2: Experiment) -> bool:
-    return True
-
-
-def test_experiments_equality():
-    log_root_dir =  os.path.join(os.getcwd(), 'temp')
-    try:
-        os.mkdir(log_root_dir)
-    except OSError:
-        print("Creation of the directory %s failed" % log_root_dir)
-
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
-        .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir)
-    # some parts of the config are changed in the children of the experiment class, so it's necessary to instantiate it
-    experiment = experiment_class(experiment_config)
-
-    logging.log_experiment_configurations(experiment_log_dir=log_root_dir, experiment_configuration=experiment_config)
-    retrieved_experiment_config = logging.get_experiment_config_from_configurations_log(experiment_log_dir=log_root_dir)
-    retrieved_experiment_class = ConfigurationManager.get_class_by_experiment_type(experiment_config.experiment_class)
-
-    retrieved_experiment = retrieved_experiment_class(retrieved_experiment_config)
-    equality = compare_two_experiments(retrieved_experiment, experiment)
-    file_path = os.path.join(log_root_dir, logging._configurations_f_name)
-    if os.path.exists(file_path):
-        os.remove(file_path)
-        os.removedirs(log_root_dir)
-
-    assert equality
-
-# experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \
-#     .get_config(log_root_dir=log_root_dir)
-
-# All three next experiments get AssertionError: scalar should be 0D
-# experiment_config, experiment_class = \
-#     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping') \
-#     .get_config(log_root_dir=log_root_dir)
-# experiment_config, experiment_class = \
-#     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_disjunct') \
-#     .get_config(log_root_dir=log_root_dir)
-# experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
-#     .get_config(log_root_dir=log_root_dir)
-
-# experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg') \
-#     .get_config(log_root_dir=log_root_dir)
+def test_all_experiments_serialization():
+    """
+    Checks all types of experiments are serialized and deserialized properly with default parameters
+    """
+    for experiment_type in list(ConfigurationManager.experiment_types.keys()):
+        exp_config, experiment_class = ConfigurationManager(experiment_type=experiment_type).get_config()
+        experiment_class(exp_config)  # There are configs set on init
+        assert ConfigurationManager.experiment_config_could_be_serialized_properly(exp_config)

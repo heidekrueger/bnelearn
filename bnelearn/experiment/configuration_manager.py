@@ -1,3 +1,4 @@
+import os
 from typing import List, Type, Iterable
 
 import torch
@@ -24,13 +25,14 @@ from bnelearn.experiment.single_item_experiment import (
 
 # ToDO Some default parameters are still set inside the inheritors of Experiment, should some of the loging of which
 #  parameters go with which class be encapsulated here?
+from bnelearn.util import logging
+
 
 class ConfigurationManager:
     """
     Allows to init any type of experiment with some default values and get an ExperimentConfiguration object
     after selectively changing the attributes
     """
-
     def _init_single_item_uniform_symmetric(self):
         self.learning.model_sharing = True
         self.setting.u_lo = 0
@@ -62,6 +64,8 @@ class ConfigurationManager:
         self.setting.correlation_groups = [[0, 1, 2]]
         self.setting.correlation_types = 'corr_type'
         self.setting.correlation_coefficients = [1.0]
+        self.setting.u_lo = 0
+        self.setting.u_hi = 1
 
     def _init_llg(self):
         self.learning.model_sharing = True
@@ -210,3 +214,27 @@ class ConfigurationManager:
     @staticmethod
     def get_class_by_experiment_type(experiment_type):
         return ConfigurationManager.experiment_types[experiment_type][1]
+
+    # It is here and not in logging because logging can't depend on Experiments (while Experiments depend on logging)
+    @staticmethod
+    def experiment_config_could_be_serialized_properly(exp_config: ExperimentConfig) -> bool:
+        """
+        Tests whether the given config could be serialized and deserialized properly
+        """
+        dir_path = os.path.join(os.getcwd(), 'temp')
+        file_path = os.path.join(dir_path, 'temp_config.json')
+        if not os.path.exists(dir_path):
+            try:
+                os.mkdir(dir_path)
+            except OSError:
+                print("Creation of the directory %s failed" % dir_path)
+
+        logging.log_experiment_configurations(experiment_log_dir=dir_path, experiment_configuration=exp_config)
+        exp_retrieved_config = logging.get_experiment_config_from_configurations_log(experiment_log_dir=dir_path)
+        ConfigurationManager.get_class_by_experiment_type(exp_retrieved_config.experiment_class)(exp_retrieved_config)
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            os.removedirs(dir_path)
+
+        return logging.compare_two_experiment_configs(exp_config, exp_retrieved_config)
