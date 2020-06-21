@@ -287,9 +287,35 @@ def get_experiment_config_from_configurations_log(experiment_log_dir=None):
             setattr(config_set_name_to_obj[config_set_name], config_set_obj_attr, attr_val)
         setattr(experiment_config, config_set_name, config_set_name_to_obj[config_set_name])
 
-    # ToDO Extend the dict to all the possible activations
     # Create hidden activations object based on the loaded string
-    hidden_activations_methods = {'SELU': lambda: nn.SELU}
+    # Tested for SELU only
+    hidden_activations_methods = {'SELU': lambda: nn.SELU,
+                                  'Threshold': lambda: nn.Threshold,
+                                  'ReLU': lambda: nn.ReLU,
+                                  'RReLU': lambda: nn.RReLU,
+                                  'Hardtanh': lambda: nn.Hardtanh,
+                                  'ReLU6': lambda: nn.ReLU6,
+                                  'Sigmoid': lambda: nn.Sigmoid,
+                                  'Hardsigmoid': lambda: nn.Hardsigmoid,
+                                  'Tanh': lambda: nn.Tanh,
+                                  'ELU': lambda: nn.ELU,
+                                  'CELU': lambda: nn.CELU,
+                                  'GLU': lambda: nn.GLU,
+                                  'GELU': lambda: nn.GELU,
+                                  'Hardshrink': lambda: nn.Hardshrink,
+                                  'LeakyReLU': lambda: nn.LeakyReLU,
+                                  'LogSigmoid': lambda: nn.LogSigmoid,
+                                  'Softplus': lambda: nn.Softplus,
+                                  'Softshrink': lambda: nn.Softshrink,
+                                  'MultiheadAttention': lambda: nn.MultiheadAttention,
+                                  'PReLU': lambda: nn.PReLU,
+                                  'Softsign': lambda: nn.Softsign,
+                                  'Tanhshrink': lambda: nn.Tanhshrink,
+                                  'Softmin': lambda: nn.Softmin,
+                                  'Softmax': lambda: nn.Softmax,
+                                  'Softmax2d': lambda: nn.Softmax2d,
+                                  'LogSoftmax': lambda: nn.LogSoftmax, }
+
     ha = str(experiment_config.learning.hidden_activations).split('()')
     for symb in ['[', ']', ' ', ',']:
         ha = list(map(lambda s: str(s).replace(symb, ''), ha))
@@ -299,17 +325,49 @@ def get_experiment_config_from_configurations_log(experiment_log_dir=None):
 
     if experiment_config.setting.common_prior != 'None':
         # Create common_prior object based on the loaded string
-        common_priors = {'Uniform': torch.distributions.uniform.Uniform,
-                         'Normal': torch.distributions.normal.Normal}
+        common_priors = {'Uniform': torch.distributions.Uniform,
+                         'Normal': torch.distributions.Normal,
+                         'Bernoulli': torch.distributions.Bernoulli,
+                         'Beta': torch.distributions.Beta,
+                         'Binomial': torch.distributions.Binomial,
+                         'Categorical': torch.distributions.Categorical,
+                         'Cauchy': torch.distributions.Cauchy,
+                         'Chi2': torch.distributions.Chi2,
+                         'ContinuousBernoulli': torch.distributions.ContinuousBernoulli,
+                         'Dirichlet': torch.distributions.Dirichlet,
+                         'Exponential': torch.distributions.Exponential,
+                         'FisherSnedecor': torch.distributions.FisherSnedecor,
+                         'Gamma': torch.distributions.Gamma,
+                         'Geometric': torch.distributions.Geometric,
+                         'Gumbel': torch.distributions.Gumbel,
+                         'HalfCauchy': torch.distributions.HalfCauchy,
+                         'HalfNormal': torch.distributions.HalfNormal,
+                         'Independent': torch.distributions.Independent,
+                         'Laplace': torch.distributions.Laplace,
+                         'LogNormal': torch.distributions.LogNormal,
+                         'LogisticNormal': torch.distributions.LogisticNormal,
+                         'LowRankMultivariateNormal': torch.distributions.LowRankMultivariateNormal,
+                         'Multinomial': torch.distributions.Multinomial,
+                         'MultivariateNormal': torch.distributions.MultivariateNormal,
+                         'NegativeBinomial': torch.distributions.NegativeBinomial,
+                         'OneHotCategorical': torch.distributions.OneHotCategorical,
+                         'Pareto': torch.distributions.Pareto,
+                         'RelaxedBernoulli': torch.distributions.RelaxedBernoulli,
+                         'RelaxedOneHotCategorical': torch.distributions.RelaxedOneHotCategorical,
+                         'StudentT': torch.distributions.StudentT,
+                         'Poisson': torch.distributions.Poisson,
+                         'VonMises': torch.distributions.VonMises,
+                         'Weibull': torch.distributions.Weibull
+                         }
         distribution = str(experiment_config.setting.common_prior).split('(')[0]
         if distribution == 'Uniform':
             experiment_config.setting.common_prior = common_priors[distribution](experiment_config.setting.u_lo,
                                                                                  experiment_config.setting.u_hi)
         elif distribution == 'Normal':
-            experiment_config.setting.common_prior = common_priors[distribution](experiment_config.setting.valuation_mean,
-                                                                                 experiment_config.setting.valuation_std)
+            experiment_config.setting.common_prior = common_priors[distribution](
+                experiment_config.setting.valuation_mean,
+                experiment_config.setting.valuation_std)
         else:
             raise NotImplementedError
 
     return experiment_config
-
