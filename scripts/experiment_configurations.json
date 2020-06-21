@@ -3,7 +3,6 @@
     "running": {
         "n_runs": 1,
         "n_epochs": 4,
-        "n_players": 2,
         "seeds": [
             0
         ]

@@ -221,7 +221,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
-        self.n_players = self.config.running.n_players
+        self.n_players = self.config.setting.n_players
         self.n_items = 1
 
         self.common_prior = self.config.setting.common_prior
@@ -519,7 +519,7 @@ class MineralRightsExperiment(SingleItemExperiment):
 
     def __init__(self,  config: ExperimentConfig):
 
-        self.n_players = config.running.n_players
+        self.n_players = config.setting.n_players
         self.n_items = 1
 
         self.valuation_prior = 'uniform'

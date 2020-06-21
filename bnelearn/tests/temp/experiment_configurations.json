@@ -3,7 +3,6 @@
     "running": {
         "n_runs": 1,
         "n_epochs": 5,
-        "n_players": 2,
         "seeds": null
     },
     "setting": {
@@ -56,7 +55,7 @@
         "enable_logging": true,
         "log_root_dir": "/home/gleb/bnelearn/experiments",
         "experiment_name": null,
-        "experiment_timestamp": "2020-06-19 Fri 18.17",
+        "experiment_timestamp": "2020-06-21 Sun 19.13",
         "plot_frequency": 100,
         "plot_points": 100,
         "plot_show_inline": true,

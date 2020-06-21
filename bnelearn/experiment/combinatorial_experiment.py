@@ -34,7 +34,7 @@ class LocalGlobalExperiment(Experiment, ABC):
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
-        self.n_players = self.config.running.n_players
+        self.n_players = self.config.setting.n_players
         self.n_local = self.config.setting.n_local
         self.n_items = self.config.setting.n_items
 
@@ -100,7 +100,7 @@ class LLGExperiment(LocalGlobalExperiment):
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
-        assert self.config.running.n_players == 3, "Incorrect number of players specified."
+        assert self.config.setting.n_players == 3, "Incorrect number of players specified."
 
         if config.setting.correlation_groups:
             self.correlation_groups = config.setting.correlation_groups
@@ -234,7 +234,7 @@ class LLLLGGExperiment(LocalGlobalExperiment):
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
-        assert self.config.running.n_players == 6, "not right number of players for setting"
+        assert self.config.setting.n_players == 6, "not right number of players for setting"
         self.input_length = 2
 
         self.known_bne = False

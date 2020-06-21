@@ -71,7 +71,7 @@ class ConfigurationManager:
         self.learning.model_sharing = True
         self.setting.u_lo = [0, 0, 0]
         self.setting.u_hi = [1, 1, 2]
-        self.running.n_players = 3
+        self.setting.n_players = 3
         self.setting.payment_rule = 'nearest_zero'
         if self.setting.gamma > 0.0:
             assert self.setting.gamma <= 1.0
@@ -85,7 +85,7 @@ class ConfigurationManager:
         self.setting.u_hi = [1, 1, 1, 1, 2, 2]
         self.setting.core_solver = 'NoCore'
         self.setting.parallel = 1
-        self.running.n_players = 6
+        self.setting.n_players = 6
         self.logging.util_loss_frequency = 100
         self.logging.log_metrics = {'opt': False,
                                     'l2': False,
@@ -133,7 +133,7 @@ class ConfigurationManager:
         self.experiment_type = experiment_type
 
         # Common defaults
-        self.running = RunningConfig(n_runs=1, n_epochs=5, n_players=2)
+        self.running = RunningConfig(n_runs=1, n_epochs=5)
         self.setting = SettingConfig(payment_rule='first_price', risk=1.0, n_players=2)
         self.learning = LearningConfig(optimizer_type='adam',
                                        pretrain_iters=10,

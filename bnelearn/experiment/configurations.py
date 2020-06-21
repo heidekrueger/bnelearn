@@ -27,7 +27,7 @@ class EnhancedJSONEncoder(json.JSONEncoder):
 class RunningConfig:
     n_runs: int = 1
     n_epochs: int = 1000
-    n_players: int = None
+    #n_players: int = None
     seeds: Iterable[int] = None
 
 
@@ -35,9 +35,7 @@ class RunningConfig:
 class SettingConfig:
     n_players: int = None
     payment_rule: str = 'first_price'
-    # model_sharing: bool = True now in learning
     risk: float = 1.0
-    # known_bne: bool = False
 
     # SymmetricPriorSingleItemExperiment
     common_prior: torch.distributions.Distribution = None

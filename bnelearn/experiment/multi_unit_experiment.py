@@ -272,7 +272,7 @@ class MultiUnitExperiment(Experiment, ABC):
         self.config = config
 
         self.n_units = self.n_items = self.config.setting.n_units
-        self.n_players = self.config.running.n_players
+        self.n_players = self.config.setting.n_players
         self.payment_rule = self.config.setting.payment_rule
 
         self.u_lo = self.config.setting.u_lo
@@ -295,7 +295,7 @@ class MultiUnitExperiment(Experiment, ABC):
             self._optimal_bid = _multiunit_bne(self.config.setting,
                                                self.config.setting.payment_rule)
         else:
-            if self.config.setting.n_units == 2 and self.config.running.n_players == 2:
+            if self.config.setting.n_units == 2 and self.config.setting.n_players == 2:
                 self._optimal_bid = _optimal_bid_splitaward2x2_1(self.config.setting)
                 # self._optimal_bid = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
         self.known_bne = self._optimal_bid is not None
