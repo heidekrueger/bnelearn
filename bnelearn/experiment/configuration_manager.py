@@ -1,3 +1,4 @@
+import json
 import os
 from typing import List, Type, Iterable
 
@@ -10,7 +11,7 @@ from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
 from bnelearn.experiment.configurations import (SettingConfig,
                                                 LearningConfig,
                                                 LoggingConfig,
-                                                RunningConfig, ExperimentConfig, HardwareConfig)
+                                                RunningConfig, ExperimentConfig, HardwareConfig, EnhancedJSONEncoder)
 from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment,
                                                        SplitAwardExperiment)
 from bnelearn.experiment.single_item_experiment import (
@@ -18,7 +19,6 @@ from bnelearn.experiment.single_item_experiment import (
     TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
     UniformSymmetricPriorSingleItemExperiment,
     MineralRightsExperiment)
-
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
 # pylint: disable = dangerous-default-value
@@ -33,6 +33,7 @@ class ConfigurationManager:
     Allows to init any type of experiment with some default values and get an ExperimentConfiguration object
     after selectively changing the attributes
     """
+
     def _init_single_item_uniform_symmetric(self):
         self.learning.model_sharing = True
         self.setting.u_lo = 0
@@ -44,12 +45,11 @@ class ConfigurationManager:
         self.setting.valuation_std = 10
 
     def _init_single_item_asymmetric_uniform_overlapping(self):
+        self.running.n_runs = 1
+        self.running.n_epochs = 500
         self.learning.model_sharing = False
         self.setting.u_lo = [5, 5]
         self.setting.u_hi = [15, 25]
-
-        if self.logging.eval_batch_size == 2 ** 16:
-            print("Using eval_batch_size of 2**16. Use at least 2**22 for proper experiment runs!")
 
     def _init_single_item_asymmetric_uniform_disjunct(self):
         self.learning.model_sharing = False
@@ -57,6 +57,8 @@ class ConfigurationManager:
         self.setting.u_hi = [5, 7]
 
     def _init_mineral_rights(self):
+        self.running.n_runs = 1
+        self.running.n_epochs = 2000
         self.setting.n_players = 3
         self.logging.log_metrics = {'opt': True,
                                     'l2': True,
@@ -68,25 +70,29 @@ class ConfigurationManager:
         self.setting.u_hi = 1
 
     def _init_llg(self):
+        self.running.n_runs = 1
+        self.running.n_epochs = 1000
         self.learning.model_sharing = True
         self.setting.u_lo = [0, 0, 0]
         self.setting.u_hi = [1, 1, 2]
         self.setting.n_players = 3
         self.setting.payment_rule = 'nearest_zero'
-        if self.setting.gamma > 0.0:
-            assert self.setting.gamma <= 1.0
-            self.setting.correlation_groups = [[0, 1], [2]]
-            self.setting.correlation_types = 'Bernoulli_weights'
-            self.setting.correlation_coefficients = [self.setting.gamma, 0.0]
+        self.setting.gamma = 0.5
+        self.setting.correlation_groups = [[0, 1], [2]]
+        self.setting.correlation_types = 'Bernoulli_weights'
+        self.setting.correlation_coefficients = [self.setting.gamma, 0.0]
 
     def _init_llllgg(self):
+        self.running.n_runs = 1
+        self.running.n_epochs = 20000
+        self.logging.util_loss_batch_size = 2 ** 12
         self.learning.model_sharing = True
         self.setting.u_lo = [0, 0, 0, 0, 0, 0]
         self.setting.u_hi = [1, 1, 1, 1, 2, 2]
         self.setting.core_solver = 'NoCore'
         self.setting.parallel = 1
         self.setting.n_players = 6
-        self.logging.util_loss_frequency = 100
+        self.logging.util_loss_frequency = 1000  # Or 100?
         self.logging.log_metrics = {'opt': False,
                                     'l2': False,
                                     'util_loss': True}
@@ -102,6 +108,7 @@ class ConfigurationManager:
         self.logging.plot_points = 1000
 
     def _init_splitaward(self):
+        self.running.n_runs = 1
         self.setting.n_units = 2
         self.learning.model_sharing = True
         self.setting.u_lo = [1, 1]
@@ -133,7 +140,7 @@ class ConfigurationManager:
         self.experiment_type = experiment_type
 
         # Common defaults
-        self.running = RunningConfig(n_runs=1, n_epochs=5)
+        self.running = RunningConfig(n_runs=2, n_epochs=100)
         self.setting = SettingConfig(payment_rule='first_price', risk=1.0, n_players=2)
         self.learning = LearningConfig(optimizer_type='adam',
                                        pretrain_iters=10,
@@ -215,6 +222,34 @@ class ConfigurationManager:
     def get_class_by_experiment_type(experiment_type):
         return ConfigurationManager.experiment_types[experiment_type][1]
 
+    @staticmethod
+    def compare_two_experiment_configs(conf1: ExperimentConfig, conf2: ExperimentConfig) -> bool:
+        """
+        Checks whether two given configurations are identical
+        """
+        if str(conf1.setting.common_prior) != str(conf2.setting.common_prior) \
+                or str(conf1.learning.hidden_activations) != str(conf2.learning.hidden_activations):
+            return False
+
+        temp_cp = conf1.setting.common_prior
+        temp_ha = conf1.learning.hidden_activations
+
+        conf1.setting.common_prior = str(conf1.setting.common_prior)
+        conf1.learning.hidden_activations = str(conf1.learning.hidden_activations)
+        conf2.setting.common_prior = str(conf2.setting.common_prior)
+        conf2.learning.hidden_activations = str(conf2.learning.hidden_activations)
+
+        c1 = json.dumps(conf1, cls=EnhancedJSONEncoder)
+        c2 = json.dumps(conf2, cls=EnhancedJSONEncoder)
+
+        # To prevent compromising the objects
+        conf1.setting.common_prior = temp_cp
+        conf1.learning.hidden_activations = temp_ha
+        conf2.setting.common_prior = temp_cp
+        conf2.learning.hidden_activations = temp_ha
+
+        return c1 == c2
+
     # It is here and not in logging because logging can't depend on Experiments (while Experiments depend on logging)
     @staticmethod
     def experiment_config_could_be_serialized_properly(exp_config: ExperimentConfig) -> bool:
@@ -237,4 +272,4 @@ class ConfigurationManager:
             os.remove(file_path)
             os.removedirs(dir_path)
 
-        return logging.compare_two_experiment_configs(exp_config, exp_retrieved_config)
+        return ConfigurationManager.compare_two_experiment_configs(exp_config, exp_retrieved_config)

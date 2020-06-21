@@ -313,30 +313,3 @@ def get_experiment_config_from_configurations_log(experiment_log_dir=None):
 
     return experiment_config
 
-
-def compare_two_experiment_configs(conf1: ExperimentConfig, conf2: ExperimentConfig) -> bool:
-    """
-    Checks whether two given configurations are identical
-    """
-    if str(conf1.setting.common_prior) != str(conf2.setting.common_prior) \
-            or str(conf1.learning.hidden_activations) != str(conf2.learning.hidden_activations):
-        return False
-
-    temp_cp = conf1.setting.common_prior
-    temp_ha = conf1.learning.hidden_activations
-
-    conf1.setting.common_prior = str(conf1.setting.common_prior)
-    conf1.learning.hidden_activations = str(conf1.learning.hidden_activations)
-    conf2.setting.common_prior = str(conf2.setting.common_prior)
-    conf2.learning.hidden_activations = str(conf2.learning.hidden_activations)
-
-    c1 = json.dumps(conf1, cls=EnhancedJSONEncoder)
-    c2 = json.dumps(conf2, cls=EnhancedJSONEncoder)
-
-    # To prevent compromising the objects
-    conf1.setting.common_prior = temp_cp
-    conf1.learning.hidden_activations = temp_ha
-    conf2.setting.common_prior = temp_cp
-    conf2.learning.hidden_activations = temp_ha
-
-    return c1 == c2
