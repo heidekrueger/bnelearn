@@ -146,10 +146,10 @@ class ConfigurationManager:
         self.experiment_type = experiment_type
 
         # Common defaults
-        self.running = RunningConfig(n_runs=2, n_epochs=100)
+        self.running = RunningConfig(n_runs=1, n_epochs=100)
         self.setting = SettingConfig(payment_rule='first_price', risk=1.0, n_players=2)
         self.learning = LearningConfig(optimizer_type='adam',
-                                       pretrain_iters=10,
+                                       pretrain_iters=500,
                                        batch_size=2 ** 18,
                                        model_sharing=True)
         self.hardware = HardwareConfig(specific_gpu=0, cuda=True)
