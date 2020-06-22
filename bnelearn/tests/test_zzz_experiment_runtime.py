@@ -18,10 +18,11 @@ sys.path.append(os.path.realpath('.'))
 ids_single_item, testdata_single_item = zip(*[
     # Single item
     ['single_item-symmetric-uniform-fp',
-     ConfigurationManager(experiment_type='single_item_uniform_symmetric').get_config(n_runs=2, n_epochs=3)],
+     ConfigurationManager(experiment_type='single_item_uniform_symmetric')
+         .get_config(n_runs=2, n_epochs=3)],
     ['single_item-symmetric-uniform-fp-no_model_sharing',
      ConfigurationManager(experiment_type='single_item_uniform_symmetric')
-                                            .get_config(n_runs=2, n_epochs=3, model_sharing=False)],
+         .get_config(n_runs=2, n_epochs=3, model_sharing=False)],
     # ['single_item-symmetric-uniform-vcg', (single_item_uniform_symmetric(2,3, [3], 'second_price'))],
     # too expensive. ['single_item-symmetric-gaussian-fp', (single_item_gaussian_symmetric(2,3, [4], 'first_price'))],
     ['single_item-symmetric-gaussian-vcg', ConfigurationManager(experiment_type='single_item_gaussian_symmetric')
@@ -29,50 +30,52 @@ ids_single_item, testdata_single_item = zip(*[
                                                         payment_rule='second_price')],
     ['single_item-asymmetric-uniform-fp',
      ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping')
-                                            .get_config(n_runs=2, n_epochs=3)],
+        .get_config(n_runs=2, n_epochs=3)],
     ['single_item-asymmetric-uniform-vcg',
      ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping')
-                                            .get_config(n_runs=2, n_epochs=3, payment_rule='second_price')]
+        .get_config(n_runs=2, n_epochs=3, payment_rule='second_price')]
 ])
 ids_local_global, testdata_local_global = zip(*[
     # LLG
     ['LLG-fp', ConfigurationManager(experiment_type='llg').get_config(n_runs=2, n_epochs=3)],
     ['LLG-fp-no_model_sharing', ConfigurationManager(experiment_type='llg')
-                                              .get_config(n_runs=2, n_epochs=3, model_sharing=False)],
-    ['LLG-vcg', ConfigurationManager(experiment_type='llg').get_config(n_runs=2, n_epochs=3, payment_rule='vcg')],
+                                .get_config(n_runs=2, n_epochs=3, model_sharing=False)],
+    ['LLG-vcg', ConfigurationManager(experiment_type='llg')
+                .get_config(n_runs=2, n_epochs=3, payment_rule='vcg')],
     ['LLG-nearest_bid', ConfigurationManager(experiment_type='llg')
-                                              .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid')],
+                        .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid')],
     ['LLG-nearest_bid_correlated', ConfigurationManager(experiment_type='llg')
-                                              .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid', gamma=0.5)],
-    # failed when 0.5 didn't, due to neg bids
+                                   .with_correlation(gamma=0.5)
+                                   .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid')],
+    # Used to fail when 0.5 didn't, due to neg bids
     ['LLG-nearest_bid_perfectly_correlated', ConfigurationManager(experiment_type='llg')
-                                              .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid', gamma=1.0)],
-
+                                             .with_correlation(gamma=1.0)
+                                             .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid')],
     # ['LLG-nearest_zero', (llg(2,3,'nearest_zero'))],
     # ['LLG-nearest_vcg', (llg(2,3,'nearest_vcg'))],
     # LLLLGG
     # ['LLLLGG-fp', (llllgg(2,2,'first_price'))],
     ['LLLLGG-fp-no_model_sharing', ConfigurationManager(experiment_type='llllgg')
-                                              .get_config(n_runs=2, n_epochs=2, model_sharing=False)],
+                                   .get_config(n_runs=2, n_epochs=2, model_sharing=False)],
     ['LLLLGG-vcg', ConfigurationManager(experiment_type='llllgg')
-                                              .get_config(n_runs=2, n_epochs=2, payment_rule='vcg')]
+                   .get_config(n_runs=2, n_epochs=2, payment_rule='vcg')]
     # ['LLLLGG-nearest_vcg', (llllgg(2,2,'nearest_vcg',core_solver='gurobi'))]
 ])
 ids_multi_unit, testdata_multi_unit = zip(*[
     # MultiUnit
     ['MultiUnit-discr', ConfigurationManager(experiment_type='multiunit')
-                                          .get_config(n_runs=2, n_epochs=3, payment_rule='discriminatory')],
+                        .get_config(n_runs=2, n_epochs=3, payment_rule='discriminatory')],
     ['MultiUnit-discr-no_model_sharing', ConfigurationManager(experiment_type='multiunit')
-                                          .get_config(n_runs=2, n_epochs=3, payment_rule='discriminatory',
+                                         .get_config(n_runs=2, n_epochs=3, payment_rule='discriminatory',
                                                       model_sharing=False)],
     ['MultiUnit-vcg', ConfigurationManager(experiment_type='multiunit')
-                                          .get_config(n_runs=2, n_epochs=3, payment_rule='vcg')],
+                      .get_config(n_runs=2, n_epochs=3, payment_rule='vcg')],
     ['MultiUnit-vcg', ConfigurationManager(experiment_type='multiunit')
-                                          .get_config(n_runs=2, n_epochs=3, payment_rule='uniform')],
+                      .get_config(n_runs=2, n_epochs=3, payment_rule='uniform')],
     ['SplitAward-fp', ConfigurationManager(experiment_type='splitaward')
-                                          .get_config(n_runs=2, n_epochs=3)],
+                      .get_config(n_runs=2, n_epochs=3)],
     ['SplitAward-fp-no_model_sharing', ConfigurationManager(experiment_type='splitaward')
-                                          .get_config(n_runs=2, n_epochs=3, model_sharing=False)]
+                                       .get_config(n_runs=2, n_epochs=3, model_sharing=False)]
 ])
 
 
@@ -87,6 +90,7 @@ def run_auction_test(create_auction_function):
     experiment_configuration.logging.util_loss_batch_size = 2 ** 2
     experiment_configuration.logging.util_loss_grid_size = 2 ** 2
     experiment_configuration.learning.batch_size = 2 ** 2
+    experiment_configuration.logging.eval_batch_size = 2 ** 2
     # Create and run the experiment
     experiment_configuration.hardware.specific_gpu = 0
     experiment_class(experiment_configuration).run()
