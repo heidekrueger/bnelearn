@@ -193,8 +193,8 @@ class SingleItemExperiment(Experiment, ABC):
 
         self.n_items = 1
         self.input_length = 1
-        if self.config.logging.eval_batch_size == 2 ** 16:
-            print("Using eval_batch_size of 2**16. Use at least 2**22 for proper experiment runs!")
+        if self.config.logging.eval_batch_size < 2 ** 20:
+            print(f"Using small eval_batch_size of {self.config.logging.eval_batch_size}. Use at least 2**22 for proper experiment runs!")
         super().__init__(config=config)
 
     def _setup_mechanism(self):
