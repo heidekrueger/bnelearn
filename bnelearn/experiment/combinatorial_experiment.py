@@ -102,12 +102,12 @@ class LLGExperiment(LocalGlobalExperiment):
         self.config = config
         assert self.config.setting.n_players == 3, "Incorrect number of players specified."
 
-        if config.setting.correlation_groups:
-            self.correlation_groups = config.setting.correlation_groups
-            assert self.correlation_groups == [[0,1], [2]], \
-                "other settings not implemented properly yet"
-            assert len(config.setting.correlation_coefficients) == 2
-            self.gamma = config.setting.correlation_coefficients[0]
+        self.gamma = config.setting.gamma
+
+        if self.gamma > 0.0:
+            assert config.setting.correlation_types == 'Bernoulli_weights', 'other correlation not implemented.'
+            self.correlation_groups = [[0, 1], [2]]
+            self.correlation_coefficients = [self.gamma, 0.0]
             self.correlation_devices = [
                 BernoulliWeightsCorrelationDevice(
                     common_component_dist = torch.distributions.Uniform(config.setting.u_lo[0],
@@ -116,16 +116,13 @@ class LLGExperiment(LocalGlobalExperiment):
                     n_items=1,
                     correlation = self.gamma),
                 IndependentValuationDevice()]
-        else:
-            self.gamma = 0.0
-
 
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
         #  (i.e. uniformity, bounds, etc)
         self.known_bne = self.config.setting.payment_rule in \
                          ['vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']
         self.input_length = 1
-        self.config.running.n_players = 3
+        #self.config.setting.n_players = 3
         self.config.setting.n_local = 2
         self.config.setting.n_items = 1
         super().__init__(config=config)

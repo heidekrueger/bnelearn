@@ -32,20 +32,21 @@ if __name__ == '__main__':
     log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
 
     # ToDo reset all the commented out settings to the same number of runs and epochs as before
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
-        .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir, n_runs=1, n_epochs=5)
+    #experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
+    #    .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir, n_runs=1, n_epochs=200)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \
     #     .get_config(log_root_dir=log_root_dir)
 
     # All three next experiments get AssertionError: scalar should be 0D
-    # experiment_config, experiment_class = \
-    #     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping') \
-    #     .get_config(log_root_dir=log_root_dir)
+    #experiment_config, experiment_class = \
+    #    ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping') \
+    #    .get_config(log_root_dir=log_root_dir)
     # experiment_config, experiment_class = \
     #     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_disjunct') \
     #     .get_config(log_root_dir=log_root_dir)
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
-    #     .get_config(log_root_dir=log_root_dir)
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
+        .with_correlation(gamma=0.0) \
+        .get_config(log_root_dir=log_root_dir, n_runs=1, n_epochs=100)
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg') \
     #     .get_config(log_root_dir=log_root_dir)

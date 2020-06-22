@@ -77,10 +77,16 @@ class ConfigurationManager:
         self.setting.u_hi = [1, 1, 2]
         self.setting.n_players = 3
         self.setting.payment_rule = 'nearest_zero'
-        self.setting.gamma = 0.5
+        
         self.setting.correlation_groups = [[0, 1], [2]]
-        self.setting.correlation_types = 'Bernoulli_weights'
-        self.setting.correlation_coefficients = [self.setting.gamma, 0.0]
+        self.setting.correlation_types = 'independent'
+
+    def with_correlation(self, gamma, correlation_type = 'Bernoulli_weights'):
+        
+        self.setting.gamma = gamma        
+        self.setting.correlation_types = correlation_type if gamma > 0.0 else 'independent'
+
+        return self
 
     def _init_llllgg(self):
         self.running.n_runs = 1
@@ -144,7 +150,7 @@ class ConfigurationManager:
         self.setting = SettingConfig(payment_rule='first_price', risk=1.0, n_players=2)
         self.learning = LearningConfig(optimizer_type='adam',
                                        pretrain_iters=10,
-                                       batch_size=2 ** 8,
+                                       batch_size=2 ** 18,
                                        model_sharing=True)
         self.hardware = HardwareConfig(specific_gpu=0, cuda=True)
         self.logging = LoggingConfig(util_loss_batch_size=2 ** 4,
@@ -153,7 +159,7 @@ class ConfigurationManager:
                                                   'l2': True,
                                                   'util_loss': True},
                                      enable_logging=True,
-                                     eval_batch_size=2 ** 8,
+                                     eval_batch_size=2 ** 22,
                                      save_tb_events_to_csv_detailed=False,
                                      save_tb_events_to_binary_detailed=False,
                                      stopping_criterion_rel_util_loss_diff=0.001)

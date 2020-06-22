@@ -49,6 +49,7 @@ class SettingConfig:
     u_hi: list = None
 
     # Correlated Valuations, independent by default
+    gamma: float = 0.0
     correlation_types: str = 'independent'
     correlation_groups: List[List[int]] = None  # player_ids in each group
     correlation_coefficients: List[float] = None  # coefficients in each group
@@ -65,7 +66,7 @@ class SettingConfig:
     # LLLLGG
     core_solver: str = 'NoCore'
     # parallel: int = 1 in hardware config now
-    gamma: float = 0.0
+    
 
 
 @dataclass
