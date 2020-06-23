@@ -29,7 +29,8 @@ pylint.txt
 /notebooks/**/*.svg
 /notebooks/**/*.gif
 /notebooks/**/*.csv
-
+/temp
+/scripts/temp
 
 # dont check in figures created from R -- only keep the source code
 /R/figures/*.eps
