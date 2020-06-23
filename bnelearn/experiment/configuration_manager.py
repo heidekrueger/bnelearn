@@ -164,6 +164,10 @@ class ConfigurationManager:
                                      save_tb_events_to_binary_detailed=False,
                                      stopping_criterion_rel_util_loss_diff=0.001)
 
+        # Ensure consistency of configs after changing inputs
+        self.hardware.__post_init__()
+        self.logging.__post_init__()
+
         # Defaults specific to an experiment type
         if self.experiment_type not in ConfigurationManager.experiment_types:
             raise Exception('The experiment type does not exist')
