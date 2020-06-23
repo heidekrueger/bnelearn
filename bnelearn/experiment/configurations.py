@@ -87,9 +87,9 @@ class LearningConfig:
                                         'sigma': 1.,
                                         'scale_sigma_by_model_size': True}
         if self.optimizer_hyperparams is None:
-            self.optimizer_hyperparams = {'lr': 3e-3}
+            self.optimizer_hyperparams = {'lr': 1e-3}
         if self.hidden_nodes is None:
-            self.hidden_nodes = [5, 5, 5]
+            self.hidden_nodes = [10,10]
         if self.hidden_activations is None:
             self.hidden_activations = [nn.SELU() for layer in self.hidden_nodes]
 
