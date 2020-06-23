@@ -686,7 +686,10 @@ class Experiment(ABC):
         return ex_ante_util_loss, ex_interim_max_util_loss
 
     def _calculate_metrics_PoA(self):
-        """Calculate (Bayesian) Price of Anarchy"""
+        """
+        Calculate ratio of achived welfare to maximal welfare by brute force.
+        Can be seen as a ound for the (Bayesian) Price of Anarchy.
+        """
 
         # calculate actual allocations
         bid_profile = torch.zeros(self.env.batch_size, self.env.n_players, self.env.agents[0].get_action().shape[-1],

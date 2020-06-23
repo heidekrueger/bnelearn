@@ -207,7 +207,7 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     # Calculate realized valuations given allocation
     try:
         # TODO Nils: try to estimate memory consumption beforhand and don't try/catch
-        # (previously, there was a bug when reaching the overwritting of p_i which is used in the `exccept`-block)
+        # (previously, there was a bug when reaching the overwritting of p_i which is used in the `except`-block)
 
         ## Calculate utilities
         u_i_alternative = agent.get_counterfactual_utility(
@@ -227,26 +227,26 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
 
     except RuntimeError as err:
         print("Failed computing util_loss as batch. Trying sequential valuations computation. Decrease dimensions to fix. Error:\n {0}".format(err))
-        # try:
+        try:
 
-        # valuations sequential
-        u_i_alternative = torch.zeros(batch_size, device=p_i.device)
-        for idx in tqdm(range(batch_size)):
-            v_i = agent_valuation[idx].repeat(1, grid_size * batch_size).view(batch_size * grid_size, n_bundles)
-            ## Calculate utilities
-            u_i_alternative_v = agent.get_counterfactual_utility(a_i, p_i, v_i)
-            u_i_alternative_v = u_i_alternative_v.view(grid_size, batch_size) #(grid x batch)
-            # avg per bid
-            u_i_alternative_v = torch.mean(u_i_alternative_v, 1)
-            # max per valuations
-            u_i_alternative[idx], _ = torch.max(u_i_alternative_v, 0)
+            # valuations sequential
+            u_i_alternative = torch.zeros(batch_size, device=p_i.device)
+            for idx in tqdm(range(batch_size)):
+                v_i = agent_valuation[idx].repeat(1, grid_size * batch_size).view(batch_size * grid_size, n_bundles)
+                ## Calculate utilities
+                u_i_alternative_v = agent.get_counterfactual_utility(a_i, p_i, v_i)
+                u_i_alternative_v = u_i_alternative_v.view(grid_size, batch_size) #(grid x batch)
+                # avg per bid
+                u_i_alternative_v = torch.mean(u_i_alternative_v, 1)
+                # max per valuations
+                u_i_alternative[idx], _ = torch.max(u_i_alternative_v, 0)
 
-            # clean up
-            del u_i_alternative_v
+                # clean up
+                del u_i_alternative_v
 
-        # except RuntimeError as err:
-        #     print("Failed computing util_loss as batch with sequential valuations. Decrease dimensions to fix. Error:\n {0}".format(err))
-        #     u_i_alternative = torch.ones(batch_size, device = p_i.device) * -9999999
+        except RuntimeError as err:
+            print("Failed computing util_loss as batch with sequential valuations. Decrease dimensions to fix. Error:\n {0}".format(err))
+            u_i_alternative = torch.ones(batch_size, device = p_i.device) * -9999999
 
     torch.cuda.empty_cache()
 

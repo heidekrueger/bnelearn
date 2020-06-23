@@ -19,6 +19,7 @@ from bnelearn.experiment.presets import (llg, llllgg, multiunit,
                                          single_item_asymmetric_uniform_overlapping,
                                          single_item_gaussian_symmetric, itembidding,
                                          single_item_uniform_symmetric, splitaward)
+from bnelearn.util.convergence_check import get_distance_of_learned_strategies
 
 if __name__ == '__main__':
     '''
@@ -65,20 +66,21 @@ if __name__ == '__main__':
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     single_item_asymmetric_uniform_disjunct(n_runs=1, n_epochs=500, logging=enable_logging)
     running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-        itembidding(n_runs=1, n_epochs=1000, n_players=[2], n_items=2, payment_rule='vcg',
+        itembidding(n_runs=1, n_epochs=1, n_players=[2], n_items=3, payment_rule='vcg',
                     logging=enable_logging)
 
-    gpu_configuration = GPUController(specific_gpu=running_configuration.specific_gpu)
+    gpu_configuration = GPUController(specific_gpu=3)
     learning_configuration = LearningConfiguration(
-        pretrain_iters=500,
-        batch_size=2**12,
+        pretrain_iters=0,
+        batch_size=2**18,
         learner_hyperparams = {'population_size': 64,
                                'sigma': 1.,
                                'scale_sigma_by_model_size': True}
     )
 
     # General logging configs
-    logging_configuration.util_loss_frequency = 8
+    logging_configuration.util_loss_frequency = 100
+    logging_configuration.util_loss_batch_size: int = 2**3
     logging_configuration.stopping_criterion_rel_util_loss_diff = 0.001
     logging_configuration.save_tb_events_to_csv_detailed=True
     logging_configuration.save_tb_events_to_binary_detailed=True
@@ -89,6 +91,8 @@ if __name__ == '__main__':
             experiment = experiment_class(experiment_configuration, learning_configuration,
                                           logging_configuration, gpu_configuration)
             experiment.run(epochs=running_configuration.n_epochs, n_runs=running_configuration.n_runs)
+
+        get_distance_of_learned_strategies(experiment)
 
     except KeyboardInterrupt:
         print('\nKeyboardInterrupt: released memory after interruption')

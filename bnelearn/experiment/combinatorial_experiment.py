@@ -285,9 +285,7 @@ class CAItemBiddingExperiment(Experiment):
 
         # subselection of single-item valuations
         plot_data = list(plot_data)
-        single_item_bundles = self.env.agents[0].transformation[:self.n_items,:].sum(0) == 1
-        plot_data[0] = plot_data[0][..., single_item_bundles]
-
+        plot_data[0] = plot_data[0][..., self.single_item_bundles()]
         super()._plot(plot_data, writer, epoch, xlim, ylim, labels,
                       x_label, y_label, fmts, figure_name, plot_points)
 
@@ -296,4 +294,8 @@ class CAItemBiddingExperiment(Experiment):
 
     def default_pretrain_transform(self, input_tensor):
         """Default pretrain transformation: truthful bidding"""
-        return torch.clone(input_tensor[..., :self.n_items])
+        return torch.clone(input_tensor[..., self.single_item_bundles()])
+
+    def single_item_bundles(self):
+        """Return indecies of single item bundles"""
+        return self._strat_to_bidder(lambda x: x, 1).transformation[: self.n_items, :].sum(0) == 1
