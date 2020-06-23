@@ -7,7 +7,8 @@ import torch
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
-from bnelearn.experiment.configuration_manager import ConfigurationManager
+
+from bnelearn.experiment.configuration_manager import ConfigurationManager #pylint: disable=import-error
 
 if __name__ == '__main__':
     '''
