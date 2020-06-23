@@ -242,14 +242,18 @@ class LLGAuction(Mechanism):
                                       first_weak * local_prices_case_first_weak + \
                                       (1 - both_strong - first_weak) * local_prices_case_second_weak
             elif self.rule == 'nearest_bid':
-                case_yes = (bg < b1 - b2).float()  # batch_size x 1
+                case_1_outbids = (bg < b1 - b2).float()  # batch_size x 1
+                case_2_outbids = (bg < b2 - b1).float()  # batch_size x 1
 
-                local_prices_case_yes = torch.cat([bg, torch.zeros_like(bg)], dim=player_dim)
+                local_prices_case_1 = torch.cat([bg, torch.zeros_like(bg)], dim=player_dim)
+                local_prices_case_2 = torch.cat([torch.zeros_like(bg), bg], dim=player_dim)
 
                 delta = 0.5 * (b1 + b2 - bg)
-                local_prices_case_no = bids[:, [0, 1]] - delta
+                local_prices_else = bids[:, [0, 1]] - delta
 
-                local_winner_prices = case_yes * local_prices_case_yes + (1 - case_yes) * local_prices_case_no
+                local_winner_prices = case_1_outbids * local_prices_case_1 + \
+                    case_2_outbids * local_prices_case_2 + \
+                    (1 - case_1_outbids - case_2_outbids) * local_prices_else
 
             else:
                 raise ValueError("invalid bid rule")
