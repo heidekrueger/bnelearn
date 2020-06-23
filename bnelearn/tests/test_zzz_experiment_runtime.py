@@ -19,63 +19,95 @@ ids_single_item, testdata_single_item = zip(*[
     # Single item
     ['single_item-symmetric-uniform-fp',
      ConfigurationManager(experiment_type='single_item_uniform_symmetric')
-         .get_config(n_runs=2, n_epochs=3)],
+                                            .set_running(n_runs=2, n_epochs=3)
+                                            .get_config()],
     ['single_item-symmetric-uniform-fp-no_model_sharing',
      ConfigurationManager(experiment_type='single_item_uniform_symmetric')
-         .get_config(n_runs=2, n_epochs=3, model_sharing=False)],
+                                            .set_running(n_runs=2, n_epochs=3)
+                                            .set_learning(model_sharing=False)
+                                            .get_config()],
     # ['single_item-symmetric-uniform-vcg', (single_item_uniform_symmetric(2,3, [3], 'second_price'))],
     # too expensive. ['single_item-symmetric-gaussian-fp', (single_item_gaussian_symmetric(2,3, [4], 'first_price'))],
     ['single_item-symmetric-gaussian-vcg', ConfigurationManager(experiment_type='single_item_gaussian_symmetric')
-                                            .get_config(n_runs=2, n_epochs=3, n_players=5,
-                                                        payment_rule='second_price')],
+                                            .set_running(n_runs=2, n_epochs=3)
+                                            .set_setting(n_players=5, payment_rule='second_price')
+                                            .get_config()],
     ['single_item-asymmetric-uniform-fp',
      ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping')
-        .get_config(n_runs=2, n_epochs=3)],
+                                            .set_running(n_runs=2, n_epochs=3)
+                                            .get_config()],
     ['single_item-asymmetric-uniform-vcg',
      ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping')
-        .get_config(n_runs=2, n_epochs=3, payment_rule='second_price')]
+                                            .set_running(n_runs=2, n_epochs=3)
+                                            .set_setting(payment_rule='second_price')
+                                            .get_config()]
 ])
 ids_local_global, testdata_local_global = zip(*[
     # LLG
-    ['LLG-fp', ConfigurationManager(experiment_type='llg').get_config(n_runs=2, n_epochs=3)],
+    ['LLG-fp', ConfigurationManager(experiment_type='llg')
+                                              .set_running(n_runs=2, n_epochs=3)
+                                              .get_config()],
     ['LLG-fp-no_model_sharing', ConfigurationManager(experiment_type='llg')
-                                .get_config(n_runs=2, n_epochs=3, model_sharing=False)],
+                                              .set_running(n_runs=2, n_epochs=3)
+                                              .set_learning(model_sharing=False)
+                                              .get_config()],
     ['LLG-vcg', ConfigurationManager(experiment_type='llg')
-                .get_config(n_runs=2, n_epochs=3, payment_rule='vcg')],
+                                              .set_running(n_runs=2, n_epochs=3)
+                                              .set_setting(payment_rule='vcg')
+                                              .get_config()],
     ['LLG-nearest_bid', ConfigurationManager(experiment_type='llg')
-                        .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid')],
+                                              .set_running(n_runs=2, n_epochs=3)
+                                              .set_setting(payment_rule='nearest_bid')
+                                              .get_config()],
     ['LLG-nearest_bid_correlated', ConfigurationManager(experiment_type='llg')
-                                   .with_correlation(gamma=0.5)
-                                   .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid')],
+                                              .set_running(n_runs=2, n_epochs=3)
+                                              .set_setting(gamma=0.5, payment_rule='nearest_bid')
+                                              .get_config()],
     # Used to fail when 0.5 didn't, due to neg bids
     ['LLG-nearest_bid_perfectly_correlated', ConfigurationManager(experiment_type='llg')
-                                             .with_correlation(gamma=1.0)
-                                             .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid')],
+                                              .set_running(n_runs=2, n_epochs=3)
+                                              .set_setting(gamma=1.0, payment_rule='nearest_bid')
+                                              .get_config()],
     # ['LLG-nearest_zero', (llg(2,3,'nearest_zero'))],
     # ['LLG-nearest_vcg', (llg(2,3,'nearest_vcg'))],
     # LLLLGG
     # ['LLLLGG-fp', (llllgg(2,2,'first_price'))],
     ['LLLLGG-fp-no_model_sharing', ConfigurationManager(experiment_type='llllgg')
-                                   .get_config(n_runs=2, n_epochs=2, model_sharing=False)],
+                                              .set_running(n_runs=2, n_epochs=2)
+                                              .set_learning(model_sharing=False)
+                                              .get_config()],
     ['LLLLGG-vcg', ConfigurationManager(experiment_type='llllgg')
-                   .get_config(n_runs=2, n_epochs=2, payment_rule='vcg')]
+                                              .set_running(n_runs=2, n_epochs=2)
+                                              .set_setting(payment_rule='vcg')
+                                              .get_config()]
     # ['LLLLGG-nearest_vcg', (llllgg(2,2,'nearest_vcg',core_solver='gurobi'))]
 ])
 ids_multi_unit, testdata_multi_unit = zip(*[
     # MultiUnit
     ['MultiUnit-discr', ConfigurationManager(experiment_type='multiunit')
-                        .get_config(n_runs=2, n_epochs=3, payment_rule='discriminatory')],
+                                          .set_running(n_runs=2, n_epochs=3)
+                                          .set_setting(payment_rule='discriminatory')
+                                          .get_config()],
     ['MultiUnit-discr-no_model_sharing', ConfigurationManager(experiment_type='multiunit')
-                                         .get_config(n_runs=2, n_epochs=3, payment_rule='discriminatory',
-                                                      model_sharing=False)],
+                                          .set_running(n_runs=2, n_epochs=3)
+                                          .set_setting(payment_rule='discriminatory')
+                                          .set_learning(model_sharing=False)
+                                          .get_config()],
     ['MultiUnit-vcg', ConfigurationManager(experiment_type='multiunit')
-                      .get_config(n_runs=2, n_epochs=3, payment_rule='vcg')],
+                                          .set_running(n_runs=2, n_epochs=2)
+                                          .set_setting(payment_rule='vcg')
+                                          .get_config()],
     ['MultiUnit-vcg', ConfigurationManager(experiment_type='multiunit')
-                      .get_config(n_runs=2, n_epochs=3, payment_rule='uniform')],
+                                          .set_running(n_runs=2, n_epochs=2)
+                                          .set_setting(payment_rule='uniform')
+                                          .get_config()],
     ['SplitAward-fp', ConfigurationManager(experiment_type='splitaward')
-                      .get_config(n_runs=2, n_epochs=3)],
+                                          .set_running(n_runs=2, n_epochs=3)
+                                          .get_config()],
     ['SplitAward-fp-no_model_sharing', ConfigurationManager(experiment_type='splitaward')
-                                       .get_config(n_runs=2, n_epochs=3, model_sharing=False)]
+                                          .set_running(n_runs=2, n_epochs=3)
+                                          .set_learning(model_sharing=False)
+                                          .get_config()]
 ])
 
 
