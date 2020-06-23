@@ -166,6 +166,7 @@ class ConfigurationManager:
 
         # Ensure consistency of configs after changing inputs
         self.hardware.__post_init__()
+        self.learning.__post_init__()
         self.logging.__post_init__()
 
         # Defaults specific to an experiment type
