@@ -57,10 +57,6 @@ class _OptNet_for_LLLLGG(nn.Module):
                 b,
                 torch.zeros([self.n_batch, self.n_player], dtype=precision, device=self.device)
             ), 1)
-        
-        self.e = torch.zeros(0, dtype=precision, device=self.device, requires_grad=True)
-        self.mu = torch.zeros(0, dtype=precision, device=self.device, requires_grad=True)
-
         #for mpc
         self.e_=None
         self.mu_=None
@@ -107,37 +103,14 @@ class _OptNet_for_LLLLGG(nn.Module):
         self.G_no_grad=self.G.detach()
         self.h_no_grad=self.h.detach()
         if self.e_!=None:
-            #append to e,mu to inequality constraints
-            # self.G_no_grad=torch.cat((self.G_no_grad,self.e_),1).detach()
-            # self.h_no_grad=torch.cat((self.h,self.mu_),1).detach()
             self.e_no_grad=self.e_.detach()
             self.mu_no_grad=self.mu_.detach()
         else:
             self.e_no_grad=None
             self.mu_no_grad=None
-        # start=time.time()
         x_mpc,opt_mpc=mpc_solver.solve(self.Q_no_grad, self.q_no_grad, self.G_no_grad,
                                          self.h_no_grad, self.e_no_grad, self.mu_no_grad,
-                                         print_warning=False)#,check_Q_psd=False)
-        # print(time.time()-start)    
-        # print(x_mpc.device, opt_mpc.device)
-        # Q_LU, S_LU, R = qpth_class.pre_factor_kkt(self.Q, self.G, self.e)
-        # x_qp,s,z,y=qpth_class.forward(self.Q, self.q, self.G, self.h, self.e, self.mu, 
-        #                 Q_LU, S_LU, R, eps=1e-12, verbose=0, notImprovedLim=3, maxIter=25)
-        
-        # x_qp=QPFunction(
-        #     verbose=-1, eps=1e-19, maxIter=100, notImprovedLim=10, check_Q_spd=False
-        # )(self.Q, self.q, self.G, self.h, self.e, self.mu)
-        # print("____________qpth results________________")
-        # print(x_qp)
-        # return QPFunction(
-        #     verbose=-1, eps=1e-19, maxIter=100, notImprovedLim=10, check_Q_spd=False
-        # )(self.Q, self.q, self.G, self.h, self.e, self.mu)
-        # print solution returned by mpc
-        # print("____________mpc results________________")
-        # print(x_mpc.view(self.n_batch,self.n_player))
-        # if torch.isnan(x_mpc).any():
-        #     print(x_mpc)
+                                         print_warning=False)
         return x_mpc
 
 class LLGAuction(Mechanism):
@@ -468,7 +441,7 @@ class LLLLGGAuction(Mechanism):
             payment = self._run_batch_nearest_vcg_core_cvxpy(A, beta, payments_vcg, b)
         elif self.core_solver == 'qpth':
             A, beta = self._reduce_nearest_vcg_remove_duplicates(A, beta)
-            # Not efficient. Takes longer than it brings speed advancate
+            # Not efficient. Takes longer than the speedup it results in
             #A, beta = self._reduce_nearest_vcg_remove_zeros(A, beta)
             payment = self._run_batch_nearest_vcg_core_qpth(A, beta, payments_vcg, b).squeeze()
         else:
@@ -479,8 +452,8 @@ class LLLLGGAuction(Mechanism):
         """
         For each coalition keep only the instance with the highest bid (beta)
         """
-        start_time = timer()
-        n_batch, n_coalition, n_player = A.shape
+        #start_time = timer()
+        n_batch, n_coalition, _ = A.shape
 
         ## Phase 1: For each coalition duplicates, find the max bid
         # Get identical coalitions s.t. dimension are kept over all batches
@@ -498,7 +471,7 @@ class LLLLGGAuction(Mechanism):
         ## Phase 2: Keep only the coalition duplicate with max bid
         # Create tensor to select only the first of a group
         tmp_select_first = torch.zeros((n_batch,n_coalition), dtype=int, device=self.device)
-        tmp_select_first[:,0] = -1 
+        tmp_select_first[:,0] = -1
         tmp_select_first[:,1:] = A_unique_idx_sorted_complete[:,0:(n_coalition-1)]
         tmp_select_first = torch.tensor(A_unique_idx_sorted_complete - tmp_select_first, dtype=torch.bool, device=self.device)
 
@@ -513,7 +486,7 @@ class LLLLGGAuction(Mechanism):
         """
         Remove coalitions that pay no extra (beta <= 0)
         """
-        start_time = timer()
+        #start_time = timer()
         n_batch, n_coalition, n_player = A.shape
 
         min_true = min((beta <= 0).sum(1))
