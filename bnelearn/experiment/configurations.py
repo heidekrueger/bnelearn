@@ -1,19 +1,16 @@
-"""This module provides dataclasses that are used to hold configs."""
+"""
+This module provides dataclasses that are used to hold configs.
+The values which are set to None are either not necessary, specific only for certain kinds of experiments or
+are set later depending on other values
+"""
 import dataclasses
 import json
-import os
-import time
-import warnings
 from dataclasses import dataclass
-from typing import List, Type, Iterable
+from typing import List, Iterable
 
 import torch
 import torch.nn as nn
 
-from torch.optim import Optimizer
-
-
-# ToDo Perhaps all the defaults should be moved to the ConfigurationManager?
 
 class EnhancedJSONEncoder(json.JSONEncoder):
     def default(self, o):
@@ -25,17 +22,16 @@ class EnhancedJSONEncoder(json.JSONEncoder):
 # Only used on front end
 @dataclass
 class RunningConfig:
-    n_runs: int = 1
-    n_epochs: int = 1000
-    #n_players: int = None
+    n_runs: int
+    n_epochs: int
     seeds: Iterable[int] = None
 
 
 @dataclass
 class SettingConfig:
-    n_players: int = None
-    payment_rule: str = 'first_price'
-    risk: float = 1.0
+    n_players: int
+    payment_rule: str
+    risk: float
 
     # SymmetricPriorSingleItemExperiment
     common_prior: torch.distributions.Distribution = None
@@ -49,8 +45,8 @@ class SettingConfig:
     u_hi: list = None
 
     # Correlated Valuations, independent by default
-    gamma: float = 0.0
-    correlation_types: str = 'independent'
+    gamma: float = None
+    correlation_types: str = None
     correlation_groups: List[List[int]] = None  # player_ids in each group
     correlation_coefficients: List[float] = None  # coefficients in each group
 
@@ -64,48 +60,20 @@ class SettingConfig:
     efficiency_parameter: float = None
 
     # LLLLGG
-    core_solver: str = 'NoCore'
+    core_solver: str = None
     # parallel: int = 1 in hardware config now
-    
 
 
 @dataclass
 class LearningConfig:
-    model_sharing: bool = True
-    learner_hyperparams: dict = None
-    optimizer_type: str or Type[Optimizer] = 'adam'
-    optimizer_hyperparams: dict = None
-    hidden_nodes: List[int] = None
+    model_sharing: bool
+    learner_hyperparams: dict
+    optimizer_type: str
+    optimizer_hyperparams: dict
+    hidden_nodes: List[int]
+    pretrain_iters: int
+    batch_size: int
     hidden_activations: List[nn.Module] = None
-    pretrain_iters: int = 500
-    batch_size: int = 2 ** 18
-
-    def __post_init__(self):
-        self.optimizer: Type[Optimizer] = self._set_optimizer(self.optimizer_type)
-        if self.learner_hyperparams is None:
-            self.learner_hyperparams = {'population_size': 64,
-                                        'sigma': 1.,
-                                        'scale_sigma_by_model_size': True}
-        if self.optimizer_hyperparams is None:
-            self.optimizer_hyperparams = {'lr': 1e-3}
-        if self.hidden_nodes is None:
-            self.hidden_nodes = [10,10]
-        if self.hidden_activations is None:
-            self.hidden_activations = [nn.SELU() for layer in self.hidden_nodes]
-
-    @staticmethod
-    def _set_optimizer(optimizer: str or Type[Optimizer]) -> Type[Optimizer]:
-        """Maps shortcut strings to torch.optim.Optimizer types, if required."""
-        if isinstance(optimizer, type) and issubclass(optimizer, Optimizer):
-            return optimizer
-
-        if isinstance(optimizer, str):
-            if optimizer in ('adam', 'Adam'):
-                return torch.optim.Adam
-            if optimizer in ('SGD', 'sgd', 'Sgd'):
-                return torch.optim.SGD
-            # add more optimizers as needed
-        raise ValueError('Optimizer type could not be inferred!')
 
 
 @dataclass
@@ -119,18 +87,31 @@ class LoggingConfig:
                 experiment_timestamp + experiment_name /
                     run_timestamp + run_seed
     """
-    enable_logging: bool = True  # If false, disables ALL logging
-    # root directory for logging. subdirectories will be inferred and created based on experiment name and config
-    log_root_dir: str = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
-    experiment_name: str = None
-    # Rationale behind timestamp format: should be ordered chronologically but include weekday.
-    # Using . instead of : for compatability with Windows
-    experiment_timestamp: str = time.strftime('%Y-%m-%d %a %H.%M')  # removed %S here, we won't need seconds
-    plot_frequency: int = 100
-    plot_points: int = 100
-    plot_show_inline: bool = True
-    log_metrics: dict = None
-    export_step_wise_linear_bid_function_size = None
+    enable_logging: bool  # If false, disables ALL logging
+    log_root_dir: str
+
+    # Utility Loss calculation
+    util_loss_batch_size: int
+    util_loss_grid_size: int
+    util_loss_frequency: int
+
+    # Eval vs known bne
+    eval_batch_size: int
+    cache_eval_actions: bool
+
+    plot_frequency: int
+    plot_points: int
+    plot_show_inline: bool
+    log_metrics: dict
+
+    save_tb_events_to_csv_aggregate: bool
+    save_tb_events_to_csv_detailed: bool
+    save_tb_events_to_binary_detailed: bool
+    save_models: bool
+
+    save_figure_to_disk_png: bool
+    save_figure_to_disk_svg: bool
+    save_figure_data_to_disk: bool
 
     # Stopping Criterion #TODO: this section should go into ExperimentConfiguration
     stopping_criterion_rel_util_loss_diff: float = None
@@ -139,74 +120,25 @@ class LoggingConfig:
     stopping_criterion_batch_size: int = 2 ** 10  # TODO: ideally this should be unified with general util_loss batch and grid sizes
     stopping_criterion_grid_size: int = 2 ** 9
 
-    # Utility Loss calculation
-    util_loss_batch_size: int = None
-    util_loss_grid_size: int = None
-    util_loss_frequency: int = 100
-
-    # Eval vs known bne
-    eval_batch_size: int = 2 ** 22
-    cache_eval_actions: bool = True
-
-    save_tb_events_to_csv_aggregate: bool = True
-    save_tb_events_to_csv_detailed: bool = False
-    save_tb_events_to_binary_detailed: bool = False
-    save_models: bool = True
-
-    save_figure_to_disk_png: bool = True
-    save_figure_to_disk_svg: bool = True
-    save_figure_data_to_disk: bool = True
-
-    def __post_init__(self):
-
-        self.experiment_dir = self.experiment_timestamp
-        if self.experiment_name:
-            self.experiment_dir += ' ' + str(self.experiment_name)
-
-        metrics = self.log_metrics
-        self.log_metrics = {'opt': False,
-                            'l2': False,
-                            'util_loss': False}
-        if metrics is not None:
-            for metric in metrics:
-                assert metric in self.log_metrics.keys(), "Metric not known."
-                self.log_metrics[metric] = True
-        if self.log_metrics['util_loss'] and self.util_loss_batch_size is None:
-            self.util_loss_batch_size: int = 2 ** 8
-            self.util_loss_grid_size: int = 2 ** 8
-        if not self.enable_logging:
-            self.save_tb_events_to_csv_aggregate = False
-            self.save_tb_events_to_csv_detailed: bool = False
-            self.save_tb_events_to_binary_detailed: bool = False
-            self.save_models = False
-            self.save_figure_to_disk_png = False
-            self.save_figure_to_disk_svg = False
-            self.save_figure_data_to_disk = False
+    export_step_wise_linear_bid_function_size = None
+    experiment_dir: str = None
+    experiment_name: str = None
 
 
 @dataclass
 class HardwareConfig:
-    cuda: bool = True
-    specific_gpu: int = 0
-    fallback: bool = False
-    max_cpu_threads: int = 1
-
-    def __post_init__(self):
-        if self.cuda and not torch.cuda.is_available():
-            warnings.warn('Cuda not available. Falling back to CPU!')
-            self.cuda = False
-            self.fallback = True
-        self.device = 'cuda' if self.cuda else 'cpu'
-
-        if self.cuda and self.specific_gpu is not None:
-            torch.cuda.set_device(self.specific_gpu)
+    cuda: bool
+    specific_gpu: int
+    fallback: bool
+    max_cpu_threads: int
+    device: str = None
 
 
 @dataclass
 class ExperimentConfig:
     experiment_class: str
-    running: RunningConfig = None
-    setting: SettingConfig = None
-    learning: LearningConfig = None
-    logging: LoggingConfig = None
-    hardware: HardwareConfig = None
+    running: RunningConfig
+    setting: SettingConfig
+    learning: LearningConfig
+    logging: LoggingConfig
+    hardware: HardwareConfig

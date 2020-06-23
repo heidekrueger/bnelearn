@@ -1,6 +1,7 @@
 """This module contains utilities for logging of experiments"""
-
+import os
 import pickle
+import time
 from typing import List
 
 import matplotlib.pyplot as plt
@@ -15,7 +16,6 @@ from bnelearn.experiment.configurations import *
 
 _full_log_file_name = 'full_results'
 _aggregate_log_file_name = 'aggregate_log'
-_configurations_f_name = 'experiment_configurations.json'
 
 
 # based on https://stackoverflow.com/a/57411105/4755970
@@ -225,149 +225,3 @@ class CustomSummaryWriter(SummaryWriter):
                     fw.add_summary(scalar(tag, scalar_value), global_step, walltime)
             else:
                 raise ValueError('Got list of invalid length.')
-
-
-def log_experiment_configurations(experiment_log_dir, experiment_configuration: ExperimentConfig):
-    """
-    Serializes ExperimentConfiguration into a readable JSON file
-
-    :param experiment_log_dir: full path except for the file name
-    :param experiment_configuration: experiment configuration as given by ConfigurationManager
-    """
-    f_name = os.path.join(experiment_log_dir, _configurations_f_name)
-
-    temp_cp = experiment_configuration.setting.common_prior
-    temp_ha = experiment_configuration.learning.hidden_activations
-
-    experiment_configuration.setting.common_prior = str(experiment_configuration.setting.common_prior)
-    experiment_configuration.learning.hidden_activations = str(
-        experiment_configuration.learning.hidden_activations)
-    with open(f_name, 'w+') as outfile:
-        json.dump(experiment_configuration, outfile, cls=EnhancedJSONEncoder, indent=4)
-
-    # Doesn't look so shiny, but probably the quickest way to prevent compromising the object
-    experiment_configuration.setting.common_prior = temp_cp
-    experiment_configuration.learning.hidden_activations = temp_ha
-
-
-def get_experiment_config_from_configurations_log(experiment_log_dir=None):
-    """
-    Retrieves stored configurations from JSON and turns them into ExperimentConfiguration object
-    By default creates configuration from the file stored alongside the running script
-
-    :param experiment_log_dir: full path except for the file name, current working directory by default
-    :return: ExperimentConfiguration object
-    """
-    if experiment_log_dir is None:
-        experiment_log_dir = os.path.abspath(os.getcwd())
-    f_name = os.path.join(experiment_log_dir, _configurations_f_name)
-
-    with open(f_name) as json_file:
-        experiment_config_as_dict = json.load(json_file)
-
-    experiment_config = ExperimentConfig(experiment_class=experiment_config_as_dict['experiment_class'])
-
-    config_set_name_to_obj = {
-        'running': RunningConfig(),
-        'setting': SettingConfig(),
-        'learning': LearningConfig(),
-        'logging': LoggingConfig(),
-        'hardware': HardwareConfig()
-    }
-
-    # Parse a dictionary retrieved from JSON into ExperimentConfiguration object
-    # Attribute assignment pattern: experiment_config.config_group_name.config_group_object_attr = attr_val
-    # e.g. experiment_config.run_config.n_runs = experiment_config_as_dict['run_config']['n_runs']
-    # config_group_object assignment pattern: experiment_config.config_group_name = config_group_object
-    # e.g. experiment_config.run_config = earlier initialised and filled instance of RunningConfiguration class
-    experiment_config_as_dict = {k: v for (k, v) in experiment_config_as_dict.items() if
-                                 k != 'experiment_class'}.items()
-    for config_set_name, config_group_dict in experiment_config_as_dict:
-        for config_set_obj_attr, attr_val in config_group_dict.items():
-            setattr(config_set_name_to_obj[config_set_name], config_set_obj_attr, attr_val)
-        setattr(experiment_config, config_set_name, config_set_name_to_obj[config_set_name])
-
-    # Create hidden activations object based on the loaded string
-    # Tested for SELU only
-    hidden_activations_methods = {'SELU': lambda: nn.SELU,
-                                  'Threshold': lambda: nn.Threshold,
-                                  'ReLU': lambda: nn.ReLU,
-                                  'RReLU': lambda: nn.RReLU,
-                                  'Hardtanh': lambda: nn.Hardtanh,
-                                  'ReLU6': lambda: nn.ReLU6,
-                                  'Sigmoid': lambda: nn.Sigmoid,
-                                  'Hardsigmoid': lambda: nn.Hardsigmoid,
-                                  'Tanh': lambda: nn.Tanh,
-                                  'ELU': lambda: nn.ELU,
-                                  'CELU': lambda: nn.CELU,
-                                  'GLU': lambda: nn.GLU,
-                                  'GELU': lambda: nn.GELU,
-                                  'Hardshrink': lambda: nn.Hardshrink,
-                                  'LeakyReLU': lambda: nn.LeakyReLU,
-                                  'LogSigmoid': lambda: nn.LogSigmoid,
-                                  'Softplus': lambda: nn.Softplus,
-                                  'Softshrink': lambda: nn.Softshrink,
-                                  'MultiheadAttention': lambda: nn.MultiheadAttention,
-                                  'PReLU': lambda: nn.PReLU,
-                                  'Softsign': lambda: nn.Softsign,
-                                  'Tanhshrink': lambda: nn.Tanhshrink,
-                                  'Softmin': lambda: nn.Softmin,
-                                  'Softmax': lambda: nn.Softmax,
-                                  'Softmax2d': lambda: nn.Softmax2d,
-                                  'LogSoftmax': lambda: nn.LogSoftmax, }
-
-    ha = str(experiment_config.learning.hidden_activations).split('()')
-    for symb in ['[', ']', ' ', ',']:
-        ha = list(map(lambda s: str(s).replace(symb, ''), ha))
-    ha = [i for i in ha if i != '']
-    ha = [hidden_activations_methods[layer]()() for layer in ha]
-    experiment_config.learning.hidden_activations = ha
-
-    if experiment_config.setting.common_prior != 'None':
-        # Create common_prior object based on the loaded string
-        common_priors = {'Uniform': torch.distributions.Uniform,
-                         'Normal': torch.distributions.Normal,
-                         'Bernoulli': torch.distributions.Bernoulli,
-                         'Beta': torch.distributions.Beta,
-                         'Binomial': torch.distributions.Binomial,
-                         'Categorical': torch.distributions.Categorical,
-                         'Cauchy': torch.distributions.Cauchy,
-                         'Chi2': torch.distributions.Chi2,
-                         'ContinuousBernoulli': torch.distributions.ContinuousBernoulli,
-                         'Dirichlet': torch.distributions.Dirichlet,
-                         'Exponential': torch.distributions.Exponential,
-                         'FisherSnedecor': torch.distributions.FisherSnedecor,
-                         'Gamma': torch.distributions.Gamma,
-                         'Geometric': torch.distributions.Geometric,
-                         'Gumbel': torch.distributions.Gumbel,
-                         'HalfCauchy': torch.distributions.HalfCauchy,
-                         'HalfNormal': torch.distributions.HalfNormal,
-                         'Independent': torch.distributions.Independent,
-                         'Laplace': torch.distributions.Laplace,
-                         'LogNormal': torch.distributions.LogNormal,
-                         'LogisticNormal': torch.distributions.LogisticNormal,
-                         'LowRankMultivariateNormal': torch.distributions.LowRankMultivariateNormal,
-                         'Multinomial': torch.distributions.Multinomial,
-                         'MultivariateNormal': torch.distributions.MultivariateNormal,
-                         'NegativeBinomial': torch.distributions.NegativeBinomial,
-                         'OneHotCategorical': torch.distributions.OneHotCategorical,
-                         'Pareto': torch.distributions.Pareto,
-                         'RelaxedBernoulli': torch.distributions.RelaxedBernoulli,
-                         'RelaxedOneHotCategorical': torch.distributions.RelaxedOneHotCategorical,
-                         'StudentT': torch.distributions.StudentT,
-                         'Poisson': torch.distributions.Poisson,
-                         'VonMises': torch.distributions.VonMises,
-                         'Weibull': torch.distributions.Weibull
-                         }
-        distribution = str(experiment_config.setting.common_prior).split('(')[0]
-        if distribution == 'Uniform':
-            experiment_config.setting.common_prior = common_priors[distribution](experiment_config.setting.u_lo,
-                                                                                 experiment_config.setting.u_hi)
-        elif distribution == 'Normal':
-            experiment_config.setting.common_prior = common_priors[distribution](
-                experiment_config.setting.valuation_mean,
-                experiment_config.setting.valuation_std)
-        else:
-            raise NotImplementedError
-
-    return experiment_config

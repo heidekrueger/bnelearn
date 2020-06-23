@@ -20,7 +20,8 @@
             1.4,
             1.4
         ],
-        "correlation_types": "independent",
+        "gamma": null,
+        "correlation_types": null,
         "correlation_groups": null,
         "correlation_coefficients": null,
         "n_units": 2,
@@ -28,8 +29,7 @@
         "constant_marginal_values": false,
         "item_interest_limit": null,
         "efficiency_parameter": 0.3,
-        "core_solver": "NoCore",
-        "gamma": 0.0
+        "core_solver": null
     },
     "learning": {
         "model_sharing": true,
@@ -40,22 +40,24 @@
         },
         "optimizer_type": "adam",
         "optimizer_hyperparams": {
-            "lr": 0.003
+            "lr": 0.001
         },
         "hidden_nodes": [
-            5,
-            5,
-            5
+            10,
+            10
         ],
-        "hidden_activations": "[SELU(), SELU(), SELU()]",
-        "pretrain_iters": 10,
-        "batch_size": 256
+        "pretrain_iters": 500,
+        "batch_size": 262144,
+        "hidden_activations": "[SELU(), SELU()]"
     },
     "logging": {
         "enable_logging": true,
         "log_root_dir": "/home/gleb/bnelearn/experiments",
-        "experiment_name": null,
-        "experiment_timestamp": "2020-06-21 Sun 20.11",
+        "util_loss_batch_size": 16,
+        "util_loss_grid_size": 16,
+        "util_loss_frequency": 100,
+        "eval_batch_size": 4,
+        "cache_eval_actions": true,
         "plot_frequency": 100,
         "plot_points": 100,
         "plot_show_inline": true,
@@ -64,28 +66,26 @@
             "l2": true,
             "util_loss": true
         },
+        "save_tb_events_to_csv_aggregate": true,
+        "save_tb_events_to_csv_detailed": false,
+        "save_tb_events_to_binary_detailed": false,
+        "save_models": false,
+        "save_figure_to_disk_png": false,
+        "save_figure_to_disk_svg": false,
+        "save_figure_data_to_disk": false,
         "stopping_criterion_rel_util_loss_diff": 0.001,
         "stopping_criterion_frequency": 100,
         "stopping_criterion_duration": 3,
         "stopping_criterion_batch_size": 1024,
         "stopping_criterion_grid_size": 512,
-        "util_loss_batch_size": 16,
-        "util_loss_grid_size": 16,
-        "util_loss_frequency": 100,
-        "eval_batch_size": 256,
-        "cache_eval_actions": true,
-        "save_tb_events_to_csv_aggregate": true,
-        "save_tb_events_to_csv_detailed": false,
-        "save_tb_events_to_binary_detailed": false,
-        "save_models": true,
-        "save_figure_to_disk_png": true,
-        "save_figure_to_disk_svg": true,
-        "save_figure_data_to_disk": true
+        "experiment_dir": "2020-06-23 Tue 21.48",
+        "experiment_name": null
     },
     "hardware": {
         "cuda": false,
         "specific_gpu": 0,
         "fallback": true,
-        "max_cpu_threads": 1
+        "max_cpu_threads": 1,
+        "device": "cpu"
     }
 }
