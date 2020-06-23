@@ -57,11 +57,9 @@ class _OptNet_for_LLLLGG(nn.Module):
                 b,
                 torch.zeros([self.n_batch, self.n_player], dtype=precision, device=self.device)
             ), 1)
-        #for mpc
-        self.e_=None
-        self.mu_=None
-
         # will be set by methods
+        self.e = None
+        self.mu = None
         self.Q = None
         self.q = None
 
@@ -87,31 +85,38 @@ class _OptNet_for_LLLLGG(nn.Module):
         if min_payments is not None:
             self.e = torch.ones([self.n_batch, 1, self.n_player], dtype=self.precision, device=self.device)
             self.mu = min_payments.sum(1).reshape(self.n_batch, 1)
-            # #for mpc
-            self.e_= torch.ones([self.n_batch, 1, self.n_player], dtype=self.precision, device=self.device)
-            self.mu_ = min_payments.sum(1).reshape(self.n_batch, 1)#
 
-        payment_vcg = torch.as_tensor(self.payment_vcg, dtype=self.precision, device=self.device)
         self.Q = torch.diag(torch.tensor([2, ] * self.n_player, dtype=self.precision, device=self.device)).repeat(self.n_batch,1,1)
-        self.q = -2 * payment_vcg
-    def forward(self, input=None):
-        """input is not used, as problem is fully specified"""
-        mpc_solver=mpc.mpc_class(max_iter=20)
-        # detach all variables to set requires_grad=False
-        self.Q_no_grad=self.Q.detach()
-        self.q_no_grad=self.q.detach()
-        self.G_no_grad=self.G.detach()
-        self.h_no_grad=self.h.detach()
-        if self.e_!=None:
-            self.e_no_grad=self.e_.detach()
-            self.mu_no_grad=self.mu_.detach()
+        self.q = -2 * torch.as_tensor(self.payment_vcg, dtype=self.precision, device=self.device)
+    def forward(self, solver, input=None):
+        """input is not used, as problem is fully specified
+        Choose either 'mpc' or 'qpth' solver. The latter is both slower and more imprecise"""
+
+        if solver == 'qpth':
+            if self.e == None:
+                self.e = torch.zeros(0, dtype=self.precision, device=self.device, requires_grad=True)
+            if self.mu == None:
+                self.mu = torch.zeros(0, dtype=self.precision, device=self.device, requires_grad=True)
+            return QPFunction(verbose=-1, eps=1e-19, maxIter=20, notImprovedLim=10, check_Q_spd=False) \
+                             (self.Q, self.q, self.G, self.h, self.e, self.mu)
+
+        elif solver == 'mpc':
+            mpc_solver=mpc.mpc_class(max_iter=20)
+            # detach all variables to set requires_grad=False
+            if self.e!=None:
+                self.e_no_grad=self.e.detach()
+                self.mu_no_grad=self.mu.detach()
+            else:
+                self.e_no_grad=None
+                self.mu_no_grad=None
+            x_mpc, opt_mpc = mpc_solver.solve(self.Q.detach(), self.q.detach(), self.G.detach(),
+                                            self.h.detach(), self.e_no_grad, self.mu_no_grad,
+                                            print_warning=False)
+            return x_mpc
         else:
-            self.e_no_grad=None
-            self.mu_no_grad=None
-        x_mpc,opt_mpc=mpc_solver.solve(self.Q_no_grad, self.q_no_grad, self.G_no_grad,
-                                         self.h_no_grad, self.e_no_grad, self.mu_no_grad,
-                                         print_warning=False)
-        return x_mpc
+            raise NotImplementedError(":/")
+
+
 
 class LLGAuction(Mechanism):
     """
@@ -255,7 +260,7 @@ class LLLLGGAuction(Mechanism):
             raise NotImplementedError(':(')
 
         if rule == 'nearest_vcg':
-            if core_solver not in ['gurobi', 'cvxpy', 'qpth']:
+            if core_solver not in ['gurobi', 'cvxpy', 'qpth', 'mpc']:
                 raise NotImplementedError(':/')
         # 'nearest_zero' and 'proxy' are aliases
         if rule == 'proxy':
@@ -433,17 +438,18 @@ class LLLLGGAuction(Mechanism):
         b = torch.sum(allocation.view(n_batch, n_player, n_bundle) * bids.view(n_batch, n_player, n_bundle), dim=2)
         payments_vcg = self._calculate_payments_vcg(bids, allocation, welfare)
 
-        
+        # Reduce problem and only keep highest value for a coalition
+        A, beta = self._reduce_nearest_vcg_remove_duplicates(A, beta)
+        # Not efficient. Takes longer than the speedup it results in
+        #A, beta = self._reduce_nearest_vcg_remove_zeros(A, beta)
+
         # Choose core solver
         if self.core_solver == 'gurobi':
             payment = self._run_batch_nearest_vcg_core_gurobi(A, beta, payments_vcg, b)
         elif self.core_solver == 'cvxpy':
             payment = self._run_batch_nearest_vcg_core_cvxpy(A, beta, payments_vcg, b)
-        elif self.core_solver == 'qpth':
-            A, beta = self._reduce_nearest_vcg_remove_duplicates(A, beta)
-            # Not efficient. Takes longer than the speedup it results in
-            #A, beta = self._reduce_nearest_vcg_remove_zeros(A, beta)
-            payment = self._run_batch_nearest_vcg_core_qpth(A, beta, payments_vcg, b).squeeze()
+        elif self.core_solver == 'qpth' or self.core_solver == 'mpc':
+            payment = self._run_batch_nearest_vcg_core_qpth_mpc(A, beta, payments_vcg, b,self.core_solver).squeeze()
         else:
             raise NotImplementedError(":/")
         return payment
@@ -481,7 +487,6 @@ class LLLLGGAuction(Mechanism):
         #print("Removed {} redundand constraints in {:0.2f} seconds".format((A.shape[1]-A_unique.shape[1]), (timer() - start_time)))
         return A_unique, beta_final
 
-
     def _reduce_nearest_vcg_remove_zeros(self, A, beta):
         """
         Remove coalitions that pay no extra (beta <= 0)
@@ -502,7 +507,7 @@ class LLLLGGAuction(Mechanism):
     def _run_batch_nearest_vcg_core_gurobi(self, A, beta, payments_vcg, b):
         n_batch, n_coalitions, n_player = A.shape
         # Change this to 2**x to solve larger problems at once (optimal ~x=4?)
-        gurobi_mini_batch_size = min(n_batch, 2 ** 0) #TODO, Paul: Set this to 3 instead of 0 again.
+        gurobi_mini_batch_size = min(n_batch, 2 ** 3)
         n_mini_batch = (int)(n_batch / gurobi_mini_batch_size)
         pool_size = min(self.parallel, n_batch)
 
@@ -591,9 +596,9 @@ class LLLLGGAuction(Mechanism):
         # pA >= beta
         for batch_k in range(n_mini_batch):
             for coalition_k, coalition_v in enumerate(beta[batch_k]):
-                # Consider only coalitions with >0 blocking value TODO, Paul: Add check again!
-                # if coalition_v <= 0:
-                #     continue
+                # Consider only coalitions with >0 blocking value
+                if coalition_v <= 0:
+                    continue
                 # TODO, Paul: Can add another check whether coalition is already existing and only pick highest value for it
                 sum_payments = 0
                 for payment_k in range(len(payment[batch_k])):
@@ -685,18 +690,16 @@ class LLLLGGAuction(Mechanism):
         model.update()
         return model
 
-    def _run_batch_nearest_vcg_core_qpth(self, A, beta, payments_vcg, b, min_core_payments=True):
+    def _run_batch_nearest_vcg_core_qpth_mpc(self, A, beta, payments_vcg, b, solver, min_core_payments=True):
         # Initialize the model.
-        warnings.warn('Experimental! Do not use qpth at this state, since it is very imprecise for large batches.')
         model = _OptNet_for_LLLLGG(self.device, A, beta, b, payments_vcg)
         if min_core_payments:
             model._add_objective_min_payments()
-            mu = model()
+            mu = model(solver)
             model._add_objective_min_vcg_distance(mu)
         else:
             model._add_objective_min_vcg_distance()
-
-        return model()
+        return model(solver)
 
     def _run_batch_nearest_vcg_core_cvxpy(self, A, beta, payments_vcg, b, min_core_payments=True):
         import cvxpy as cp
@@ -706,8 +709,8 @@ class LLLLGGAuction(Mechanism):
         mu_p = cp.Parameter(1)
         payment_vcg_p = cp.Parameter(n_player)
         payments_p = cp.Variable(n_player)
-        G_p = cp.Parameter((72, n_player))
-        h_p = cp.Parameter(72)
+        G_p = cp.Parameter((n_player + n_coalitions, n_player))
+        h_p = cp.Parameter(n_player + n_coalitions)
         G = torch.cat((-A, torch.eye(n_player, device=self.device).repeat(n_batch, 1, 1)), 1)
         h = torch.cat((-beta, b), 1)
 

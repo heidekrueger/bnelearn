@@ -205,11 +205,13 @@ def test_LLLLGG(parallel, rule,bids,expected_allocation,expected_payments):
     Testing batch_size > 1, VCG 0 prices, FP, global/local winning
     """
     run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'gurobi')
-    run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'cvxpy')
+    #run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'cvxpy')
     run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'qpth')
+    run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'mpc')
 
     run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'gurobi')
-    run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'cvxpy')
+    #run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'cvxpy')
     run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'qpth')
+    run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'mpc')
     
 
