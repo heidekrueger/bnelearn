@@ -180,7 +180,7 @@ ids, testdata = zip(*[
                                                                                     [0.0, 0.0, 0.5, 0.5, 3.5, 0.0],
                                                                                     [2.0, 2.0, 1.5, 1.5, 0.0, 0.0],
                                                                                     [2.5, 3.5, 1.5, 1.5, 0.0, 0.0],
-                                                                                    [2.5, 3.5, 1.0, 2.0, 0.0, 0.0]], dtype = torch.float))]                                                                                
+                                                                                    [2.5, 3.5, 1.0, 2.0, 0.0, 0.0]], dtype = torch.float))]
 ])
 
 def run_LLLLGG_test(parallel, rule, device, bids, expected_allocation, expected_payments, solver):
@@ -213,5 +213,5 @@ def test_LLLLGG(parallel, rule,bids,expected_allocation,expected_payments):
     #run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'cvxpy')
     run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'qpth')
     run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'mpc')
-    
+
 

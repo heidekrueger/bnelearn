@@ -28,7 +28,7 @@ def run_LLLLGG_test(parallel, rule, bids, device, solver_1, solver_2):
 
     allocation_solver_1, payments_solver_1 = game_solver_1.run(bids.to(device))
     allocation_solver_2, payments_solver_2 = game_solver_2.run(bids.to(device))
-    
+
     assert torch.equal(allocation_solver_1, allocation_solver_2), \
         "Allocation gap between {} and {}".format(solver_1,solver_2)
     assert torch.allclose(payments_solver_1.double(), payments_solver_2, atol = 0.01), \
