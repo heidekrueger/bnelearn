@@ -47,7 +47,8 @@ if __name__ == '__main__':
     #     .get_config(log_root_dir=log_root_dir)
     experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
         .with_correlation(gamma=0.0) \
-        .get_config(log_root_dir=log_root_dir, n_runs=1, n_epochs=100)
+        .get_config(log_root_dir=log_root_dir, n_runs=1, n_epochs=100, specific_gpu=1)
+
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg') \
     #     .get_config(log_root_dir=log_root_dir)
@@ -57,7 +58,6 @@ if __name__ == '__main__':
     #     .get_config(log_root_dir=log_root_dir)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
     #     .get_config(log_root_dir=log_root_dir)
-
     try:
         experiment = experiment_class(experiment_config)
 

@@ -3,6 +3,8 @@
 import pickle
 from typing import List
 
+from dataclasses import replace
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -151,12 +153,12 @@ def export_stepwise_linear_bid(experiment_dir, bidders: List[Bidder], step=1e-2)
 class CustomSummaryWriter(SummaryWriter):
     """
     Extends SummaryWriter with two methods:
-    
-    * a method to add multiple scalars in the way that we intend. The original 
+
+    * a method to add multiple scalars in the way that we intend. The original
         SummaryWriter can either add a single scalar at a time or multiple scalars,
         but in the latter case, multiple runs are created without
         the option to control these.
-    * overwriting the the add_hparams method to write hparams without creating 
+    * overwriting the the add_hparams method to write hparams without creating
         another tensorboard run file
     """
 
@@ -283,9 +285,8 @@ def get_experiment_config_from_configurations_log(experiment_log_dir=None):
     experiment_config_as_dict = {k: v for (k, v) in experiment_config_as_dict.items() if
                                  k != 'experiment_class'}.items()
     for config_set_name, config_group_dict in experiment_config_as_dict:
-        for config_set_obj_attr, attr_val in config_group_dict.items():
-            setattr(config_set_name_to_obj[config_set_name], config_set_obj_attr, attr_val)
-        setattr(experiment_config, config_set_name, config_set_name_to_obj[config_set_name])
+        config_obj = replace(config_set_name_to_obj[config_set_name], **config_group_dict)
+        setattr(experiment_config, config_set_name, config_obj)
 
     # Create hidden activations object based on the loaded string
     # Tested for SELU only

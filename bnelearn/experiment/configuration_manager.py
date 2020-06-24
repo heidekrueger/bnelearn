@@ -2,6 +2,8 @@ import json
 import os
 from typing import List, Type, Iterable
 
+from dataclasses import replace
+
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
@@ -77,13 +79,13 @@ class ConfigurationManager:
         self.setting.u_hi = [1, 1, 2]
         self.setting.n_players = 3
         self.setting.payment_rule = 'nearest_zero'
-        
+
         self.setting.correlation_groups = [[0, 1], [2]]
         self.setting.correlation_types = 'independent'
 
     def with_correlation(self, gamma, correlation_type = 'Bernoulli_weights'):
-        
-        self.setting.gamma = gamma        
+
+        self.setting.gamma = gamma
         self.setting.correlation_types = correlation_type if gamma > 0.0 else 'independent'
 
         return self
@@ -164,10 +166,6 @@ class ConfigurationManager:
                                      save_tb_events_to_binary_detailed=False,
                                      stopping_criterion_rel_util_loss_diff=0.001)
 
-        # Ensure consistency of configs after changing inputs
-        self.hardware.__post_init__()
-        self.learning.__post_init__()
-        self.logging.__post_init__()
 
         # Defaults specific to an experiment type
         if self.experiment_type not in ConfigurationManager.experiment_types:
@@ -207,17 +205,18 @@ class ConfigurationManager:
         """
 
         # If a specific parameter was passed, the corresponding config would be assigned
+        # TODO: Stefan: What if we explicitly want to change a value to None?
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not None}.items():
             if hasattr(self.running, arg):
-                setattr(self.running, arg, v)
+                self.running = replace(self.running, **{arg:v})
             elif hasattr(self.setting, arg):
-                setattr(self.setting, arg, v)
+                self.setting = replace(self.setting, **{arg:v})
             elif hasattr(self.logging, arg):
-                setattr(self.logging, arg, v)
+                self.logging = replace(self.logging, **{arg:v})
             elif hasattr(self.learning, arg):
-                setattr(self.learning, arg, v)
+                self.learning = replace(self.learning, **{arg:v})
             elif hasattr(self.hardware, arg):
-                setattr(self.hardware, arg, v)
+                self.hardware = replace(self.hardware, **{arg:v})
 
         experiment_config = ExperimentConfig(experiment_class=self.experiment_type,
                                              running=self.running,
