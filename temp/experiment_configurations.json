@@ -1,0 +1,98 @@
+{
+    "experiment_class": "llllgg",
+    "running": {
+        "n_runs": 1,
+        "n_epochs": 10,
+        "seeds": null
+    },
+    "setting": {
+        "n_players": 6,
+        "payment_rule": "nearest_vcg",
+        "risk": 1.0,
+        "common_prior": "None",
+        "valuation_mean": null,
+        "valuation_std": null,
+        "u_lo": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        ],
+        "u_hi": [
+            1,
+            1,
+            1,
+            1,
+            2,
+            2
+        ],
+        "gamma": 0.0,
+        "correlation_types": "independent",
+        "correlation_groups": null,
+        "correlation_coefficients": null,
+        "n_units": null,
+        "pretrain_transform": null,
+        "constant_marginal_values": false,
+        "item_interest_limit": null,
+        "efficiency_parameter": null,
+        "core_solver": "mpc"
+    },
+    "learning": {
+        "model_sharing": true,
+        "learner_hyperparams": {
+            "population_size": 2,
+            "sigma": 1.0,
+            "scale_sigma_by_model_size": true
+        },
+        "optimizer_type": "adam",
+        "optimizer_hyperparams": {
+            "lr": 0.001
+        },
+        "hidden_nodes": [
+            10,
+            10
+        ],
+        "hidden_activations": "[SELU(), SELU()]",
+        "pretrain_iters": 500,
+        "batch_size": 8192
+    },
+    "logging": {
+        "enable_logging": true,
+        "log_root_dir": "/home/sutterer/bnelearn/experiments",
+        "experiment_name": null,
+        "experiment_timestamp": "2020-06-23 Tue 15.12",
+        "plot_frequency": 100,
+        "plot_points": 100,
+        "plot_show_inline": true,
+        "log_metrics": {
+            "opt": false,
+            "l2": false,
+            "util_loss": true
+        },
+        "stopping_criterion_rel_util_loss_diff": 0.001,
+        "stopping_criterion_frequency": 100,
+        "stopping_criterion_duration": 3,
+        "stopping_criterion_batch_size": 1024,
+        "stopping_criterion_grid_size": 512,
+        "util_loss_batch_size": 128,
+        "util_loss_grid_size": 256,
+        "util_loss_frequency": 100,
+        "eval_batch_size": 4194304,
+        "cache_eval_actions": true,
+        "save_tb_events_to_csv_aggregate": true,
+        "save_tb_events_to_csv_detailed": true,
+        "save_tb_events_to_binary_detailed": true,
+        "save_models": true,
+        "save_figure_to_disk_png": true,
+        "save_figure_to_disk_svg": true,
+        "save_figure_data_to_disk": true
+    },
+    "hardware": {
+        "cuda": true,
+        "specific_gpu": 4,
+        "fallback": false,
+        "max_cpu_threads": 1
+    }
+}
