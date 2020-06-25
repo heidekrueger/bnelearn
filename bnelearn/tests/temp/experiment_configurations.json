@@ -78,12 +78,12 @@
         "stopping_criterion_duration": 3,
         "stopping_criterion_batch_size": 1024,
         "stopping_criterion_grid_size": 512,
-        "experiment_dir": "2020-06-23 Tue 21.48",
+        "experiment_dir": "2020-06-25 Thu 15.30",
         "experiment_name": null
     },
     "hardware": {
         "cuda": false,
-        "specific_gpu": 0,
+        "specific_gpu": 2,
         "fallback": true,
         "max_cpu_threads": 1,
         "device": "cpu"
