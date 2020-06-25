@@ -7,6 +7,7 @@ from typing import List, Type, Iterable
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
+from bnelearn.util import logging as logging_utils
 
 from bnelearn.experiment.configurations import (SettingConfig,
                                                 LearningConfig,
@@ -23,13 +24,12 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment)
 
+
 # the lists that are defaults will never be mutated, so we're ok with using them here.
 # pylint: disable = dangerous-default-value
 
 # ToDO Some default parameters are still set inside the inheritors of Experiment, should some of the logging of which
-#  parameters go with which class be encapsulated here?
-
-_configurations_f_name = 'experiment_configurations.json'
+# parameters go with which class be encapsulated here?
 
 
 class ConfigurationManager:
@@ -393,7 +393,7 @@ class ConfigurationManager:
             except OSError:
                 print("Creation of the directory %s failed" % dir_path)
 
-        ConfigurationManager.save_experiment_config(experiment_log_dir=dir_path, experiment_configuration=exp_config)
+        logging_utils.save_experiment_config(experiment_log_dir=dir_path, experiment_configuration=exp_config)
         exp_retrieved_config = ConfigurationManager.load_experiment_config(experiment_log_dir=dir_path)
         ConfigurationManager.get_class_by_experiment_type(exp_retrieved_config.experiment_class)(exp_retrieved_config)
 
@@ -418,29 +418,6 @@ class ConfigurationManager:
         raise ValueError('Optimizer type could not be inferred!')
 
     @staticmethod
-    def save_experiment_config(experiment_log_dir, experiment_configuration: ExperimentConfig):
-        """
-        Serializes ExperimentConfiguration into a readable JSON file
-
-        :param experiment_log_dir: full path except for the file name
-        :param experiment_configuration: experiment configuration as given by ConfigurationManager
-        """
-        f_name = os.path.join(experiment_log_dir, _configurations_f_name)
-
-        temp_cp = experiment_configuration.setting.common_prior
-        temp_ha = experiment_configuration.learning.hidden_activations
-
-        experiment_configuration.setting.common_prior = str(experiment_configuration.setting.common_prior)
-        experiment_configuration.learning.hidden_activations = str(
-            experiment_configuration.learning.hidden_activations)
-        with open(f_name, 'w+') as outfile:
-            json.dump(experiment_configuration, outfile, cls=EnhancedJSONEncoder, indent=4)
-
-        # Doesn't look so shiny, but probably the quickest way to prevent compromising the object
-        experiment_configuration.setting.common_prior = temp_cp
-        experiment_configuration.learning.hidden_activations = temp_ha
-
-    @staticmethod
     def load_experiment_config(experiment_log_dir=None):
         """
         Retrieves stored configurations from JSON and turns them into ExperimentConfiguration object
@@ -451,7 +428,7 @@ class ConfigurationManager:
         """
         if experiment_log_dir is None:
             experiment_log_dir = os.path.abspath(os.getcwd())
-        f_name = os.path.join(experiment_log_dir, _configurations_f_name)
+        f_name = os.path.join(experiment_log_dir, logging_utils._configurations_f_name)
 
         with open(f_name) as json_file:
             experiment_config_as_dict = json.load(json_file)

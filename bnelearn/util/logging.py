@@ -1,6 +1,7 @@
 """This module contains utilities for logging of experiments"""
 import os
 import pickle
+import subprocess
 import time
 from typing import List
 
@@ -16,6 +17,8 @@ from bnelearn.experiment.configurations import *
 
 _full_log_file_name = 'full_results'
 _aggregate_log_file_name = 'aggregate_log'
+_configurations_f_name = 'experiment_configurations.json'
+_git_commit_hash_file_name = 'git_hash'
 
 
 # based on https://stackoverflow.com/a/57411105/4755970
@@ -106,6 +109,41 @@ def print_aggregate_tensorboard_logs(experiment_dir):
     df = pd.read_csv(f_name)
     print('Aggregate log:')
     print(df.to_markdown())
+
+
+def log_git_commit_hash(experiment_dir):
+    """Saves the hash of the current git commit"""
+
+    # Will leave it here as a comment in case we'll ever need to log the full dependency tree or the environment.
+    # os.system('pipdeptree --json-tree > dependencies.json')
+    # os.system('conda env export > environment.yml')
+
+    commit_hash = str(subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip())[2:-1]
+    with open(os.path.join(experiment_dir, f'{_git_commit_hash_file_name}.txt'), "w") as text_file:
+        text_file.write(commit_hash)
+
+
+def save_experiment_config(experiment_log_dir, experiment_configuration: ExperimentConfig):
+    """
+    Serializes ExperimentConfiguration into a readable JSON file
+
+    :param experiment_log_dir: full path except for the file name
+    :param experiment_configuration: experiment configuration as given by ConfigurationManager
+    """
+    f_name = os.path.join(experiment_log_dir, _configurations_f_name)
+
+    temp_cp = experiment_configuration.setting.common_prior
+    temp_ha = experiment_configuration.learning.hidden_activations
+
+    experiment_configuration.setting.common_prior = str(experiment_configuration.setting.common_prior)
+    experiment_configuration.learning.hidden_activations = str(
+        experiment_configuration.learning.hidden_activations)
+    with open(f_name, 'w+') as outfile:
+        json.dump(experiment_configuration, outfile, cls=EnhancedJSONEncoder, indent=4)
+
+    # Doesn't look so shiny, but probably the quickest way to prevent compromising the object
+    experiment_configuration.setting.common_prior = temp_cp
+    experiment_configuration.learning.hidden_activations = temp_ha
 
 
 def process_figure(fig, epoch=None, figure_name='plot', tb_group='eval',

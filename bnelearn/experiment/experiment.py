@@ -262,8 +262,9 @@ class Experiment(ABC):
 
             tic = timer()
             self._log_hyperparams()
-            logging_utils.log_experiment_configurations(self.experiment_log_dir, self.config)
+            logging_utils.save_experiment_config(self.experiment_log_dir, self.config)
             elapsed = timer() - tic
+            logging_utils.log_git_commit_hash(self.experiment_log_dir)
         else:
             print('Logging disabled.')
             elapsed = 0

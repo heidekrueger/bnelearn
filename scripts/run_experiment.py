@@ -5,6 +5,8 @@ import sys
 import fire
 import torch
 
+from bnelearn.util import logging
+
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
@@ -30,46 +32,46 @@ if __name__ == '__main__':
     # experiment_class = ConfigurationManager.get_class_by_experiment_type(experiment_config.experiment_class)
 
     # Well, path is user-specific
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'Projects/bnelearn', 'experiments')
 
-    # ToDo reset all the commented out settings to the same number of runs and epochs as before
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
-    #    .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir, n_runs=1, n_epochs=200)
+    #     .set_logging(log_root_dir=log_root_dir).set_learning(pretrain_iters=5) \
+    #     .set_running(n_runs=1, n_epochs=5).set_logging(eval_batch_size=2**4).get_config()
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \
-    #     .get_config(log_root_dir=log_root_dir)
+    #     .set_logging(log_root_dir=log_root_dir).set_running(n_runs=1, n_epochs=5).get_config()
 
     # All three next experiments get AssertionError: scalar should be 0D
     # experiment_config, experiment_class = \
     #    ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping') \
-    #    .get_config(log_root_dir=log_root_dir)
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .set_running(n_runs=1, n_epochs=200).get_config()
     # experiment_config, experiment_class = \
     #     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_disjunct') \
-    #     .get_config(log_root_dir=log_root_dir)
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .set_running(n_runs=1, n_epochs=200).get_config()
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg')\
     #    .set_running(n_runs=1, n_epochs=100).set_logging(log_root_dir=log_root_dir).get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg') \
-    #     .get_config(log_root_dir=log_root_dir)
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .set_running(n_runs=1, n_epochs=200).get_config()
 
     # RuntimeError: Sizes of tensors must match
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
-    #     .get_config(log_root_dir=log_root_dir)
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .set_running(n_runs=1, n_epochs=200).get_config()
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
-    #     .get_config(log_root_dir=log_root_dir)
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .set_running(n_runs=1, n_epochs=200).get_config()
 
-    #os.system('pipdeptree --json-tree > /home/gleb/Projects/bnelearn/dependencies.json')
-    # import subprocess
-    #
-    # label = subprocess.check_output(["git", "describe", "--all"]).strip()
-    # print(label)
-    # try:
-    #     experiment = experiment_class(experiment_config)
-    #
-    #     # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
-    #     if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
-    #         experiment.run()
-    #     else:
-    #         raise Exception('Unable to perform the correct serialization')
-    # except KeyboardInterrupt:
-    #     print('\nKeyboardInterrupt: released memory after interruption')
-    #     torch.cuda.empty_cache()
+    try:
+        experiment = experiment_class(experiment_config)
+
+        # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
+        if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
+            experiment.run()
+        else:
+            raise Exception('Unable to perform the correct serialization')
+    except KeyboardInterrupt:
+        print('\nKeyboardInterrupt: released memory after interruption')
+        torch.cuda.empty_cache()
