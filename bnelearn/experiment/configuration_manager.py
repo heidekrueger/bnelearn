@@ -164,7 +164,7 @@ class ConfigurationManager:
                                      eval_batch_size=2 ** 22,
                                      save_tb_events_to_csv_detailed=False,
                                      save_tb_events_to_binary_detailed=False,
-                                     stopping_criterion_rel_util_loss_diff=0.001)
+                                     stopping_criterion_rel_util_loss_diff=None)
 
 
         # Defaults specific to an experiment type
