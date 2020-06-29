@@ -62,7 +62,7 @@ if __name__ == '__main__':
     #     .get_config(log_root_dir=log_root_dir)
     try:
         experiment = experiment_class(experiment_config)
-#TODO: this is a short term fix - we can only determine whether BNE exists once experiment has been initialized. Medium Term -->  Set 'opt logging in experiment itself.
+        #TODO: this is a short term fix - we can only determine whether BNE exists once experiment has been initialized. Medium Term -->  Set 'opt logging in experiment itself.
         if experiment.known_bne:
             experiment.logging.log_metrics = {
                 'opt': True,
