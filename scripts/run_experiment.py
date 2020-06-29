@@ -39,27 +39,36 @@ if __name__ == '__main__':
     #     .get_config(log_root_dir=log_root_dir)
 
     # All three next experiments get AssertionError: scalar should be 0D
-    #experiment_config, experiment_class = \
+    # experiment_config, experiment_class = \
     #    ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping') \
     #    .get_config(log_root_dir=log_root_dir)
     # experiment_config, experiment_class = \
     #     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_disjunct') \
     #     .get_config(log_root_dir=log_root_dir)
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
-        .with_correlation(gamma=0.0) \
-        .get_config(log_root_dir=log_root_dir, n_runs=1, n_epochs=100, specific_gpu=1)
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
+    #     .with_correlation(gamma=0.0) \
+    #     .get_config(log_root_dir=log_root_dir,
+    #                 n_runs=1, n_epochs=100, specific_gpu=1,
+    #                 # payment_rule='proxy',
+    #                 )
 
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg') \
     #     .get_config(log_root_dir=log_root_dir)
 
-    # RuntimeError: Sizes of tensors must match
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
-    #     .get_config(log_root_dir=log_root_dir)
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
+        .get_config(log_root_dir=log_root_dir)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
     #     .get_config(log_root_dir=log_root_dir)
     try:
         experiment = experiment_class(experiment_config)
+
+        if experiment.known_bne:
+            experiment.logging.log_metrics = {
+                'opt': True,
+                'l2': True,
+                'util_loss': True
+            }
 
         # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
         if ConfigurationManager.experiment_config_could_be_serialized_properly(experiment_config):
