@@ -18,14 +18,13 @@ def get_distance_of_learned_strategies(experiment: Experiment, this_run_only=Fal
         plot: bool, save heatmap to disk.
     Returns
     -------
-        distacnes, np.array
+        mean distance, float
     """
     os.chdir(experiment.experiment_log_dir)
 
     if not this_run_only:
         os.chdir('..')
 
-    print(os.path.abspath(os.curdir))
     valuations = experiment.bidders[0].draw_valuations_()
 
     model_paths = []
@@ -36,26 +35,28 @@ def get_distance_of_learned_strategies(experiment: Experiment, this_run_only=Fal
     n_models = len(model_paths)
 
     models = [NeuralNetStrategy.load(p).to(experiment.gpu_config.device) for p in model_paths]
-    distances = - np.ones((n_models, n_models))
+    model_paths = [p[2:p[2:].find('/')+2] for p in model_paths]
+    distances = -np.ones((n_models, n_models))
     for i, m1 in enumerate(models):
         for j, m2 in enumerate(models):
             distances[i, j] = norm_strategies(m1, m2, valuations)
 
-    model_paths = [p[2:p[2:].find('/')+2] for p in model_paths]
+    avg_distance = np.mean(distances[np.triu_indices(n_models, k=1)])
 
     # plot
-    fig, ax = plt.subplots()
-    ax.imshow(distances)
-    ax.set_xticks(np.arange(n_models))
-    ax.set_yticks(np.arange(n_models))
-    ax.set_xticklabels(model_paths)
-    ax.set_yticklabels(model_paths)
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
-    for i in range(len(model_paths)):
-        for j in range(len(model_paths)):
-            _ = ax.text(j, i, round(distances[i, j], 4), ha="center", va="center", color="w")
-    ax.set_title("Distances")
-    fig.tight_layout()
-    plt.savefig('distances.png')
+    if plot:
+        fig, ax = plt.subplots(figsize=(10, 10))
+        ax.imshow(distances)
+        ax.set_xticks(np.arange(n_models))
+        ax.set_yticks(np.arange(n_models))
+        ax.set_xticklabels(model_paths)
+        ax.set_yticklabels(model_paths)
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+        for i in range(len(model_paths)):
+            for j in range(len(model_paths)):
+                _ = ax.text(j, i, round(distances[i, j], 4), ha="center", va="center", color="w")
+        ax.set_title('Distances: {}'.format(avg_distance))
+        fig.tight_layout()
+        plt.savefig('distances_{}.png'.format(experiment.experiment_log_dir))
 
-    return distances
+    return avg_distance

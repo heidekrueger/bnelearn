@@ -439,8 +439,7 @@ class CombinatorialItemBidder(Bidder):
         if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
             valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
         else:
-            raise NotImplementedError('unknonwn distibution')
-        valuations[:, :, self.n_bids:] = 0
+            raise NotImplementedError('unknown distibution')
 
         vals = torch.matmul(valuations, self.transformation.to(self.device))
         self.valuations = vals.max(dim=1)[0]
@@ -449,6 +448,8 @@ class CombinatorialItemBidder(Bidder):
         return self.valuations
 
     def get_valuation_grid(self, n_points, extended_valuation_grid=False, n_dimensions=None):
+        if n_dimensions is None:
+            n_dimensions = self.n_bids
         grid = super().get_valuation_grid(n_points, extended_valuation_grid, n_dimensions)
         return grid[:, :self.n_bids]
 

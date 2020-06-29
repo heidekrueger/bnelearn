@@ -146,14 +146,16 @@ def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: B
 
     return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
 
-
 def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
                          agent: Bidder, agent_valuation: torch.Tensor,
                          grid: torch.Tensor, n_bundles=None, half_precision=False):
     """
     Estimates a bidder's util_loss/utility loss in the current bid_profile, i.e. the potential benefit of deviating from
     the current strategy, evaluated at each point of the agent_valuations.
-        At each of these valuation points, the best response utility is approximated via the best utility achieved on the grid.
+
+    At each of these valuation points, the best response utility is approximated via the best utility achieved on the
+    grid.
+
     Input:
         mechanism
         bid_profile: (batch_size x n_player x n_items)
@@ -197,8 +199,8 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     allocation, payments = mechanism.play(bid_profile)
 
     # we only need the specific player's allocation and can get rid of the rest.
-    a_i = allocation[:, player_position, :].type(torch.bool).view(grid_size * batch_size, n_items)
-    p_i = payments[:, player_position].view(grid_size * batch_size) #grid * batch
+    a_i = allocation[:, player_position, :].type(torch.bool)
+    p_i = payments[:, player_position]
 
     del allocation, payments, bid_profile
     if torch.cuda.is_available():
@@ -222,9 +224,6 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
         # max per valuations
         u_i_alternative, _ = torch.max(u_i_alternative, 1) #batch
 
-        # Clean up storage
-        del a_i, p_i
-
     except RuntimeError as err:
         print("Failed computing util_loss as batch. Trying sequential valuations computation. Decrease dimensions to fix. Error:\n {0}".format(err))
         try:
@@ -232,7 +231,8 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
             # valuations sequential
             u_i_alternative = torch.zeros(batch_size, device=p_i.device)
             for idx in tqdm(range(batch_size)):
-                v_i = agent_valuation[idx].repeat(1, grid_size * batch_size).view(batch_size * grid_size, n_bundles)
+                v_i = agent_valuation[idx, ...].repeat(1, grid_size * batch_size) \
+                    .view(batch_size * grid_size, n_bundles)
                 ## Calculate utilities
                 u_i_alternative_v = agent.get_counterfactual_utility(a_i, p_i, v_i)
                 u_i_alternative_v = u_i_alternative_v.view(grid_size, batch_size) #(grid x batch)
@@ -248,6 +248,8 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
             print("Failed computing util_loss as batch with sequential valuations. Decrease dimensions to fix. Error:\n {0}".format(err))
             u_i_alternative = torch.ones(batch_size, device = p_i.device) * -9999999
 
+    # Clean up storage
+    del a_i, p_i
     torch.cuda.empty_cache()
 
     ### Evaluate actual bids
