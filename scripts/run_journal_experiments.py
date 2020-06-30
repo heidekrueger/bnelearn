@@ -24,25 +24,25 @@ if __name__ == '__main__':
     experiment_type = 'llg'
 
     # Setting
-    # Payments [first_price, nearest_vcg, nearest_zero, nearest_bid]
+    # Payments [first_price, nearest_vcg, nearest_zero, nearest_bid, uniform]
     payment_rule = 'first_price'
     risk = 1.0
-    n_players = [3]#,3,5,10]
+    n_players = [3]#2,3,5,10]
 
     # Learning
     batch_size = 2 ** 18
 
     # Hardware
-    specific_gpu=4
+    specific_gpu=2
 
     # Logging
     util_loss_batch_size = 2 ** 12
     util_loss_grid_size = 2 ** 13
-    log_metrics = {'opt': True,#True
-                 'l2': True,#True
+    log_metrics = {'opt': False,#True
+                 'l2': False,#True
                  'util_loss': True}
     for n_player in n_players:
-        #.with_correlation(gamma=0.0) \
+        #.with_correlation(gamma=0.5) \
         experiment_config, experiment_class = ConfigurationManager(experiment_type=experiment_type) \
             .get_config(log_root_dir=log_root_dir,
                         # Run
@@ -63,7 +63,7 @@ if __name__ == '__main__':
                         optimizer_type='adam',
                         pretrain_iters=500,
                         batch_size=batch_size,
-                        #model_sharing=True,
+                        model_sharing=True,
                         # Hardware
                         specific_gpu=specific_gpu,
                         # Logging

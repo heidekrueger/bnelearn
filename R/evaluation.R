@@ -8,20 +8,23 @@ library(kableExtra)
 options(dplyr.print_max = 200)
 options(dplyr.width = 300)
 ### Read in data
-subfolder="Journal"
+subfolder="Journal"#Journal
 experiment = "single_item"
-payment_rule = "first_price/uniform/asymmetric/risk_neutral/2p/2020-06-12 Fri 07.21"
+payment_rule = "first_price/uniform/symmetric/risk_neutral/
+                2p/2020-06-25 Thu 10.42"
+  #"first_price/normal/symmetric/risk_neutral/10p/2020-06-25 Thu 10.43"#"nearest_vcg/gamma_0.0/2020-06-26 Fri 11.52" #asymmetric/risk_neutral/2p
 tb_full_raw = read_delim(str_c("experiments",subfolder,experiment,payment_rule,"full_results.csv",
                               sep = "/", collapse = NULL), ",")
 
 ### Preprocess data
 tb_full_raw$tag <- gsub(tb_full_raw$tag, pattern="/", replace = "_")
 ### Settings
+known_bne = TRUE
 stop_criterium_1 = 0.0005
 stop_criterium_2 = 0.0001
 stop_criterium_interval = 100
 results_epoch = 5000
-type_names = "." #c("locals", "global")
+type_names = "."#c("locals", "global") #"."
 #nearest_zero = c(0.13399262726306915, 0.46403446793556213) 
 #nearest_bid = c(0.12500184774398804, 0.49999746680259705)
 #nearest_vcg = c(0.13316573202610016, 0.4673408269882202)
@@ -133,7 +136,7 @@ if(exists("utility_in_bne_exact")){
            eval_epsilon_absolute = utility_bne - eval_utility_vs_bne)
 }
 # More general if no BNE is known!
-if(payment_rule == 'first_price'){
+if(known_bne == F){
   tb_eval <- tb_eval %>% 
     mutate(eval_util_loss_rel_estimate = 1 - eval_utilities/(eval_utilities+eval_util_loss_ex_ante)) %>% 
     # Select only necessary columns
