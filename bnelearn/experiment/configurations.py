@@ -168,9 +168,9 @@ class LoggingConfig:
                             'l2': False,
                             'util_loss': False}
         if metrics is not None:
-            for metric in metrics:
+            for metric, value in metrics.items():
                 assert metric in self.log_metrics.keys(), "Metric not known."
-                self.log_metrics[metric] = True
+                self.log_metrics[metric] = value
         if self.log_metrics['util_loss'] and self.util_loss_batch_size is None:
             self.util_loss_batch_size: int = 2 ** 8
             self.util_loss_grid_size: int = 2 ** 8
