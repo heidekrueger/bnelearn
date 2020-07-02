@@ -289,17 +289,6 @@ class MultiUnitExperiment(Experiment, ABC):
         if not hasattr(self, 'positive_output_point'):
             self.positive_output_point = torch.tensor([[self.u_hi] * self.n_units], dtype=torch.float)
 
-        # check for available BNE strategy
-        self._optimal_bid = None
-        if not isinstance(self, SplitAwardExperiment):
-            self._optimal_bid = _multiunit_bne(self.config.setting,
-                                               self.config.setting.payment_rule)
-        else:
-            if self.config.setting.n_units == 2 and self.config.setting.n_players == 2:
-                self._optimal_bid = _optimal_bid_splitaward2x2_1(self.config.setting)
-                # self._optimal_bid = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
-        self.known_bne = self._optimal_bid is not None
-
         self.constant_marginal_values = self.config.setting.constant_marginal_values
         self.item_interest_limit = self.config.setting.item_interest_limit
 
@@ -351,6 +340,18 @@ class MultiUnitExperiment(Experiment, ABC):
 
     def _setup_eval_environment(self):
         """Setup the BNE envierment for later evaluation of the learned strategies"""
+
+        # check for available BNE strategy
+        self._optimal_bid = None
+        if not isinstance(self, SplitAwardExperiment):
+            self._optimal_bid = _multiunit_bne(self.config.setting,
+                                               self.config.setting.payment_rule)
+        else:
+            if self.config.setting.n_units == 2 and self.config.setting.n_players == 2:
+                self._optimal_bid = _optimal_bid_splitaward2x2_1(self.config.setting)
+                # self._optimal_bid = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
+        self.known_bne = self._optimal_bid is not None
+
         if self.known_bne:
             self.bne_strategies = [
                 ClosureStrategy(self._optimal_bid) for i in range(self.n_players)
@@ -369,6 +370,9 @@ class MultiUnitExperiment(Experiment, ABC):
 
             self.bne_utilities = [self.bne_env.get_reward(agent, draw_valuations=True)
                                   for agent in self.bne_env.agents]
+            print('BNE env has been set up.')
+        else:
+            super()._setup_eval_environment()
 
     def _get_logdir_hierarchy(self):
         name = ['MultiUnit', self.payment_rule, str(self.n_players) + 'players_' + str(self.n_units) + 'units']

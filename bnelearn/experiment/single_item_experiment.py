@@ -128,8 +128,7 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(u_lo: List, u_hi
 
 def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2(
         valuation: torch.Tensor or float, player_position: int,
-        u_lo: List, u_hi: List
-):
+        u_lo: List, u_hi: List):
     """
     Optimal bid in this experiment when bidders do NOT share same lower bound.
     Source: Equilibrium 2 of https://link.springer.com/article/10.1007/s40505-014-0049-1
@@ -152,8 +151,7 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2(
 
 def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3(
         valuation: torch.Tensor or float, player_position: int,
-        u_lo: List, u_hi: List
-):
+        u_lo: List, u_hi: List):
     """
     Optimal bid in this experiment when bidders do NOT share same lower bound.
     Source: Equilibrium 3 of https://link.springer.com/article/10.1007/s40505-014-0049-1
@@ -232,10 +230,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.risk = float(self.config.setting.risk)
         self.risk_profile = self.get_risk_profile(self.risk)
 
-        # if not given by subclass, implement generic optimal_bid if known
-        self.known_bne = \
-            self.config.setting.payment_rule == 'second_price' \
-            or (self.config.setting.payment_rule == 'first_price' and self.risk == 1.0)
+
 
         self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
@@ -289,8 +284,12 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         return torch.tensor(bne_utility, device=self.hardware.device)
 
     def _setup_eval_environment(self):
-        if self.known_bne:
+        """Determines whether a bne exists and sets up eval environment."""
+        self.known_bne = \
+            self.config.setting.payment_rule == 'second_price' \
+            or (self.config.setting.payment_rule == 'first_price' and self.risk == 1.0)
 
+        if self.known_bne:
             self._set_symmetric_bne_closure()
 
             # TODO: parallelism should be taken from elsewhere. Should be moved to config. Assigned @Stefan
@@ -326,6 +325,9 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
             print('Using analytical BNE utility.')
             self.bne_utility = bne_utility_analytical
             self.bne_utilities = [self.bne_utility] * self.n_models
+        else:
+            # no bne found, refer to superclass
+            super()._setup_eval_environment()
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions,
@@ -345,9 +347,6 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         assert self.config.setting.u_lo is not None, """Prior boundaries not specified!"""
         assert self.config.setting.u_hi is not None, """Prior boundaries not specified!"""
 
-        self.known_bne = \
-            self.config.setting.payment_rule in ('first_price', 'second_price')
-
         self.valuation_prior = 'uniform'
         self.u_lo = self.config.setting.u_lo
         self.u_hi = self.config.setting.u_hi
@@ -361,6 +360,51 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         self.plot_ymax = self.u_hi * 1.05
 
         super().__init__(config=config)
+
+    def _setup_eval_environment(self):
+        """Determines whether a bne exists and sets up eval environment."""
+        self.known_bne = \
+            self.config.setting.payment_rule in ('first_price', 'second_price')
+
+        if self.known_bne:
+            self._set_symmetric_bne_closure()
+
+            # TODO: parallelism should be taken from elsewhere. Should be moved to config. Assigned @Stefan
+            n_processes_optimal_strategy = 44 if self.valuation_prior != 'uniform' and \
+                                                 self.payment_rule != 'second_price' else 0
+            bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
+
+            # define bne agents once then use them in all runs
+            self.bne_env = AuctionEnvironment(
+                self.mechanism,
+                agents=[self._strat_to_bidder(bne_strategy,
+                                              player_position=i,
+                                              batch_size=self.logging.eval_batch_size,
+                                              cache_actions=self.logging.cache_eval_actions)
+                        for i in range(self.n_players)],
+                batch_size=self.logging.eval_batch_size,
+                n_players=self.n_players,
+                strategy_to_player_closure=self._strat_to_bidder
+            )
+
+            # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
+            # TODO: This is not very precise. Instead we should consider taking the mean over all agents
+            bne_utility_sampled = self.bne_env.get_reward(self.bne_env.agents[0], draw_valuations=True)
+            bne_utility_analytical = self._get_analytical_bne_utility()
+
+            print('Utility in BNE (sampled): \t{:.5f}'.format(bne_utility_sampled))
+            print('Utility in BNE (analytic): \t{:.5f}'.format(bne_utility_analytical))
+            # TODO: make atol dynamic based on batch size to avoid false positives in test runs.
+            if not torch.allclose(bne_utility_analytical, bne_utility_sampled, atol=5e-2):
+                warnings.warn(
+                    "Analytical BNE Utility does not match sampled utility from parent class! \n\t sampled {}, analytic {}"
+                        .format(bne_utility_sampled, bne_utility_analytical))
+            print('Using analytical BNE utility.')
+            self.bne_utility = bne_utility_analytical
+            self.bne_utilities = [self.bne_utility] * self.n_models
+        else:
+            # no bne found, refer to superclass
+            super()._setup_eval_environment()
 
     def _set_symmetric_bne_closure(self):
         # set optimal_bid here, possibly overwritten by subclasses if more specific form is known
@@ -448,10 +492,6 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         self.plot_ymin = self.plot_xmin * 0.90
         self.plot_ymax = self.plot_xmax * 1.05
 
-        self.known_bne = True  # TODO: check additional requirements, i.e. risk
-
-        assert self.risk == 1.0, "BNE only known for risk neutral bidders."
-
         super().__init__(config=config)
 
     def _get_logdir_hierarchy(self):
@@ -464,6 +504,10 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                               player_position=player_position, batch_size=batch_size)
 
     def _setup_eval_environment(self):
+        # TODO: checks not fully implemented!
+        self.known_bne = True  # TODO: check additional requirements, i.e. risk
+        assert self.risk == 1.0, "BNE only known for risk neutral bidders."
+
         if self.known_bne:
             if len(set(self.u_lo)) != 1:  # BNE for differnt u_lo for each player
                 print('Warning: only one of multiple BNE selected!')  # TODO @Nils
@@ -512,6 +556,8 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                     bne_utilities_sampled))
 
             self.bne_utilities = bne_utilities_sampled
+        else: # no bne found
+            super()._setup_eval_environment()
 
 
 class MineralRightsExperiment(SingleItemExperiment):
@@ -546,8 +592,6 @@ class MineralRightsExperiment(SingleItemExperiment):
             )
         ]
 
-        self.known_bne = config.setting.payment_rule == 'second_price'
-
         self.model_sharing = config.learning.model_sharing
         if self.model_sharing:
             self.n_models = 1
@@ -566,6 +610,7 @@ class MineralRightsExperiment(SingleItemExperiment):
             raise ValueError("Trying to set up unknown BNE...")
 
     def _setup_eval_environment(self):
+        self.known_bne = self.config.setting.payment_rule == 'second_price'
         if self.known_bne:
             self._set_symmetric_bne_closure()
             bne_strategy = ClosureStrategy(self._optimal_bid)
@@ -606,6 +651,8 @@ class MineralRightsExperiment(SingleItemExperiment):
 
             print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities))
             self.bne_utility = torch.tensor(self.bne_utilities).mean()
+        else: #no bne found
+            super()._setup_eval_environment()
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         correlation_type = 'multiplicative'

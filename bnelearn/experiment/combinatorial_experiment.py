@@ -117,10 +117,6 @@ class LLGExperiment(LocalGlobalExperiment):
                     correlation = self.gamma),
                 IndependentValuationDevice()]
 
-        # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
-        #  (i.e. uniformity, bounds, etc)
-        self.known_bne = self.config.setting.payment_rule in \
-                         ['vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']
         self.input_length = 1
         #self.config.setting.n_players = 3
         self.config.setting.n_local = 2
@@ -169,6 +165,10 @@ class LLGExperiment(LocalGlobalExperiment):
         raise ValueError('optimal bid not implemented for other rules')
 
     def _setup_eval_environment(self):
+        # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
+        #  (i.e. uniformity, bounds, etc)
+        self.known_bne = self.config.setting.payment_rule in \
+                         ['vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']
         if self.known_bne:
             bne_strategies = [
                 ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
@@ -208,6 +208,8 @@ class LLGExperiment(LocalGlobalExperiment):
             print(
                 "No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
             self.bne_utilities = bne_utilities_sampled
+        else:
+            super()._setup_eval_environment()
 
     def _get_logdir_hierarchy(self):
         name = ['LLG', self.payment_rule, f"gamma_{self.gamma:.3}"]
@@ -234,7 +236,6 @@ class LLLLGGExperiment(LocalGlobalExperiment):
         assert self.config.setting.n_players == 6, "not right number of players for setting"
         self.input_length = 2
 
-        self.known_bne = False
         self.config.running.n_players = 6
         self.config.setting.n_local = 4
         self.config.setting.n_items = 2
@@ -255,6 +256,3 @@ class LLLLGGExperiment(LocalGlobalExperiment):
         super()._plot(plot_data, writer, epoch, xlim, ylim, labels,
                       x_label, y_label, fmts, figure_name, plot_points)
         super()._plot_3d(plot_data, writer, epoch, figure_name)
-
-    def _setup_eval_environment(self):
-        pass

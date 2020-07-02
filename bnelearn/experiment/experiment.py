@@ -124,13 +124,15 @@ class Experiment(ABC):
 
         self._setup_mechanism()
 
+        # TODO: remove here
         # needs to be set in subclass and either specified as input or set there
         # self.known_bne = known_bne
         # Cannot log 'opt' without known bne
         # if self.logging.log_metrics['opt'] or self.logging.log_metrics['l2']:
         #     assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
-        #
-        # if self.known_bne:
+
+        self.known_bne = False
+        # call lowest-level eval_environment to perform known_bne checks bottom-up
         self._setup_eval_environment()
 
     @abstractmethod
@@ -206,7 +208,8 @@ class Experiment(ABC):
     def _setup_eval_environment(self):
         """Overwritten by subclasses with known BNE.
         Sets up an environment used for evaluation of learning agents (e.g.) vs known BNE"""
-        raise NotImplementedError("This Experiment has no implemented BNE!")
+        if not self.known_bne:
+            print("This Experiment has no implemented BNE. No eval env was created.")
 
     def _setup_learning_environment(self):
         print(f'Learning env correlation {self.correlation_groups} \n {self.correlation_devices}.')
@@ -558,7 +561,8 @@ class Experiment(ABC):
         del self._cur_epoch_log_params['prev_params']
 
         # logging metrics
-        if self.logging.log_metrics['opt']:
+        # TODO: should just check if logging is enabled in general... if bne_exists and we log, we always want this
+        if self.known_bne and self.logging.log_metrics['opt']:
             self._cur_epoch_log_params['utility_vs_bne'], self._cur_epoch_log_params['epsilon_relative'], \
             self._cur_epoch_log_params['epsilon_absolute'] = self._calculate_metrics_known_bne()
 

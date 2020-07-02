@@ -29,6 +29,7 @@ pylint.txt
 /notebooks/**/*.svg
 /notebooks/**/*.gif
 /notebooks/**/*.csv
+/notebooks/Untitle*.ipynb
 /temp
 /scripts/temp
 
