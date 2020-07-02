@@ -21,13 +21,13 @@ if __name__ == '__main__':
 
     # Experiments [single_item_uniform_symmetric, single_item_gaussian_symmetric, single_item_asymmetric_uniform_overlapping, 
     # single_item_asymmetric_uniform_disjunct, llg, llllgg, multiunit, splitaward]
-    experiment_type = 'llg'
+    experiment_type = 'single_item_uniform_symmetric'
 
     # Setting
     # Payments [first_price, nearest_vcg, nearest_zero, nearest_bid, uniform]
     payment_rule = 'first_price'
-    risk = 1.0
-    n_players = [3]#2,3,5,10]
+    risk = 0.5
+    n_players = [2,3,5,10]
 
     # Learning
     batch_size = 2 ** 18
@@ -38,8 +38,8 @@ if __name__ == '__main__':
     # Logging
     util_loss_batch_size = 2 ** 12
     util_loss_grid_size = 2 ** 13
-    log_metrics = {'opt': False,#True
-                 'l2': False,#True
+    log_metrics = {'opt': True,#True
+                 'l2': True,#True
                  'util_loss': True}
     for n_player in n_players:
         #.with_correlation(gamma=0.5) \
@@ -63,7 +63,7 @@ if __name__ == '__main__':
                         optimizer_type='adam',
                         pretrain_iters=500,
                         batch_size=batch_size,
-                        model_sharing=True,
+                        model_sharing=False,
                         # Hardware
                         specific_gpu=specific_gpu,
                         # Logging

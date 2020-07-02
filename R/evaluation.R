@@ -9,9 +9,8 @@ options(dplyr.print_max = 200)
 options(dplyr.width = 300)
 ### Read in data
 subfolder="Journal"#Journal
-experiment = "single_item"
-payment_rule = "first_price/uniform/symmetric/risk_neutral/
-                2p/2020-06-25 Thu 10.42"
+experiment = "LLG"
+payment_rule = "nearest_bid/gamma_0.0/2020-06-27 Sat 17.06"
   #"first_price/normal/symmetric/risk_neutral/10p/2020-06-25 Thu 10.43"#"nearest_vcg/gamma_0.0/2020-06-26 Fri 11.52" #asymmetric/risk_neutral/2p
 tb_full_raw = read_delim(str_c("experiments",subfolder,experiment,payment_rule,"full_results.csv",
                               sep = "/", collapse = NULL), ",")
@@ -24,7 +23,7 @@ stop_criterium_1 = 0.0005
 stop_criterium_2 = 0.0001
 stop_criterium_interval = 100
 results_epoch = 5000
-type_names = "."#c("locals", "global") #"."
+type_names = c("locals", "global")#"."#c("bidder0","bidder1")#."#c("locals", "global") #"."
 #nearest_zero = c(0.13399262726306915, 0.46403446793556213) 
 #nearest_bid = c(0.12500184774398804, 0.49999746680259705)
 #nearest_vcg = c(0.13316573202610016, 0.4673408269882202)
@@ -133,7 +132,8 @@ if(exists("utility_in_bne_exact")){
                                  if_else(subrun == type_names[2], utility_in_bne_exact[2], 9999)),
            utility_bne = replace(utility_bne, utility_bne==9999, NA),
            # Compute exact epsilone 
-           eval_epsilon_absolute = utility_bne - eval_utility_vs_bne)
+           eval_epsilon_absolute = utility_bne - eval_utility_vs_bne,
+           eval_epsilon_relative = 1 - (eval_utility_vs_bne/utility_bne))
 }
 # More general if no BNE is known!
 if(known_bne == F){
@@ -149,7 +149,7 @@ if(known_bne == F){
            # temporary estimate for: Compute \hat{L} = 1 - u(beta_i)/u(BR)
            eval_util_loss_rel_estimate = 1 - eval_utilities/(eval_utilities+eval_util_loss_ex_ante)) %>% 
     # Select only necessary columns
-    select(c("run","subrun","epoch","eval_utilities", "eval_epsilon_absolute", "eval_L_2", "eval_L_inf",
+    select(c("run","subrun","epoch","eval_utilities", "eval_epsilon_absolute", "eval_epsilon_relative", "eval_L_2", "eval_L_inf",
              "eval_util_loss_bne_rel", "eval_util_loss_ex_ante", "eval_util_loss_ex_interim",
              "eval_util_loss_rel_estimate"))
 }
@@ -171,11 +171,11 @@ tb_final %>%
   mutate(
          #avg = avg * 10^4,
          #std = std * 10^4,
-         avg = sprintf("%0.5f", avg),
-         std = sprintf("%0.5f", std)) %>% 
+         avg = sprintf("%0.4f", avg)) %>% 
+         #std = sprintf("%0.5f", std)) %>% 
   pivot_wider(id_cols=subrun,names_from=tag, values_from=avg) %>% 
   #contains("eval_util_loss_bne_rel"), 
-  select(subrun, contains("eval_epsilon_absolute"), contains("eval_L_2"), eval_util_loss_ex_ante, 
+  select(subrun, contains("eval_epsilon_relative"), contains("eval_L_2"), eval_util_loss_ex_ante, 
          eval_util_loss_ex_interim, eval_util_loss_rel_estimate, contains("stop_diff_2_e"), contains("stop_diff_1_e"), time) %>%
   arrange(-row_number()) %>% 
   kable("latex", booktabs = T)
