@@ -124,16 +124,7 @@ class Experiment(ABC):
 
         self._setup_mechanism()
 
-        # TODO: remove here
-        # needs to be set in subclass and either specified as input or set there
-        # self.known_bne = known_bne
-        # Cannot log 'opt' without known bne
-        # if self.logging.log_metrics['opt'] or self.logging.log_metrics['l2']:
-        #     assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
-
         self.known_bne = self._check_and_set_known_bne()
-        # call lowest-level eval_environment to perform known_bne checks bottom-up
-        
         if self.known_bne:
             self._setup_eval_environment()
 
@@ -598,14 +589,10 @@ class Experiment(ABC):
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
             if self.logging.log_metrics['opt']:
-                print(
-                    "\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})" \
-                        .format(
-                        self._cur_epoch_log_params['utility_vs_bne'].tolist(),
-                        self._cur_epoch_log_params['epsilon_relative'].tolist(),
-                        self._cur_epoch_log_params['epsilon_absolute'].tolist()
-                    )
-                )
+                print("\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})".format(
+                    self._cur_epoch_log_params['utility_vs_bne'].tolist(),
+                    self._cur_epoch_log_params['epsilon_relative'].tolist(),
+                    self._cur_epoch_log_params['epsilon_absolute'].tolist())                )
                 v = torch.cat([v, self.v_opt], dim=1)
                 b = torch.cat([b, self.b_opt], dim=1)
                 labels += ['BNE_{}'.format(i) for i in range(len(self.models))]
@@ -633,7 +620,7 @@ class Experiment(ABC):
         m2b = lambda m: self._model2bidder[m][0]
 
         # generally redraw bne_vals, except when this is expensive!
-        # TODO Stefan: this seems to be false in most settings, even when not 
+        # TODO Stefan: this seems to be false in most settings, even when not
         # desired.
         redraw_bne_vals = not self.config.logging.cache_eval_actions
         # length: n_models

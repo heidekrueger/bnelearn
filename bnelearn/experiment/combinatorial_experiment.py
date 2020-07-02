@@ -84,7 +84,6 @@ class LocalGlobalExperiment(Experiment, ABC):
             return super()._get_model_names()
 
 
-
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
@@ -128,7 +127,7 @@ class LLGExperiment(LocalGlobalExperiment):
 
     def _optimal_bid(self, valuation, player_position):
         """Core selecting and vcg equilibria for the Bernoulli weigths model in Ausubel & Baranov (2019)
-        
+
            Note: for gamma=0 or gamma=1, these are identical to the constant weights model.
         """
         if not isinstance(valuation, torch.Tensor):
@@ -165,21 +164,21 @@ class LLGExperiment(LocalGlobalExperiment):
         raise ValueError('optimal bid not implemented for other rules')
 
     def _check_and_set_known_bne(self):
+        # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
+        #  (i.e. uniformity, bounds, etc)
         if self.config.setting.payment_rule in \
             ['vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
             return True
         return super()._check_and_set_known_bne()
 
     def _setup_eval_environment(self):
-        # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
-        #  (i.e. uniformity, bounds, etc)
+
         assert self.known_bne
         assert hasattr(self, '_optimal_bid')
 
         bne_strategies = [
             ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
-            for i in range(self.n_players)
-        ]
+            for i in range(self.n_players)]
 
         # TODO Stefan: this is ugly.
         bne_env_corr_devices = None
@@ -187,7 +186,7 @@ class LLGExperiment(LocalGlobalExperiment):
             bne_env_corr_devices = [
                 BernoulliWeightsCorrelationDevice(
                     common_component_dist=torch.distributions.Uniform(self.config.setting.u_lo[0],
-                                                                        self.config.setting.u_hi[0]),
+                                                                      self.config.setting.u_hi[0]),
                     batch_size=self.config.logging.eval_batch_size,
                     n_items=1,
                     correlation=self.gamma),
@@ -196,14 +195,14 @@ class LLGExperiment(LocalGlobalExperiment):
         bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
             agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                            batch_size=self.config.logging.eval_batch_size)
+                                          batch_size=self.config.logging.eval_batch_size)
                     for i in range(self.n_players)],
             n_players=self.n_players,
             batch_size=self.config.logging.eval_batch_size,
             strategy_to_player_closure=self._strat_to_bidder,
             correlation_groups=self.correlation_groups,
             correlation_devices=bne_env_corr_devices
-        )
+            )
 
         self.bne_env = bne_env
 

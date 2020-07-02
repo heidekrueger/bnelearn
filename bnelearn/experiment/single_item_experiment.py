@@ -313,8 +313,10 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
         print('Utility in BNE (sampled): \t{:.5f}'.format(bne_utility_sampled))
         print('Utility in BNE (analytic): \t{:.5f}'.format(bne_utility_analytical))
-        # TODO: make atol dynamic based on batch size to avoid false positives in test runs.
-        if not torch.allclose(bne_utility_analytical, bne_utility_sampled, atol=5e-2):
+
+        # don't print the warning for small batch_sizes (i.e. in test suite)
+        if self.logging.eval_batch_size > 2**16 and \
+            not torch.allclose(bne_utility_analytical, bne_utility_sampled, atol=5e-2):
             warnings.warn(
                 "Analytical BNE Utility does not match sampled utility from parent class! \n\t sampled {}, analytic {}"
                     .format(bne_utility_sampled, bne_utility_analytical))

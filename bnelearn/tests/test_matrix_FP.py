@@ -145,7 +145,7 @@ def test_FictitiousPlaySmoothStrategy_PD():
     strats, players = train(epochs, players, strats)
     # Testing convergence
     for i,playr in enumerate(players):
-        assert (math.isclose(playr.get_action(),1, abs_tol=0.1))
+        assert math.isclose(playr.get_action(),1, abs_tol=0.1)
 
 def test_FictitiousPlaySmoothStrategy_MP():
     strats, players, env = init_setup(MatchingPennies(), FictitiousPlaySmoothStrategy, None)
