@@ -50,28 +50,37 @@ ids_si, *testdata_si = zip(*[
 # id , config, class, known_bne
 
 ids_lg, *testdata_lg = zip(*[
-    ['LLG-fp', *ConfigurationManager(experiment_type='llg').get_config(n_runs=2, n_epochs=3), False],
-    ['LLG-fp-no_model_sharing', *ConfigurationManager(experiment_type='llg')
-                                .get_config(n_runs=2, n_epochs=3, model_sharing=False), False],
-    ['LLG-vcg', *ConfigurationManager(experiment_type='llg')
-                .get_config(n_runs=2, n_epochs=3, payment_rule='vcg'), True],
-    ['LLG-nearest_bid', *ConfigurationManager(experiment_type='llg')
-                        .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid'), True],
-    ['LLG-nearest_bid_correlated', *ConfigurationManager(experiment_type='llg')
-                                   .with_correlation(gamma=0.5)
-                                   .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid'), True],
+    ['LLG-fp',
+     *ConfigurationManager(experiment_type='llg').get_config(payment_rule='first_price', n_runs=2, n_epochs=3),
+     False],
+    ['LLG-fp-no_model_sharing',
+     *ConfigurationManager(experiment_type='llg').get_config(payment_rule='first_price', n_runs=2, n_epochs=3, model_sharing=False),
+     False],
+    ['LLG-vcg',
+     *ConfigurationManager(experiment_type='llg').get_config(n_runs=2, n_epochs=3, payment_rule='vcg'),
+     True],
+    ['LLG-nearest_bid',
+     *ConfigurationManager(experiment_type='llg').get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid'),
+      True],
+    ['LLG-nearest_bid_correlated',
+     *ConfigurationManager(experiment_type='llg')
+         .with_correlation(gamma=0.5)
+         .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid'),
+     True],
     # Used to fail when 0.5 didn't, due to neg bids
     ['LLG-nearest_bid_perfectly_correlated', *ConfigurationManager(experiment_type='llg')
                                              .with_correlation(gamma=1.0)
-                                             .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid'), True],
+                                             .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid'),
+                                             True],
     # ['LLG-nearest_zero', (llg(2,3,'nearest_zero'))],
     # ['LLG-nearest_vcg', (llg(2,3,'nearest_vcg'))],
     # LLLLGG
     # ['LLLLGG-fp', (llllgg(2,2,'first_price'))],
     ['LLLLGG-fp-no_model_sharing', *ConfigurationManager(experiment_type='llllgg')
                                    .get_config(n_runs=2, n_epochs=2, model_sharing=False), False],
+    # TODO: vcg BNE not implemented! change this test when done.
     ['LLLLGG-vcg', *ConfigurationManager(experiment_type='llllgg')
-                   .get_config(n_runs=2, n_epochs=2, payment_rule='vcg'), True]
+                   .get_config(n_runs=2, n_epochs=2, payment_rule='vcg'), False]
     # ['LLLLGG-nearest_vcg', (llllgg(2,2,'nearest_vcg',core_solver='gurobi'))]
 ])
 
