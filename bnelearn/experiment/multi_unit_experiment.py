@@ -338,9 +338,8 @@ class MultiUnitExperiment(Experiment, ABC):
 
         self.mechanism = self.mechanism_type(cuda=self.hardware.cuda)
 
-    def _setup_eval_environment(self):
-        """Setup the BNE envierment for later evaluation of the learned strategies"""
-
+    def _check_and_set_known_bne(self):
+        # TODO: clean up (we don't like instance checks...)
         # check for available BNE strategy
         self._optimal_bid = None
         if not isinstance(self, SplitAwardExperiment):
@@ -350,29 +349,33 @@ class MultiUnitExperiment(Experiment, ABC):
             if self.config.setting.n_units == 2 and self.config.setting.n_players == 2:
                 self._optimal_bid = _optimal_bid_splitaward2x2_1(self.config.setting)
                 # self._optimal_bid = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
-        self.known_bne = self._optimal_bid is not None
+        if self._optimal_bid is not None:
+            return True
+        return super()._check_and_set_known_bne()
 
-        if self.known_bne:
-            self.bne_strategies = [
-                ClosureStrategy(self._optimal_bid) for i in range(self.n_players)
-            ]
 
-            self.bne_env = AuctionEnvironment(
-                mechanism=self.mechanism,
-                agents=[
-                    self._strat_to_bidder(bne_strategy, self.logging.eval_batch_size, i)
-                    for i, bne_strategy in enumerate(self.bne_strategies)
+    def _setup_eval_environment(self):
+        """Setup the BNE envierment for later evaluation of the learned strategies"""
+
+        assert self.known_bne
+        assert hasattr(self, '_optimal_bid')
+
+        self.bne_strategies = [ClosureStrategy(self._optimal_bid) for i in range(self.n_players)]
+
+        self.bne_env = AuctionEnvironment(
+            mechanism=self.mechanism,
+            agents=[
+                self._strat_to_bidder(bne_strategy, self.logging.eval_batch_size, i)
+                for i, bne_strategy in enumerate(self.bne_strategies)
                 ],
-                n_players=self.n_players,
-                batch_size=self.logging.eval_batch_size,
-                strategy_to_player_closure=self._strat_to_bidder
+            n_players=self.n_players,
+            batch_size=self.logging.eval_batch_size,
+            strategy_to_player_closure=self._strat_to_bidder
             )
 
-            self.bne_utilities = [self.bne_env.get_reward(agent, draw_valuations=True)
-                                  for agent in self.bne_env.agents]
-            print('BNE env has been set up.')
-        else:
-            super()._setup_eval_environment()
+        self.bne_utilities = [self.bne_env.get_reward(agent, draw_valuations=True)
+                              for agent in self.bne_env.agents]
+        print('BNE env has been set up.')
 
     def _get_logdir_hierarchy(self):
         name = ['MultiUnit', self.payment_rule, str(self.n_players) + 'players_' + str(self.n_units) + 'units']

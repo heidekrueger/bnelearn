@@ -29,6 +29,7 @@ pylint.txt
 /notebooks/**/*.svg
 /notebooks/**/*.gif
 /notebooks/**/*.csv
+# no typo: matched both Untitled and Untitled_2
 /notebooks/Untitle*.ipynb
 /temp
 /scripts/temp

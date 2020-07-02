@@ -164,52 +164,56 @@ class LLGExperiment(LocalGlobalExperiment):
             return torch.max(torch.zeros_like(valuation), bid_if_positive)
         raise ValueError('optimal bid not implemented for other rules')
 
+    def _check_and_set_known_bne(self):
+        if self.config.setting.payment_rule in \
+            ['vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
+            return True
+        return super()._check_and_set_known_bne()
+
     def _setup_eval_environment(self):
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
         #  (i.e. uniformity, bounds, etc)
-        self.known_bne = self.config.setting.payment_rule in \
-                         ['vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']
-        if self.known_bne:
-            bne_strategies = [
-                ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
-                for i in range(self.n_players)
-            ]
+        assert self.known_bne
+        assert hasattr(self, '_optimal_bid')
 
-            # TODO Stefan: this is ugly.
-            bne_env_corr_devices = None
-            if self.correlation_groups:
-                bne_env_corr_devices = [
-                    BernoulliWeightsCorrelationDevice(
-                        common_component_dist=torch.distributions.Uniform(self.config.setting.u_lo[0],
-                                                                          self.config.setting.u_hi[0]),
-                        batch_size=self.config.logging.eval_batch_size,
-                        n_items=1,
-                        correlation=self.gamma),
-                    IndependentValuationDevice()]
+        bne_strategies = [
+            ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
+            for i in range(self.n_players)
+        ]
 
-            bne_env = AuctionEnvironment(
-                mechanism=self.mechanism,
-                agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                              batch_size=self.config.logging.eval_batch_size)
-                        for i in range(self.n_players)],
-                n_players=self.n_players,
-                batch_size=self.config.logging.eval_batch_size,
-                strategy_to_player_closure=self._strat_to_bidder,
-                correlation_groups=self.correlation_groups,
-                correlation_devices=bne_env_corr_devices
-            )
+        # TODO Stefan: this is ugly.
+        bne_env_corr_devices = None
+        if self.correlation_groups:
+            bne_env_corr_devices = [
+                BernoulliWeightsCorrelationDevice(
+                    common_component_dist=torch.distributions.Uniform(self.config.setting.u_lo[0],
+                                                                        self.config.setting.u_hi[0]),
+                    batch_size=self.config.logging.eval_batch_size,
+                    n_items=1,
+                    correlation=self.gamma),
+                IndependentValuationDevice()]
 
-            self.bne_env = bne_env
+        bne_env = AuctionEnvironment(
+            mechanism=self.mechanism,
+            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
+                                            batch_size=self.config.logging.eval_batch_size)
+                    for i in range(self.n_players)],
+            n_players=self.n_players,
+            batch_size=self.config.logging.eval_batch_size,
+            strategy_to_player_closure=self._strat_to_bidder,
+            correlation_groups=self.correlation_groups,
+            correlation_devices=bne_env_corr_devices
+        )
 
-            bne_utilities_sampled = torch.tensor(
-                [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
-            print(f'Setting up BNE env with batch size 2**{np.log2(self.config.logging.eval_batch_size)}.')
-            print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
-            print(
-                "No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
-            self.bne_utilities = bne_utilities_sampled
-        else:
-            super()._setup_eval_environment()
+        self.bne_env = bne_env
+
+        bne_utilities_sampled = torch.tensor(
+            [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
+        print(f'Setting up BNE env with batch size 2**{np.log2(self.config.logging.eval_batch_size)}.')
+        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
+        print(
+            "No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
+        self.bne_utilities = bne_utilities_sampled
 
     def _get_logdir_hierarchy(self):
         name = ['LLG', self.payment_rule, f"gamma_{self.gamma:.3}"]

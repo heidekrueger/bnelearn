@@ -131,9 +131,11 @@ class Experiment(ABC):
         # if self.logging.log_metrics['opt'] or self.logging.log_metrics['l2']:
         #     assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
 
-        self.known_bne = False
+        self.known_bne = self._check_and_set_known_bne()
         # call lowest-level eval_environment to perform known_bne checks bottom-up
-        self._setup_eval_environment()
+        
+        if self.known_bne:
+            self._setup_eval_environment()
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -205,11 +207,17 @@ class Experiment(ABC):
                 model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
                                self.learning.pretrain_iters, pretrain_transform)
 
+    def _check_and_set_known_bne(self):
+        """Checks whether a bne is known for this experiment and sets the corresponding
+           `_optimal_bid` function.
+        """
+        print("No BNE was found for this experiment.")
+        return False
+
     def _setup_eval_environment(self):
         """Overwritten by subclasses with known BNE.
         Sets up an environment used for evaluation of learning agents (e.g.) vs known BNE"""
-        if not self.known_bne:
-            print("This Experiment has no implemented BNE. No eval env was created.")
+        raise NotImplementedError("This Experiment has no implemented BNE. No eval env was created.")
 
     def _setup_learning_environment(self):
         print(f'Learning env correlation {self.correlation_groups} \n {self.correlation_devices}.')
