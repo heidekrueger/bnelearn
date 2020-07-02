@@ -70,6 +70,7 @@ class ConfigurationManager:
         self.setting.correlation_coefficients = [1.0]
         self.setting.u_lo = 0
         self.setting.u_hi = 1
+        self.setting.payment_rule = 'second_price'
 
     def _init_llg(self):
         self.running.n_runs = 1

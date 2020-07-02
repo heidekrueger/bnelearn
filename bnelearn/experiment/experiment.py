@@ -261,6 +261,7 @@ class Experiment(ABC):
             self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
             tic = timer()
+            self._log_experiment_params()
             self._log_hyperparams()
             logging_utils.log_experiment_configurations(self.experiment_log_dir, self.config)
             elapsed = timer() - tic
