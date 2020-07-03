@@ -173,6 +173,7 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
         - Add check for risk neutral bidders.
         - Move grid_creation out of util_loss for Nils special cases
     """
+    bid_profile = bid_profile.detach()
     player_position = agent.player_position
     agent_bid_actual = bid_profile[:,player_position,:]
 
