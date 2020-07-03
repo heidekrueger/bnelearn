@@ -124,14 +124,9 @@ class Experiment(ABC):
 
         self._setup_mechanism()
 
-        # needs to be set in subclass and either specified as input or set there
-        # self.known_bne = known_bne
-        # Cannot log 'opt' without known bne
-        # if self.logging.log_metrics['opt'] or self.logging.log_metrics['l2']:
-        #     assert self.known_bne, "Cannot log 'opt'/'l2'/'rmse' without known_bne"
-        #
-        # if self.known_bne:
-        self._setup_eval_environment()
+        self.known_bne = self._check_and_set_known_bne()
+        if self.known_bne:
+            self._setup_eval_environment()
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -203,10 +198,17 @@ class Experiment(ABC):
                 model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
                                self.learning.pretrain_iters, pretrain_transform)
 
+    def _check_and_set_known_bne(self):
+        """Checks whether a bne is known for this experiment and sets the corresponding
+           `_optimal_bid` function.
+        """
+        print("No BNE was found for this experiment.")
+        return False
+
     def _setup_eval_environment(self):
         """Overwritten by subclasses with known BNE.
         Sets up an environment used for evaluation of learning agents (e.g.) vs known BNE"""
-        raise NotImplementedError("This Experiment has no implemented BNE!")
+        raise NotImplementedError("This Experiment has no implemented BNE. No eval env was created.")
 
     def _setup_learning_environment(self):
         print(f'Learning env correlation {self.correlation_groups} \n {self.correlation_devices}.')
@@ -559,7 +561,8 @@ class Experiment(ABC):
         del self._cur_epoch_log_params['prev_params']
 
         # logging metrics
-        if self.logging.log_metrics['opt']:
+        # TODO: should just check if logging is enabled in general... if bne_exists and we log, we always want this
+        if self.known_bne and self.logging.log_metrics['opt']:
             self._cur_epoch_log_params['utility_vs_bne'], self._cur_epoch_log_params['epsilon_relative'], \
             self._cur_epoch_log_params['epsilon_absolute'] = self._calculate_metrics_known_bne()
 
@@ -587,14 +590,10 @@ class Experiment(ABC):
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
             if self.logging.log_metrics['opt']:
-                print(
-                    "\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})" \
-                        .format(
-                        self._cur_epoch_log_params['utility_vs_bne'].tolist(),
-                        self._cur_epoch_log_params['epsilon_relative'].tolist(),
-                        self._cur_epoch_log_params['epsilon_absolute'].tolist()
-                    )
-                )
+                print("\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})".format(
+                    self._cur_epoch_log_params['utility_vs_bne'].tolist(),
+                    self._cur_epoch_log_params['epsilon_relative'].tolist(),
+                    self._cur_epoch_log_params['epsilon_absolute'].tolist())                )
                 v = torch.cat([v, self.v_opt], dim=1)
                 b = torch.cat([b, self.b_opt], dim=1)
                 labels += ['BNE_{}'.format(i) for i in range(len(self.models))]
@@ -622,7 +621,7 @@ class Experiment(ABC):
         m2b = lambda m: self._model2bidder[m][0]
 
         # generally redraw bne_vals, except when this is expensive!
-        # TODO Stefan: this seems to be false in most settings, even when not 
+        # TODO Stefan: this seems to be false in most settings, even when not
         # desired.
         redraw_bne_vals = not self.config.logging.cache_eval_actions
         # length: n_models
