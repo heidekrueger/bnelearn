@@ -230,7 +230,10 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
                 # avg per bid
                 u_i_alternative_v = torch.mean(u_i_alternative_v, 1)
                 # max per valuations
-                u_i_alternative[idx], _ = torch.max(u_i_alternative_v, 0)
+                # NOTE: item here is temporary fix for memory leak problem in risk-averse setting.
+                # The actual underlying bug is more complicated, but we'll fix that in master, not in this
+                # (i.e. Journal experiment) branch!
+                u_i_alternative[idx] =  torch.max(u_i_alternative_v, 0)[0].item()
 
                 # clean up
                 del u_i_alternative_v
