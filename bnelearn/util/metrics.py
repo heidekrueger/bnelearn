@@ -173,6 +173,8 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
         - Add check for risk neutral bidders.
         - Move grid_creation out of util_loss for Nils special cases
     """
+
+    bid_profile = bid_profile.detach()
     player_position = agent.player_position
     agent_bid_actual = bid_profile[:,player_position,:]
 
@@ -233,7 +235,7 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
                 # NOTE: item here is temporary fix for memory leak problem in risk-averse setting.
                 # The actual underlying bug is more complicated, but we'll fix that in master, not in this
                 # (i.e. Journal experiment) branch!
-                u_i_alternative[idx] =  torch.max(u_i_alternative_v, 0)[0].item()
+                u_i_alternative[idx] =  torch.max(u_i_alternative_v, 0)[0]
 
                 # clean up
                 del u_i_alternative_v
