@@ -57,9 +57,8 @@ def _multiunit_bne(experiment_config, payment_rule):
 
     elif payment_rule == 'uniform':
         if experiment_config.n_units == 2 and experiment_config.n_players == 2:
-            return _optimal_bid_multiuniform2x2
-        elif (
-                experiment_config.n_units == 3 and experiment_config.n_players == 2 and experiment_config.item_interest_limit == 2):
+            return _optimal_bid_multiuniform2x2()
+        elif (experiment_config.n_units == 3 and experiment_config.n_players == 2 and experiment_config.item_interest_limit == 2):
             return _optimal_bid_multiuniform3x2limit2
 
     return None
@@ -138,14 +137,22 @@ def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
 
     return _optimal_bid
 
-
-def _optimal_bid_multiuniform2x2(valuation, player_position=None):
-    """ One of the BNE strategies in the multi-unit uniform price auction
+def _optimal_bid_multiuniform2x2():
+    """ Two BNE strategies in the multi-unit uniform price auction
         2 players and 2 units
     """
-    opt_bid = torch.clone(valuation)
-    opt_bid[:, 1] = 0
-    return opt_bid
+
+    def opt_bid_1(valuation, player_position=None):
+        opt_bid = torch.clone(valuation)
+        opt_bid[:,1] = 0
+        return opt_bid
+
+    def opt_bid_2(valuation, player_position=None):
+        opt_bid = torch.ones_like(valuation)
+        opt_bid[:,1] = 0
+        return opt_bid
+
+    return [opt_bid_1, opt_bid_2]
 
 
 def _optimal_bid_multiuniform3x2limit2(valuation, player_position=None):
@@ -247,12 +254,13 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
 
     # use interpolation of opt_bid done on first batch
     def _optimal_bid(valuation, player_position=None):
-        bid = torch.tensor([
-            opt_bid_function[0](valuation[:, 0].cpu().numpy()),
-            opt_bid_function[1](valuation[:, 0].cpu().numpy())
-        ],
-            device=valuation.device,
-            dtype=valuation.dtype
+        print('Warning: BNE is approximated on CPU.')
+        bid = torch.tensor(
+            [opt_bid_function[0](valuation[:,0].cpu().numpy()),
+             opt_bid_function[1](valuation[:,0].cpu().numpy())
+            ],
+            device = valuation.device,
+            dtype = valuation.dtype
         ).t_()
         bid[bid < 0] = 0
         return bid
@@ -288,6 +296,18 @@ class MultiUnitExperiment(Experiment, ABC):
 
         if not hasattr(self, 'positive_output_point'):
             self.positive_output_point = torch.tensor([[self.u_hi] * self.n_units], dtype=torch.float)
+
+        # check for available BNE strategy
+        self._optimal_bid = None
+        if not isinstance(self, SplitAwardExperiment):
+            self._optimal_bid = _multiunit_bne(self.config.setting, self.config.setting.payment_rule)
+        else:
+            if self.config.setting.n_units == 2 and self.config.setting.n_players == 2:
+                self._optimal_bid = [
+                    _optimal_bid_splitaward2x2_1(self.config.setting),
+                    _optimal_bid_splitaward2x2_2(self.config.setting)
+                ]
+        known_bne = self._optimal_bid is not None
 
         self.constant_marginal_values = self.config.setting.constant_marginal_values
         self.item_interest_limit = self.config.setting.item_interest_limit
@@ -359,22 +379,33 @@ class MultiUnitExperiment(Experiment, ABC):
 
         assert self.known_bne
         assert hasattr(self, '_optimal_bid')
+ 
+        if not isinstance(self._optimal_bid, list):
+            self._optimal_bid = [self._optimal_bid]
 
-        self.bne_strategies = [ClosureStrategy(self._optimal_bid) for i in range(self.n_players)]
+        # set up list for multiple bne
+        self.bne_env = [None] * len(self._optimal_bid)
+        self.bne_utilities = [None] * len(self._optimal_bid)
 
-        self.bne_env = AuctionEnvironment(
-            mechanism=self.mechanism,
-            agents=[
-                self._strat_to_bidder(bne_strategy, self.logging.eval_batch_size, i)
-                for i, bne_strategy in enumerate(self.bne_strategies)
+        for i, strat in enumerate(self._optimal_bid):
+            bne_strategies = [
+                ClosureStrategy(strat) for i in range(self.n_players)
+            ]
+
+            self.bne_env[i] = AuctionEnvironment(
+                mechanism=self.mechanism,
+                agents=[
+                    self._strat_to_bidder(bne_strategy, self.logging_config.eval_batch_size, i)
+                    for i, bne_strategy in enumerate(bne_strategies)
                 ],
-            n_players=self.n_players,
-            batch_size=self.logging.eval_batch_size,
-            strategy_to_player_closure=self._strat_to_bidder
+                n_players=self.n_players,
+                batch_size=self.logging_config.eval_batch_size,
+                strategy_to_player_closure=self._strat_to_bidder
             )
 
-        self.bne_utilities = [self.bne_env.get_reward(agent, draw_valuations=True)
-                              for agent in self.bne_env.agents]
+            self.bne_utilities[i] = [self.bne_env[i].get_reward(agent, draw_valuations=True)
+                                     for agent in self.bne_env[i].agents]
+
         print('BNE env has been set up.')
 
     def _get_logdir_hierarchy(self):
@@ -460,6 +491,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
                 str(self.n_units) + 'units']
         return os.path.join(*name)
 
+    # TODO Nils: obsolete in this child class?
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts=['o'],

@@ -1,5 +1,7 @@
-import os
 import sys
+import os
+import torch
+import fire
 
 import torch
 
