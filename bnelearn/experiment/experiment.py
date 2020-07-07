@@ -296,7 +296,7 @@ class Experiment(ABC):
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
         # if torch.cuda.memory_allocated() > 0:
-        #    warnings.warn('There´s a memory leak')
+        #    warnings.warn("There's a memory leak")
 
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
