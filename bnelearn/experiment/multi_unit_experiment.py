@@ -32,7 +32,6 @@ from bnelearn.strategy import ClosureStrategy
 ###                                                 BNE STRATEGIES                                                   ###
 ########################################################################################################################
 
-
 def _multiunit_bne(experiment_config, payment_rule):
     """
     Method that returns the known BNE strategy for the standard multi-unit auctions
@@ -63,7 +62,6 @@ def _multiunit_bne(experiment_config, payment_rule):
 
     return None
 
-
 def _optimal_bid_multidiscriminatory2x2(valuation, player_position=None):
     """BNE strategy in the multi-unit discriminatory price auction 2 players and 2 units"""
 
@@ -84,7 +82,6 @@ def _optimal_bid_multidiscriminatory2x2(valuation, player_position=None):
     opt_bid[:, 1] = b2(opt_bid[:, 1])
     opt_bid = opt_bid.sort(dim=1, descending=True)[0]
     return opt_bid
-
 
 def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
     """ BNE strategy in the multi-unit discriminatory price auction 2 players and 2 units
@@ -154,7 +151,6 @@ def _optimal_bid_multiuniform2x2():
 
     return [opt_bid_1, opt_bid_2]
 
-
 def _optimal_bid_multiuniform3x2limit2(valuation, player_position=None):
     """ BNE strategy in the multi-unit uniform price auction with 3 units and
         2 palyers that are both only interested in 2 units
@@ -163,7 +159,6 @@ def _optimal_bid_multiuniform3x2limit2(valuation, player_position=None):
     opt_bid[:, 1] = opt_bid[:, 1] ** 2
     opt_bid[:, 2] = 0
     return opt_bid
-
 
 def _optimal_bid_splitaward2x2_1(experiment_config):
     """ BNE pooling equilibrium in the split-award auction with 2 players and
@@ -206,7 +201,6 @@ def _optimal_bid_splitaward2x2_1(experiment_config):
 
     return _optimal_bid
 
-
 def _optimal_bid_splitaward2x2_2(experiment_config):
     """ BNE WTA equilibrium in the split-award auction with 2 players and
         2 lots (as in Anton and Yao Proposition 4, 1992)
@@ -241,8 +235,7 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
 
     def opt_bid_100(theta):
         return theta + (integral(theta) / (
-                (1 - value_cdf(theta)) ** (n_players - 1))
-                        )
+            (1 - value_cdf(theta)) ** (n_players - 1)))
 
     opt_bid[:, 0] = opt_bid_100(val_lin)
     opt_bid[:, 1] = opt_bid_100(val_lin) - efficiency_parameter * u_lo[0]  # or more
@@ -266,7 +259,6 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
         return bid
 
     return _optimal_bid
-
 
 ########################################################################################################################
 
@@ -307,7 +299,7 @@ class MultiUnitExperiment(Experiment, ABC):
                     _optimal_bid_splitaward2x2_1(self.config.setting),
                     _optimal_bid_splitaward2x2_2(self.config.setting)
                 ]
-        known_bne = self._optimal_bid is not None
+        self.known_bne = self._optimal_bid is not None
 
         self.constant_marginal_values = self.config.setting.constant_marginal_values
         self.item_interest_limit = self.config.setting.item_interest_limit
@@ -367,8 +359,10 @@ class MultiUnitExperiment(Experiment, ABC):
                                                self.config.setting.payment_rule)
         else:
             if self.config.setting.n_units == 2 and self.config.setting.n_players == 2:
-                self._optimal_bid = _optimal_bid_splitaward2x2_1(self.config.setting)
-                # self._optimal_bid = _optimal_bid_splitaward2x2_2(experiment_config) # TODO unused
+                self._optimal_bid = [
+                    _optimal_bid_splitaward2x2_1(self.config.setting),
+                    _optimal_bid_splitaward2x2_2(self.config.setting)
+                ]
         if self._optimal_bid is not None:
             return True
         return super()._check_and_set_known_bne()
@@ -379,7 +373,7 @@ class MultiUnitExperiment(Experiment, ABC):
 
         assert self.known_bne
         assert hasattr(self, '_optimal_bid')
- 
+
         if not isinstance(self._optimal_bid, list):
             self._optimal_bid = [self._optimal_bid]
 

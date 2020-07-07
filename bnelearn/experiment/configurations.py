@@ -131,6 +131,7 @@ class LoggingConfig:
     plot_show_inline: bool = True
     log_metrics: dict = None
     export_step_wise_linear_bid_function_size = None
+    log_componentwise_norm: bool = False
 
     # Stopping Criterion #TODO: this section should go into ExperimentConfiguration
     stopping_criterion_rel_util_loss_diff: float = None

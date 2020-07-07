@@ -275,6 +275,7 @@ class Experiment(ABC):
 
             tic = timer()
             self._log_hyperparams()
+            self._log_experiment_params()
             logging_utils.log_experiment_configurations(self.experiment_log_dir, self.config)
             elapsed = timer() - tic
         else:
@@ -294,7 +295,7 @@ class Experiment(ABC):
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
         # if torch.cuda.memory_allocated() > 0:
-        #    warnings.warn('Theres a memory leak')
+        #    warnings.warn('There´s a memory leak')
 
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
@@ -683,13 +684,15 @@ class Experiment(ABC):
 
             L_2[bne_idx] = [
                 metrics.norm_strategy_and_actions(
-                    model, m2a(i).get_action(), m2a(i).valuations, 2
+                    model, m2a(i).get_action(), m2a(i).valuations, 2,
+                    componentwise = self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
             ]
             L_inf[bne_idx] = [
                 metrics.norm_strategy_and_actions(
-                    model, m2a(i).get_action(), m2a(i).valuations, float('inf')
+                    model, m2a(i).get_action(), m2a(i).valuations, float('inf'),
+                    componentwise = self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
             ]
@@ -755,6 +758,13 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_hyperparams': str(self.learning.optimizer_hyperparams),
                     'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
+        try:
+            self._hparams_metrics['epsilon_relative'] = self.self._cur_epoch_log_params['epsilon_relative']
+        except:
+            try:
+                self._hparams_metrics['util_loss_ex_interim'] = self.self._cur_epoch_log_params['util_loss_ex_interim']
+            except:
+                pass
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
 
     def _log_hyperparams(self, epoch=0):
