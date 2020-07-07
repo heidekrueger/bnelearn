@@ -475,8 +475,8 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                             u_lo=self.u_lo, u_hi=self.u_hi)
                 ]
             else: # BNE for fixed u_lo for all players
-                self._optimal_bid = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral,
-                                            u_lo=self.u_lo, u_hi=self.u_hi)
+                self._optimal_bid = [partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral,
+                                             u_lo=self.u_lo, u_hi=self.u_hi)]
             return True
         else:
             return super()._check_and_set_known_bne()
