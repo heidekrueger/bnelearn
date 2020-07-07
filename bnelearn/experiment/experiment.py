@@ -243,13 +243,13 @@ class Experiment(ABC):
             for i, bne_env in enumerate(self.bne_env):
                 # dim: [points, bidders, items]
                 self.v_opt[i] = torch.stack(
-                    [b.get_valuation_grid(self.plot_points)
-                     for b in [bne_env.agents[i[0]] for i in self._model2bidder]],
+                    [bidder.get_valuation_grid(self.plot_points)
+                     for bidder in [bne_env.agents[j[0]] for j in self._model2bidder]],
                     dim=1
                 )
                 self.b_opt[i] = torch.stack(
-                    [self._optimal_bid[i](self.v_opt[i][:, m, :], player_position=b[0])
-                     for m, b in enumerate(self._model2bidder)],
+                    [self._optimal_bid[i](self.v_opt[i][:, m, :], player_position=bidder[0])
+                     for m, bidder in enumerate(self._model2bidder)],
                     dim=1
                 )
                 if self.v_opt[i].shape[0] != self.plot_points:
@@ -578,7 +578,8 @@ class Experiment(ABC):
             utility_vs_bne, epsilon_relative, epsilon_absolute = self._calculate_metrics_known_bne()
             for i in range(len(self.bne_env)):
                 n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
-                self._cur_epoch_log_params['utility_vs_bne' + n] = utility_vs_bne[i]
+                self._cur_epoch_log_params['utility_vs_bne' + n if n == '' else n[4:]] \
+                    = utility_vs_bne[i]
                 self._cur_epoch_log_params['epsilon_relative' + n] = epsilon_relative[i]
                 self._cur_epoch_log_params['epsilon_absolute' + n] = epsilon_absolute[i]
 
@@ -613,7 +614,7 @@ class Experiment(ABC):
                 for env_idx, _ in enumerate(self.bne_env):
                     v = torch.cat([v, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
-                    labels += ['BNE{}_{}'.format('_' + str(env_idx) if len(self.bne_env) > 1 else '', j)
+                    labels += ['BNE{}_{}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
                                for j in range(len(self.models))]
                     fmts += ['b--'] * len(self.models)
 
@@ -629,11 +630,12 @@ class Experiment(ABC):
     def _calculate_metrics_known_bne(self):
         """
         Compare performance to BNE and return:
-        utility_vs_bne
-        epsilon_relative
-        epsilon_absolute
+            utility_vs_bne: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
+            epsilon_relative: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
+            epsilon_absolute: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
 
-        Each is a list of length self.n_models
+        These are all lists of lists. The outer list corrsponds to which BNE is comapred
+        (usually there's only one BNE). Each inner list is of length `self.n_models`.
         """
         # shorthand for model to bidder index conversion
         m2b = lambda m: self._model2bidder[m][0]
@@ -671,19 +673,20 @@ class Experiment(ABC):
 
     def _calculate_metrics_action_space_norms(self):
         """
-        Calculate "action space distance" of model and bne-strategy
-
+        Calculate "action space distance" of model and bne-strategy. If
+        `self.logging.log_componentwise_norm` is set to true, will only
+        return norm of the best action dimension.
+        
         Returns:
-            L_2 and L_inf, each a list of length self.models
+            L_2 and L_inf: each a List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
         """
+
+        # shorthand for model to agent
+        m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
 
         L_2 = [None] * len(self.bne_env)
         L_inf = [None] * len(self.bne_env)
         for bne_idx, bne_env in enumerate(self.bne_env):
-
-            # shorthand for model to agent
-            m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
-
             L_2[bne_idx] = [
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, 2,
