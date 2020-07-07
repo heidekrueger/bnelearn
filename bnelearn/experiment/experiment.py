@@ -234,6 +234,7 @@ class Experiment(ABC):
                 # TODO Nils: should perhaps always be a list, even when there is only one BNE
                 self.bne_env = [self.bne_env]
                 self._optimal_bid = [self._optimal_bid]
+                self.bne_utilities = [self.bne_utilities]
 
             # set up list for (multiple) BNE valuations and bids
             self.v_opt = [None] * len(self.bne_env)
@@ -593,6 +594,7 @@ class Experiment(ABC):
             self._cur_epoch_log_params['util_loss_ex_ante'], self._cur_epoch_log_params['util_loss_ex_interim'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
 
+            print(self._cur_epoch_log_params['util_loss_ex_interim'])
         # plotting
         if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))

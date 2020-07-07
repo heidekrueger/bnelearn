@@ -83,8 +83,8 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(u_lo: List, u_hi
     interpol_points = 256
 
     # 1. Solve implicit bid function
-    v1 = np.linspace(u_lo[0] + eps, u_hi[0] - eps, interpol_points)
-    v2 = np.linspace(u_lo[1] + eps, u_hi[1] - eps, interpol_points)
+    v1 = np.linspace(u_lo[0], u_hi[0] - eps, interpol_points)
+    v2 = np.linspace(u_lo[1], u_hi[1] - eps, interpol_points)
 
     def inverse_bid_player_1(bid):
         return 36 / ((2 * bid - 6) * (1 / 5) * np.exp(9 / 4 + 6 / (6 - 2 * bid)) + 24 - 4 * bid)
@@ -461,22 +461,21 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         """
         if self.risk == 1.0:
             # TODO: checks not fully implemented! there are additional requirements! (which?)
+            # TODO Nils: please remove duplicate code `_setup_eval_environment`!
             if len(set(self.u_lo)) != 1:  # BNE for differnt u_lo for each player
-                print('Warning: only one of multiple BNE selected!')  # TODO @Nils
+                self._optimal_bid = [None] *3
                 # BNE 1
-                # # self._optimal_bid = _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
-                #     u_lo=self.u_lo, u_hi=self.u_hi
-                # )
-
+                self._optimal_bid[0] = _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
+                    u_lo=self.u_lo, u_hi=self.u_hi
+                )
                 # BNE 2
-                self._optimal_bid = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2,
-                                            u_lo=self.u_lo, u_hi=self.u_hi)
+                self._optimal_bid[1] = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2,
+                                               u_lo=self.u_lo, u_hi=self.u_hi)
+                # BNE 3
+                self._optimal_bid[2] = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3,
+                                               u_lo=self.u_lo, u_hi=self.u_hi)
 
-                # # BNE 3
-                # self._optimal_bid = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3,
-                #                             u_lo=self.u_lo, u_hi=self.u_hi)
-
-            else:  # BNE for fixed u_lo for all players
+            else: # BNE for fixed u_lo for all players
                 self._optimal_bid = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral,
                                             u_lo=self.u_lo, u_hi=self.u_hi)
             return True
@@ -489,16 +488,13 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
 
         if len(set(self.u_lo)) != 1: # BNE for differnt u_lo for each player
             self._optimal_bid = [None] * 3
-
             # BNE 1
             self._optimal_bid[0] = _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
                 u_lo=self.u_lo, u_hi=self.u_hi
             )
-
             # BNE 2
             self._optimal_bid[1] = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2,
                                            u_lo=self.u_lo, u_hi=self.u_hi)
-
             # BNE 3
             self._optimal_bid[2] = partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3,
                                            u_lo=self.u_lo, u_hi=self.u_hi)
@@ -517,7 +513,8 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
             self.bne_env[i] = AuctionEnvironment(
                 mechanism=self.mechanism,
                 agents=[self._strat_to_bidder(bne_strategies[i][p], player_position=p,
-                                              batch_size=self.logging.eval_batch_size)
+                                              batch_size=self.logging.eval_batch_size,
+                                              cache_actions=self.config.logging.cache_eval_actions)
                         for p in range(self.n_players)],
                 n_players=self.n_players,
                 batch_size=self.logging.eval_batch_size,
@@ -528,7 +525,8 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                 [self.bne_env[i].get_reward(a, draw_valuations=True) for a in self.bne_env[i].agents])
 
             print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled[i]))
-            print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
+            if len(set(self.u_lo)) == 1:
+                print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
 
             print('Debug: eval_batch size:{}'.format(self.bne_env[i].batch_size))
             if self.u_lo ==5. and self.u_hi[0] ==15. and self.u_hi[1] ==25. and self.bne_env[i].batch_size <= 2**22:
