@@ -389,7 +389,8 @@ class MultiUnitExperiment(Experiment, ABC):
             self.bne_env[i] = AuctionEnvironment(
                 mechanism=self.mechanism,
                 agents=[
-                    self._strat_to_bidder(bne_strategy, self.logging.eval_batch_size, i)
+                    self._strat_to_bidder(bne_strategy, self.logging.eval_batch_size, i,
+                                          cache_actions=self.config.logging.cache_eval_actions)
                     for i, bne_strategy in enumerate(bne_strategies)
                 ],
                 n_players=self.n_players,
