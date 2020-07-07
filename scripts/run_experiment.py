@@ -1,8 +1,5 @@
-import sys
 import os
-import torch
-import fire
-
+import sys
 import torch
 
 sys.path.append(os.path.realpath('.'))

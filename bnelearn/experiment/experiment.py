@@ -228,7 +228,7 @@ class Experiment(ABC):
 
         output_dir = self.run_log_dir
 
-        if self.logging_config.log_metrics['opt'] and hasattr(self, 'bne_env'):
+        if self.logging.log_metrics['opt'] and hasattr(self, 'bne_env'):
 
             if not isinstance(self.bne_env, list):
                 # TODO Nils: should perhaps always be a list, even when there is only one BNE
@@ -643,7 +643,7 @@ class Experiment(ABC):
             # generally redraw bne_vals, except when this is expensive!
             # length: n_models
             # TODO Stefan: this seems to be false in most settings, even when not desired.
-            redraw_bne_vals = not self.logging_config.cache_eval_actions
+            redraw_bne_vals = not self.logging.cache_eval_actions
             # length: n_models
             utility_vs_bne[bne_idx] = torch.tensor([
                 bne_env.get_strategy_reward(
