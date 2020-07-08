@@ -79,12 +79,12 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(u_lo: List, u_hi
     Optimal bid in this experiment when bidders do NOT share same lower bound.
     Source: Equilibrium 1 of https://link.springer.com/article/10.1007/s40505-014-0049-1
     """
-    eps = 1e-8
+    #eps = 1e-8
     interpol_points = 256
 
     # 1. Solve implicit bid function
-    v1 = np.linspace(u_lo[0], u_hi[0] - eps, interpol_points)
-    v2 = np.linspace(u_lo[1], u_hi[1] - eps, interpol_points)
+    v1 = np.linspace(u_lo[0], u_hi[0], interpol_points)
+    v2 = np.linspace(u_lo[1], u_hi[1], interpol_points)
 
     def inverse_bid_player_1(bid):
         return 36 / ((2 * bid - 6) * (1 / 5) * np.exp(9 / 4 + 6 / (6 - 2 * bid)) + 24 - 4 * bid)
@@ -511,7 +511,6 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         if len(set(self.u_lo)) == 1:
             print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
 
-        
         print('Debug: eval_batch size:{}'.format(self.bne_env[0].batch_size))
 
         # TODO Stefan: generalize using analytical/hardcoded utilities over all settings!
