@@ -361,9 +361,7 @@ class MultiUnitExperiment(Experiment, ABC):
         self.bne_utilities = [None] * len(self._optimal_bid)
 
         for i, strat in enumerate(self._optimal_bid):
-            bne_strategies = [
-                ClosureStrategy(strat) for i in range(self.n_players)
-            ]
+            bne_strategies = [ClosureStrategy(strat) for _ in range(self.n_players)]
 
             self.bne_env[i] = AuctionEnvironment(
                 mechanism=self.mechanism,
