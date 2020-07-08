@@ -511,12 +511,17 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         if len(set(self.u_lo)) == 1:
             print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
 
-        # TODO Nils @Stefan: clean up
-        print('Debug: eval_batch size:{}'.format(self.bne_env[i].batch_size))
-        if self.u_lo == 5. and self.u_hi[0] ==15. and self.u_hi[1] == 25. and self.bne_env[i].batch_size <= 2**22:
-        # replace by known optimum with higher precision
-            bne_utilities_sampled[i] = torch.tensor([0.9694, 5.0688]) # calculated using 100x batch size above
-            print("\tReplacing sampled bne utilities by precalculated utilities with higher precision: {}".format(bne_utilities_sampled[i]))
+        
+        print('Debug: eval_batch size:{}'.format(self.bne_env[0].batch_size))
+
+        # TODO Stefan: generalize using analytical/hardcoded utilities over all settings!
+        # In case of 'canonica' overlapping setting, use precomputed bne-utils with higher precision.
+        if len(self.bne_env) == 1 and \
+            self.u_lo[0] == self.u_lo[1] == 5.0 and self.u_hi[0] ==15. and self.u_hi[1] == 25. and \
+            self.bne_env[0].batch_size <= 2**22:
+            # replace by known optimum with higher precision
+            bne_utilities_sampled[0] = torch.tensor([0.9694, 5.0688]) # calculated using 100x batch size above
+            print("\tReplacing sampled bne utilities by precalculated utilities with higher precision: {}".format(bne_utilities_sampled[0]))
 
         self.bne_utilities = bne_utilities_sampled
 
