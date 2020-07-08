@@ -9,21 +9,24 @@ options(dplyr.print_max = 200)
 options(dplyr.width = 300)
 ### Read in data
 subfolder="Journal"#Journal
-experiment = "LLG"
-payment_rule = "nearest_bid/gamma_0.0/2020-06-27 Sat 17.06"
-  #"first_price/normal/symmetric/risk_neutral/10p/2020-06-25 Thu 10.43"#"nearest_vcg/gamma_0.0/2020-06-26 Fri 11.52" #asymmetric/risk_neutral/2p
+experiment = "LLLLGG"
+payment_rule = "first_price/6p/2020-06-30 Tue 09.11"
+
+#"first_price/normal/symmetric/risk_neutral/10p/2020-06-25 Thu 10.43"
+#"nearest_vcg/gamma_0.0/2020-06-26 Fri 11.52" #asymmetric/risk_neutral/2p
+#"uniform/asymmetric/risk_neutral/2p/overlapping"
 tb_full_raw = read_delim(str_c("experiments",subfolder,experiment,payment_rule,"full_results.csv",
                               sep = "/", collapse = NULL), ",")
 
 ### Preprocess data
 tb_full_raw$tag <- gsub(tb_full_raw$tag, pattern="/", replace = "_")
 ### Settings
-known_bne = TRUE
+known_bne = F
 stop_criterium_1 = 0.0005
 stop_criterium_2 = 0.0001
 stop_criterium_interval = 100
 results_epoch = 5000
-type_names = c("locals", "global")#"."#c("bidder0","bidder1")#."#c("locals", "global") #"."
+type_names = c("locals", "globals")#"."#c("bidder0","bidder1")#."#c("locals", "global") #"."
 #nearest_zero = c(0.13399262726306915, 0.46403446793556213) 
 #nearest_bid = c(0.12500184774398804, 0.49999746680259705)
 #nearest_vcg = c(0.13316573202610016, 0.4673408269882202)
@@ -124,6 +127,17 @@ tb_stop_print <- tb_stop_print %>%
 tb_eval <- tb_full_raw %>% 
   filter(epoch == results_epoch) %>% 
   pivot_wider(names_from = tag, values_from = value)
+
+## TMP!!: For Journal eval
+#tb_eval %>% 
+#  mutate(utility_bne = eval_utility_vs_bne + eval_epsilon_absolute) %>% 
+#  pivot_longer(colnames(.)[4:(length(colnames(.)))], names_to="tag", 
+#               values_to="value", values_drop_na = TRUE) %>% 
+#  group_by(subrun, tag) %>% 
+#  summarise(avg = mean(value)) %>% 
+#  filter(tag %in% c("eval_utilities","eval_utility_vs_bne","utility_bne")) %>% 
+#  mutate(avg = sprintf("%0.4f", avg)) %>% 
+#  print(n=28)
 
 # If we calculated a more exact bne utility, use that
 if(exists("utility_in_bne_exact")){
