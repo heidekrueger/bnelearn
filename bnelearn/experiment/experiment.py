@@ -61,7 +61,7 @@ class Experiment(ABC):
 
     ## Equilibrium environment
     bne_utilities: torch.Tensor or List[float]  # dimension: n_players
-    bne_env: AuctionEnvironment
+    bne_env: AuctionEnvironment or List[AuctionEnvironment]
     _optimal_bid: callable
 
     def __init__(self, config: ExperimentConfig):
@@ -229,20 +229,32 @@ class Experiment(ABC):
         output_dir = self.run_log_dir
 
         if self.logging.log_metrics['opt'] and hasattr(self, 'bne_env'):
-            # dim: [points, bidders, items]
-            self.v_opt = torch.stack(
-                [b.get_valuation_grid(self.plot_points)
-                 for b in [self.bne_env.agents[i[0]] for i in self._model2bidder]],
-                dim=1
-            )
-            self.b_opt = torch.stack(
-                [self._optimal_bid(self.v_opt[:, m, :], player_position=b[0])
-                 for m, b in enumerate(self._model2bidder)],
-                dim=1
-            )
-            if self.v_opt.shape[0] != self.plot_points:
-                print('´plot_points´ changed due to ´get_valuation_gird´')
-                self.plot_points = self.v_opt.shape[0]
+
+            if not isinstance(self.bne_env, list):
+                # TODO Nils: should perhaps always be a list, even when there is only one BNE
+                self.bne_env = [self.bne_env]
+                self._optimal_bid = [self._optimal_bid]
+                self.bne_utilities = [self.bne_utilities]
+
+            # set up list for (multiple) BNE valuations and bids
+            self.v_opt = [None] * len(self.bne_env)
+            self.b_opt = [None] * len(self.bne_env)
+
+            for i, bne_env in enumerate(self.bne_env):
+                # dim: [points, bidders, items]
+                self.v_opt[i] = torch.stack(
+                    [bidder.get_valuation_grid(self.plot_points)
+                     for bidder in [bne_env.agents[j[0]] for j in self._model2bidder]],
+                    dim=1
+                )
+                self.b_opt[i] = torch.stack(
+                    [self._optimal_bid[i](self.v_opt[i][:, m, :], player_position=bidder[0])
+                     for m, bidder in enumerate(self._model2bidder)],
+                    dim=1
+                )
+                if self.v_opt[i].shape[0] != self.plot_points:
+                    print('´plot_points´ changed due to get_valuation_grid')
+                    self.plot_points = self.v_opt[i].shape[0]
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
@@ -264,6 +276,7 @@ class Experiment(ABC):
 
             tic = timer()
             self._log_hyperparams()
+            self._log_experiment_params()
             logging_utils.log_experiment_configurations(self.experiment_log_dir, self.config)
             elapsed = timer() - tic
         else:
@@ -283,7 +296,7 @@ class Experiment(ABC):
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
         # if torch.cuda.memory_allocated() > 0:
-        #    warnings.warn('Theres a memory leak')
+        #    warnings.warn("There's a memory leak")
 
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
@@ -562,18 +575,27 @@ class Experiment(ABC):
         # logging metrics
         # TODO: should just check if logging is enabled in general... if bne_exists and we log, we always want this
         if self.known_bne and self.logging.log_metrics['opt']:
-            self._cur_epoch_log_params['utility_vs_bne'], self._cur_epoch_log_params['epsilon_relative'], \
-            self._cur_epoch_log_params['epsilon_absolute'] = self._calculate_metrics_known_bne()
+            utility_vs_bne, epsilon_relative, epsilon_absolute = self._calculate_metrics_known_bne()
+            for i in range(len(self.bne_env)):
+                n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
+                self._cur_epoch_log_params['utility_vs_bne' + n if n == '' else n[4:]] \
+                    = utility_vs_bne[i]
+                self._cur_epoch_log_params['epsilon_relative' + n] = epsilon_relative[i]
+                self._cur_epoch_log_params['epsilon_absolute' + n] = epsilon_absolute[i]
 
         if self.logging.log_metrics['l2']:
-            self._cur_epoch_log_params['L_2'], self._cur_epoch_log_params[
-                'L_inf'] = self._calculate_metrics_action_space_norms()
+            L_2, L_inf = self._calculate_metrics_action_space_norms()
+            for i in range(len(self.bne_env)):
+                n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
+                self._cur_epoch_log_params['L_2' + n] = L_2[i]
+                self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
 
         if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
             create_plot_output = epoch % self.logging.plot_frequency == 0
             self._cur_epoch_log_params['util_loss_ex_ante'], self._cur_epoch_log_params['util_loss_ex_interim'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
 
+            print(self._cur_epoch_log_params['util_loss_ex_interim'])
         # plotting
         if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
@@ -589,14 +611,12 @@ class Experiment(ABC):
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
             if self.logging.log_metrics['opt']:
-                print("\tutilities vs BNE: {}\n\tepsilon (abs/rel): ({}, {})".format(
-                    self._cur_epoch_log_params['utility_vs_bne'].tolist(),
-                    self._cur_epoch_log_params['epsilon_relative'].tolist(),
-                    self._cur_epoch_log_params['epsilon_absolute'].tolist())                )
-                v = torch.cat([v, self.v_opt], dim=1)
-                b = torch.cat([b, self.b_opt], dim=1)
-                labels += ['BNE_{}'.format(i) for i in range(len(self.models))]
-                fmts += ['b--'] * len(self.models)
+                for env_idx, _ in enumerate(self.bne_env):
+                    v = torch.cat([v, self.v_opt[env_idx]], dim=1)
+                    b = torch.cat([b, self.b_opt[env_idx]], dim=1)
+                    labels += ['BNE{}_{}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
+                               for j in range(len(self.models))]
+                    fmts += ['b--'] * len(self.models)
 
             self._plot(plot_data=(v, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
@@ -610,51 +630,77 @@ class Experiment(ABC):
     def _calculate_metrics_known_bne(self):
         """
         Compare performance to BNE and return:
-        utility_vs_bne
-        epsilon_relative
-        epsilon_absolute
+            utility_vs_bne: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
+            epsilon_relative: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
+            epsilon_absolute: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
 
-        Each is a list of length self.n_models
+        These are all lists of lists. The outer list corrsponds to which BNE is comapred
+        (usually there's only one BNE). Each inner list is of length `self.n_models`.
         """
         # shorthand for model to bidder index conversion
         m2b = lambda m: self._model2bidder[m][0]
 
-        # generally redraw bne_vals, except when this is expensive!
-        # TODO Stefan: this seems to be false in most settings, even when not
-        # desired.
-        redraw_bne_vals = not self.config.logging.cache_eval_actions
-        # length: n_models
-        utility_vs_bne = torch.tensor([
-            self.bne_env.get_strategy_reward(
-                model,
-                player_position = m2b(m),
-                draw_valuations=redraw_bne_vals,
-                use_env_valuations= not redraw_bne_vals
-                # TODO: Stefan. Is strat_to_player_kwargs needed here?
-                # if yes, get from self.learners[m] (???)
-            ) for m, model in enumerate(self.models)
-        ])
-        epsilon_relative = torch.tensor(
-            [1 - utility_vs_bne[i] / self.bne_utilities[m2b(i)] for i, model in enumerate(self.models)])
-        epsilon_absolute = torch.tensor(
-            [self.bne_utilities[m2b(i)] - utility_vs_bne[i] for i, model in enumerate(self.models)])
+        utility_vs_bne = [None] * len(self.bne_env)
+        epsilon_relative = [None] * len(self.bne_env)
+        epsilon_absolute = [None] * len(self.bne_env)
+
+        for bne_idx, bne_env in enumerate(self.bne_env):
+            # generally redraw bne_vals, except when this is expensive!
+            # length: n_models
+            # TODO Stefan: this seems to be false in most settings, even when not desired.
+            redraw_bne_vals = not self.logging.cache_eval_actions
+            # length: n_models
+            utility_vs_bne[bne_idx] = torch.tensor([
+                bne_env.get_strategy_reward(
+                    model,
+                    player_position=m2b(m),
+                    draw_valuations=redraw_bne_vals,
+                    use_env_valuations=not redraw_bne_vals
+                    # TODO: Stefan. Is strat_to_player_kwargs needed here?
+                    # if yes, get from self.learners[m] (???)
+                ) for m, model in enumerate(self.models)
+            ])
+            epsilon_relative[bne_idx] = torch.tensor(
+                [1 - utility_vs_bne[bne_idx][i] / self.bne_utilities[bne_idx][m2b(i)]
+                 for i, model in enumerate(self.models)]
+            )
+            epsilon_absolute[bne_idx] = torch.tensor(
+                [self.bne_utilities[bne_idx][m2b(i)] - utility_vs_bne[bne_idx][i]
+                 for i, model in enumerate(self.models)]
+            )
 
         return utility_vs_bne, epsilon_relative, epsilon_absolute
 
     def _calculate_metrics_action_space_norms(self):
         """
-        Calculate "action space distance" of model and bne-strategy
-
+        Calculate "action space distance" of model and bne-strategy. If
+        `self.logging.log_componentwise_norm` is set to true, will only
+        return norm of the best action dimension.
+        
         Returns:
-            L_2 and L_inf, each a list of length self.models
+            L_2 and L_inf: each a List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
         """
-        # shorthand for model to agent
-        m2a = lambda m: self.bne_env.agents[self._model2bidder[m][0]]
 
-        L_2 = [metrics.norm_strategy_and_actions(model, m2a(i).get_action(), m2a(i).valuations, 2)
-               for i, model in enumerate(self.models)]
-        L_inf = [metrics.norm_strategy_and_actions(model, m2a(i).get_action(), m2a(i).valuations, float('inf'))
-                 for i, model in enumerate(self.models)]
+        # shorthand for model to agent
+        m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
+
+        L_2 = [None] * len(self.bne_env)
+        L_inf = [None] * len(self.bne_env)
+        for bne_idx, bne_env in enumerate(self.bne_env):
+            L_2[bne_idx] = [
+                metrics.norm_strategy_and_actions(
+                    model, m2a(i).get_action(), m2a(i).valuations, 2,
+                    componentwise = self.logging.log_componentwise_norm
+                )
+                for i, model in enumerate(self.models)
+            ]
+            L_inf[bne_idx] = [
+                metrics.norm_strategy_and_actions(
+                    model, m2a(i).get_action(), m2a(i).valuations, float('inf'),
+                    componentwise = self.logging.log_componentwise_norm
+                )
+                for i, model in enumerate(self.models)
+            ]
         return L_2, L_inf
 
     def _calculate_metrics_util_loss(self, create_plot_output: bool, epoch: int = None,
@@ -717,6 +763,13 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_hyperparams': str(self.learning.optimizer_hyperparams),
                     'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
+        try:
+            self._hparams_metrics['epsilon_relative'] = self.self._cur_epoch_log_params['epsilon_relative']
+        except:
+            try:
+                self._hparams_metrics['util_loss_ex_interim'] = self.self._cur_epoch_log_params['util_loss_ex_interim']
+            except:
+                pass
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
 
     def _log_hyperparams(self, epoch=0):
