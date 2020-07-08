@@ -286,7 +286,7 @@ class FPSBSplitAwardAuction(Mechanism):
     """
 
     def _solve_allocation_problem(self, bids: torch.Tensor,
-                                  random_tie_break: bool = True):
+                                  random_tie_break: bool = False):
         """
         Computes allocation and welfare
 
