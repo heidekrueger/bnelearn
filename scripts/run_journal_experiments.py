@@ -21,19 +21,19 @@ if __name__ == '__main__':
 
     # Experiments [single_item_uniform_symmetric, single_item_gaussian_symmetric, single_item_asymmetric_uniform_overlapping, 
     # single_item_asymmetric_uniform_disjunct, llg, llllgg, multiunit, splitaward]
-    experiment_type = 'single_item_uniform_symmetric'
+    experiment_type = 'splitaward'
 
     # Setting
     # Payments [first_price, nearest_vcg, nearest_zero, nearest_bid, uniform]
     payment_rule = 'first_price'
-    risk = 0.5
-    n_players = [2,3,5,10]
+    risk = 1.0
+    n_players = [2]#[2,3,5,10]
 
     # Learning
     batch_size = 2 ** 18
 
     # Hardware
-    specific_gpu=2
+    specific_gpu=4
 
     # Logging
     util_loss_batch_size = 2 ** 12
@@ -46,7 +46,7 @@ if __name__ == '__main__':
         experiment_config, experiment_class = ConfigurationManager(experiment_type=experiment_type) \
             .get_config(log_root_dir=log_root_dir,
                         # Run
-                        n_runs = 10,
+                        n_runs = 20,
                         n_epochs = 5000,
                         #Setting
                         payment_rule=payment_rule,
@@ -63,7 +63,7 @@ if __name__ == '__main__':
                         optimizer_type='adam',
                         pretrain_iters=500,
                         batch_size=batch_size,
-                        model_sharing=False,
+                        model_sharing=True,
                         # Hardware
                         specific_gpu=specific_gpu,
                         # Logging

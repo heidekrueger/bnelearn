@@ -9,24 +9,23 @@ options(dplyr.print_max = 200)
 options(dplyr.width = 300)
 ### Read in data
 subfolder="Journal"#Journal
-experiment = "LLLLGG"
-payment_rule = "first_price/6p/2020-06-30 Tue 09.11"
+experiment = "single_item"
+payment_rule = "first_price/normal/symmetric/risk_neutral/10p"
 
-#"first_price/normal/symmetric/risk_neutral/10p/2020-06-25 Thu 10.43"
-#"nearest_vcg/gamma_0.0/2020-06-26 Fri 11.52" #asymmetric/risk_neutral/2p
-#"uniform/asymmetric/risk_neutral/2p/overlapping"
+#"first_price/2players_2units"
+
 tb_full_raw = read_delim(str_c("experiments",subfolder,experiment,payment_rule,"full_results.csv",
                               sep = "/", collapse = NULL), ",")
 
 ### Preprocess data
 tb_full_raw$tag <- gsub(tb_full_raw$tag, pattern="/", replace = "_")
 ### Settings
-known_bne = F
+known_bne = T
 stop_criterium_1 = 0.0005
 stop_criterium_2 = 0.0001
 stop_criterium_interval = 100
 results_epoch = 5000
-type_names = c("locals", "globals")#"."#c("bidder0","bidder1")#."#c("locals", "global") #"."
+type_names = "."#c("locals", "globals")#"."#c("bidder0","bidder1")#."#c("locals", "global") #"."
 #nearest_zero = c(0.13399262726306915, 0.46403446793556213) 
 #nearest_bid = c(0.12500184774398804, 0.49999746680259705)
 #nearest_vcg = c(0.13316573202610016, 0.4673408269882202)
@@ -158,17 +157,15 @@ if(known_bne == F){
              "eval_util_loss_ex_interim","eval_util_loss_rel_estimate")) 
 }else{
   tb_eval <- tb_eval %>% 
-    mutate(# Compute the L = 1 - u(beta*)/u(beta_i, beta_{-1}*)
-           eval_util_loss_bne_rel = 1 - (eval_utility_vs_bne/(eval_utility_vs_bne+eval_epsilon_absolute)), 
-           # temporary estimate for: Compute \hat{L} = 1 - u(beta_i)/u(BR)
+    mutate(# temporary estimate for: Compute \hat{L} = 1 - u(beta_i)/u(BR)
            eval_util_loss_rel_estimate = 1 - eval_utilities/(eval_utilities+eval_util_loss_ex_ante)) %>% 
     # Select only necessary columns
     select(c("run","subrun","epoch","eval_utilities", "eval_epsilon_absolute", "eval_epsilon_relative", "eval_L_2", "eval_L_inf",
-             "eval_util_loss_bne_rel", "eval_util_loss_ex_ante", "eval_util_loss_ex_interim",
+             "eval_util_loss_ex_ante", "eval_util_loss_ex_interim",
              "eval_util_loss_rel_estimate"))
 }
 tb_eval <- tb_eval %>% 
-  pivot_longer(colnames(tb_eval)[4:length(colnames(tb_eval))], names_to="tag", 
+  pivot_longer(colnames(.)[4:length(colnames(.))], names_to="tag", 
                values_to="value", values_drop_na = TRUE) %>% 
   group_by(subrun, tag) %>% 
   summarise(avg = mean(value),
@@ -188,9 +185,28 @@ tb_final %>%
          avg = sprintf("%0.4f", avg)) %>% 
          #std = sprintf("%0.5f", std)) %>% 
   pivot_wider(id_cols=subrun,names_from=tag, values_from=avg) %>% 
-  #contains("eval_util_loss_bne_rel"), 
   select(subrun, contains("eval_epsilon_relative"), contains("eval_L_2"), eval_util_loss_ex_ante, 
          eval_util_loss_ex_interim, eval_util_loss_rel_estimate, contains("stop_diff_2_e"), contains("stop_diff_1_e"), time) %>%
   arrange(-row_number()) %>% 
   kable("latex", booktabs = T)
+
+# # ###########For Split Award skip line 130 ff and run this#########
+# if(experiment == "SplitAward"){
+#   tb_eval <- tb_eval %>% 
+#     mutate(# temporary estimate for: Compute \hat{L} = 1 - u(beta_i)/u(BR)
+#       eval_util_loss_rel_estimate = 1 - eval_utilities/(eval_utilities+eval_util_loss_ex_ante)) %>% 
+#     # Select only necessary columns
+#     select(c("run","subrun","epoch","eval_utilities", 
+#              "eval_epsilon_absolute_bne1", "eval_epsilon_relative_bne1", "eval_L_2_bne1", "eval_L_inf_bne1",
+#              "eval_epsilon_absolute_bne2", "eval_epsilon_relative_bne2", "eval_L_2_bne2", "eval_L_inf_bne2", 
+#              "eval_util_loss_ex_ante", "eval_util_loss_ex_interim", "eval_util_loss_rel_estimate")) %>% 
+#     pivot_longer(colnames(.)[4:length(colnames(.))], names_to="tag", 
+#                  values_to="value", values_drop_na = TRUE) %>% 
+#     group_by(subrun, tag) %>% 
+#     summarise(avg = mean(value),
+#               std = sqrt(var(value))) %>% 
+#     print(n=28)
+# }
+
+
 
