@@ -406,7 +406,8 @@ class SplitAwardExperiment(MultiUnitExperiment):
             '100% Unit must be valued > 0'
 
         self.positive_output_point = torch.tensor(
-            [self.u_hi[0], self.efficiency_parameter * self.u_hi[0]], dtype=torch.float)
+            [self.u_hi[0], self.efficiency_parameter * self.u_hi[0]], dtype=torch.float).view(1, 2)
+        self.positive_output_point = torch.matmul((1 + torch.randn(3, 1) / 2.97), self.positive_output_point)
 
         # ToDO Implicit type conversion, OK?
         self.plot_xmin = [self.u_lo[0], self.u_hi[0]]
