@@ -406,8 +406,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
             '100% Unit must be valued > 0'
 
         self.positive_output_point = torch.tensor(
-            [self.u_hi[0], self.efficiency_parameter * self.u_hi[0]], dtype=torch.float).view(1, 2)
-        self.positive_output_point = torch.matmul((1 + torch.randn(3, 1) / 2.97), self.positive_output_point)
+            [1.2, self.efficiency_parameter * 1.2], dtype=torch.float)
 
         # ToDO Implicit type conversion, OK?
         self.plot_xmin = [self.u_lo[0], self.u_hi[0]]
@@ -422,17 +421,17 @@ class SplitAwardExperiment(MultiUnitExperiment):
         else:
             raise NotImplementedError('for the split-award auction only the ' + 'first-price payment rule is supported')
 
-    def default_pretrain_transform(self, input_tensor):
-        """Pretrain transformation for this setting"""
-        temp = torch.clone(input_tensor)
-        if input_tensor.shape[1] == 1:
-            output_tensor = torch.cat((
-                temp,
-                self.efficiency_parameter * temp
-            ), 1)
-        else:
-            output_tensor = temp
-        return output_tensor
+    # def default_pretrain_transform(self, input_tensor):
+    #     """Pretrain transformation for this setting"""
+    #     temp = torch.clone(input_tensor)
+    #     if input_tensor.shape[1] == 1:
+    #         output_tensor = torch.cat((
+    #             temp,
+    #             self.efficiency_parameter * temp
+    #         ), 1)
+    #     else:
+    #         output_tensor = temp
+    #     return output_tensor
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
         """Standard strat_to_bidder method, but with ReverseBidder"""
