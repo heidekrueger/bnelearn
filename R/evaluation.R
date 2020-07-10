@@ -1,43 +1,7 @@
-#TODO: Implement option that for eval the epoch is chosen in each run in which a stop_crit is given.
-rm(list = ls())
-### Load Packages
-library(tidyverse)
-library(knitr)
-library(kableExtra)
-
-options(dplyr.print_max = 200)
-options(dplyr.width = 300)
-### Read in data
-subfolder="Journal"#Journal
-experiment = "single_item"
-payment_rule = "first_price/normal/symmetric/risk_neutral/10p"
-
-#"first_price/2players_2units"
-
-tb_full_raw = read_delim(str_c("experiments",subfolder,experiment,payment_rule,"full_results.csv",
-                              sep = "/", collapse = NULL), ",")
-
-### Preprocess data
-tb_full_raw$tag <- gsub(tb_full_raw$tag, pattern="/", replace = "_")
-### Settings
-known_bne = T
-stop_criterium_1 = 0.0005
-stop_criterium_2 = 0.0001
-stop_criterium_interval = 100
-results_epoch = 5000
-type_names = "."#c("locals", "globals")#"."#c("bidder0","bidder1")#."#c("locals", "global") #"."
-#nearest_zero = c(0.13399262726306915, 0.46403446793556213) 
-#nearest_bid = c(0.12500184774398804, 0.49999746680259705)
-#nearest_vcg = c(0.13316573202610016, 0.4673408269882202)
-#utility_in_bne_exact = c(0.13316573202610016, 0.4673408269882202)
-# Current stopping criterium: eval_util_loss_ex_ante. Alternatives: eval_util_loss_rel_estimate
-# further assumptions:
-# - stopping criteria is fullfilled during 3 consecutive periods, each 100 epochs
-
 ###################### Analyse detailed data#################
 ## Compute stopping criterium and times for any bidder type
 # Compute \hat{L} and in which epochs the stopping criteria are met for each subrun
-tb_stop <- tb_full_raw %>% 
+tb_stop <- tb_full %>% 
   pivot_wider(names_from = tag, values_from = value) %>% 
   filter(subrun %in% type_names,
          epoch%%stop_criterium_interval==0) %>% 
@@ -60,7 +24,7 @@ tb_stop <- tb_full_raw %>%
   select(c(names(.)[1:3],"stopping_crit_diff","stop_diff_1","stop_diff_2"))
 
 # compute times and epochs until convergence and total runtime
-tb_runtime <- tb_full_raw %>% 
+tb_runtime <- tb_full %>% 
   pivot_wider(names_from = tag, values_from = value) %>% 
   select(c(names(.)[1:4],"eval_overhead_hours")) %>% 
   filter(subrun %in% c(".")) %>% 
@@ -123,19 +87,19 @@ tb_stop_print <- tb_stop_print %>%
 
 ### Analyse eval data###############
 # Select only end and widen
-tb_eval <- tb_full_raw %>% 
+tb_eval <- tb_full %>% 
   filter(epoch == results_epoch) %>% 
   pivot_wider(names_from = tag, values_from = value)
 
-## TMP!!: For Journal eval
-#tb_eval %>% 
-#  mutate(utility_bne = eval_utility_vs_bne + eval_epsilon_absolute) %>% 
-#  pivot_longer(colnames(.)[4:(length(colnames(.)))], names_to="tag", 
-#               values_to="value", values_drop_na = TRUE) %>% 
-#  group_by(subrun, tag) %>% 
-#  summarise(avg = mean(value)) %>% 
-#  filter(tag %in% c("eval_utilities","eval_utility_vs_bne","utility_bne")) %>% 
-#  mutate(avg = sprintf("%0.4f", avg)) %>% 
+# # TMP!!: For Journal eval
+# tb_eval %>%
+#  mutate(utility_bne = eval_utility_vs_bne + eval_epsilon_absolute) %>%
+#  pivot_longer(colnames(.)[4:(length(colnames(.)))], names_to="tag",
+#               values_to="value", values_drop_na = TRUE) %>%
+#  group_by(subrun, tag) %>%
+#  summarise(avg = mean(value)) %>%
+#  filter(tag %in% c("eval_utilities","eval_utility_vs_bne","utility_bne")) %>%
+#  mutate(avg = sprintf("%0.4f", avg)) %>%
 #  print(n=28)
 
 # If we calculated a more exact bne utility, use that
