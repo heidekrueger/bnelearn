@@ -18,14 +18,12 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager
 ids_si, *testdata_si = zip(*[
     [
         'single_item-symmetric-uniform-fp',
-        *ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=2, n_epochs=3) \
                            .get_config(),
         True
     ], [
         'single_item-symmetric-uniform-fp-no_model_sharing',
-        *ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=2, n_epochs=3) \
                            .set_learning(model_sharing=False)
                            .get_config(),
         True
@@ -36,21 +34,18 @@ ids_si, *testdata_si = zip(*[
     # ['single_item-symmetric-gaussian-fp', (single_item_gaussian_symmetric(2,3, [4], 'first_price')),True],
     [
         'single_item-symmetric-gaussian-vcg',
-        *ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \
-                           .set_running(n_runs=2, n_epochs=3, n_players=5)
-                           .set_setting(payment_rule='second_price')
+        *ConfigurationManager(experiment_type='single_item_gaussian_symmetric', n_runs=2, n_epochs=3) \
+                           .set_setting(payment_rule='second_price', n_players=5)
                            .get_config(),
         True
     ], [
         'single_item-asymmetric-uniform-fp',
-        *ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping') \
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping', n_runs=2, n_epochs=3) \
                            .get_config(),
         True
     ], [
         'single_item-asymmetric-uniform-vcg',
-        *ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping') \
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping', n_runs=2, n_epochs=3) \
                            .set_setting(payment_rule='second_price')
                            .get_config(),
         True
@@ -63,47 +58,41 @@ ids_si, *testdata_si = zip(*[
 ids_lg, *testdata_lg = zip(*[
     [
         'LLG-fp',
-        *ConfigurationManager(experiment_type='llg') \
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3) \
                            .set_setting(payment_rule='first_price')
                            .get_config(),
         False],
     [
         'LLG-fp-no_model_sharing',
-        *ConfigurationManager(experiment_type='llg') \
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3) \
                            .set_setting(payment_rule='first_price')
                            .set_learning(model_sharing=False)
                            .get_config(),
         False],
     [
         'LLG-vcg',
-        *ConfigurationManager(experiment_type='llg') \
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3) \
                            .set_setting(payment_rule='vcg')
                            .get_config(),
         True
     ],
     [
         'LLG-nearest_bid',
-        *ConfigurationManager(experiment_type='llg')
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3)
                            .set_setting(payment_rule='nearest_bid')
                            .get_config(),
         True
     ],
     [
         'LLG-nearest_bid_correlated',
-        *ConfigurationManager(experiment_type='llg')
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3)
                            .set_setting(payment_rule='nearest_bid', gamma=0.5)
                            .get_config(),
         True
     ],
     [  # Used to fail when 0.5 didn't, due to neg bids
         'LLG-nearest_bid_perfectly_correlated',
-        *ConfigurationManager(experiment_type='llg') \
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3) \
                            .set_setting(payment_rule='nearest_bid', gamma=1.0)
                            .get_config(),
         True],
@@ -115,16 +104,14 @@ ids_lg, *testdata_lg = zip(*[
 
     [
         'LLLLGG-fp-no_model_sharing',
-        *ConfigurationManager(experiment_type='llllgg') \
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='llllgg', n_runs=2, n_epochs=3) \
                            .set_learning(model_sharing=False)
                            .get_config(),
         False
     ],
     [
         'LLLLGG-vcg',
-        *ConfigurationManager(experiment_type='llllgg') \
-                           .set_running(n_runs=2, n_epochs=2)
+        *ConfigurationManager(experiment_type='llllgg', n_runs=2, n_epochs=2) \
                            .set_setting(payment_rule='vcg')
                            .get_config(),
         False  # TODO: vcg BNE not implemented! change this test when done.
@@ -139,43 +126,35 @@ ids_mu, *testdata_mu = zip(*[
     # Those where this didn't match Nils's expectations have been marked. @Nils, please take a look.
     [
         'MultiUnit-discr',
-        *ConfigurationManager(experiment_type='multiunit')
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='multiunit', n_runs=2, n_epochs=3)
                            .set_setting(payment_rule='discriminatory')
                            .get_config(),
         True  # TODO: Nils said should find False for bne, but finds true
     ], [
         'MultiUnit-discr-no_model_sharing',
-        *ConfigurationManager(experiment_type='multiunit')
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='multiunit', n_runs=2, n_epochs=3)
                            .set_setting(payment_rule='discriminatory')
                            .set_learning(model_sharing=False)
                            .get_config(),
         True  # TODO: Nils said should find False for bne, but finds true
     ], [
         'MultiUnit-vcg',
-        *ConfigurationManager(experiment_type='multiunit') \
-                           .set_running(n_runs=2, n_epochs=3)
-                           .set_setting(payment_rule='vcg')
-                           .get_config(),
+        *ConfigurationManager(experiment_type='multiunit', n_runs=2, n_epochs=3) \
+                           .set_setting(payment_rule='vcg').get_config(),
         True
     ], [
         'MultiUnit-uniform',
-        *ConfigurationManager(experiment_type='multiunit') \
-                           .set_running(n_runs=2, n_epochs=3)
-                           .set_setting(payment_rule='uniform')
-                           .get_config(),
+        *ConfigurationManager(experiment_type='multiunit', n_runs=2, n_epochs=3) \
+                           .set_setting(payment_rule='uniform').get_config(),
         True
     ], [
         'SplitAward-fp',
-        *ConfigurationManager(experiment_type='splitaward') \
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='splitaward', n_runs=2, n_epochs=3) \
                            .get_config(),
         True  # TODO: Nils said should find False for bne, but finds true
     ], [
         'SplitAward-fp-no_model_sharing',
-        *ConfigurationManager(experiment_type='splitaward') \
-                           .set_running(n_runs=2, n_epochs=3)
+        *ConfigurationManager(experiment_type='splitaward', n_runs=2, n_epochs=3) \
                            .set_learning(model_sharing=False)
                            .get_config(),
         True  # TODO: Nils said should find False for bne, but finds true

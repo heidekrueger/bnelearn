@@ -61,7 +61,7 @@ if __name__ == '__main__':
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .set_running(n_runs=1, n_epochs=200).get_config()
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit', n_runs=1, n_epochs=2) \
         .set_logging(log_root_dir=log_root_dir) \
         .get_config()
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\

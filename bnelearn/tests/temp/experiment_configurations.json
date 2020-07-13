@@ -2,7 +2,7 @@
     "experiment_class": "splitaward",
     "running": {
         "n_runs": 1,
-        "n_epochs": 100,
+        "n_epochs": 3,
         "seeds": null
     },
     "setting": {
@@ -79,7 +79,7 @@
         "stopping_criterion_duration": 3,
         "stopping_criterion_batch_size": 1024,
         "stopping_criterion_grid_size": 512,
-        "experiment_dir": "2020-07-13 Mon 20.17",
+        "experiment_dir": "2020-07-13 Mon 22.30",
         "experiment_name": null
     },
     "hardware": {

@@ -368,7 +368,8 @@ class Experiment(ABC):
                     # Check for convergence when enough data is available
                     if len(stopping_queue) == stopping_queue.maxlen:
                         values = torch.stack(tuple(stopping_queue))
-                        stop = self._check_convergence(values, epoch=e)
+                        if self.logging.enable_logging:
+                            stop = self._check_convergence(values, epoch=e)
 
                     self.overhead = self.overhead + timer() - start_time
                     if stop:

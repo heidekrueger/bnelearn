@@ -4,8 +4,6 @@ import time
 import warnings
 from typing import List, Type, Iterable
 
-from dataclasses import replace
-
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
@@ -222,12 +220,15 @@ class ConfigurationManager:
         'splitaward':
             (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)}
 
-    def __init__(self, experiment_type: str):
+    def __init__(self, experiment_type: str, n_runs: int, n_epochs: int):
         self.experiment_type = experiment_type
 
         # Common defaults
         self.running, self.setting, self.learning, self.logging, self.hardware = \
             ConfigurationManager.get_default_config_members()
+
+        self.running.n_runs = n_runs
+        self.running.n_epochs = n_epochs
 
         # Defaults specific to an experiment type
         if self.experiment_type not in ConfigurationManager.experiment_types:
@@ -313,7 +314,7 @@ class ConfigurationManager:
 
     @staticmethod
     def get_default_config_members() -> (RunningConfig, SettingConfig, LearningConfig, LoggingConfig, HardwareConfig):
-        running = RunningConfig(n_runs=1, n_epochs=100)
+        running = RunningConfig()
         setting = SettingConfig(n_players=2,
                                 payment_rule='first_price',
                                 risk=1.0)
