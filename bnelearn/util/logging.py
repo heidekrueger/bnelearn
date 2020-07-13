@@ -5,6 +5,8 @@ import subprocess
 import time
 from typing import List
 
+from dataclasses import replace
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -189,12 +191,12 @@ def export_stepwise_linear_bid(experiment_dir, bidders: List[Bidder], step=1e-2)
 class CustomSummaryWriter(SummaryWriter):
     """
     Extends SummaryWriter with two methods:
-    
-    * a method to add multiple scalars in the way that we intend. The original 
+
+    * a method to add multiple scalars in the way that we intend. The original
         SummaryWriter can either add a single scalar at a time or multiple scalars,
         but in the latter case, multiple runs are created without
         the option to control these.
-    * overwriting the the add_hparams method to write hparams without creating 
+    * overwriting the the add_hparams method to write hparams without creating
         another tensorboard run file
     """
 

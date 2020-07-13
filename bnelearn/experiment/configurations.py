@@ -104,10 +104,12 @@ class LoggingConfig:
     plot_show_inline: bool
     log_metrics: dict
 
+
     save_tb_events_to_csv_aggregate: bool
     save_tb_events_to_csv_detailed: bool
     save_tb_events_to_binary_detailed: bool
     save_models: bool
+    log_componentwise_norm: bool
 
     save_figure_to_disk_png: bool
     save_figure_to_disk_svg: bool

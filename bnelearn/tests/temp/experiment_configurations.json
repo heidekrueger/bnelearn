@@ -70,6 +70,7 @@
         "save_tb_events_to_csv_detailed": false,
         "save_tb_events_to_binary_detailed": false,
         "save_models": false,
+        "log_componentwise_norm": true,
         "save_figure_to_disk_png": false,
         "save_figure_to_disk_svg": false,
         "save_figure_data_to_disk": false,
@@ -78,12 +79,12 @@
         "stopping_criterion_duration": 3,
         "stopping_criterion_batch_size": 1024,
         "stopping_criterion_grid_size": 512,
-        "experiment_dir": "2020-06-25 Thu 15.30",
+        "experiment_dir": "2020-07-13 Mon 20.17",
         "experiment_name": null
     },
     "hardware": {
         "cuda": false,
-        "specific_gpu": 2,
+        "specific_gpu": 0,
         "fallback": true,
         "max_cpu_threads": 1,
         "device": "cpu"

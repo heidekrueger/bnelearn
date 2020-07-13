@@ -4,6 +4,8 @@ import time
 import warnings
 from typing import List, Type, Iterable
 
+from dataclasses import replace
+
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
@@ -119,6 +121,7 @@ class ConfigurationManager:
         self.setting.u_hi = [1.4, 1.4]
         self.setting.constant_marginal_values = False
         self.setting.efficiency_parameter = 0.3
+        self.logging.log_componentwise_norm = True
 
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
@@ -332,6 +335,7 @@ class ConfigurationManager:
                                 log_metrics={'opt': True,
                                              'l2': True,
                                              'util_loss': True},
+                                log_componentwise_norm=False,
                                 save_tb_events_to_csv_aggregate=True,
                                 save_tb_events_to_csv_detailed=False,
                                 save_tb_events_to_binary_detailed=False,

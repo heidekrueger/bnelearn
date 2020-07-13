@@ -40,16 +40,29 @@ def norm_strategies(strategy1: Strategy, strategy2: Strategy, valuations: torch.
 
     return norm_actions(b1, b2, p)
 
-def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: float=2) -> float:
+def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: float=2, componentwise=False) -> float:
     """Calculates the norm as above, but given one action vector and one strategy.
     The valuations must match the given actions.
 
     This helper function is useful when recalculating an action vector is prohibitive and it should be reused.
 
+    Input:
+        strategy: Strategy
+        actions: torch.Tensor
+        valuations: torch.Tensor
+        p: float=2
+        componentwise: bool=False, only returns smallest norm of all output dimensions if true
+    Returns:
+        norm, float
     """
     s_actions = strategy.play(valuations)
 
-    return norm_actions(s_actions, actions, p)
+    if componentwise:
+        component_norm = [norm_actions(s_actions[..., d], actions[..., d], p)
+                          for d in range(actions.shape[-1])]
+        return min(component_norm)
+    else:
+        return norm_actions(s_actions, actions, p)
 
 def _create_grid_bid_profiles(bidder_position: int, grid: torch.tensor, bid_profile: torch.tensor):
     """Given an original bid profile, creates a tensor of (grid_size * batch_size) batches of bid profiles,
@@ -145,7 +158,6 @@ def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: B
     actual_utility = bidder.get_utility(a_i, p_i)
 
     return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
-
 
 def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
                          agent: Bidder, agent_valuation: torch.Tensor,

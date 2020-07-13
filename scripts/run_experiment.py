@@ -1,8 +1,6 @@
 import os
 import subprocess
 import sys
-
-import fire
 import torch
 
 from bnelearn.util import logging
@@ -10,7 +8,8 @@ from bnelearn.util import logging
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
-from bnelearn.experiment.configuration_manager import ConfigurationManager  # pylint: disable=import-error
+# pylint: disable=wrong-import-position
+from bnelearn.experiment.configuration_manager import ConfigurationManager
 
 if __name__ == '__main__':
     '''
@@ -55,7 +54,6 @@ if __name__ == '__main__':
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg') \
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .set_running(n_runs=1, n_epochs=200).get_config()
-
     # RuntimeError: Sizes of tensors must match
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
     #     .set_logging(log_root_dir=log_root_dir) \
@@ -63,9 +61,22 @@ if __name__ == '__main__':
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .set_running(n_runs=1, n_epochs=200).get_config()
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
+        .set_logging(log_root_dir=log_root_dir) \
+        .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
+    #     .get_config(log_root_dir=log_root_dir)
 
     try:
         experiment = experiment_class(experiment_config)
+        # TODO: this is a short term fix - we can only determine whether BNE exists once experiment has been
+        #  initialized. Medium Term -->  Set 'opt logging in experiment itself.
+        if experiment.known_bne:
+            experiment.logging.log_metrics = {
+                'opt': True,
+                'l2': True,
+                'util_loss': True
+            }
 
         # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
         if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
