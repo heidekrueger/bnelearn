@@ -9,8 +9,8 @@ options(dplyr.print_max = 200)
 options(dplyr.width = 300)
 ### Read in data
 subfolder="Journal"#Journal
-experiment = "SplitAward"
-payment_rule = "first_price/2players_2units"
+experiment = "single_item"
+payment_rule = "first_price/normal/symmetric/risk_neutral/3p"#"first_price/uniform/asymmetric/risk_neutral/2p/overlapping"#"first_price/normal/symmetric/risk_neutral/10p"
 
 #"first_price/2players_2units"
 
@@ -21,7 +21,7 @@ tb_full_raw = read_delim(str_c("experiments",subfolder,experiment,payment_rule,"
 tb_full_raw$tag <- gsub(tb_full_raw$tag, pattern="/", replace = "_")
 ### Settings
 known_bne = T
-multiple_bne = T
+multiple_bne = F
 stop_criterium_1 = 0.0005
 stop_criterium_2 = 0.0001
 stop_criterium_interval = 100
