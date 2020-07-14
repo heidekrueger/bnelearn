@@ -130,7 +130,7 @@ class LoggingConfig:
     plot_points: int = 100
     plot_show_inline: bool = True
     log_metrics: dict = None
-    export_step_wise_linear_bid_function_size = None
+    export_step_wise_linear_bid_function_size:float = None
     log_componentwise_norm: bool = False
 
     # Stopping Criterion #TODO: this section should go into ExperimentConfiguration
