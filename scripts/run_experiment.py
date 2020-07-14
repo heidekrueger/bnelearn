@@ -62,7 +62,7 @@ if __name__ == '__main__':
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .set_running(n_runs=1, n_epochs=200).get_config()
     experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit', n_runs=1, n_epochs=2) \
-        .set_logging(log_root_dir=log_root_dir) \
+        .set_running().set_logging(log_root_dir=log_root_dir).set_setting().set_learning().set_hardware() \
         .get_config()
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
     #     .get_config(log_root_dir=log_root_dir)

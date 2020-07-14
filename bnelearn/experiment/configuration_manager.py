@@ -34,10 +34,39 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
 
 class ConfigurationManager:
     """
-    The class allows for creation of a full and consistent ExperimentConfiguration, as defined by the ExperimentConfig
-    dataclass. It manages all the defaults, including those specific for each experiment type and allows to selectively
-    change any part of the configuration, while also performing a parameter and consistency check before creating
-    the final configuration object
+    The class provides a 'front-end' for the whole package. It allows for creation of a full and
+    consistent ExperimentConfiguration, as defined by the ExperimentConfig dataclass.
+    It manages all the defaults, including those specific for each experiment type, auto-inits the parameters that
+    are not supposed to be initialized manually, and allows to selectively change any part of the configuration,
+    while also performing a parameter and consistency check before creating the final configuration object.
+
+    The workflow with the class API is as follows:
+    1. Init class object with the experiment type string, n_runs and n_epochs.
+    For possible experiment types see ConfigurationManager.experiment_types
+    1.1. __init__ calls get_default_config_members method to get default configuration members.
+    1.2 Based on the experiment type, __init__ calls the appropriate ancillary _init_experiment_type.
+    It sets the default parameters specific for the given experiment type.
+    2. (Optional step) Call set_config_member methods (e.g. set_setting) in a chain style,
+    each methods allows to selectively set any parameter of a corresponding config member to a new arbitrary value,
+    while leaving all the parameters not specified by the user intact - with their default values.
+    3. Call the get_config method to get a ready configuration object and an experiment class corresponding
+    to the experiment type (the latter needed for an easy instantiation of the Experiment)
+    3.1 get_config calls _post_init, which inits the parameters which shouldn't be set manually, checks for consistency
+    between the related parameters and validates whether each parameter is in an appropriate value range.
+    Then, it calls the type specific _post_init_experiment_type method which performs all the same things, but specific
+    for the experiment type.
+    3.2 get_config creates and returns the final and valid configuration object alongside the experiment class.
+
+    Example of class usage:
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit', n_runs=1, n_epochs=20) \
+        .set_running() \
+        .set_logging(log_root_dir=log_root_dir) \
+        .set_setting(payment_rule='discriminatory') \
+        .set_learning(model_sharing=False) \
+        .set_hardware() \
+        .get_config()
+
+    experiment_class(experiment_config).run()
     """
 
     def _init_single_item_uniform_symmetric(self):
@@ -153,23 +182,24 @@ class ConfigurationManager:
         if self.hardware.cuda and self.hardware.specific_gpu is not None:
             torch.cuda.set_device(self.hardware.specific_gpu)
 
+        ConfigurationManager.experiment_types[self.experiment_type][2](self)
+
     def _post_init_single_item_uniform_symmetric(self):
-        self._post_init()
+        pass
 
     def _post_init_single_item_gaussian_symmetric(self):
-        self._post_init()
+        pass
 
     def _post_init_single_item_asymmetric_uniform_overlapping(self):
-        self._post_init()
+        pass
 
     def _post_init_single_item_asymmetric_uniform_disjunct(self):
-        self._post_init()
+        pass
 
     def _post_init_mineral_rights(self):
-        self._post_init()
+        pass
 
     def _post_init_llg(self):
-        self._post_init()
         # How many of those types are there and how do they correspond to gamma values?
         # I might wrongly understand the relationship here
         if self.setting.gamma == 0.0:
@@ -180,13 +210,13 @@ class ConfigurationManager:
             raise Exception('Wrong gamma')
 
     def _post_init_llllgg(self):
-        self._post_init()
+        pass
 
     def _post_init_multiunit(self):
-        self._post_init()
+        pass
 
     def _post_init_splitaward(self):
-        self._post_init()
+        pass
 
     experiment_types = {
         'single_item_uniform_symmetric':
@@ -229,6 +259,7 @@ class ConfigurationManager:
 
     # pylint: disable=too-many-arguments, unused-argument
     def set_running(self, n_runs: int = 'None', n_epochs: int = 'None', n_players: int = 'None', seeds: Iterable[int] = 'None'):
+        """Sets only the parameters of running which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.running, arg):
                 setattr(self.running, arg, v)
@@ -243,6 +274,7 @@ class ConfigurationManager:
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
                     core_solver: str = 'None'):
+        """Sets only the parameters of setting which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.setting, arg):
                 setattr(self.setting, arg, v)
@@ -252,6 +284,7 @@ class ConfigurationManager:
     def set_learning(self, model_sharing: bool = 'None', learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None', pretrain_iters: int = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
+        """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.learning, arg):
                 setattr(self.learning, arg, v)
@@ -270,6 +303,7 @@ class ConfigurationManager:
                     stopping_criterion_batch_size: int = 'None', stopping_criterion_grid_size: int = 'None',
                     export_step_wise_linear_bid_function_size: bool = 'None',
                     experiment_dir: str = 'None', experiment_name: str = 'None'):
+        """Sets only the parameters of logging which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.logging, arg):
                 setattr(self.logging, arg, v)
@@ -278,6 +312,7 @@ class ConfigurationManager:
     # pylint: disable=too-many-arguments, unused-argument
     def set_hardware(self, cuda: bool = 'None', specific_gpu: int = 'None', fallback: bool = 'None',
                      max_cpu_threads: int = 'None'):
+        """Sets only the parameters of hardware which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.hardware, arg):
                 setattr(self.hardware, arg, v)
@@ -285,10 +320,11 @@ class ConfigurationManager:
 
     def get_config(self):
         """
-        Performs the post_init, creates and returns the final ExperimentConfig object
+        Performs the _post_init, creates and returns the final ExperimentConfig object
+        alongside with the appropriate experiment class
         """
         # Post-inits should insure the consistency of all parameters, no configuration changes beyond this point
-        ConfigurationManager.experiment_types[self.experiment_type][2](self)
+        self._post_init()
 
         experiment_config = ExperimentConfig(experiment_class=self.experiment_type,
                                              running=self.running,
@@ -300,11 +336,13 @@ class ConfigurationManager:
         return experiment_config, ConfigurationManager.experiment_types[self.experiment_type][0]
 
     @staticmethod
-    def get_class_by_experiment_type(experiment_type):
+    def get_class_by_experiment_type(experiment_type: str):
+        """Given an experiment type, returns the corresponding experiment class which could be initialized"""
         return ConfigurationManager.experiment_types[experiment_type][0]
 
     @staticmethod
     def get_default_config_members() -> (RunningConfig, SettingConfig, LearningConfig, LoggingConfig, HardwareConfig):
+        """Creates with default parameters and returns members of the ExperimentConfig"""
         running = RunningConfig(n_runs=1, n_epochs=1)
         setting = SettingConfig(n_players=2,
                                 payment_rule='first_price',
@@ -351,7 +389,7 @@ class ConfigurationManager:
     @staticmethod
     def compare_two_experiment_configs(conf1: ExperimentConfig, conf2: ExperimentConfig) -> bool:
         """
-        Checks whether two given configurations are identical
+        Checks whether two given configurations are identical (deep comparison)
         """
         if str(conf1.setting.common_prior) != str(conf2.setting.common_prior) \
                 or str(conf1.learning.hidden_activations) != str(conf2.learning.hidden_activations):
@@ -379,7 +417,7 @@ class ConfigurationManager:
     @staticmethod
     def experiment_config_could_be_saved_properly(exp_config: ExperimentConfig) -> bool:
         """
-        Tests whether the given config could be serialized and deserialized properly
+        Tests whether the given config could be serialized and deserialized properly.
         """
         dir_path = os.path.join(os.getcwd(), 'temp')
         file_path = os.path.join(dir_path, logging_utils._configurations_f_name)
@@ -398,20 +436,6 @@ class ConfigurationManager:
             os.removedirs(dir_path)
 
         return ConfigurationManager.compare_two_experiment_configs(exp_config, exp_retrieved_config)
-
-    @staticmethod
-    def _set_optimizer(optimizer: str or Type[Optimizer]) -> Type[Optimizer]:
-        """Maps shortcut strings to torch.optim.Optimizer types, if required."""
-        if isinstance(optimizer, type) and issubclass(optimizer, Optimizer):
-            return optimizer
-
-        if isinstance(optimizer, str):
-            if optimizer in ('adam', 'Adam'):
-                return torch.optim.Adam
-            if optimizer in ('SGD', 'sgd', 'Sgd'):
-                return torch.optim.SGD
-            # add more optimizers as needed
-        raise ValueError('Optimizer type could not be inferred!')
 
     @staticmethod
     def load_experiment_config(experiment_log_dir=None):
@@ -542,3 +566,19 @@ class ConfigurationManager:
                 raise NotImplementedError
 
         return experiment_config
+
+    @staticmethod
+    def _set_optimizer(optimizer: str or Type[Optimizer]) -> Type[Optimizer]:
+        """Maps shortcut strings to torch.optim.Optimizer types, if required."""
+        if isinstance(optimizer, type) and issubclass(optimizer, Optimizer):
+            return optimizer
+
+        if isinstance(optimizer, str):
+            if optimizer in ('adam', 'Adam'):
+                return torch.optim.Adam
+            if optimizer in ('SGD', 'sgd', 'Sgd'):
+                return torch.optim.SGD
+            # add more optimizers as needed
+        raise ValueError('Optimizer type could not be inferred!')
+
+
