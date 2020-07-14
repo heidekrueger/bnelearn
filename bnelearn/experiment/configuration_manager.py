@@ -228,57 +228,57 @@ class ConfigurationManager:
         self.running.n_epochs = n_epochs
 
     # pylint: disable=too-many-arguments, unused-argument
-    def set_running(self, n_runs: int = None, n_epochs: int = None, n_players: int = None, seeds: Iterable[int] = None):
-        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not None}.items():
+    def set_running(self, n_runs: int = 'None', n_epochs: int = 'None', n_players: int = 'None', seeds: Iterable[int] = 'None'):
+        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.running, arg):
                 setattr(self.running, arg, v)
         return self
 
     # pylint: disable=too-many-arguments, unused-argument
-    def set_setting(self, n_players: int = None, payment_rule: str = None, risk: float = None,
-                    common_prior: torch.distributions.Distribution = None, valuation_mean: float = None,
-                    valuation_std: float = None, u_lo: list = None, u_hi: list = None, gamma: float = None,
-                    correlation_types: str = None, correlation_groups: List[List[int]] = None,
-                    correlation_coefficients: List[float] = None, n_units: int = None,
-                    pretrain_transform: callable = None, constant_marginal_values: bool = None,
-                    item_interest_limit: int = None, efficiency_parameter: float = None,
-                    core_solver: str = None):
-        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not None}.items():
+    def set_setting(self, n_players: int = 'None', payment_rule: str = 'None', risk: float = 'None',
+                    common_prior: torch.distributions.Distribution = 'None', valuation_mean: float = 'None',
+                    valuation_std: float = 'None', u_lo: list = 'None', u_hi: list = 'None', gamma: float = 'None',
+                    correlation_types: str = 'None', correlation_groups: List[List[int]] = 'None',
+                    correlation_coefficients: List[float] = 'None', n_units: int = 'None',
+                    pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
+                    item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
+                    core_solver: str = 'None'):
+        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.setting, arg):
                 setattr(self.setting, arg, v)
         return self
 
     # pylint: disable=too-many-arguments, unused-argument
-    def set_learning(self, model_sharing: bool = None, learner_hyperparams: dict = None, optimizer_type: str = None,
-                     optimizer_hyperparams: dict = None, hidden_nodes: List[int] = None, pretrain_iters: int = None,
-                     batch_size: int = None, hidden_activations: List[nn.Module] = None):
-        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not None}.items():
+    def set_learning(self, model_sharing: bool = 'None', learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
+                     optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None', pretrain_iters: int = 'None',
+                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
+        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.learning, arg):
                 setattr(self.learning, arg, v)
         return self
 
     # pylint: disable=too-many-arguments, unused-argument
-    def set_logging(self, enable_logging: bool = None, log_root_dir: str = None, util_loss_batch_size: int = None,
-                    util_loss_grid_size: int = None, util_loss_frequency: int = None, eval_batch_size: int = None,
-                    cache_eval_action: bool = None, plot_frequency: int = None, plot_points: int = None,
-                    plot_show_inline: bool = None, log_metrics: dict = None,
-                    save_tb_events_to_csv_aggregate: bool = None, save_tb_events_to_csv_detailed: bool = None,
-                    save_tb_events_to_binary_detailed: bool = None, save_models: bool = None,
-                    save_figure_to_disk_png: bool = None, save_figure_to_disk_svg: bool = None,
-                    save_figure_data_to_disk: bool = None, stopping_criterion_rel_util_loss_diff: float = None,
-                    stopping_criterion_frequency: int = None, stopping_criterion_duration: int = None,
-                    stopping_criterion_batch_size: int = None, stopping_criterion_grid_size: int = None,
-                    export_step_wise_linear_bid_function_size: bool = None,
-                    experiment_dir: str = None, experiment_name: str = None):
-        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not None}.items():
+    def set_logging(self, enable_logging: bool = 'None', log_root_dir: str = 'None', util_loss_batch_size: int = 'None',
+                    util_loss_grid_size: int = 'None', util_loss_frequency: int = 'None', eval_batch_size: int = 'None',
+                    cache_eval_action: bool = 'None', plot_frequency: int = 'None', plot_points: int = 'None',
+                    plot_show_inline: bool = 'None', log_metrics: dict = 'None',
+                    save_tb_events_to_csv_aggregate: bool = 'None', save_tb_events_to_csv_detailed: bool = 'None',
+                    save_tb_events_to_binary_detailed: bool = 'None', save_models: bool = 'None',
+                    save_figure_to_disk_png: bool = 'None', save_figure_to_disk_svg: bool = 'None',
+                    save_figure_data_to_disk: bool = 'None', stopping_criterion_rel_util_loss_diff: float = 'None',
+                    stopping_criterion_frequency: int = 'None', stopping_criterion_duration: int = 'None',
+                    stopping_criterion_batch_size: int = 'None', stopping_criterion_grid_size: int = 'None',
+                    export_step_wise_linear_bid_function_size: bool = 'None',
+                    experiment_dir: str = 'None', experiment_name: str = 'None'):
+        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.logging, arg):
                 setattr(self.logging, arg, v)
         return self
 
     # pylint: disable=too-many-arguments, unused-argument
-    def set_hardware(self, cuda: bool = None, specific_gpu: int = None, fallback: bool = None,
-                     max_cpu_threads: int = None):
-        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not None}.items():
+    def set_hardware(self, cuda: bool = 'None', specific_gpu: int = 'None', fallback: bool = 'None',
+                     max_cpu_threads: int = 'None'):
+        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.hardware, arg):
                 setattr(self.hardware, arg, v)
         return self
@@ -382,7 +382,7 @@ class ConfigurationManager:
         Tests whether the given config could be serialized and deserialized properly
         """
         dir_path = os.path.join(os.getcwd(), 'temp')
-        file_path = os.path.join(dir_path, 'temp_config.json')
+        file_path = os.path.join(dir_path, logging_utils._configurations_f_name)
         if not os.path.exists(dir_path):
             try:
                 os.mkdir(dir_path)

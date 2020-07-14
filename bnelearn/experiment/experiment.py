@@ -278,7 +278,7 @@ class Experiment(ABC):
             self._log_hyperparams()
 
             self._log_experiment_params()
-            logging_utils.log_experiment_configurations(self.experiment_log_dir, self.config)
+            logging_utils.save_experiment_config(self.experiment_log_dir, self.config)
             elapsed = timer() - tic
             logging_utils.log_git_commit_hash(self.experiment_log_dir)
         else:
