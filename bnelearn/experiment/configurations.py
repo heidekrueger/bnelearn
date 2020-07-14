@@ -22,8 +22,8 @@ class EnhancedJSONEncoder(json.JSONEncoder):
 # Only used on front end
 @dataclass
 class RunningConfig:
-    n_runs: int = None
-    n_epochs: int = None
+    n_runs: int
+    n_epochs: int
     seeds: Iterable[int] = None
 
 

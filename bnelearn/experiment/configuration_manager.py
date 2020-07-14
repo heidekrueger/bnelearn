@@ -51,8 +51,6 @@ class ConfigurationManager:
         self.setting.valuation_std = 10
 
     def _init_single_item_asymmetric_uniform_overlapping(self):
-        self.running.n_runs = 1
-        self.running.n_epochs = 500
         self.learning.model_sharing = False
         self.setting.u_lo = [5, 5]
         self.setting.u_hi = [15, 25]
@@ -63,8 +61,6 @@ class ConfigurationManager:
         self.setting.u_hi = [5, 7]
 
     def _init_mineral_rights(self):
-        self.running.n_runs = 1
-        self.running.n_epochs = 2000
         self.setting.n_players = 3
         self.logging.log_metrics = {'opt': True,
                                     'l2': True,
@@ -76,8 +72,6 @@ class ConfigurationManager:
         self.setting.u_hi = 1
 
     def _init_llg(self):
-        self.running.n_runs = 1
-        self.running.n_epochs = 1000
         self.learning.model_sharing = True
         self.setting.u_lo = [0, 0, 0]
         self.setting.u_hi = [1, 1, 2]
@@ -87,8 +81,6 @@ class ConfigurationManager:
         self.setting.gamma = 0.0
 
     def _init_llllgg(self):
-        self.running.n_runs = 1
-        self.running.n_epochs = 20000
         self.logging.util_loss_batch_size = 2 ** 12
         self.learning.model_sharing = True
         self.setting.u_lo = [0, 0, 0, 0, 0, 0]
@@ -112,7 +104,6 @@ class ConfigurationManager:
         self.logging.plot_points = 1000
 
     def _init_splitaward(self):
-        self.running.n_runs = 1
         self.setting.n_units = 2
         self.learning.model_sharing = True
         self.setting.u_lo = [1, 1]
@@ -227,14 +218,14 @@ class ConfigurationManager:
         self.running, self.setting, self.learning, self.logging, self.hardware = \
             ConfigurationManager.get_default_config_members()
 
-        self.running.n_runs = n_runs
-        self.running.n_epochs = n_epochs
-
         # Defaults specific to an experiment type
         if self.experiment_type not in ConfigurationManager.experiment_types:
             raise Exception('The experiment type does not exist')
         else:
             ConfigurationManager.experiment_types[self.experiment_type][1](self)
+
+        self.running.n_runs = n_runs
+        self.running.n_epochs = n_epochs
 
     # pylint: disable=too-many-arguments, unused-argument
     def set_running(self, n_runs: int = None, n_epochs: int = None, n_players: int = None, seeds: Iterable[int] = None):
@@ -314,7 +305,7 @@ class ConfigurationManager:
 
     @staticmethod
     def get_default_config_members() -> (RunningConfig, SettingConfig, LearningConfig, LoggingConfig, HardwareConfig):
-        running = RunningConfig()
+        running = RunningConfig(n_runs=1, n_epochs=1)
         setting = SettingConfig(n_players=2,
                                 payment_rule='first_price',
                                 risk=1.0)
