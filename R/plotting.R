@@ -17,26 +17,26 @@ font_size = 30
 ######## Plot utility and util loss#######
 tb_plot_wide <- tb_wide %>% 
   filter(#subrun != ".",
-         epoch %% 10 == 0,
-         epoch <= 5000)
+         epoch %% 100 == 0,
+         epoch <= 20000)
 
 tb_plot_long <- tb_plot_wide %>% 
   select(c(run,subrun,epoch,eval_utilities,eval_utility_vs_bne)) %>%  #eval_util_loss_ex_ante
   pivot_longer(cols=-c(run,subrun,epoch),names_to="tag",values_to="value") %>% 
   mutate(tag = factor(tag), 
          tag = recode_factor(tag,eval_utilities = "ex-ante utility",
-                             eval_util_loss_ex_ante = "ex-ante utility vs BNE"), #loss
+                             eval_utility_vs_bne = "ex-ante utility vs BNE"), #loss
          supertag = str_c(tag,subrun, sep = " - ", collapse = NULL)) 
 
 tb_plot_long %>%
   ggplot(aes(x=epoch, y=value)) +
-  stat_summary(geom="line", aes(linetype=tag), fun = "mean", alpha=1, size=1.5) + #, color=subrun
-  stat_summary(geom="ribbon", aes(group=supertag), fun.min = min, fun.max = max, alpha=0.3) + #, fill=subrun
+  stat_summary(geom="line", aes(linetype=tag, colour=tag), fun = "mean", alpha=1, size=1.5) + #, color=subrun
+  stat_summary(geom="ribbon", aes(group=supertag, fill=supertag), fun.min = min, fun.max = max, alpha=0.3) + guides(colour=FALSE, fill=FALSE)+#, fill=subrun
   theme_bw() +
   labs(x ="iteration", y = "utility", legend = "bidder type") +
   theme(legend.title = element_blank(),
         legend.text = element_text(size=font_size),
-        legend.position = c(0.8, 0.35),
+        legend.position = c(0.7, 0.75),
         #legend.background = element_rect(size=0.5, linetype="solid", colour ="grey"),
         axis.title.y = element_text(size=font_size),
         axis.text.y = element_text(size=font_size),
@@ -85,9 +85,9 @@ tb_bid_long %>%
         axis.title.x = element_text(size=font_size),
         axis.text.x = element_text(size=font_size)) 
 
-### BNE bid function for single_item, normal, symmetric, 3p #TODO: WIP!
+### BNE bid function for single_item, normal, symmetric, 10p #TODO: WIP!
 fun.dnorm_15_10 <- function(x){
-  return(pnorm(x,10,5)^3)
+  return(pnorm(x,15,10)^9)
 }
 fun.integ_norm <- function(v){
   return(v-(integrate(fun.dnorm_15_10,0,v)$value/fun.dnorm_15_10(v)))
@@ -100,18 +100,18 @@ tb_bid_plot <- tb_bid %>%
          valuation = X1,
          NPGA = X2) %>%
   select(-c(X1,X2)) %>% 
-  slice(which(row_number() %% 50 == 1))
+  slice(which(row_number() %% 100 == 1))
 
 tb_bid_long <- tb_bid_plot %>% 
   pivot_longer(cols=c(NPGA,BNE),names_to = "name", values_to="value")
 
 tb_bid_long %>% 
-  ggplot(aes(valuation,value)) +
-  geom_point(data = filter(tb_bid_long,name=="NPGA"), aes(shape=name), size = 4) +
-  geom_line(data = filter(tb_bid_long,name=="BNE"), aes(linetype=name), size = 1.2) +
+  ggplot(aes(valuation,value,colour=name)) +
+  geom_point(data = filter(tb_bid_long,name=="NPGA"),  size = 4) +
+  geom_line(data = filter(tb_bid_long,name=="BNE"),  size = 1.2) +
   labs(x ="valuation", y = "bid", legend = "bidder type") +
   theme_bw() +
-  xlim(0,25)+ylim(0,20)+
+  #xlim(0,25)+ylim(0,20)+
   theme(legend.title = element_blank(),
         legend.text = element_text(size=font_size),
         legend.position = c(0.15, 0.6),

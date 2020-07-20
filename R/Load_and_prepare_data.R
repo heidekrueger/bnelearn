@@ -10,7 +10,10 @@ options(dplyr.width = 300)
 ### Read in data
 subfolder="Journal"#Journal
 experiment = "single_item"
-payment_rule = "first_price/normal/symmetric/risk_neutral/3p"#"first_price/uniform/asymmetric/risk_neutral/2p/overlapping"#"first_price/normal/symmetric/risk_neutral/10p"
+payment_rule = "first_price/uniform/symmetric/risk_neutral/10p"
+  
+#"first_price/normal/symmetric/risk_neutral/10p"
+#"first_price/uniform/asymmetric/risk_neutral/2p/overlapping"
 
 #"first_price/2players_2units"
 
@@ -57,4 +60,6 @@ if (multiple_bne){
     filter(tag %in% c("eval_utilities", "eval_update_norm", "eval_util_loss_ex_ante", "eval_util_loss_ex_interim","eval_overhead_hours",
                       "eval", "eval_epsilon_relative", "eval_epsilon_absolute",
                       "eval_L_2", "eval_L_inf"))
+}else{
+ tb_full <- tb_full_raw 
 }

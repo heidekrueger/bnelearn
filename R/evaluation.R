@@ -83,7 +83,8 @@ tb_stop_print <- tb_stop_print %>%
   select(-c("run")) %>% 
   group_by(subrun,tag) %>% 
   summarize(avg = mean(value),
-            std = sqrt(var(value)))
+            std = sqrt(var(value)),
+            cnt = n())
 
 ### Analyse eval data###############
 # Select only end and widen
@@ -91,19 +92,19 @@ tb_eval <- tb_full %>%
   filter(epoch == results_epoch) %>% 
   pivot_wider(names_from = tag, values_from = value)
 
-# TMP!!: For Journal eval
-tb_eval %>%
- mutate(utility_bne = eval_utility_vs_bne + eval_epsilon_absolute) %>%
- pivot_longer(colnames(.)[4:(length(colnames(.)))], names_to="tag",
-              values_to="value", values_drop_na = TRUE) %>%
- group_by(subrun, tag) %>%
- summarise(avg = mean(value),
-           std = sd(value)) %>%
- filter(tag %in% c("eval_utilities","eval_utility_vs_bne", "utility_bne", 
-                   "eval_epsilon_relative", "eval_L_2")) %>%
- mutate(avg = sprintf("%0.4f", avg),
-        std = sprintf("%0.4f", std)) %>%
- print(n=28)
+# # TMP!!: For Journal eval
+# tb_eval %>%
+#  mutate(utility_bne = eval_utility_vs_bne + eval_epsilon_absolute) %>%
+#  pivot_longer(colnames(.)[4:(length(colnames(.)))], names_to="tag",
+#               values_to="value", values_drop_na = TRUE) %>%
+#  group_by(subrun, tag) %>%
+#  summarise(avg = mean(value),
+#            std = sd(value)) %>%
+#  filter(tag %in% c("eval_utilities","eval_utility_vs_bne", "utility_bne", 
+#                    "eval_epsilon_relative", "eval_L_2")) %>%
+#  mutate(avg = sprintf("%0.4f", avg),
+#         std = sprintf("%0.4f", std)) %>%
+#  print(n=28)
 
 # If we calculated a more exact bne utility, use that
 if(exists("utility_in_bne_exact")){
