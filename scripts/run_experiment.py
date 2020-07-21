@@ -66,10 +66,10 @@ if __name__ == '__main__':
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     single_item_asymmetric_uniform_disjunct(n_runs=1, n_epochs=500, logging=enable_logging)
     running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-        itembidding(n_runs=1, n_epochs=1, n_players=[2], n_items=3, payment_rule='vcg',
-                    logging=enable_logging)
+        itembidding(n_runs=2, n_epochs=2000, n_players=[3], n_items=3, payment_rule='vcg',
+                    n_collections=1, one_player_w_unit_demand=True, logging=enable_logging)
 
-    gpu_configuration = GPUController(specific_gpu=3)
+    gpu_configuration = GPUController(specific_gpu=0)
     learning_configuration = LearningConfiguration(
         pretrain_iters=0,
         batch_size=2**18,
@@ -79,8 +79,8 @@ if __name__ == '__main__':
     )
 
     # General logging configs
-    logging_configuration.util_loss_frequency = 100
-    logging_configuration.util_loss_batch_size: int = 2**3
+    logging_configuration.util_loss_frequency = 10
+    logging_configuration.util_loss_batch_size: int = 2**7
     logging_configuration.stopping_criterion_rel_util_loss_diff = 0.001
     logging_configuration.save_tb_events_to_csv_detailed=True
     logging_configuration.save_tb_events_to_binary_detailed=True

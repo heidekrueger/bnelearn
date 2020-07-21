@@ -263,7 +263,8 @@ def itembidding(
         n_players: list = [2],
         payment_rule: str = 'vcg',
         n_items=2,
-        n_collections=2,
+        n_collections=1,
+        one_player_w_unit_demand=False,
         log_metrics=['util_loss', 'PoA'],
         model_sharing=True,
         u_lo=[0], u_hi=[1],
@@ -287,10 +288,14 @@ def itembidding(
         plot_points=1000,
         enable_logging=logging
     )
+    if one_player_w_unit_demand and model_sharing:
+        print('no model sharing possible')
+        model_sharing = False
     experiment_configuration = ExperimentConfiguration(
         payment_rule=payment_rule, n_units=n_items,
         model_sharing=model_sharing,
-        u_lo=u_lo, u_hi=u_hi, risk=risk
+        u_lo=u_lo, u_hi=u_hi, risk=risk,
+        one_player_w_unit_demand=one_player_w_unit_demand
     )
     experiment_configuration.n_collections = n_collections
     experiment_class = CAItemBiddingExperiment

@@ -398,12 +398,14 @@ class CombinatorialItemBidder(Bidder):
         valuations have shape (batch_size, n_items), where it's meant as `n_bundles`
         bids have shape (batch_size, n_bids)
     """
-    def __init__(self, value_distribution: Distribution, strategy, n_items, n_collections, **kwargs):
+    def __init__(self, value_distribution: Distribution, strategy, n_items, n_collections,
+                 unit_demand, **kwargs):
         self.n_bids = int(math.log(n_items + 1, 2))
         assert int(self.n_bids) == self.n_bids, 'bids must be integer'
         self.n_bids = int(self.n_bids)
         self.n_collections = n_collections
         self.n_bundles = n_items
+        self.unit_demand = unit_demand
         self.transformation = self._get_item2bundle_transformation()
         super().__init__(value_distribution=value_distribution, strategy=strategy,
                          n_items=n_items, **kwargs)
@@ -432,7 +434,10 @@ class CombinatorialItemBidder(Bidder):
         """
         Sample a new batch of valuations from the bidder's prior.
         """
-        valuations = torch.zeros(self.valuations.shape[0], self.n_collections, self.valuations.shape[1],
+        batch_size = self.valuations.shape[0]
+        n_items = self.valuations.shape[1]
+
+        valuations = torch.zeros(batch_size, self.n_collections, n_items,
                                  device=self.valuations.device)
 
         # uniform
@@ -443,6 +448,13 @@ class CombinatorialItemBidder(Bidder):
 
         vals = torch.matmul(valuations, self.transformation.to(self.device))
         self.valuations = vals.max(dim=1)[0]
+
+        if self.unit_demand:
+         #   i = torch.randint(n_items, (batch_size,), device=self.valuations.device)
+            i = torch.zeros((batch_size,), device=self.valuations.device).long()
+            self.valuations = torch.zeros((batch_size, n_items), device=self.valuations.device).index_put_(
+                (torch.arange(0, batch_size, device=self.valuations.device).long(), i), self.valuations.gather(1, i.view(-1, 1)).squeeze()
+            )
 
         self._valuations_changed = True
         return self.valuations

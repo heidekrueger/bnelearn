@@ -48,6 +48,9 @@ class ExperimentConfiguration:
     core_solver: str = 'NoCore'
     parallel: int = 1
 
+    # CA with Item-Bidding
+    one_player_w_unit_demand: bool = False
+
 @dataclass
 class LoggingConfiguration:
     """Controls logging and evaluation aspects of an experiment suite.

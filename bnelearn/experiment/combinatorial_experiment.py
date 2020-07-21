@@ -206,6 +206,7 @@ class CAItemBiddingExperiment(Experiment):
         self.n_bundles = (2 ** self.n_items) - 1
         self.n_players = experiment_config.n_players
         self.payment_rule = experiment_config.payment_rule
+        self.one_player_w_unit_demand = experiment_config.one_player_w_unit_demand
 
         self.u_lo = experiment_config.u_lo
         self.u_hi = experiment_config.u_hi
@@ -246,6 +247,8 @@ class CAItemBiddingExperiment(Experiment):
         """
         Standard strat_to_bidder method.
         """
+        unit_demand = self.one_player_w_unit_demand and player_position == 0
+
         return CombinatorialItemBidder.uniform(
             lower=self.u_lo[player_position], upper=self.u_hi[player_position],
             strategy=strategy,
@@ -253,7 +256,8 @@ class CAItemBiddingExperiment(Experiment):
             n_collections=self.n_collections,
             player_position=player_position,
             batch_size=batch_size,
-            cache_actions=cache_actions
+            cache_actions=cache_actions,
+            unit_demand=unit_demand
         )
 
     def _setup_mechanism(self):
