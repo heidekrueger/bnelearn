@@ -657,7 +657,6 @@ class Experiment(ABC):
                     draw_valuations=redraw_bne_vals,
                     use_env_valuations=not redraw_bne_vals,
                     # TODO: Stefan. Is strat_to_player_kwargs needed here?
-                    cache_actions = True
                 ) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(
