@@ -80,7 +80,7 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(u_lo: List, u_hi
     Source: Equilibrium 1 of https://link.springer.com/article/10.1007/s40505-014-0049-1
     """
     #eps = 1e-8
-    interpol_points = 256
+    interpol_points = 64
 
     # 1. Solve implicit bid function
     v1 = np.linspace(u_lo[0], u_hi[0], interpol_points)
@@ -461,7 +461,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         """
         if self.risk == 1.0:
             # TODO: checks not fully implemented! there are additional requirements! (which?)
-            if len(set(self.u_lo)) != 1:  # BNE for differnt u_lo for each player
+            if len(set(self.u_lo)) != 1: # BNE for differnt u_lo for each player
                 self._optimal_bid = [
                     # BNE 1
                     _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
@@ -511,7 +511,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         if len(set(self.u_lo)) == 1:
             print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
 
-        print('Debug: eval_batch size:{}'.format(self.bne_env[0].batch_size))
+        print('Debug: eval_batch size: {}'.format(self.bne_env[0].batch_size))
 
         # TODO Stefan: generalize using analytical/hardcoded utilities over all settings!
         # In case of 'canonica' overlapping setting, use precomputed bne-utils with higher precision.
