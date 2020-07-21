@@ -655,9 +655,9 @@ class Experiment(ABC):
                     model,
                     player_position=m2b(m),
                     draw_valuations=redraw_bne_vals,
-                    use_env_valuations=not redraw_bne_vals
+                    use_env_valuations=not redraw_bne_vals,
                     # TODO: Stefan. Is strat_to_player_kwargs needed here?
-                    # if yes, get from self.learners[m] (???)
+                    cache_actions = True
                 ) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(

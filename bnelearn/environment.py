@@ -83,6 +83,8 @@ class Environment(ABC):
             agent.valuations = env_agent.valuations
         if use_env_valuations and hasattr(env_agent, '_unkown_valuation'):
             agent._unkown_valuation = env_agent._unkown_valuation
+        # if env_agent._cache_actions:
+        #     agent.actions = env_agent.actions
         return self.get_reward(agent, draw_valuations=draw_valuations, aggregate=aggregate_batch)
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
