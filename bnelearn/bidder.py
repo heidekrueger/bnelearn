@@ -402,7 +402,6 @@ class CombinatorialItemBidder(Bidder):
                  unit_demand, **kwargs):
         self.n_bids = int(math.log(n_items + 1, 2))
         assert int(self.n_bids) == self.n_bids, 'bids must be integer'
-        self.n_bids = int(self.n_bids)
         self.n_collections = n_collections
         self.n_bundles = n_items
         self.unit_demand = unit_demand
@@ -446,15 +445,17 @@ class CombinatorialItemBidder(Bidder):
         else:
             raise NotImplementedError('unknown distibution')
 
+        if self.unit_demand:
+            valuations = valuations[:, 0, :]
+            # i = torch.randint(self.n_bids, (batch_size,), device=self.valuations.device)
+            i = torch.zeros((batch_size,), device=valuations.device).long()
+            valuations = torch.zeros((batch_size, n_items), device=valuations.device).index_put_(
+                (torch.arange(0, batch_size, device=valuations.device).long(), i),
+                valuations.gather(1, i.view(-1, 1)).squeeze()
+            ).view(batch_size, self.n_collections, n_items)
+
         vals = torch.matmul(valuations, self.transformation.to(self.device))
         self.valuations = vals.max(dim=1)[0]
-
-        if self.unit_demand:
-         #   i = torch.randint(n_items, (batch_size,), device=self.valuations.device)
-            i = torch.zeros((batch_size,), device=self.valuations.device).long()
-            self.valuations = torch.zeros((batch_size, n_items), device=self.valuations.device).index_put_(
-                (torch.arange(0, batch_size, device=self.valuations.device).long(), i), self.valuations.gather(1, i.view(-1, 1)).squeeze()
-            )
 
         self._valuations_changed = True
         return self.valuations

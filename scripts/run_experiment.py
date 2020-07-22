@@ -66,10 +66,10 @@ if __name__ == '__main__':
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     single_item_asymmetric_uniform_disjunct(n_runs=1, n_epochs=500, logging=enable_logging)
     running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-        itembidding(n_runs=2, n_epochs=2000, n_players=[3], n_items=3, payment_rule='vcg',
+        itembidding(n_runs=2, n_epochs=2000, n_players=[3], n_items=2, payment_rule='vcg',
                     n_collections=1, one_player_w_unit_demand=True, logging=enable_logging)
 
-    gpu_configuration = GPUController(specific_gpu=0)
+    gpu_configuration = GPUController(specific_gpu=1)
     learning_configuration = LearningConfiguration(
         pretrain_iters=0,
         batch_size=2**18,
