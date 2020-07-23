@@ -391,7 +391,8 @@ class Experiment(ABC):
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts: list = None,
-              figure_name: str = 'bid_function', plot_points=100):
+              figure_name: str = 'bid_function', plot_points=100,
+              subplot_order: list = None):
         """
         This implements plotting simple 2D data.
 
@@ -406,6 +407,7 @@ class Experiment(ABC):
             fmts: list of str for matplotlib markers and lines
             figure_name: str, for seperate plot saving of e.g. bids and util_loss,
             plot_point: int of number of ploting points for each strategy in each subplot
+            subplot_order: [nrows, ncols], list of two int, for ordering of subplots.
         """
 
         if fmts is None:
@@ -419,18 +421,28 @@ class Experiment(ABC):
         x = x[:n_batch, :, :]
         y = y[:n_batch, :, :]
 
+        if subplot_order is None:
+            subplot_order = [1, n_bundles]
+            ax_idx = list(range(n_bundles))
+        else:
+            ax_idx = list(zip(
+                sorted(list(range(subplot_order[0])) * subplot_order[1]),
+                list(range(subplot_order[1])) * subplot_order[0]
+            ))
+
         # create the plot
-        fig, axs = plt.subplots(nrows=1, ncols=n_bundles, sharey=True)
+        fig, axs = plt.subplots(nrows=subplot_order[0], ncols=subplot_order[1],
+                                sharex=subplot_order[0] > 1, sharey=True)
         plt.cla()
         if not isinstance(axs, np.ndarray):
-            axs = [axs]  # one plot only
+            axs = [axs] # one plot only
 
         cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
         # actual plotting
         for plot_idx in range(n_bundles):
             for agent_idx in range(n_players):
-                axs[plot_idx].plot(
+                axs[ax_idx[plot_idx]].plot(
                     x[:, agent_idx, plot_idx], y[:, agent_idx, plot_idx],
                     fmts[agent_idx % len(fmts)],
                     label=None if labels is None else labels[agent_idx % len(labels)],
@@ -438,11 +450,16 @@ class Experiment(ABC):
                 )
 
             # formating
-            axs[plot_idx].set_xlabel(x_label)
-            if plot_idx == 0:
-                axs[plot_idx].set_ylabel(y_label)
+            if subplot_order[0] == 1 or ax_idx[plot_idx][0] == subplot_order[0] - 1:
+                add = ' {' + "{0:b}".format(ax_idx[plot_idx][1] + 1) + '}' if subplot_order[0] > 1 else ''
+                if subplot_order[0] > 1:
+                    axs[ax_idx[plot_idx]].tick_params(axis='x', labelrotation=90)
+                axs[ax_idx[plot_idx]].set_xlabel(x_label + add)
+            if plot_idx == 0 or ax_idx[plot_idx][1] == 0:
+                add = ' ' + str(ax_idx[plot_idx][0]) if subplot_order[0] > 1 else ''
+                axs[ax_idx[plot_idx]].set_ylabel(y_label + add)
                 if n_players < 10 and labels is not None:
-                    axs[plot_idx].legend(loc='upper left')
+                    axs[ax_idx[plot_idx]].legend(loc='upper left')
 
             """
             set axis limits based on function parameters ´xlim´, ´ylim´ if provided otherwise
@@ -450,7 +467,7 @@ class Experiment(ABC):
             can also be lists for sperate limits of individual plots.
             """
             lims = (xlim, ylim)
-            set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
+            set_lims = (axs[ax_idx[plot_idx]].set_xlim, axs[ax_idx[plot_idx]].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
                 a, b = None, None
@@ -468,7 +485,7 @@ class Experiment(ABC):
                 if a is not None:
                     set_lim(a, b) # call matplotlib function
 
-            axs[plot_idx].locator_params(axis='x', nbins=5)
+            axs[ax_idx[plot_idx]].locator_params(axis='x', nbins=5)
         title = plt.title if n_bundles == 1 else plt.suptitle
         title('iteration {}'.format(epoch))
 

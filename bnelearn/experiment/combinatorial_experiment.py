@@ -233,7 +233,7 @@ class CAItemBiddingExperiment(Experiment):
         self.input_length = self.n_bundles
 
         self.plot_xmin = self.plot_ymin = min(self.u_lo)
-        self.plot_xmax = self.plot_ymax = max(self.u_hi)
+        self.plot_xmax = self.plot_ymax = max(self.u_hi) * self.n_items
 
         super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
         self.using_bid_language = True
@@ -284,14 +284,24 @@ class CAItemBiddingExperiment(Experiment):
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list=None, ylim: list=None, labels: list=None,
-              x_label="valuation", y_label="bid", fmts=['o'],
-              figure_name: str='bid_function', plot_points=100):
-
-        # subselection of single-item valuations
+              x_label="val", y_label="bid", fmts=['o'],
+              figure_name: str='bid_function', plot_points=100,
+              ):
         plot_data = list(plot_data)
-        plot_data[0] = plot_data[0][..., self.single_item_bundles()]
-        super()._plot(plot_data, writer, epoch, xlim, ylim, labels,
-                      x_label, y_label, fmts, figure_name, plot_points)
+
+        extensive_plot = True # TODO Nils
+        if extensive_plot and plot_data[1].shape[-1] == self.n_items:
+            plot_data[0] = plot_data[0].repeat(1, 1, self.n_items)
+            plot_data[1] = torch.repeat_interleave(plot_data[1], self.n_bundles, 2)
+            subplot_order = [self.n_items, self.n_bundles]
+        else:
+            # subselection of single-item valuations
+            plot_data[0] = plot_data[0][..., self.single_item_bundles()]
+            subplot_order = None
+
+        super()._plot(plot_data, writer, epoch, None, None, labels,
+                      x_label, y_label, fmts, figure_name, plot_points,
+                      subplot_order)
 
         if self.n_bundles == 2:
             super()._plot_3d(plot_data, writer, epoch, figure_name)

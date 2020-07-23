@@ -54,9 +54,10 @@ def get_distance_of_learned_strategies(experiment: Experiment, this_run_only=Fal
         plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
         for i in range(len(model_paths)):
             for j in range(len(model_paths)):
-                _ = ax.text(j, i, round(distances[i, j], 4), ha="center", va="center", color="w")
+                _ = ax.text(j, i, round(distances[i, j], 2), ha="center", va="center",
+                            color="w", fontsize=int(300/n_models))
         ax.set_title('Distances: {}'.format(avg_distance))
         fig.tight_layout()
-        plt.savefig('distances_{}.png'.format(experiment.experiment_log_dir))
+        plt.savefig('{}/distances_.png'.format(experiment.experiment_log_dir))
 
     return avg_distance
