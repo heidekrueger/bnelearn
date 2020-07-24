@@ -47,6 +47,7 @@ class Experiment(ABC):
     _bidder2model: List[int]  # a list matching each bidder to their Strategy
     n_models: int
     n_items: int
+    n_bundles: int
     mechanism: Mechanism
     positive_output_point: torch.Tensor # shape must be valid model input
     input_length: int
@@ -451,7 +452,8 @@ class Experiment(ABC):
 
             # formating
             if subplot_order[0] == 1 or ax_idx[plot_idx][0] == subplot_order[0] - 1:
-                add = ' {' + "{0:b}".format(ax_idx[plot_idx][1] + 1) + '}' if subplot_order[0] > 1 else ''
+                add = ' {' + format(ax_idx[plot_idx][1] + 1, '0{}b'.format(subplot_order[0])) + '}' \
+                    if subplot_order[0] > 1 else ''
                 if subplot_order[0] > 1:
                     axs[ax_idx[plot_idx]].tick_params(axis='x', labelrotation=90)
                 axs[ax_idx[plot_idx]].set_xlabel(x_label + add)
@@ -566,6 +568,8 @@ class Experiment(ABC):
             create_plot_output = epoch % self.logging_config.plot_frequency == 0
             log_params['util_loss_ex_ante'], log_params['util_loss_ex_interim'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
+            log_params['rel_util_loss'] = 1 - log_params['utilities'] \
+                / (log_params['utilities'] + log_params['util_loss_ex_ante'])
 
         if self.logging_config.log_metrics['PoA']:
             log_params['PoA'] = self._calculate_metrics_PoA()
@@ -687,8 +691,8 @@ class Experiment(ABC):
             )
             for player_positions in self._model2bidder
         ]
-        ex_ante_util_loss = [model_tuple[0].mean() for model_tuple in util_loss]
-        ex_interim_max_util_loss = [model_tuple[0].max() for model_tuple in util_loss]
+        ex_ante_util_loss = torch.tensor([model_tuple[0].mean() for model_tuple in util_loss])
+        ex_interim_max_util_loss = torch.tensor([model_tuple[0].max() for model_tuple in util_loss])
         if not hasattr(self, '_max_util_loss'):
             self._max_util_loss = ex_interim_max_util_loss
         if create_plot_output:

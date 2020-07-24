@@ -65,14 +65,22 @@ if __name__ == '__main__':
     #     single_item_asymmetric_uniform_overlapping(n_runs=1, n_epochs=500, logging=enable_logging)
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     single_item_asymmetric_uniform_disjunct(n_runs=1, n_epochs=500, logging=enable_logging)
-    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-        itembidding(n_runs=1, n_epochs=1, n_players=[3], n_items=3, payment_rule='vcg',
-                    n_collections=1, one_player_w_unit_demand=False, logging=enable_logging)
 
-    gpu_configuration = GPUController(specific_gpu=0)
+
+    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+    #     itembidding(n_runs=1, n_epochs=1, exp_type='XOS',
+    #                 exp_params={'n_collections': 2, 'one_player_w_unit_demand': False}, n_players=[3],
+    #                 n_items=2, logging=enable_logging)
+    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+        itembidding(n_runs=10, n_epochs=2000, exp_type='submodular',
+                    exp_params={'submodular_factor': .9}, n_players=[2], n_items=3,
+                    logging=enable_logging)
+
+
+    gpu_configuration = GPUController(specific_gpu=1)
     learning_configuration = LearningConfiguration(
-        pretrain_iters=500,
-        batch_size=2**1,
+        pretrain_iters=100,
+        batch_size=2**18,
         learner_hyperparams = {'population_size': 64,
                                'sigma': 1.,
                                'scale_sigma_by_model_size': True}
@@ -80,7 +88,7 @@ if __name__ == '__main__':
 
     # General logging configs
     logging_configuration.util_loss_frequency = 100
-    logging_configuration.util_loss_batch_size: int = 2**1
+    logging_configuration.util_loss_batch_size: int = 2**12
     logging_configuration.stopping_criterion_rel_util_loss_diff = 0.001
     logging_configuration.save_tb_events_to_csv_detailed=True
     logging_configuration.save_tb_events_to_binary_detailed=True

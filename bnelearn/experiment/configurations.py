@@ -49,7 +49,9 @@ class ExperimentConfiguration:
     parallel: int = 1
 
     # CA with Item-Bidding
-    one_player_w_unit_demand: bool = False
+    exp_type: str = ''
+    exp_params: dict = None
+
 
 @dataclass
 class LoggingConfiguration:

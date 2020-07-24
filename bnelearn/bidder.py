@@ -398,14 +398,24 @@ class CombinatorialItemBidder(Bidder):
         valuations have shape (batch_size, n_items), where it's meant as `n_bundles`
         bids have shape (batch_size, n_bids)
     """
-    def __init__(self, value_distribution: Distribution, strategy, n_items, n_collections,
-                 unit_demand, **kwargs):
+    def __init__(self, value_distribution: Distribution, strategy, n_items,
+                 valuation_type: str, valuation_dict: dict, **kwargs):
         self.n_bids = int(math.log(n_items + 1, 2))
         assert int(self.n_bids) == self.n_bids, 'bids must be integer'
-        self.n_collections = n_collections
+        self.valuation_type = valuation_type
         self.n_bundles = n_items
-        self.unit_demand = unit_demand
         self.transformation = self._get_item2bundle_transformation()
+
+        if valuation_type == 'XOS':
+            self.n_collections  = valuation_dict['n_collections']
+            if 'one_player_w_unit_demand' in valuation_dict.keys():
+                unit_demand = valuation_dict['one_player_w_unit_demand']
+            else:
+                unit_demand = False
+            self.unit_demand = unit_demand and kwargs['player_position'] == 0
+        elif valuation_type == 'submodular':
+            self.submodular_factor = valuation_dict['submodular_factor']
+
         super().__init__(value_distribution=value_distribution, strategy=strategy,
                          n_items=n_items, **kwargs)
         self.transformation = self.transformation.to(self.device)
@@ -435,27 +445,44 @@ class CombinatorialItemBidder(Bidder):
         """
         batch_size = self.valuations.shape[0]
         n_items = self.valuations.shape[1]
+        n_bundles = self.n_bundles
+        transformation = self.transformation.to(self.device)
+        if self.valuation_type == 'XOS':
+            valuations = torch.zeros(batch_size, self.n_collections, n_items,
+                                     device=self.valuations.device)
 
-        valuations = torch.zeros(batch_size, self.n_collections, n_items,
-                                 device=self.valuations.device)
+            # uniform
+            if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
+                valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
+            else:
+                raise NotImplementedError('unknown distibution')
 
-        # uniform
-        if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
-            valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
-        else:
-            raise NotImplementedError('unknown distibution')
+            if self.unit_demand:
+                valuations = valuations[:, 0, :]
+                # i = torch.randint(self.n_bids, (batch_size,), device=self.valuations.device)
+                i = torch.zeros((batch_size,), device=valuations.device).long()
+                valuations = torch.zeros((batch_size, n_items), device=valuations.device).index_put_(
+                    (torch.arange(0, batch_size, device=valuations.device).long(), i),
+                    valuations.gather(1, i.view(-1, 1)).squeeze()
+                ).view(batch_size, self.n_collections, n_items)
 
-        if self.unit_demand:
-            valuations = valuations[:, 0, :]
-            # i = torch.randint(self.n_bids, (batch_size,), device=self.valuations.device)
-            i = torch.zeros((batch_size,), device=valuations.device).long()
-            valuations = torch.zeros((batch_size, n_items), device=valuations.device).index_put_(
-                (torch.arange(0, batch_size, device=valuations.device).long(), i),
-                valuations.gather(1, i.view(-1, 1)).squeeze()
-            ).view(batch_size, self.n_collections, n_items)
+            vals = torch.matmul(valuations, transformation)
+            self.valuations = vals.max(dim=1)[0]
 
-        vals = torch.matmul(valuations, self.transformation.to(self.device))
-        self.valuations = vals.max(dim=1)[0]
+        elif self.valuation_type == 'submodular':
+            inf = 1e16
+            valuations = torch.zeros((batch_size, n_items), device=self.valuations.device).uniform_(0, 1)
+            valuations = valuations.repeat_interleave(n_bundles).view(batch_size, n_items, n_bundles)
+            valuations = valuations * transformation[:n_items, :]
+            valuations[valuations == 0] = inf # have to ignore 0s as not part of bundle
+            _, idx = valuations.min(dim=1)
+            valuations[valuations == inf] = 0
+            all_lowest_values = torch.arange(n_items, device=self.valuations.device) \
+                .reshape(1, n_items, 1) == idx.unsqueeze(1)
+            single_items = transformation.sum(dim=0) != 1
+            lowest_values_in_bundles = torch.logical_and(all_lowest_values, single_items)
+            valuations[lowest_values_in_bundles] *= self.submodular_factor
+            self.valuations = valuations.sum(dim=1)
 
         self._valuations_changed = True
         return self.valuations
@@ -486,7 +513,6 @@ class CombinatorialItemBidder(Bidder):
             Here we transform the allocation of (perhaps multiple) items to a bundle allocation that
             has a larger dimension and contains at most one `1` per batch.
             """
-            # TODO Nils: make consistent to `self.transformation`
             i = allocations * (2**torch.arange(self.n_bids, device=allocations.device).unsqueeze(0))
             i = i.sum(1, keepdim=True).to(int)
             shape = list(allocations.shape)

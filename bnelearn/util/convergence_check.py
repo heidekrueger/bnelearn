@@ -25,7 +25,7 @@ def get_distance_of_learned_strategies(experiment: Experiment, this_run_only=Fal
     if not this_run_only:
         os.chdir('..')
 
-    valuations = experiment.bidders[0].draw_valuations_()
+    valuations = [bidder.draw_valuations_() for bidder in experiment.bidders]
 
     model_paths = []
     for root, _, files in os.walk(os.curdir):
@@ -35,11 +35,12 @@ def get_distance_of_learned_strategies(experiment: Experiment, this_run_only=Fal
     n_models = len(model_paths)
 
     models = [NeuralNetStrategy.load(p).to(experiment.gpu_config.device) for p in model_paths]
-    model_paths = [p[2:p[2:].find('/')+2] for p in model_paths]
+    model_paths = [p[2:p[2:].find('/') + 2] + p[p.rfind('_'):-3] for p in model_paths]
     distances = -np.ones((n_models, n_models))
     for i, m1 in enumerate(models):
         for j, m2 in enumerate(models):
-            distances[i, j] = norm_strategies(m1, m2, valuations)
+            player_position = int(model_paths[i][model_paths[i].rfind('_') + 1:])
+            distances[i, j] = norm_strategies(m1, m2, valuations[player_position])
 
     avg_distance = np.mean(distances[np.triu_indices(n_models, k=1)])
 

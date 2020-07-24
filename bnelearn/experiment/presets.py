@@ -260,11 +260,9 @@ def splitaward(
 
 def itembidding(
         n_runs: int, n_epochs: int,
+        exp_type: str, exp_params: dict={},
         n_players: list = [2],
-        payment_rule: str = 'vcg',
         n_items=2,
-        n_collections=1,
-        one_player_w_unit_demand=False,
         log_metrics=['util_loss', 'PoA'],
         model_sharing=True,
         u_lo=[0], u_hi=[1],
@@ -274,6 +272,7 @@ def itembidding(
         specific_gpu=0,
         logging=True
     ):
+    payment_rule = 'vcg'
     if len(u_lo) < n_players[0]:
         u_lo = [u_lo[0]] * n_players[0]
         u_hi = [u_hi[0]] * n_players[0]
@@ -288,16 +287,12 @@ def itembidding(
         plot_points=1000,
         enable_logging=logging
     )
-    if one_player_w_unit_demand and model_sharing:
-        print('no model sharing possible')
-        model_sharing = False
     experiment_configuration = ExperimentConfiguration(
+        exp_type=exp_type, exp_params=exp_params,
         payment_rule=payment_rule, n_units=n_items,
         model_sharing=model_sharing,
-        u_lo=u_lo, u_hi=u_hi, risk=risk,
-        one_player_w_unit_demand=one_player_w_unit_demand
+        u_lo=u_lo, u_hi=u_hi, risk=risk
     )
-    experiment_configuration.n_collections = n_collections
     experiment_class = CAItemBiddingExperiment
 
     return running_configuration, logging_configuration, experiment_configuration, experiment_class

@@ -206,13 +206,27 @@ class CAItemBiddingExperiment(Experiment):
         self.n_bundles = (2 ** self.n_items) - 1
         self.n_players = experiment_config.n_players
         self.payment_rule = experiment_config.payment_rule
-        self.one_player_w_unit_demand = experiment_config.one_player_w_unit_demand
+
+        self.exp_type = experiment_config.exp_type
+        self.exp_params = experiment_config.exp_params
 
         self.u_lo = experiment_config.u_lo
         self.u_hi = experiment_config.u_hi
-        self.n_collections = experiment_config.n_collections
+
+        if 'n_collections' in self.exp_params.keys():
+            self.n_collections = self.exp_params['n_collections']
+        else:
+            self.n_collections = None
 
         self.model_sharing = experiment_config.model_sharing
+        if 'one_player_w_unit_demand' in self.exp_params.keys():
+            self.unit_demand = self.exp_params['one_player_w_unit_demand']
+            if self.model_sharing and self.unit_demand:
+                print('no model sharing possible!')
+                self.model_sharing = False
+        else:
+            self.unit_demand = False
+
         if self.model_sharing:
             self.n_models = 1
             self._bidder2model = [0] * self.n_players
@@ -247,17 +261,15 @@ class CAItemBiddingExperiment(Experiment):
         """
         Standard strat_to_bidder method.
         """
-        unit_demand = self.one_player_w_unit_demand and player_position == 0
-
         return CombinatorialItemBidder.uniform(
             lower=self.u_lo[player_position], upper=self.u_hi[player_position],
             strategy=strategy,
             n_items=self.n_bundles,
-            n_collections=self.n_collections,
             player_position=player_position,
+            valuation_type=self.exp_type,
+            valuation_dict=self.exp_params,
             batch_size=batch_size,
-            cache_actions=cache_actions,
-            unit_demand=unit_demand
+            cache_actions=cache_actions
         )
 
     def _setup_mechanism(self):
@@ -278,8 +290,15 @@ class CAItemBiddingExperiment(Experiment):
     def _get_logdir_hierarchy(self):
         name = ['CAItemBidding', self.payment_rule,
                 str(self.n_players) + 'players_' +
-                str(self.n_collections) + 'collections_' +
-                str(self.n_items) + 'units']
+                str(self.n_items) + 'items_' +
+                str(self.exp_type)]
+        if self.n_collections == 1:
+            name.append('additive')
+        if self.n_collections is not None and self.n_collections > 1:
+            name.append(str(self.n_collections) + 'collections')
+        if self.unit_demand:
+            name.append('unit_demand')
+
         return os.path.join(*name)
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
