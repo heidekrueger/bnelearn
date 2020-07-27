@@ -79,8 +79,7 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(u_lo: List, u_hi
     Optimal bid in this experiment when bidders do NOT share same lower bound.
     Source: Equilibrium 1 of https://link.springer.com/article/10.1007/s40505-014-0049-1
     """
-    #eps = 1e-8
-    interpol_points = 256
+    interpol_points = 2**11
 
     # 1. Solve implicit bid function
     v1 = np.linspace(u_lo[0], u_hi[0], interpol_points)
@@ -98,7 +97,7 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(u_lo: List, u_hi
             u_lo_cut = i
             break
 
-    b1 = np.copy(v1)  # truthful at beginning
+    b1 = np.copy(v1) # truthful at beginning
     b1[u_lo_cut:] = np.array([optimize.broyden1(lambda x: inverse_bid_player_1(x) - v, v)
                               for v in v1[u_lo_cut:]])
     b2 = np.array([optimize.broyden1(lambda x: inverse_bid_player_2(x) - v, v)
