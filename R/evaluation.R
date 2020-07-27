@@ -4,7 +4,8 @@
 tb_stop <- tb_full %>% 
   pivot_wider(names_from = tag, values_from = value) %>% 
   filter(subrun %in% type_names,
-         epoch%%stop_criterium_interval==0) %>% 
+         epoch%%stop_criterium_interval==0,
+         epoch <= results_epoch) %>% 
   mutate(# Compute \hat{L} = 1 - u(beta_i)/u(BR)
          eval_util_loss_rel_estimate = 1 - eval_utilities/(eval_utilities+eval_util_loss_ex_ante)) %>% 
   group_by(run,subrun) %>% 
@@ -63,15 +64,15 @@ tb_stop_print <- tb_stop %>%
          stop_diff_1_e = stop_diff_1 * epoch,
          stop_diff_2_e = stop_diff_2 * epoch,
          stop_diff_1_e = if_else(stop_diff_1_e>min(stop_diff_1_e[stop_diff_1_e>0]),
-                                   0,stop_diff_1_e),
+                                 0,stop_diff_1_e),
          stop_diff_2_e = if_else(stop_diff_2_e>min(stop_diff_2_e[stop_diff_2_e>0]),
-                                   0,stop_diff_2_e),
+                                 0,stop_diff_2_e),
          stop_diff_1_t = (stop_diff_1 * runtime)/60,
          stop_diff_1_t = if_else(stop_diff_1_t>min(stop_diff_1_t[stop_diff_1_t>0]),
-                                   0,stop_diff_1_t),
+                                 0,stop_diff_1_t),
          stop_diff_2_t = (stop_diff_2 * runtime)/60,
          stop_diff_2_t = if_else(stop_diff_2_t>min(stop_diff_2_t[stop_diff_2_t>0]),
-                                   0,stop_diff_2_t),
+                                 0,stop_diff_2_t),
          time = if_else(runtime<max(runtime),
                         0,max(runtime)/60)) %>%
   ungroup() %>% 
