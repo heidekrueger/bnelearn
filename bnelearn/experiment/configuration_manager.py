@@ -44,7 +44,7 @@ class ConfigurationManager:
     def _init_single_item_gaussian_symmetric(self):
         self.learning.model_sharing = True
         self.setting.valuation_mean = 15
-        self.setting.valuation_std = 10
+        self.setting.valuation_std = 5
 
     def _init_single_item_asymmetric_uniform_overlapping(self):
         self.running.n_runs = 1
