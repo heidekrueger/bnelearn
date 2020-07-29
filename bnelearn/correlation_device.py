@@ -68,8 +68,8 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
     def get_weights(self):
         "choose individual component with prob (1-gamma), common component with prob gamma"
         return torch.bernoulli(
-            torch.tensor(self.corr).repeat(self.batch_size, 1) # different weight for each batch 
-            ).repeat(1, self.n_items)                          # same weight for each item in batch
+                torch.tensor(self.corr).repeat(self.batch_size, 1) # different weight for each batch 
+            ).repeat(1, self.n_items)                              # same weight for each item in batch
 
 class ConstantWeightsCorrelationDevice(CorrelationDevice):
     """Draw valuations according to the constant weights model in Ausubel & Baranov"""
@@ -97,23 +97,30 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         """
         player_positions = [a.player_position for a in agents]
         batch_size = cond.shape[0]
-        u = torch.zeros(batch_size, 2, device=cond.device).uniform_(0, 1)
+        u = torch.zeros((batch_size, 2), device=cond.device).uniform_(0, 1)
 
-        #(batch_size x batch_size): 1st dim for cond, 2nd for sample for each cond
-        x0 = self.cond_marginal_icdf(cond)(u[:, 0]).squeeze()
-        x1 = self.cond2_icdf(cond, x0)(u[:, 1])
+        # TODO: check dimensions? What's the cond dim? What's the other? Squeeze or not?
+        # TODO: Try do do it like in the notebook but with a new first dimension
+
+
+        # (batch_size, batch_size): 1st dim for cond, 2nd for sample for each cond
+        x0 = self.cond_marginal_icdf(cond)(u[:, 0]).view(batch_size * batch_size, 1)
+        x1 = self.cond2_icdf(cond.repeat(batch_size, 1), x0)(u[:, 1].repeat(batch_size))
 
         # Need to clip for numeric problems at edges + use symmetry to decrease bias
         for x in [x0, x1]:
             x = torch.clamp(x, 0, 2)
-            cut = int(batch_size / 2)
-            temp = x[:cut, 0].clone()
-            x[:cut, 0] = x[:cut, 1]
-            x[:cut, 1] = temp
-            x = x[torch.randperm(x.size()[0]), :]
+            #cut = int(batch_size / 2)
+            #temp = x[:cut, 0].clone()
+            #x[:cut, 0] = x[:cut, 1]
+            #x[:cut, 1] = temp
+            #x = x[torch.randperm(x.size()[0]), :]
 
-        #(batch_size, 2*batch_size) # for each cond there are samples from both opposing players
-        return {player_positions[0]: x0, player_positions[1]: x1}
+        # (batch_size, 2*batch_size) # for each cond there are samples from both opposing players
+        return {
+            player_positions[0]: x0,
+            player_positions[1]: x1.view(batch_size * batch_size, 1)
+        }
 
     @staticmethod
     def density(x):
@@ -235,19 +242,17 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         """iCDF when conditioning on two of three agents"""
         z = torch.max(cond1, cond2).squeeze()
         factor_1 = (4*z) / (2 - z)
-        factor_2 = (4 - torch.pow(z, 2)) / torch.pow(16*z, 2)
+        factor_2 = (4 - torch.pow(z, 2)) / (16*torch.pow(z, 2))
         def icdf(x):
-            x = x.repeat(z.shape[0], 1)
+            #x = x.repeat(z.shape[0], 1)
             result = torch.zeros_like(z)
-            f1 = factor_1
-            f2 = factor_2
             #zz = z * torch.ones_like(x)
-            sect1 = x < z * f1 * f2
-            result[sect1] = x[sect1] / f1[sect1] / f2[sect1]
+            sect1 = x < z * factor_1 * factor_2
+            result[sect1] = x[sect1] / factor_1[sect1] / factor_2[sect1]
 
             sect2 = torch.logical_not(sect1)
-            f1 = f1[sect2]
-            f2 = f2[sect2]
+            f1 = factor_1[sect2]
+            f2 = factor_2[sect2]
             zz = z[sect2]
             result[sect2] = -(torch.sqrt(-32*f1*x[sect2]*zz*(16*f2*zz**2 + zz**2 + 4) + f1**2*(256*f2**2*zz**4 \
                 + 32*f2*(zz**2 + 4)*zz**2 + (zz**2 - 4)**2) + 256*x[sect2]**2*zz**2) - f1*(16*f2*zz**2 + zz**2 \

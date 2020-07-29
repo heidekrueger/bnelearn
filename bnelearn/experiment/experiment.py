@@ -684,23 +684,14 @@ class Experiment(ABC):
             bid_profile[:, agent.player_position, :] = agent.get_action()[:batch_size, ...]
 
         torch.cuda.empty_cache()
-        util_loss_old = [
-            metrics.ex_interim_util_loss_old(
-                env, bid_profile, self.bidders[player_positions[0]],
-                self.bidders[player_positions[0]].valuations[:batch_size, ...],
-                self.bidders[player_positions[0]].get_valuation_grid(grid_size, True)
-            )
-            for player_positions in self._model2bidder
-        ]
         util_loss = [
             metrics.ex_interim_util_loss(env, player_positions[0], batch_size, grid_size)
             for player_positions in self._model2bidder
         ]
-        #ex_ante_util_loss = [model_tuple[0].mean() for model_tuple in util_loss]
-        ex_interim_max_util_loss = [model_tuple.max() for model_tuple in util_loss]
-        ex_interim_max_util_loss_old = [model_tuple[0].max() for model_tuple in util_loss_old]
+        ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_loss]
+        ex_interim_max_util_loss = [util_loss_model.max() for util_loss_model in util_loss]
         if not hasattr(self, '_max_util_loss'):
-            self._max_util_loss = ex_interim_max_util_loss_old
+            self._max_util_loss = ex_interim_max_util_loss
         if create_plot_output:
             # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
             util_losses = torch.stack([util_loss[r] for r in range(len(util_loss))], dim=1)[:, :, None]
@@ -711,7 +702,7 @@ class Experiment(ABC):
                        ylim=[0, max(self._max_util_loss).cpu()],
                        figure_name='util_loss_landscape', y_label='ex-interim loss',
                        epoch=epoch, plot_points=self.plot_points)
-        return ex_interim_max_util_loss, ex_interim_max_util_loss_old
+        return ex_ante_util_loss, ex_interim_max_util_loss
 
     def _log_experiment_params(self):
         # TODO: write out all experiment params (complete dict) #See issue #113

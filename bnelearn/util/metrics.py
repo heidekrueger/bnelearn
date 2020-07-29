@@ -342,11 +342,13 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     action_profile_alternative[action_profile_alternative != action_profile_alternative] = 0
 
     allocation_alternative, payment_alternative = mechanism.play(action_profile_alternative)
-    allocation_alternative = allocation_alternative[:, player_position, :].type(torch.bool) # (batch_size * grid_size * batch_size, n_items)
-    payment_alternative = payment_alternative[:, player_position] # (batch_size * grid_size * batch_size)
+    allocation_alternative = allocation_alternative[:, player_position, :].type(torch.bool)
+        # (batch_size * grid_size * batch_size, n_items)
+    payment_alternative = payment_alternative[:, player_position]
+        # (batch_size * grid_size * batch_size)
     utility_alternative = agent.get_counterfactual_utility(
         allocation_alternative, payment_alternative,
-         valuation.repeat_interleave(batch_size * grid_size, 0)
+        valuation.repeat_interleave(batch_size * grid_size, 0)
     ).view(batch_size, grid_size, batch_size)
 
     utility_alternative = torch.mean(utility_alternative, axis=2) # expectation over opponents
@@ -355,4 +357,4 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     """3. COMPARE UTILITY"""
     utility_loss = utility_alternative - utility_actual
 
-    return utility_loss.clone().detach().requires_grad_(False)
+    return utility_actual.clone().detach().requires_grad_(False)
