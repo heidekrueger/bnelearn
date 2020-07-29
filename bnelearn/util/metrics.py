@@ -3,6 +3,7 @@
 import torch
 from bnelearn.strategy import Strategy
 from bnelearn.mechanism import Mechanism
+from bnelearn.environment import Environment
 from bnelearn.bidder import Bidder
 from tqdm import tqdm
 
@@ -50,6 +51,7 @@ def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: fl
     s_actions = strategy.play(valuations)
 
     return norm_actions(s_actions, actions, p)
+
 
 def _create_grid_bid_profiles(bidder_position: int, grid: torch.tensor, bid_profile: torch.tensor):
     """Given an original bid profile, creates a tensor of (grid_size * batch_size) batches of bid profiles,
@@ -147,7 +149,7 @@ def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: B
     return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
 
 
-def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
+def ex_interim_util_loss_old(env: Environment, bid_profile: torch.Tensor,
                          agent: Bidder, agent_valuation: torch.Tensor,
                          grid: torch.Tensor, half_precision = False):
     """
@@ -173,6 +175,7 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
         - Add check for risk neutral bidders.
         - Move grid_creation out of util_loss for Nils special cases
     """
+    mechanism = env.mechanism
     player_position = agent.player_position
     agent_bid_actual = bid_profile[:,player_position,:]
 
@@ -188,14 +191,14 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     grid_size, _ = grid.shape
 
     ### Evaluate alternative bids on grid
-    bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile_origin) # grid_size x n_players x n_items
+    bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile_origin) #(grid_size x n_players x n_items)
 
     ## Calculate allocation and payments for alternative bids given opponents bids
     allocation, payments = mechanism.play(bid_profile)
 
     # we only need the specific player's allocation and can get rid of the rest.
     a_i = allocation[:, player_position, :].type(torch.bool).view(grid_size * batch_size, n_items)
-    p_i = payments[:, player_position].view(grid_size * batch_size) #grid * batch
+    p_i = payments[:, player_position].view(grid_size * batch_size) #(grid x batch)
 
     del allocation, payments, bid_profile
     if torch.cuda.is_available():
@@ -205,6 +208,9 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     try:
         # valuation is batch x items
         v_i = agent_valuation.repeat(1, grid_size * batch_size).view(batch_size, grid_size * batch_size, n_items)
+        #v_i = env.draw_conditional_valuations_(player_position, agent_valuation)
+        #v_i = v_i.repeat(1, grid_size).view(batch_size, grid_size * batch_size, n_items)
+
         p_i = p_i.repeat(batch_size, 1)
 
         ## Calculate utilities
@@ -261,3 +267,92 @@ def ex_interim_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor,
     ## average and max regret over all valuations
     util_loss = (u_i_alternative - u_i_actual).relu().clone().detach().requires_grad_(False)
     return util_loss, agent_valuation
+
+
+def ex_interim_util_loss(env: Environment, player_position: int,
+                         batch_size: int, grid_size: int):
+    """
+    Calculate
+        \max_{v_i \in V_i} \max_{b_i^* \in A_i}
+            E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i})) - u(v_i, b_i, b_{-i}(v_{-i}))]
+
+    TODO: when to use repeat when repeat_interleave?
+    TODO: mean and max over right axises!
+    """
+
+    """0. SET UP"""
+    mechanism = env.mechanism
+
+    agent = env.agents[player_position]
+    valuation = agent.valuations[:batch_size, ...]
+    action_actual = agent.get_action()[:batch_size, ...].detach().clone()
+    action_alternative = agent.get_valuation_grid(grid_size, True)
+
+    # grid is not always the requested size
+    grid_size = action_alternative.shape[0]
+
+    n_items = valuation.shape[-1]
+
+    # dict with valuations of (batch_size * batch_size, n_items) for each opponent
+    conditional_valuation_profile = env.draw_conditional_valuations_(player_position, valuation)
+
+    """1. CALCULATE UTILITY WITH ACTUAL STRATEGY"""
+    # actual bid profile and actual utility
+    #   1st dim: different agent valuations
+    #   2nd dim: differnet opponent valuations (-> different actions)
+    action_profile_actual = torch.zeros(batch_size * batch_size, env.n_players, n_items,
+                                        dtype=valuation.dtype, device=mechanism.device)
+    for a in env.agents:
+        if a.player_position == player_position:
+            action_profile_actual[:, player_position, :] = action_actual.repeat_interleave(batch_size, 0)
+        else:
+            action_profile_actual[:, a.player_position, :] = \
+                a.strategy.play(
+                    conditional_valuation_profile[a.player_position] # (batch_size * batch_size, n_items)
+                )
+
+    # TODO Nils: why do we have NaNs?
+    action_profile_actual[action_profile_actual != action_profile_actual] = 0
+
+    allocation_actual, payment_actual = mechanism.play(action_profile_actual)
+    allocation_actual = allocation_actual[:, player_position, :].type(torch.bool) # (batch_size, batch_size, n_items)
+    payment_actual = payment_actual[:, player_position] # (batch_size, batch_size)
+    utility_actual = agent.get_counterfactual_utility(
+        allocation_actual, payment_actual, valuation.repeat_interleave(batch_size, 0)
+    ).view(batch_size, batch_size)
+
+    utility_actual = torch.mean(utility_actual, axis=1) # expectation over opponents
+
+    """2. CALCULATE UTILITY WITH ALTERNATIVE ACTIONS ON GRID"""
+    # alternative bid profile and alternative utility
+    #   1st dim: different agent valuations (-> actions should be different for given valuation, )
+    #   2nd dim: different agent actions
+    #   3rd dim: differnet opponent valuations (-> different actions)
+    action_profile_alternative = torch.zeros(batch_size * grid_size * batch_size, env.n_players, n_items,
+                                             dtype=valuation.dtype, device=mechanism.device)
+    for a in env.agents:
+        if a.player_position == player_position:
+            action_profile_alternative[:, player_position, :] = \
+                action_alternative.repeat_interleave(batch_size, 0).repeat(batch_size, 1)
+        else:
+            action_profile_alternative[:, a.player_position, :] = \
+                a.strategy.play(conditional_valuation_profile[a.player_position]).repeat(grid_size, 1)
+
+    # TODO Nils: why do we have NaNs?
+    action_profile_alternative[action_profile_alternative != action_profile_alternative] = 0
+
+    allocation_alternative, payment_alternative = mechanism.play(action_profile_alternative)
+    allocation_alternative = allocation_alternative[:, player_position, :].type(torch.bool) # (batch_size * grid_size * batch_size, n_items)
+    payment_alternative = payment_alternative[:, player_position] # (batch_size * grid_size * batch_size)
+    utility_alternative = agent.get_counterfactual_utility(
+        allocation_alternative, payment_alternative,
+         valuation.repeat_interleave(batch_size * grid_size, 0)
+    ).view(batch_size, grid_size, batch_size)
+
+    utility_alternative = torch.mean(utility_alternative, axis=2) # expectation over opponents
+    utility_alternative = torch.max(utility_alternative, axis=1)[0] # maximum expected utility over alternative actions
+
+    """3. COMPARE UTILITY"""
+    utility_loss = utility_alternative - utility_actual
+
+    return utility_loss.clone().detach().requires_grad_(False)
