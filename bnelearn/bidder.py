@@ -444,30 +444,32 @@ class CombinatorialItemBidder(Bidder):
         Sample a new batch of valuations from the bidder's prior.
         """
         batch_size = self.valuations.shape[0]
-        n_items = self.valuations.shape[1]
-        n_bundles = self.n_bundles
+        n_items = self.n_bids
+        n_bundles = self.valuations.shape[1]
         transformation = self.transformation.to(self.device)
+
         if self.valuation_type == 'XOS':
-            valuations = torch.zeros(batch_size, self.n_collections, n_items,
+            valuations = torch.zeros(batch_size, self.n_collections, n_bundles,
                                      device=self.valuations.device)
 
             # uniform
             if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
                 valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
+                valuations[:, :, n_items:] = 0
             else:
                 raise NotImplementedError('unknown distibution')
 
             if self.unit_demand:
-                valuations = valuations[:, 0, :]
-                # i = torch.randint(self.n_bids, (batch_size,), device=self.valuations.device)
-                i = torch.zeros((batch_size,), device=valuations.device).long()
-                valuations = torch.zeros((batch_size, n_items), device=valuations.device).index_put_(
-                    (torch.arange(0, batch_size, device=valuations.device).long(), i),
-                    valuations.gather(1, i.view(-1, 1)).squeeze()
-                ).view(batch_size, self.n_collections, n_items)
+                # repeat each item valuation
+                vals = valuations[:, :, :n_items] \
+                    .repeat_interleave(n_bundles, 2) \
+                    .view(batch_size, 1, n_items, n_bundles)
+                # select the most valuable item in each bundle
+                self.valuations = torch.einsum('bcij,ij->bcij', vals, transformation[:n_items, :]).max(2)[0]
 
-            vals = torch.matmul(valuations, transformation)
-            self.valuations = vals.max(dim=1)[0]
+            else:
+                vals = torch.matmul(valuations, transformation)
+                self.valuations = vals.max(dim=1)[0]
 
         elif self.valuation_type == 'submodular':
             inf = 1e16

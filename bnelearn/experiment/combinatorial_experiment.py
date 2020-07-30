@@ -222,8 +222,9 @@ class CAItemBiddingExperiment(Experiment):
         if 'one_player_w_unit_demand' in self.exp_params.keys():
             self.unit_demand = self.exp_params['one_player_w_unit_demand']
             if self.model_sharing and self.unit_demand:
-                print('no model sharing possible!')
+                print('No model sharing possible!')
                 self.model_sharing = False
+                experiment_config.model_sharing = False
         else:
             self.unit_demand = False
 

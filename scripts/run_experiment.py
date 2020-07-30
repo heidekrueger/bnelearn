@@ -72,8 +72,9 @@ if __name__ == '__main__':
     #                 exp_params={'n_collections': 2, 'one_player_w_unit_demand': False}, n_players=[3],
     #                 n_items=2, logging=enable_logging)
     running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-        itembidding(n_runs=10, n_epochs=2000, exp_type='submodular',
-                    exp_params={'submodular_factor': .9}, n_players=[2], n_items=3,
+        itembidding(n_runs=10, n_epochs=2000, exp_type='XOS', n_players=[3], n_items=3,
+                    exp_params={'n_collections': 1, 'one_player_w_unit_demand': True},
+                    #exp_params={'submodular_factor': .9},
                     logging=enable_logging)
 
 
