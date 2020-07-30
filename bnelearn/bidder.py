@@ -445,7 +445,7 @@ class CombinatorialItemBidder(Bidder):
         """
         batch_size = self.valuations.shape[0]
         n_items = self.n_bids
-        n_bundles = self.valuations.shape[1]
+        n_bundles = self.n_bundles
         transformation = self.transformation.to(self.device)
 
         if self.valuation_type == 'XOS':
@@ -463,9 +463,9 @@ class CombinatorialItemBidder(Bidder):
                 # repeat each item valuation
                 vals = valuations[:, :, :n_items] \
                     .repeat_interleave(n_bundles, 2) \
-                    .view(batch_size, 1, n_items, n_bundles)
+                    .view(batch_size, n_items, n_bundles)
                 # select the most valuable item in each bundle
-                self.valuations = torch.einsum('bcij,ij->bcij', vals, transformation[:n_items, :]).max(2)[0]
+                self.valuations = torch.einsum('bij,ij->bij', vals, transformation[:n_items, :]).max(1)[0]
 
             else:
                 vals = torch.matmul(valuations, transformation)
