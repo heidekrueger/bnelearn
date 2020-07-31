@@ -1,10 +1,10 @@
 source("R/Load_and_prepare_data.R")
 
 # Bid data
-tb_bid = read_delim(str_c("experiments",subfolder,experiment,payment_rule,"bidder_0_export.csv",
+tb_bid = read_delim(str_c("experiments",subfolder,experiment,payment_rule,"bidder_0_export copy.csv",
                           sep = "/", collapse = NULL), ",", col_names = FALSE)
 
-tb_bid_1 = read_delim(str_c("experiments",subfolder,experiment,payment_rule,"bidder_2_export.csv",
+tb_bid_1 = read_delim(str_c("experiments",subfolder,experiment,payment_rule,"bidder_1_export copy.csv",
                             sep = "/", collapse = NULL), ",", col_names = FALSE)
 
 tb_wide <- tb_full_raw %>%
@@ -46,26 +46,28 @@ tb_plot_long %>%
 #scale_linetype_discrete(labels = c(expression(tilde(u)), expression(tilde("\u2113"))))
 
 ########## Plot bid function##########
-### BNE bid function for LLG nearest_zero
-fun.1 <- function(x) pmax(0,1 + log(x * (1.0)) / (1.0))
-fun.2 <- function(x) x
+# BNE bid function for LLG
+gamma = 0.0
+nearest_zero_local <- function(x) pmax(0,1 + log(x * (1.0 - gamma) + gamma) / (1.0 - gamma))
+nearest_bid_local <- function(x) (log(2) - log(2.0 - (1.0 - gamma) * x)) / (1.0 - gamma)
+global <- function(x) x
 
 # Prepare bids
 tb_bid_plot <- tb_bid %>% 
   mutate(type = "local",
-         BNE = fun.1(X1),
+         BNE = nearest_bid_local(X1),
          valuation = X1,
          NPGA = X2) %>%
   select(-c(X1,X2)) %>% 
-  slice(which(row_number() %% 50 == 1))
+  slice(which(row_number() %% 10 == 1))
 
 tb_bid_plot <- tb_bid_1 %>% 
   mutate(type = "global",
-         BNE = fun.2(X1),
+         BNE = global(X1),
          valuation = X1,
          NPGA = X2) %>%
   select(-c(X1,X2)) %>% 
-  slice(which(row_number() %% 50 == 1)) %>% 
+  slice(which(row_number() %% 10 == 1)) %>% 
   rbind(tb_bid_plot)
 
 tb_bid_long <- tb_bid_plot %>% 
@@ -122,7 +124,7 @@ tb_bid_long %>%
         axis.title.x = element_text(size=font_size),
         axis.text.x = element_text(size=font_size)) 
 
-### BNE bid function for single_item, uniform, asymmetric, 2p, overlapping #TODO: WIP!
+### BNE bid function for single_item, uniform, asymmetric, 2p, overlapping
 fun.1 <- function(valuation, player){
   c = 1 / (15 - 5) ** 2 - 1 / (25 - 5) ** 2
   factor = 2 * player - 1  # -1 for 0 (weak player), +1 for 1 (strong player)
