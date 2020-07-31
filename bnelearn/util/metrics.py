@@ -275,9 +275,11 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     Calculate
         \max_{v_i \in V_i} \max_{b_i^* \in A_i}
             E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i})) - u(v_i, b_i, b_{-i}(v_{-i}))]
-
-    TODO: when to use repeat when repeat_interleave?
-    TODO: mean and max over right axises!
+    
+    TODO:
+        - Are we sampling from mright cond-dist? Think about Stefan's remark w/ differencieation
+          of signal and type!
+        - Seems to work when we use  valuation.repeat(batch_size, 1) instead??
     """
 
     """0. SET UP"""
@@ -296,7 +298,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     # dict with valuations of (batch_size * batch_size, n_items) for each opponent
     conditional_valuation_profile = env.draw_conditional_valuations_(player_position, valuation)
 
-    """1. CALCULATE UTILITY WITH ACTUAL STRATEGY"""
+    """1. CALCULATE EXPECTED UTILITY FOR EACH SAMPLE WITH ACTUAL STRATEGY"""
     # actual bid profile and actual utility
     #   1st dim: different agent valuations
     #   2nd dim: differnet opponent valuations (-> different actions)
@@ -311,9 +313,6 @@ def ex_interim_util_loss(env: Environment, player_position: int,
                     conditional_valuation_profile[a.player_position] # (batch_size * batch_size, n_items)
                 )
 
-    # TODO Nils: why do we have NaNs?
-    action_profile_actual[action_profile_actual != action_profile_actual] = 0
-
     allocation_actual, payment_actual = mechanism.play(action_profile_actual)
     allocation_actual = allocation_actual[:, player_position, :].type(torch.bool) # (batch_size, batch_size, n_items)
     payment_actual = payment_actual[:, player_position] # (batch_size, batch_size)
@@ -323,7 +322,12 @@ def ex_interim_util_loss(env: Environment, player_position: int,
 
     utility_actual = torch.mean(utility_actual, axis=1) # expectation over opponents
 
-    """2. CALCULATE UTILITY WITH ALTERNATIVE ACTIONS ON GRID"""
+    return utility_actual.clone().detach().requires_grad_(False)
+
+
+
+
+    """2. CALCULATE EXPECTED UTILITY FOR EACH SAMPLE WITH ALTERNATIVE ACTIONS ON GRID"""
     # alternative bid profile and alternative utility
     #   1st dim: different agent valuations (-> actions should be different for given valuation, )
     #   2nd dim: different agent actions
@@ -337,9 +341,6 @@ def ex_interim_util_loss(env: Environment, player_position: int,
         else:
             action_profile_alternative[:, a.player_position, :] = \
                 a.strategy.play(conditional_valuation_profile[a.player_position]).repeat(grid_size, 1)
-
-    # TODO Nils: why do we have NaNs?
-    action_profile_alternative[action_profile_alternative != action_profile_alternative] = 0
 
     allocation_alternative, payment_alternative = mechanism.play(action_profile_alternative)
     allocation_alternative = allocation_alternative[:, player_position, :].type(torch.bool)
@@ -357,4 +358,4 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     """3. COMPARE UTILITY"""
     utility_loss = utility_alternative - utility_actual
 
-    return utility_actual.clone().detach().requires_grad_(False)
+    return utility_loss.clone().detach().requires_grad_(False)

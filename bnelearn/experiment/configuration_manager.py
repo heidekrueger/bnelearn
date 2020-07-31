@@ -134,7 +134,8 @@ class ConfigurationManager:
             (_init_single_item_asymmetric_uniform_overlapping, TwoPlayerAsymmetricUniformPriorSingleItemExperiment),
         'single_item_asymmetric_uniform_disjunct':
             (_init_single_item_asymmetric_uniform_disjunct, TwoPlayerAsymmetricUniformPriorSingleItemExperiment),
-        'mineral_rights': (_init_mineral_rights, MineralRightsExperiment),
+        'mineral_rights':
+            (_init_mineral_rights, MineralRightsExperiment),
         'llg':
             (_init_llg, LLGExperiment),
         'llllgg':

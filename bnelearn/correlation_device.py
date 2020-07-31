@@ -52,13 +52,12 @@ class IndependentValuationDevice(CorrelationDevice):
 
     def draw_conditional_valuations_(self, agents: List[Bidder], cond: torch.Tensor):
         batch_size = cond.shape[0]
-        valuations_dict = {
+        return {
             agent.player_position: agent.draw_valuations_(
-                common_component=self, weights=self.get_weights()
+                common_component=self.draw_common_component(), weights=self.get_weights()
             )[:batch_size, ...].repeat(batch_size, 1)
             for agent in agents
         }
-        return valuations_dict
 
 class BernoulliWeightsCorrelationDevice(CorrelationDevice):
     def __init__(self, common_component_dist: Distribution,
@@ -68,8 +67,8 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
     def get_weights(self):
         "choose individual component with prob (1-gamma), common component with prob gamma"
         return torch.bernoulli(
-                torch.tensor(self.corr).repeat(self.batch_size, 1) # different weight for each batch 
-            ).repeat(1, self.n_items)                              # same weight for each item in batch
+            torch.tensor(self.corr).repeat(self.batch_size, 1) # different weight for each batch 
+        ).repeat(1, self.n_items)                              # same weight for each item in batch
 
 class ConstantWeightsCorrelationDevice(CorrelationDevice):
     """Draw valuations according to the constant weights model in Ausubel & Baranov"""
@@ -99,25 +98,28 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         batch_size = cond.shape[0]
         u = torch.zeros((batch_size, 2), device=cond.device).uniform_(0, 1)
 
-        # TODO: first dim is for cond, second for sample per cond (size of u wrong: 1 batch size should be enough)
-        # TODO: just do a test run for cond.shape = (1,)!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        # TODO: Try do do it like in the notebook but with a new first dimension
-
-
         # (batch_size, batch_size): 1st dim for cond, 2nd for sample for each cond
         x0 = self.cond_marginal_icdf(cond)(u[:, 0])
         x1 = self.cond2_icdf(cond.repeat(1, batch_size).view(batch_size, batch_size), x0)(u[:, 1])
 
-        # Need to clip for numeric problems at edges + use symmetry to decrease bias
-        for x in [x0, x1]:
-            x = torch.clamp(x, 0, 2)
-            #cut = int(batch_size / 2)
-            #temp = x[:cut, 0].clone()
-            #x[:cut, 0] = x[:cut, 1]
-            #x[:cut, 1] = temp
-            #x = x[torch.randperm(x.size()[0]), :]
+        # Need to clip for numeric problems at edges
+        x0 = torch.clamp(x0, 0, 2)
+        x1 = torch.clamp(x1, 0, 2)
 
-        # (batch_size, 2*batch_size) # for each cond there are samples from both opposing players
+        # Set NaNs to 2
+        x0[x0 != x0] = 2
+        x1[x1 != x1] = 2
+
+        # Use symmetry to decrease bias
+        perm = torch.randperm(batch_size)
+        cut = int(batch_size / 2)
+        temp = x0[:, :cut].clone()
+        x0[:, :cut] = x1[:, :cut]
+        x1[:, :cut] = temp
+        x0 = x0[:, perm]
+        x1 = x1[:, perm]
+
+        # For each cond there are now batch_size samples from both opposing players
         return {
             player_positions[0]: x0.view(batch_size * batch_size, 1),
             player_positions[1]: x1.view(batch_size * batch_size, 1)
