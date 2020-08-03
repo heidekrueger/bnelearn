@@ -268,7 +268,7 @@ def ex_interim_util_loss_old(env: Environment, bid_profile: torch.Tensor,
     return util_loss, agent_valuation
 
 
-def ex_interim_util_loss(F, env: Environment, player_position: int,
+def ex_interim_util_loss(env: Environment, player_position: int,
                          batch_size: int, grid_size: int):
     """
     Calculate
