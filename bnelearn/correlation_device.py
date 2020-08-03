@@ -135,50 +135,50 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         result[torch.any(x > 2, 1)] = 0
         return result
 
-    @staticmethod
-    def marginal_pdf(x):
-        """Marginal density. Calulated via product density of two uniform distributions."""
-        return -torch.log(x/2) / 2
+    # @staticmethod
+    # def marginal_pdf(x):
+    #     """Marginal density. Calulated via product density of two uniform distributions."""
+    #     return -torch.log(x/2) / 2
 
-        # distribution we want to sample from!
-        def cond1_pdf(cond):
-            """PDF of two given one"""
-            factor = 1 / MineralRightsCorrelationDevice.marginal_pdf(cond)
-            def pdf(x):
-                x = np.atleast_2d(x)
-                return factor * MineralRightsCorrelationDevice.density(
-                    torch.cat([cond * torch.ones((x.shape[0], 1)), x], 1)
-                )
-            return pdf
+    #     # distribution we want to sample from!
+    #     def cond1_pdf(cond):
+    #         """PDF of two given one"""
+    #         factor = 1 / MineralRightsCorrelationDevice.marginal_pdf(cond)
+    #         def pdf(x):
+    #             x = np.atleast_2d(x)
+    #             return factor * MineralRightsCorrelationDevice.density(
+    #                 torch.cat([cond * torch.ones((x.shape[0], 1)), x], 1)
+    #             )
+    #         return pdf
 
-    @staticmethod
-    def cond_marginal_pdf(cond):
-        """PDF of one, marginal one and given one"""
-        def pdf(x):
-            result = torch.zeros_like(x)
-            maximum = x.clone()
-            maximum[x < cond] = cond
-            result = (maximum - 2) / (2*maximum * torch.log(cond/2))
-            return result
-        return pdf
+    # @staticmethod
+    # def cond_marginal_pdf(cond):
+    #     """PDF of one, marginal one and given one"""
+    #     def pdf(x):
+    #         result = torch.zeros_like(x)
+    #         maximum = x.clone()
+    #         maximum[x < cond] = cond
+    #         result = (maximum - 2) / (2*maximum * torch.log(cond/2))
+    #         return result
+    #     return pdf
 
-    @staticmethod
-    def cond_marginal_cdf(cond):
-        """CDF of one, marginal one and given one"""
-        z = cond
-        f = (cond - 2) / (2*cond*torch.log(cond/2))
-        c_1 = f * z
-        c_2 = 2 * torch.log(cond/2)
-        c_3 = (cond - 2*np.log(cond)) / (2*torch.log(cond/2))
-        def cdf(x):
-            x = x.view(-1, 1)
-            result = torch.zeros_like(x)
-            result[x < z] = f * x[x < z]
-            result[x >= z] = c_1 + (x[x >= z] - 2*torch.log(x[x >= z])) / c_2 - c_3
-            result[x < 0] = 0 # use clipping
-            result[x >= 2] = 1
-            return result
-        return cdf
+    # @staticmethod
+    # def cond_marginal_cdf(cond):
+    #     """CDF of one, marginal one and given one"""
+    #     z = cond
+    #     f = (cond - 2) / (2*cond*torch.log(cond/2))
+    #     c_1 = f * z
+    #     c_2 = 2 * torch.log(cond/2)
+    #     c_3 = (cond - 2*np.log(cond)) / (2*torch.log(cond/2))
+    #     def cdf(x):
+    #         x = x.view(-1, 1)
+    #         result = torch.zeros_like(x)
+    #         result[x < z] = f * x[x < z]
+    #         result[x >= z] = c_1 + (x[x >= z] - 2*torch.log(x[x >= z])) / c_2 - c_3
+    #         result[x < 0] = 0 # use clipping
+    #         result[x >= 2] = 1
+    #         return result
+    #     return cdf
 
     @staticmethod
     def cond_marginal_icdf(cond):
@@ -213,37 +213,37 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
             return result
         return cdf
 
-    @staticmethod
-    def cond2_pdf(cond1, cond2):
-        """PDF when conditioning on two of three agents"""
-        z = torch.max(cond1, cond2)
-        factor = (4*z) / (2 - z) # s.t. it integrates to 1
-        def pdf(x):
-            x = x.view(-1, 1)
-            return factor * MineralRightsCorrelationDevice.density(
-                torch.cat([cond1 * torch.ones_like(x), cond2 * torch.ones_like(x), x], 1)
-            )
-        return pdf
+    # @staticmethod
+    # def cond2_pdf(cond1, cond2):
+    #     """PDF when conditioning on two of three agents"""
+    #     z = torch.max(cond1, cond2)
+    #     factor = (4*z) / (2 - z) # s.t. it integrates to 1
+    #     def pdf(x):
+    #         x = x.view(-1, 1)
+    #         return factor * MineralRightsCorrelationDevice.density(
+    #             torch.cat([cond1 * torch.ones_like(x), cond2 * torch.ones_like(x), x], 1)
+    #         )
+    #     return pdf
 
-    @staticmethod
-    def cond2_cdf(cond1, cond2):
-        """CDF when conditioning on two of three agents"""
-        z = torch.max(cond1, cond2)
-        factor_1 = (4*z) / (2 - z)
-        factor_2 = (4-z**2) / (16*z**2)
-        def cdf(x):
-            result = np.zeros_like(x)
-            f1 = factor_1 * torch.ones_like(x)
-            f2 = factor_2 * torch.ones_like(x)
-            zz = z * np.ones_like(x)
+    # @staticmethod
+    # def cond2_cdf(cond1, cond2):
+    #     """CDF when conditioning on two of three agents"""
+    #     z = torch.max(cond1, cond2)
+    #     factor_1 = (4*z) / (2 - z)
+    #     factor_2 = (4-z**2) / (16*z**2)
+    #     def cdf(x):
+    #         result = np.zeros_like(x)
+    #         f1 = factor_1 * torch.ones_like(x)
+    #         f2 = factor_2 * torch.ones_like(x)
+    #         zz = z * np.ones_like(x)
 
-            result[x < z] = f1[x < z] * f2[x < z] * x[x < z]
-            result[x >= z] = f1[x >= z] * (f2[x >= z] * zz[x >= z] - (x[x >= z]**2 + 4)/(16*x[x >= z]) \
-                + (zz[x >= z]**2 + 4)/(16*zz[x >= z]))
-            result[x < 0] = 0 # use clipping
-            result[x >= 2] = 1
-            return result
-        return cdf
+    #         result[x < z] = f1[x < z] * f2[x < z] * x[x < z]
+    #         result[x >= z] = f1[x >= z] * (f2[x >= z] * zz[x >= z] - (x[x >= z]**2 + 4)/(16*x[x >= z]) \
+    #             + (zz[x >= z]**2 + 4)/(16*zz[x >= z]))
+    #         result[x < 0] = 0 # use clipping
+    #         result[x >= 2] = 1
+    #         return result
+    #     return cdf
 
     @staticmethod
     def cond2_icdf(cond1, cond2):

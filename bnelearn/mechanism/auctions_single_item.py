@@ -4,10 +4,15 @@ from typing import Tuple
 import torch
 
 from .mechanism import Mechanism
+from .auctions_multiunit import batched_index_select
 
 
 class VickreyAuction(Mechanism):
     "Vickrey / Second Price Sealed Bid Auctions"
+
+    def __init__(self, random_tie_break: bool=False, **kwargs):
+        self.random_tie_break = random_tie_break
+        super().__init__(**kwargs)
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -44,6 +49,10 @@ class VickreyAuction(Mechanism):
         batch_dim, player_dim, item_dim = 0, 1, 2
         batch_size, n_players, n_items = bids.shape
 
+        if self.random_tie_break: # randomly change order of bidders
+            idx = torch.randn((batch_size, n_players), device=bids.device).sort(dim=1)[1]
+            bids = batched_index_select(bids, 1, idx)
+
         # allocate return variables
         payments_per_item = torch.zeros(batch_size, n_players, n_items, device=self.device)
         allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
@@ -60,6 +69,12 @@ class VickreyAuction(Mechanism):
         allocations.scatter_(player_dim, winning_bidders, 1)
         # Don't allocate items that have a winnign bid of zero.
         allocations.masked_fill_(mask=payments_per_item == 0, value=0)
+
+        if self.random_tie_break: # restore bidder order
+            idx_rev = idx.sort(dim=1)[1]
+            allocations = batched_index_select(allocations, 1, idx_rev)
+            payments = batched_index_select(payments, 1, idx_rev)
+            bids = batched_index_select(bids, 1, idx_rev) # are bids even needed later on?
 
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 

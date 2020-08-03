@@ -7,7 +7,6 @@ from bnelearn.environment import Environment
 from bnelearn.bidder import Bidder
 from tqdm import tqdm
 
-
 def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> float:
     """
     Calculates the approximate "mean" Lp-norm between two action vectors.
@@ -269,17 +268,18 @@ def ex_interim_util_loss_old(env: Environment, bid_profile: torch.Tensor,
     return util_loss, agent_valuation
 
 
-def ex_interim_util_loss(env: Environment, player_position: int,
+def ex_interim_util_loss(F, env: Environment, player_position: int,
                          batch_size: int, grid_size: int):
     """
     Calculate
         \max_{v_i \in V_i} \max_{b_i^* \in A_i}
             E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i})) - u(v_i, b_i, b_{-i}(v_{-i}))]
-    
+
     TODO:
-        - Are we sampling from mright cond-dist? Think about Stefan's remark w/ differencieation
-          of signal and type!
-        - Seems to work when we use  valuation.repeat(batch_size, 1) instead??
+        - Are we sampling from right cond-dist? Think about Stefan's remark w/ differentiation
+          of signal and type! (What to input to strat? What to input to utility?)
+        - Does `_unkown_valuation` of bidder have anything to do with it?
+        - Seems to work when we use valuation.repeat(batch_size, 1) instead??
     """
 
     """0. SET UP"""
@@ -288,15 +288,20 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     agent = env.agents[player_position]
     valuation = agent.valuations[:batch_size, ...]
     action_actual = agent.get_action()[:batch_size, ...].detach().clone()
-    action_alternative = agent.get_valuation_grid(grid_size, True)
-
-    # grid is not always the requested size
-    grid_size = action_alternative.shape[0]
-
     n_items = valuation.shape[-1]
 
     # dict with valuations of (batch_size * batch_size, n_items) for each opponent
     conditional_valuation_profile = env.draw_conditional_valuations_(player_position, valuation)
+
+    # load in valuation if the current valuation is a signal only
+    if hasattr(agent, '_unkown_valuation'):
+        def icdf_v_cond_x(z):
+            c = -4 / (z**2 - 4)
+            def icdf(v):
+                return z / torch.sqrt(-c * z**2 + 4*c + v * z**2 - 4*v)
+            return icdf
+        icdf = icdf_v_cond_x(valuation)
+        valuation = icdf(torch.zeros_like(valuation).uniform_(0, 1))
 
     """1. CALCULATE EXPECTED UTILITY FOR EACH SAMPLE WITH ACTUAL STRATEGY"""
     # actual bid profile and actual utility
@@ -322,12 +327,14 @@ def ex_interim_util_loss(env: Environment, player_position: int,
 
     utility_actual = torch.mean(utility_actual, axis=1) # expectation over opponents
 
-    return utility_actual.clone().detach().requires_grad_(False)
-
+    #return utility_actual.clone().detach().requires_grad_(False)
 
 
 
     """2. CALCULATE EXPECTED UTILITY FOR EACH SAMPLE WITH ALTERNATIVE ACTIONS ON GRID"""
+    action_alternative = agent.get_valuation_grid(grid_size, True)
+    grid_size = action_alternative.shape[0] # grid is not always the requested size
+
     # alternative bid profile and alternative utility
     #   1st dim: different agent valuations (-> actions should be different for given valuation, )
     #   2nd dim: different agent actions
@@ -340,7 +347,9 @@ def ex_interim_util_loss(env: Environment, player_position: int,
                 action_alternative.repeat_interleave(batch_size, 0).repeat(batch_size, 1)
         else:
             action_profile_alternative[:, a.player_position, :] = \
-                a.strategy.play(conditional_valuation_profile[a.player_position]).repeat(grid_size, 1)
+                a.strategy.play(
+                    conditional_valuation_profile[a.player_position]
+                ).repeat(grid_size, 1)
 
     allocation_alternative, payment_alternative = mechanism.play(action_profile_alternative)
     allocation_alternative = allocation_alternative[:, player_position, :].type(torch.bool)

@@ -559,6 +559,12 @@ class MineralRightsExperiment(SingleItemExperiment):
 
         super().__init__(config)
 
+    def _setup_mechanism(self):
+        if self.payment_rule == 'second_price':
+            self.mechanism = VickreyAuction(random_tie_break=True, cuda=self.hardware.cuda)
+        else:
+            raise ValueError('Invalid Mechanism type!')
+
     def _set_symmetric_bne_closure(self):
         if self.payment_rule == 'second_price':
             self._optimal_bid = partial(_optimal_bid_single_item_mineral_rights)
