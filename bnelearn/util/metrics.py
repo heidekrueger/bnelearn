@@ -275,59 +275,66 @@ def ex_interim_util_loss(env: Environment, player_position: int,
         \max_{v_i \in V_i} \max_{b_i^* \in A_i}
             E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i})) - u(v_i, b_i, b_{-i}(v_{-i}))]
 
+    We're conditoning on the agent's signal at `player_position`. That means, types and
+    signals of other palyers as well as its own type have to be conditioned. As it's
+    conditioned on the signal, the agent's action stays the same.
+
     TODO:
-        - Are we sampling from right cond-dist? Think about Stefan's remark w/ differentiation
-          of signal and type! (What to input to strat? What to input to utility?)
-        - Does `_unkown_valuation` of bidder have anything to do with it?
-        - Seems to work when we use valuation.repeat(batch_size, 1) instead??
+        - Current status: actual_util works / alternative not: how comes???
+        - Set batch_size (first dim) to one! best response should then be close to BNE!
     """
 
     """0. SET UP"""
     mechanism = env.mechanism
 
     agent = env.agents[player_position]
-    valuation = agent.valuations[:batch_size, ...]
+    observation = agent.valuations[:batch_size, ...].detach().clone()
     action_actual = agent.get_action()[:batch_size, ...].detach().clone()
-    n_items = valuation.shape[-1]
+    n_items = observation.shape[-1]
+
+    agent_batch_size = observation.shape[0]
+    opponent_batch_size = batch_size
 
     # dict with valuations of (batch_size * batch_size, n_items) for each opponent
-    conditional_valuation_profile = env.draw_conditional_valuations_(player_position, valuation)
+    conditionals = env.draw_conditionals(
+        player_position, observation, opponent_batch_size
+    )
 
-    # load in valuation if the current valuation is a signal only
+    # conditioning type on signal - not needed when they're equal
     if hasattr(agent, '_unkown_valuation'):
-        def icdf_v_cond_x(z):
-            c = -4 / (z**2 - 4)
-            def icdf(v):
-                return z / torch.sqrt(-c * z**2 + 4*c + v * z**2 - 4*v)
-            return icdf
-        icdf = icdf_v_cond_x(valuation)
-        valuation = icdf(torch.zeros_like(valuation).uniform_(0, 1))
+        agent_type = conditionals[agent.player_position]
+    else:
+        agent_type = observation
 
     """1. CALCULATE EXPECTED UTILITY FOR EACH SAMPLE WITH ACTUAL STRATEGY"""
     # actual bid profile and actual utility
     #   1st dim: different agent valuations
     #   2nd dim: differnet opponent valuations (-> different actions)
-    action_profile_actual = torch.zeros(batch_size * batch_size, env.n_players, n_items,
-                                        dtype=valuation.dtype, device=mechanism.device)
+    action_profile_actual = torch.zeros(
+        agent_batch_size * opponent_batch_size, env.n_players, n_items,
+        dtype=action_actual.dtype, device=mechanism.device
+    )
     for a in env.agents:
         if a.player_position == player_position:
-            action_profile_actual[:, player_position, :] = action_actual.repeat_interleave(batch_size, 0)
+            action_profile_actual[:, player_position, :] = \
+                action_actual.repeat_interleave(opponent_batch_size, 0) \
+                    .view(agent_batch_size * opponent_batch_size, 1)
         else:
             action_profile_actual[:, a.player_position, :] = \
-                a.strategy.play(
-                    conditional_valuation_profile[a.player_position] # (batch_size * batch_size, n_items)
-                )
+                a.strategy.play(conditionals[a.player_position])
 
     allocation_actual, payment_actual = mechanism.play(action_profile_actual)
-    allocation_actual = allocation_actual[:, player_position, :].type(torch.bool) # (batch_size, batch_size, n_items)
-    payment_actual = payment_actual[:, player_position] # (batch_size, batch_size)
+    allocation_actual = allocation_actual[:, player_position, :].type(torch.bool) \
+        .view(agent_batch_size * opponent_batch_size, n_items)
+    payment_actual = payment_actual[:, player_position] \
+        .view(agent_batch_size * opponent_batch_size)
     utility_actual = agent.get_counterfactual_utility(
-        allocation_actual, payment_actual, valuation.repeat_interleave(batch_size, 0)
-    ).view(batch_size, batch_size)
+        allocation_actual, payment_actual,
+        agent_type.repeat_interleave(opponent_batch_size, 0)
+    ).view(agent_batch_size, opponent_batch_size)
 
-    utility_actual = torch.mean(utility_actual, axis=1) # expectation over opponents
-
-    #return utility_actual.clone().detach().requires_grad_(False)
+    # expectation over opponents
+    utility_actual = torch.mean(utility_actual, axis=1)
 
 
 
@@ -336,33 +343,42 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     grid_size = action_alternative.shape[0] # grid is not always the requested size
 
     # alternative bid profile and alternative utility
-    #   1st dim: different agent valuations (-> actions should be different for given valuation, )
+    #   1st dim: different agent valuations (-> actions should be different for given valuations)
     #   2nd dim: different agent actions
     #   3rd dim: differnet opponent valuations (-> different actions)
-    action_profile_alternative = torch.zeros(batch_size * grid_size * batch_size, env.n_players, n_items,
-                                             dtype=valuation.dtype, device=mechanism.device)
+    action_profile_alternative = torch.zeros(
+        agent_batch_size * grid_size * opponent_batch_size, env.n_players, n_items,
+        dtype=action_actual.dtype, device=mechanism.device
+    )
     for a in env.agents:
         if a.player_position == player_position:
             action_profile_alternative[:, player_position, :] = \
-                action_alternative.repeat_interleave(batch_size, 0).repeat(batch_size, 1)
+                action_alternative \
+                    .repeat_interleave(agent_batch_size, 0) \
+                    .repeat(opponent_batch_size, 1)
         else:
             action_profile_alternative[:, a.player_position, :] = \
-                a.strategy.play(
-                    conditional_valuation_profile[a.player_position]
-                ).repeat(grid_size, 1)
+                a.strategy.play(conditionals[a.player_position]) \
+                    .view(agent_batch_size, opponent_batch_size, n_items) \
+                    .repeat(1, grid_size, 1) \
+                    .view(agent_batch_size * grid_size * opponent_batch_size, n_items)
 
     allocation_alternative, payment_alternative = mechanism.play(action_profile_alternative)
-    allocation_alternative = allocation_alternative[:, player_position, :].type(torch.bool)
-        # (batch_size * grid_size * batch_size, n_items)
-    payment_alternative = payment_alternative[:, player_position]
-        # (batch_size * grid_size * batch_size)
+    allocation_alternative = allocation_alternative[:, player_position, :].type(torch.bool) \
+        .view(agent_batch_size * grid_size * opponent_batch_size, n_items)
+    payment_alternative = payment_alternative[:, player_position] \
+        .view(agent_batch_size * grid_size * opponent_batch_size)
     utility_alternative = agent.get_counterfactual_utility(
         allocation_alternative, payment_alternative,
-        valuation.repeat_interleave(batch_size * grid_size, 0)
-    ).view(batch_size, grid_size, batch_size)
+        agent_type.repeat_interleave(opponent_batch_size * grid_size, 0) \
+            .view(agent_batch_size * grid_size * opponent_batch_size, n_items)
+    ).view(agent_batch_size, grid_size, opponent_batch_size)
 
-    utility_alternative = torch.mean(utility_alternative, axis=2) # expectation over opponents
-    utility_alternative = torch.max(utility_alternative, axis=1)[0] # maximum expected utility over alternative actions
+    # expectation over opponents
+    utility_alternative = torch.mean(utility_alternative, axis=2)
+
+    # maximum expected utility over alternative actions
+    utility_alternative = torch.max(utility_alternative, axis=1)[0]
 
     """3. COMPARE UTILITY"""
     utility_loss = utility_alternative - utility_actual

@@ -339,7 +339,7 @@ class AuctionEnvironment(Environment):
             for i in group:
                 self.agents[i].draw_valuations_(common_component, weights)
 
-    def draw_conditional_valuations_(self, player_position: int, cond: torch.Tensor):
+    def draw_conditionals(self, player_position: int, cond: torch.Tensor, batch_size: int = None):
         """
         Draws valuations from all agents but the one at `player_position`, conditioned on her
         valuation `cond` from the correlation_devices.
@@ -347,7 +347,9 @@ class AuctionEnvironment(Environment):
         group_idx = [player_position in group for group in self.correlation_groups].index(True)
         device = self.correlation_devices[group_idx]
 
-        return device.draw_conditional_valuations_(
-            agents = [a for a in self.agents if a.player_position != player_position],
-            cond = cond
+        return device.draw_conditionals(
+            agents = self.agents,
+            player_position = player_position,
+            cond = cond,
+            batch_size = batch_size
         )

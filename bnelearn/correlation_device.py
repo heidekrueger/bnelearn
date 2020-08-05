@@ -33,8 +33,10 @@ class CorrelationDevice(ABC):
         return self.dist.sample([self.batch_size, self.n_items])
 
     @abstractmethod
-    def draw_conditional_valuations_(self, agents: List[Bidder], cond: torch.Tensor):
-        pass
+    def draw_conditionals(self, agents: List[Bidder], player_position: int,
+                          cond: torch.Tensor, batch_size: int=None):
+        """Draw conditional types of all agents given one agent's observation `cond`"""
+        raise NotImplementedError
 
     @abstractmethod
     def get_weights(self):
@@ -50,12 +52,14 @@ class IndependentValuationDevice(CorrelationDevice):
     def get_weights(self):
         return torch.tensor(0.)
 
-    def draw_conditional_valuations_(self, agents: List[Bidder], cond: torch.Tensor):
-        batch_size = cond.shape[0]
+    def draw_conditionals(self, agents: List[Bidder], player_position: int,
+                          cond: torch.Tensor, batch_size: int=None):
+        batch_size_0 = cond.shape[0]
+        batch_size_1 = batch_size if batch_size is not None else batch_size_0
         return {
             agent.player_position: agent.draw_valuations_(
                 common_component=self.draw_common_component(), weights=self.get_weights()
-            )[:batch_size, ...].repeat(batch_size, 1)
+            )[:batch_size_0, ...].repeat(batch_size_1, 1)
             for agent in agents
         }
 
@@ -65,7 +69,7 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
         super().__init__(common_component_dist, batch_size, n_items, "Bernoulli_weights_model", correlation)
 
     def get_weights(self):
-        "choose individual component with prob (1-gamma), common component with prob gamma"
+        """choose individual component with prob (1-gamma), common component with prob gamma"""
         return torch.bernoulli(
             torch.tensor(self.corr).repeat(self.batch_size, 1) # different weight for each batch 
         ).repeat(1, self.n_items)                              # same weight for each item in batch
@@ -90,17 +94,31 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
     def get_weights(self):
         return torch.tensor(.5) # must be strictly between 0, 1 to trigger right case
 
-    def draw_conditional_valuations_(self, agents: List[Bidder], cond: torch.Tensor):
+    def draw_conditionals(self, agents: List[Bidder], player_position: int,
+                          cond: torch.Tensor, batch_size: int=None):
         """
-        Draw conditional valuations of other agents given one agent's valuation `cond`.
+        Draw conditional types of all agents given one agent's observation `cond`.
+
+        Args
+        ----
+            agents: List[Bidder], list of bidders whose valuations are to be drwan.
+            player_position: int, player position of agent.
+            cond: torch.Tensor, valuation of bidder on which the other valuations are
+                to be conditioned on.
+            batch_size: int, batch size if different from batch size of `cond`.
+
+        returns
+        -------
+            dict {player_position[int]: cond_valuation[torch.Tensor]}.
         """
-        player_positions = [a.player_position for a in agents]
-        batch_size = cond.shape[0]
-        u = torch.zeros((batch_size, 2), device=cond.device).uniform_(0, 1)
+        opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
+        batch_size_0 = cond.shape[0]
+        batch_size_1 = batch_size if batch_size is not None else batch_size_0
+        u = torch.zeros((batch_size_1, 2), device=cond.device).uniform_(0, 1)
 
         # (batch_size, batch_size): 1st dim for cond, 2nd for sample for each cond
         x0 = self.cond_marginal_icdf(cond)(u[:, 0])
-        x1 = self.cond2_icdf(cond.repeat(1, batch_size).view(batch_size, batch_size), x0)(u[:, 1])
+        x1 = self.cond2_icdf(cond.repeat(1, batch_size_1).view(batch_size_0, batch_size_1), x0)(u[:, 1])
 
         # Need to clip for numeric problems at edges
         x0 = torch.clamp(x0, 0, 2)
@@ -111,19 +129,29 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         x1[x1 != x1] = 2
 
         # Use symmetry to decrease bias
-        perm = torch.randperm(batch_size)
-        cut = int(batch_size / 2)
+        perm = torch.randperm(batch_size_1)
+        cut = int(batch_size_1 / 2)
         temp = x0[:, :cut].clone()
         x0[:, :cut] = x1[:, :cut]
         x1[:, :cut] = temp
         x0 = x0[:, perm]
         x1 = x1[:, perm]
 
-        # For each cond there are now batch_size samples from both opposing players
+        # Sample agent's own type conditioned on signal
+        own_type = self.type_cond_on_signal_icdf(cond)(torch.zeros_like(cond).uniform_(0, 1))
+
         return {
-            player_positions[0]: x0.view(batch_size * batch_size, 1),
-            player_positions[1]: x1.view(batch_size * batch_size, 1)
+            player_position: own_type,
+            opponent_positions[0]: x0.view(batch_size_0 * batch_size_1, 1),
+            opponent_positions[1]: x1.view(batch_size_0 * batch_size_1, 1)
         }
+
+    @staticmethod
+    def type_cond_on_signal_icdf(z):
+        c = - 4 / (z**2 - 4)
+        def icdf(v):
+            return z / torch.sqrt(-c * z**2 + 4*c + v * z**2 - 4*v)
+        return icdf
 
     @staticmethod
     def density(x):
