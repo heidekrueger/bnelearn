@@ -345,6 +345,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
 
 
     """2. CALCULATE EXPECTED UTILITY FOR EACH SAMPLE WITH ALTERNATIVE ACTIONS ON GRID"""
+    # TODO: sequentialize! (1. could also be sequentialized)
     action_alternative = agent.get_valuation_grid(grid_size, True)
     grid_size = action_alternative.shape[0] # grid is not always the requested size
 

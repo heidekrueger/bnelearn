@@ -74,7 +74,6 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
             torch.tensor(self.corr).repeat(self.batch_size, 1) # different weight for each batch 
         ).repeat(1, self.n_items)                              # same weight for each item in batch
 
-    @abstractmethod
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
                           cond: torch.Tensor, batch_size: int=None):
         """Draw conditional types of all agents given one agent's observation `cond`"""
@@ -91,7 +90,6 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
     def get_weights(self):
         return self.weight
 
-    @abstractmethod
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
                           cond: torch.Tensor, batch_size: int=None):
         """Draw conditional types of all agents given one agent's observation `cond`"""
