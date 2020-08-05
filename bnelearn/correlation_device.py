@@ -74,6 +74,12 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
             torch.tensor(self.corr).repeat(self.batch_size, 1) # different weight for each batch 
         ).repeat(1, self.n_items)                              # same weight for each item in batch
 
+    @abstractmethod
+    def draw_conditionals(self, agents: List[Bidder], player_position: int,
+                          cond: torch.Tensor, batch_size: int=None):
+        """Draw conditional types of all agents given one agent's observation `cond`"""
+        raise NotImplementedError
+
 class ConstantWeightsCorrelationDevice(CorrelationDevice):
     """Draw valuations according to the constant weights model in Ausubel & Baranov"""
     def __init__(self, common_component_dist: Distribution, 
@@ -84,6 +90,12 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
 
     def get_weights(self):
         return self.weight
+
+    @abstractmethod
+    def draw_conditionals(self, agents: List[Bidder], player_position: int,
+                          cond: torch.Tensor, batch_size: int=None):
+        """Draw conditional types of all agents given one agent's observation `cond`"""
+        raise NotImplementedError
 
 class MineralRightsCorrelationDevice(CorrelationDevice):
     """Draw valuations according to the constant weights model in Ausubel & Baranov"""
@@ -111,6 +123,7 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         -------
             dict {player_position[int]: cond_valuation[torch.Tensor]}.
         """
+        raise NotImplementedError
         opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
         batch_size_0 = cond.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0

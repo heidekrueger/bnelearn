@@ -6,6 +6,8 @@ from bnelearn.mechanism import Mechanism
 from bnelearn.environment import Environment
 from bnelearn.bidder import Bidder
 from tqdm import tqdm
+import warnings
+
 
 def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> float:
     """
@@ -296,9 +298,13 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     opponent_batch_size = batch_size
 
     # dict with valuations of (batch_size * batch_size, n_items) for each opponent
-    conditionals = env.draw_conditionals(
-        player_position, observation, opponent_batch_size
-    )
+    try:
+        conditionals = env.draw_conditionals(
+            player_position, observation, opponent_batch_size
+        )
+    except NotImplementedError:
+        warnings.warn('Cannot draw from conditional distribution')
+        return 1e9 * torch.ones(agent_batch_size, device=mechanism.device)
 
     # conditioning type on signal - not needed when they're equal
     if hasattr(agent, '_unkown_valuation'):
