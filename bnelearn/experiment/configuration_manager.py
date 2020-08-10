@@ -79,7 +79,7 @@ class ConfigurationManager:
         self.setting.n_players = 2
         self.logging.log_metrics = {'opt': True,
                                     'l2': True,
-                                    'util_loss': False}
+                                    'util_loss': True}
         self.setting.correlation_groups = [[0, 1]]
         self.setting.correlation_types = 'corr_type'
         self.setting.correlation_coefficients = [1.0]

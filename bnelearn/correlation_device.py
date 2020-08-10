@@ -156,7 +156,7 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         own_type = self.type_cond_on_signal_icdf(cond)(torch.zeros_like(cond).uniform_(0, 1))
 
         return {
-            player_position: own_type,
+            player_position: own_type.repeat_interleave(batch_size_1, 0),
             opponent_positions[0]: x0.view(batch_size_0 * batch_size_1, 1),
             opponent_positions[1]: x1.view(batch_size_0 * batch_size_1, 1)
         }
@@ -346,5 +346,116 @@ class AffiliatedObservationsDevice(CorrelationDevice):
 
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
                           cond: torch.Tensor, batch_size: int=None):
-        """Draw conditional types of all agents given one agent's observation `cond`"""
-        raise NotImplementedError
+        """
+        Draw conditional types of all agents given one agent's observation `cond`.
+
+        Args
+        ----
+            agents: List[Bidder], list of bidders whose valuations are to be drwan.
+            player_position: int, player position of agent.
+            cond: torch.Tensor, valuation of bidder on which the other valuations are
+                to be conditioned on.
+            batch_size: int, batch size if different from batch size of `cond`.
+
+        returns
+        -------
+            dict {player_position[int]: cond_valuation[torch.Tensor]}.
+        """
+        opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
+        batch_size_0 = cond.shape[0]
+        batch_size_1 = batch_size if batch_size is not None else batch_size_0
+        u = torch.zeros((batch_size_1,), device=cond.device).uniform_(0, 1)
+
+        # (batch_size, batch_size): 1st dim for cond, 2nd for sample for each cond
+        opponent_observation = self.icdf_o2_cond_o1(cond)(u)
+
+        # Sample agent's own type conditioned on signal
+        own_type = 0.5 * (cond.detach().clone().repeat(1, batch_size_1) + opponent_observation)
+
+        return {
+            player_position: own_type.view(batch_size_0 * batch_size_1, 1),
+            opponent_positions[0]: opponent_observation.view(batch_size_0 * batch_size_1, 1),
+        }
+
+    @staticmethod
+    def pdf_o2_cond_o1(o1):
+        """Conditional PDF of observation 2 given observation 1"""
+        def pdf(o2):
+            result = torch.zeros_like(o2)
+
+            mask_1 = o2 < o1
+            result[mask_1] = o2[mask_1]
+
+            mask_2 = torch.logical_and(o2 >= o1, o2 < 1)
+            result[mask_2] = o1
+
+            mask_3 = torch.logical_and(o2 < o1 + 1, o2 >= 1)
+            result[mask_3] = 1 + o1 - o2[mask_3]
+
+            return result
+        
+        if o1 < 1.0:
+            f = 1 / o1
+            return lambda o2: f * pdf(o2)
+        else:
+            o1 = 2 - o1
+            f = 1 / o1
+            return lambda o2: f * pdf(2 - o2)
+        return pdf
+
+    @staticmethod
+    def cdf_o2_cond_o1(o1):
+        """Conditional CDF of observation 2 given observation 1"""
+
+        def cdf(o2):
+            result = torch.zeros_like(o2)
+
+            mask_0 = o2 < 0
+            result[mask_0] = 0
+            
+            mask_1 = torch.logical_and(o2 >= 0, o2 < o1)
+            result[mask_1] = (1/(2*o1)) * torch.pow(o2[mask_1], 2)
+
+            mask_2 = torch.logical_and(o2 >= o1, o2 < 1)
+            result[mask_2] = -0.5*o1 + o2[mask_2]
+            
+            mask_3 = torch.logical_and(o2 >= 1, o2 < 1 + o1)
+            result[mask_3] = -0.5 * o1 + 1 + ((1+o1-(o2[mask_3]+1)/2)/o1) * (o2[mask_3] - 1)
+            
+            mask_4 = o2 >= 1 + o1
+            result[mask_4] = 1
+            
+            return result
+
+        if o1 < 1.0:
+            return lambda o2: cdf(o2)
+        else:
+            o1 = 2 - o1
+            return lambda o2: cdf(o2 - (1-o1))
+
+    @staticmethod
+    def icdf_o2_cond_o1(o1):
+        """Conditional iCDF of observation 2 given observation 1"""
+        cond_batch = o1.view(-1, 1).shape[0]
+
+        def icdf(x):
+            sample_batch = x.view(-1, 1).shape[0]
+            xx = x.repeat(cond_batch, 1)
+            oo1 = o1.repeat(1, sample_batch)
+            result = torch.zeros((cond_batch, sample_batch), device=x.device)
+
+            mask_1 = xx < 0.5*oo1
+            result[mask_1] = torch.sqrt(2*oo1[mask_1] * xx[mask_1])
+
+            mask_2 = torch.logical_and(xx >= 0.5*oo1, xx < 1 - 0.5*oo1)
+            result[mask_2] = xx[mask_2] + 0.5*oo1[mask_2]
+
+            mask_3 = xx >= 1 - 0.5*oo1
+            result[mask_3] = -torch.sqrt(2*oo1[mask_3]*(-xx[mask_3] + 1)) + oo1[mask_3] + 1
+
+            mask_4 = oo1 > 1
+            result[mask_4] += oo1[mask_4] - 1
+
+            return result
+
+        return icdf

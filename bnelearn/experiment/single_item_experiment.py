@@ -566,7 +566,7 @@ class MineralRightsExperiment(SingleItemExperiment):
 
     def _setup_mechanism(self):
         if self.payment_rule == 'second_price':
-            self.mechanism = VickreyAuction(random_tie_break=True, cuda=self.hardware.cuda)
+            self.mechanism = VickreyAuction(random_tie_break=False, cuda=self.hardware.cuda)
         else:
             raise ValueError('Invalid Mechanism type!')
 

@@ -310,7 +310,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     if hasattr(agent, '_unkown_valuation'):
         agent_type = conditionals[agent.player_position]
     else:
-        agent_type = observation
+        agent_type = observation.repeat_interleave(opponent_batch_size, 0)
 
     """1. CALCULATE EXPECTED UTILITY FOR EACH SAMPLE WITH ACTUAL STRATEGY"""
     # actual bid profile and actual utility
@@ -335,8 +335,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     payment_actual = payment_actual[:, player_position] \
         .view(agent_batch_size * opponent_batch_size)
     utility_actual = agent.get_counterfactual_utility(
-        allocation_actual, payment_actual,
-        agent_type.repeat_interleave(opponent_batch_size, 0)
+        allocation_actual, payment_actual, agent_type
     ).view(agent_batch_size, opponent_batch_size)
 
     # expectation over opponents
@@ -377,7 +376,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
         .view(agent_batch_size * grid_size * opponent_batch_size)
     utility_alternative = agent.get_counterfactual_utility(
         allocation_alternative, payment_alternative,
-        agent_type.repeat_interleave(opponent_batch_size * grid_size, 0) \
+        agent_type.repeat_interleave(grid_size, 0) \
             .view(agent_batch_size * grid_size * opponent_batch_size, n_items)
     ).view(agent_batch_size, grid_size, opponent_batch_size)
 
