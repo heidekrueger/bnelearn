@@ -45,6 +45,7 @@ class CorrelationDevice(ABC):
     def get_component_and_weights(self):
         return self.draw_common_component(), self.get_weights()
 
+
 class IndependentValuationDevice(CorrelationDevice):
     def __init__(self):
         super().__init__(None, None, None, 'independent_valuations', 0.0)
@@ -63,6 +64,7 @@ class IndependentValuationDevice(CorrelationDevice):
             for agent in agents
         }
 
+
 class BernoulliWeightsCorrelationDevice(CorrelationDevice):
     def __init__(self, common_component_dist: Distribution,
                  batch_size: int, n_items, correlation: float):
@@ -79,6 +81,7 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
         """Draw conditional types of all agents given one agent's observation `cond`"""
         raise NotImplementedError
 
+
 class ConstantWeightsCorrelationDevice(CorrelationDevice):
     """Draw valuations according to the constant weights model in Ausubel & Baranov"""
     def __init__(self, common_component_dist: Distribution, 
@@ -94,6 +97,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
                           cond: torch.Tensor, batch_size: int=None):
         """Draw conditional types of all agents given one agent's observation `cond`"""
         raise NotImplementedError
+
 
 class MineralRightsCorrelationDevice(CorrelationDevice):
     """Draw valuations according to the constant weights model in Ausubel & Baranov"""
@@ -121,7 +125,6 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         -------
             dict {player_position[int]: cond_valuation[torch.Tensor]}.
         """
-        raise NotImplementedError
         opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
         batch_size_0 = cond.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
@@ -149,6 +152,7 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         x1 = x1[:, perm]
 
         # Sample agent's own type conditioned on signal
+        # TODO Nils: make sure that this sampling is supposed to be independent from the x0, x1 sampling!
         own_type = self.type_cond_on_signal_icdf(cond)(torch.zeros_like(cond).uniform_(0, 1))
 
         return {
@@ -328,3 +332,19 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         a[~mask] = (np.exp(1)*z[~mask]) / \
             (1 + ((np.exp(1) - 1)**(-1) - 1/np.sqrt(2) + 1/torch.sqrt(2*np.exp(1)*z[~mask] + 2))**(-1))
         return a
+
+
+class AffiliatedObservationsDevice(CorrelationDevice):
+    """Draw valuations according to the constant weights model in Ausubel & Baranov"""
+    def __init__(self, common_component_dist: Distribution,
+                 batch_size: int, n_common_components: int, correlation: float):
+        super().__init__(common_component_dist, batch_size, n_common_components,
+                         "affiliated_observations_model", correlation)
+
+    def get_weights(self):
+        return torch.tensor(.5) # must be strictly between 0, 1 to trigger right case
+
+    def draw_conditionals(self, agents: List[Bidder], player_position: int,
+                          cond: torch.Tensor, batch_size: int=None):
+        """Draw conditional types of all agents given one agent's observation `cond`"""
+        raise NotImplementedError

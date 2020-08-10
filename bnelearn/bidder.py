@@ -259,7 +259,7 @@ class Bidder(Player):
             # add additional internal in-place samplers above as needed!
             self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device)
 
-        ### 3. Determine mixture of individual an common component
+        ### 3. Determine mixture of individual and common component
         if torch.any(weights > 0):
             if self.correlation_type == 'additive':
                 weights = weights.to(self.device)
@@ -267,6 +267,14 @@ class Bidder(Player):
             elif self.correlation_type == 'multiplicative':
                 self.valuations = 2 * common_component.to(self.device) * self.valuations
                 self._unkown_valuation = common_component.to(self.device)
+            elif self.correlation_type == 'affiliated':
+                self.valuations = (
+                    common_component.to(self.device)[:, self.player_position]
+                     + common_component.to(self.device)[:, -1]
+                ).view(self.batch_size, -1)
+                self._unkown_valuation = 0.5 * \
+                    (common_component.to(self.device) * torch.tensor([1, 1, 2]).to(self.device)) \
+                        .sum(axis=1, keepdim=True)
             else:
                 raise NotImplementedError('correlation type unknown')
 
