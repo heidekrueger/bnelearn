@@ -71,6 +71,8 @@ class Bidder(Player):
         in decreasing order.
         `cache_actions` determines whether actions should be cached and retrieved from memory,
             rather than recomputed as long as valuations haven't changed.
+
+        # TODO Nils: clearly distinguish observation and type! (Nedded for correlation, splt-award, etc.)
     """
     def __init__(self,
                  value_distribution: Distribution,

@@ -55,15 +55,15 @@ if __name__ == '__main__':
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg') \
     #     .get_config(log_root_dir=log_root_dir)
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='mineral_rights') \
-        .get_config(log_root_dir=log_root_dir, specific_gpu=7, pretrain_iters=3)
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='affiliated_observations') \
-        .get_config(log_root_dir=log_root_dir, specific_gpu=7, pretrain_iters=3)
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='mineral_rights') \
+    #     .get_config(log_root_dir=log_root_dir, specific_gpu=7, pretrain_iters=3)
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='affiliated_observations') \
+    #     .get_config(log_root_dir=log_root_dir, specific_gpu=7, pretrain_iters=3)
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
     #     .get_config(log_root_dir=log_root_dir)
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
-    #     .get_config(log_root_dir=log_root_dir)
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
+        .get_config(log_root_dir=log_root_dir)
     try:
         experiment = experiment_class(experiment_config)
         #TODO: this is a short term fix - we can only determine whether BNE exists once experiment has been initialized.

@@ -324,7 +324,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
         if a.player_position == player_position:
             action_profile_actual[:, player_position, :] = \
                 action_actual.repeat_interleave(opponent_batch_size, 0) \
-                    .view(agent_batch_size * opponent_batch_size, 1)
+                    .view(agent_batch_size * opponent_batch_size, n_items)
         else:
             action_profile_actual[:, a.player_position, :] = \
                 a.strategy.play(conditionals[a.player_position])
