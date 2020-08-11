@@ -60,9 +60,7 @@ class IndependentValuationDevice(CorrelationDevice):
         return {
             agent.player_position: agent.draw_valuations_(
                 common_component=self.draw_common_component(), weights=self.get_weights()
-            )[:batch_size_0, ...] # .repeat(batch_size_1, 1) moved to util_loss
-            # repeat(batch_size_1, 1) & repeat_interleave(batch_size_1, 0) both work
-            # (consitent use for `action_actual` & `agent_type` needed)
+            )[:batch_size_1, ...]
             for agent in agents
         }
 

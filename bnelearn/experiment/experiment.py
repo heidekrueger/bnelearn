@@ -686,7 +686,7 @@ class Experiment(ABC):
 
         torch.cuda.empty_cache()
         util_loss = [
-            metrics.ex_interim_util_loss(self.bne_env, player_positions[0], batch_size, grid_size)
+            metrics.ex_interim_util_loss(env, player_positions[0], batch_size, grid_size)
             for player_positions in self._model2bidder
         ]
         ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_loss]

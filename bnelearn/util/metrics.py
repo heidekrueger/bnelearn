@@ -295,7 +295,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     n_items = observation.shape[-1]
 
     agent_batch_size = observation.shape[0]
-    opponent_batch_size = batch_size-1
+    opponent_batch_size = batch_size - 1 # TODO Nils: debugging s.t. raises error when dims dont match
 
     # dict with valuations of (batch_size * batch_size, n_items) for each opponent
     try:
@@ -330,7 +330,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
             action_profile_actual[:, a.player_position, :] = \
                 a.strategy.play(conditionals[a.player_position]) \
                     .detach().requires_grad_(False).clone() \
-                    .repeat(opponent_batch_size, 1)
+                    .repeat(agent_batch_size, 1)
 
     allocation_actual, payment_actual = mechanism.play(action_profile_actual)
     allocation_actual = allocation_actual[:, player_position, :].type(torch.bool) \
@@ -352,7 +352,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
 
     # TODO: Debug! Sequential doesn't work yet
     utility_alternative = torch.zeros_like(utility_actual)
-    adapted_agent_batch_size = batch_size # batch_size
+    adapted_agent_batch_size = 64 # batch_size
 
     # TODO Nils: adpativa batch size should be possible
     if agent_batch_size == 1:
@@ -383,13 +383,16 @@ def ex_interim_util_loss(env: Environment, player_position: int,
             if a.player_position == player_position:
                 action_profile_alternative[:, player_position, :] = \
                     action_alternative \
-                        .repeat_interleave(adapted_agent_batch_size, 0) \
-                        .repeat(opponent_batch_size, 1)
+                        .repeat(adapted_agent_batch_size, 1) \
+                        .view(adapted_agent_batch_size, grid_size, n_items) \
+                        .repeat_interleave(opponent_batch_size, 1) \
+                        .view(adapted_agent_batch_size * grid_size * opponent_batch_size, n_items)
             else:
                 action_profile_alternative[:, a.player_position, :] = \
-                    a.strategy.play(conditionals[a.player_position][b:b+adapted_agent_batch_size, :]) \
+                    a.strategy.play(conditionals[a.player_position]) \
                         .detach().requires_grad_(False).clone() \
-                        .repeat(grid_size * opponent_batch_size, 1)
+                        .repeat(adapted_agent_batch_size * grid_size, 1) \
+                        .view(adapted_agent_batch_size * grid_size * opponent_batch_size, n_items)
 
         allocation_alternative, payment_alternative = mechanism.play(action_profile_alternative)
         allocation_alternative = allocation_alternative[:, player_position, :].type(torch.bool) \
