@@ -40,7 +40,7 @@ def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
 
 def _get_multiunit_allocation(
         bids: torch.Tensor,
-        random_tie_break: bool = True,
+        random_tie_break: bool = False,
         accept_zero_bids: bool = False,
     ) -> torch.Tensor:
     """For bids (batch x player x item) in descending order for each batch/player,
@@ -286,7 +286,7 @@ class FPSBSplitAwardAuction(Mechanism):
     """
 
     def _solve_allocation_problem(self, bids: torch.Tensor,
-                                  random_tie_break: bool = True):
+                                  random_tie_break: bool = False):
         """
         Computes allocation and welfare
 

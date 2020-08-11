@@ -57,6 +57,7 @@ class Experiment(ABC):
     plot_xmax: float
     plot_ymin: float
     plot_ymax: float
+    _max_util_loss: float
     ## Optional - set only in some settings
 
     ## Equilibrium environment

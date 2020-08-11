@@ -61,6 +61,8 @@ class IndependentValuationDevice(CorrelationDevice):
             agent.player_position: agent.draw_valuations_(
                 common_component=self.draw_common_component(), weights=self.get_weights()
             )[:batch_size_0, ...].repeat(batch_size_1, 1)
+            # repeat(batch_size_1, 1) & repeat_interleave(batch_size_1, 0) both work
+            # (consitent use for `action_actual` & `agent_type` needed)
             for agent in agents
         }
 
@@ -128,7 +130,7 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
         batch_size_0 = cond.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
-        u = torch.zeros((batch_size_1, 2), device=cond.device).uniform_(0, 1)
+        u = torch.zeros((batch_size_1, 3), device=cond.device).uniform_(0, 1)
 
         # (batch_size, batch_size): 1st dim for cond, 2nd for sample for each cond
         x0 = self.cond_marginal_icdf(cond)(u[:, 0])
@@ -153,19 +155,25 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
 
         # Sample agent's own type conditioned on signal
         # TODO Nils: make sure that this sampling is supposed to be independent from the x0, x1 sampling!
-        own_type = self.type_cond_on_signal_icdf(cond)(torch.zeros_like(cond).uniform_(0, 1))
+        # c = torch.max(cond.repeat(1, batch_size_1), torch.max(x0, x1))
+        own_type = self.type_cond_on_signal_icdf(
+            cond.repeat_interleave(batch_size_1, 0).view(batch_size_0, batch_size_1)
+        )(u[:, 2])
 
         return {
-            player_position: own_type.repeat_interleave(batch_size_1, 0),
+            player_position: own_type.view(batch_size_0 * batch_size_1, 1),
             opponent_positions[0]: x0.view(batch_size_0 * batch_size_1, 1),
             opponent_positions[1]: x1.view(batch_size_0 * batch_size_1, 1)
         }
 
     @staticmethod
-    def type_cond_on_signal_icdf(z):
-        c = - 4 / (z**2 - 4)
+    def type_cond_on_signal_icdf(o):
+        """iCDF of type distribution given observation o"""
+        c = - 4 / (torch.pow(o, 2) - 4)
+        cond_batch = c.shape[0]
         def icdf(v):
-            return z / torch.sqrt(-c * z**2 + 4*c + v * z**2 - 4*v)
+            vv = v.repeat_interleave(cond_batch, 0).view_as(c)
+            return o / torch.sqrt(-c * torch.pow(o, 2) + 4*c + vv * torch.pow(o, 2) - 4*vv)
         return icdf
 
     @staticmethod
@@ -316,7 +324,7 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         return icdf
 
     @staticmethod
-    def lambertw_approx(z, iters=2):
+    def lambertw_approx(z, iters=4):
         """
         Approximation of Lambert W function via Halley’s method for
         positive values and via Winitzki approx. for negative values.
@@ -367,71 +375,71 @@ class AffiliatedObservationsDevice(CorrelationDevice):
         u = torch.zeros((batch_size_1,), device=cond.device).uniform_(0, 1)
 
         # (batch_size, batch_size): 1st dim for cond, 2nd for sample for each cond
-        opponent_observation = self.icdf_o2_cond_o1(cond)(u)
+        opponent_observation = self.icdf_o2_cond_o1(cond)(u).view(batch_size_0 * batch_size_1, 1)
 
         # Sample agent's own type conditioned on signal
-        own_type = 0.5 * (cond.detach().clone().repeat(1, batch_size_1) + opponent_observation)
+        own_type = 0.5 * (cond.repeat_interleave(batch_size_1, 0) + opponent_observation)
 
         return {
-            player_position: own_type.view(batch_size_0 * batch_size_1, 1),
-            opponent_positions[0]: opponent_observation.view(batch_size_0 * batch_size_1, 1),
+            player_position: own_type,
+            opponent_positions[0]: opponent_observation,
         }
 
-    @staticmethod
-    def pdf_o2_cond_o1(o1):
-        """Conditional PDF of observation 2 given observation 1"""
-        def pdf(o2):
-            result = torch.zeros_like(o2)
+    # @staticmethod
+    # def pdf_o2_cond_o1(o1):
+    #     """Conditional PDF of observation 2 given observation 1"""
+    #     def pdf(o2):
+    #         result = torch.zeros_like(o2)
 
-            mask_1 = o2 < o1
-            result[mask_1] = o2[mask_1]
+    #         mask_1 = o2 < o1
+    #         result[mask_1] = o2[mask_1]
 
-            mask_2 = torch.logical_and(o2 >= o1, o2 < 1)
-            result[mask_2] = o1
+    #         mask_2 = torch.logical_and(o2 >= o1, o2 < 1)
+    #         result[mask_2] = o1
 
-            mask_3 = torch.logical_and(o2 < o1 + 1, o2 >= 1)
-            result[mask_3] = 1 + o1 - o2[mask_3]
+    #         mask_3 = torch.logical_and(o2 < o1 + 1, o2 >= 1)
+    #         result[mask_3] = 1 + o1 - o2[mask_3]
 
-            return result
-        
-        if o1 < 1.0:
-            f = 1 / o1
-            return lambda o2: f * pdf(o2)
-        else:
-            o1 = 2 - o1
-            f = 1 / o1
-            return lambda o2: f * pdf(2 - o2)
-        return pdf
+    #         return result
 
-    @staticmethod
-    def cdf_o2_cond_o1(o1):
-        """Conditional CDF of observation 2 given observation 1"""
+    #     if o1 < 1.0:
+    #         f = 1 / o1
+    #         return lambda o2: f * pdf(o2)
+    #     else:
+    #         o1 = 2 - o1
+    #         f = 1 / o1
+    #         return lambda o2: f * pdf(2 - o2)
+    #     return pdf
 
-        def cdf(o2):
-            result = torch.zeros_like(o2)
+    # @staticmethod
+    # def cdf_o2_cond_o1(o1):
+    #     """Conditional CDF of observation 2 given observation 1"""
 
-            mask_0 = o2 < 0
-            result[mask_0] = 0
+    #     def cdf(o2):
+    #         result = torch.zeros_like(o2)
+
+    #         mask_0 = o2 < 0
+    #         result[mask_0] = 0
             
-            mask_1 = torch.logical_and(o2 >= 0, o2 < o1)
-            result[mask_1] = (1/(2*o1)) * torch.pow(o2[mask_1], 2)
+    #         mask_1 = torch.logical_and(o2 >= 0, o2 < o1)
+    #         result[mask_1] = (1/(2*o1)) * torch.pow(o2[mask_1], 2)
 
-            mask_2 = torch.logical_and(o2 >= o1, o2 < 1)
-            result[mask_2] = -0.5*o1 + o2[mask_2]
+    #         mask_2 = torch.logical_and(o2 >= o1, o2 < 1)
+    #         result[mask_2] = -0.5*o1 + o2[mask_2]
             
-            mask_3 = torch.logical_and(o2 >= 1, o2 < 1 + o1)
-            result[mask_3] = -0.5 * o1 + 1 + ((1+o1-(o2[mask_3]+1)/2)/o1) * (o2[mask_3] - 1)
+    #         mask_3 = torch.logical_and(o2 >= 1, o2 < 1 + o1)
+    #         result[mask_3] = -0.5 * o1 + 1 + ((1+o1-(o2[mask_3]+1)/2)/o1) * (o2[mask_3] - 1)
             
-            mask_4 = o2 >= 1 + o1
-            result[mask_4] = 1
+    #         mask_4 = o2 >= 1 + o1
+    #         result[mask_4] = 1
             
-            return result
+    #         return result
 
-        if o1 < 1.0:
-            return lambda o2: cdf(o2)
-        else:
-            o1 = 2 - o1
-            return lambda o2: cdf(o2 - (1-o1))
+    #     if o1 < 1.0:
+    #         return lambda o2: cdf(o2)
+    #     else:
+    #         o1 = 2 - o1
+    #         return lambda o2: cdf(o2 - (1-o1))
 
     @staticmethod
     def icdf_o2_cond_o1(o1):
