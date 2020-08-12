@@ -349,21 +349,21 @@ def ex_interim_util_loss(env: Environment, player_position: int,
 
     # TODO Nils: calc adpative batch size based on memory estimate
     utility_alternative = torch.zeros_like(utility_actual)
-    adapted_agent_batch_size = batch_size # 1 <= x <= batch_size, batch_size % x == 0
+    mini_batch_size = 128 # 1 <= x <= batch_size, batch_size % x == 0
 
-    if agent_batch_size == 1:
-        print("Sequential computation of utility loss:")
+    if mini_batch_size < batch_size:
+        print("Sequential computation of utility loss")
 
-    for b in tqdm(range(0, batch_size, adapted_agent_batch_size)):
+    for b in tqdm(range(0, batch_size, mini_batch_size)):
 
         conditionals = env.draw_conditionals(
-            player_position, observation[b:b+adapted_agent_batch_size, :], opponent_batch_size
+            player_position, observation[b:b+mini_batch_size, :], opponent_batch_size
         )
 
         if hasattr(agent, '_unkown_valuation'):
             agent_type = conditionals[agent.player_position]
         else:
-            agent_type = observation[b:b+adapted_agent_batch_size, :] \
+            agent_type = observation[b:b+mini_batch_size, :] \
                 .repeat_interleave(opponent_batch_size, 0)
 
         # alternative bid profile and alternative utility
@@ -371,42 +371,43 @@ def ex_interim_util_loss(env: Environment, player_position: int,
         #   2nd dim: different agent actions
         #   3rd dim: differnet opponent valuations (-> different actions)
         action_profile_alternative = torch.zeros(
-            adapted_agent_batch_size * grid_size * opponent_batch_size, env.n_players, n_items,
+            mini_batch_size * grid_size * opponent_batch_size, env.n_players, n_items,
             dtype=action_actual.dtype, device=mechanism.device
         )
         for a in env.agents:
             if a.player_position == player_position:
                 action_profile_alternative[:, player_position, :] = \
                     action_alternative \
-                        .repeat(adapted_agent_batch_size, 1) \
-                        .view(adapted_agent_batch_size, grid_size, n_items) \
+                        .repeat(mini_batch_size, 1) \
+                        .view(mini_batch_size, grid_size, n_items) \
                         .repeat_interleave(opponent_batch_size, 1) \
-                        .view(adapted_agent_batch_size * grid_size * opponent_batch_size, n_items)
+                        .view(mini_batch_size * grid_size * opponent_batch_size, n_items)
             else:
                 action_profile_alternative[:, a.player_position, :] = \
                     a.strategy.play(conditionals[a.player_position]) \
                         .detach().requires_grad_(False).clone() \
-                        .repeat(grid_size, 1) \
-                        .view(adapted_agent_batch_size * grid_size * opponent_batch_size, n_items)
+                        .view(mini_batch_size, opponent_batch_size, n_items) \
+                        .repeat(1, grid_size, 1) \
+                        .view(mini_batch_size * grid_size * opponent_batch_size, n_items)
 
         allocation_alternative, payment_alternative = mechanism.play(action_profile_alternative)
         allocation_alternative = allocation_alternative[:, player_position, :].type(torch.bool) \
-            .view(adapted_agent_batch_size * grid_size * opponent_batch_size, n_items)
+            .view(mini_batch_size * grid_size * opponent_batch_size, n_items)
         payment_alternative = payment_alternative[:, player_position] \
-            .view(adapted_agent_batch_size * grid_size * opponent_batch_size)
+            .view(mini_batch_size * grid_size * opponent_batch_size)
         utility_alternative_batch = agent.get_counterfactual_utility(
             allocation_alternative, payment_alternative,
             agent_type \
-                .view(adapted_agent_batch_size, opponent_batch_size, n_items) \
-                .repeat_interleave(grid_size, 0) \
-                .view(adapted_agent_batch_size * grid_size * opponent_batch_size, n_items)
-        ).view(adapted_agent_batch_size, grid_size, opponent_batch_size)
+                .view(mini_batch_size, opponent_batch_size, n_items) \
+                .repeat(1, grid_size, 1) \
+                .view(mini_batch_size * grid_size * opponent_batch_size, n_items)
+        ).view(mini_batch_size, grid_size, opponent_batch_size)
 
         # expectation over opponents
         utility_alternative_batch = torch.mean(utility_alternative_batch, axis=2)
 
         # maximum expected utility over alternative actions
-        utility_alternative[b:b+adapted_agent_batch_size] = torch.max(utility_alternative_batch, axis=1)[0]
+        utility_alternative[b:b+mini_batch_size] = torch.max(utility_alternative_batch, axis=1)[0]
 
     """3. COMPARE UTILITY"""
     utility_loss = utility_alternative - utility_actual
