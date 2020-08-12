@@ -60,7 +60,7 @@ class IndependentValuationDevice(CorrelationDevice):
         return {
             agent.player_position: agent.draw_valuations_(
                 common_component=self.draw_common_component(), weights=self.get_weights()
-            )[:batch_size_1, ...]
+            )[:batch_size_1, ...].repeat(batch_size_0, 1)
             for agent in agents
         }
 
@@ -132,7 +132,7 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
 
         # (batch_size, batch_size): 1st dim for cond, 2nd for sample for each cond
         x0 = self.cond_marginal_icdf(cond)(u[:, 0])
-        x1 = self.cond2_icdf(cond.repeat(1, batch_size_1).view(batch_size_0, batch_size_1), x0)(u[:, 1])
+        x1 = self.cond2_icdf(cond.repeat_interleave(batch_size_1, 0).view(batch_size_0, batch_size_1), x0)(u[:, 1])
 
         # Need to clip for numeric problems at edges
         x0 = torch.clamp(x0, 0, 2)
@@ -151,15 +151,12 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         x0 = x0[:, perm]
         x1 = x1[:, perm]
 
-        # Sample agent's own type conditioned on signal
-        # TODO Nils: make sure that this sampling is supposed to be independent from the x0, x1 sampling!
-        # c = torch.max(cond.repeat(1, batch_size_1), torch.max(x0, x1))
-        own_type = self.type_cond_on_signal_icdf(
-            cond.repeat_interleave(batch_size_1, 0).view(batch_size_0, batch_size_1)
-        )(u[:, 2])
+        # Sample agent's own type conditioned on signals
+        z = torch.max(cond.repeat_interleave(batch_size_1, 0).view(batch_size_0, batch_size_1), torch.max(x0, x1))
+        agent_type = self.type_cond_on_signal_icdf(z)(u[:, 2])
 
         return {
-            player_position: own_type.view(batch_size_0 * batch_size_1, 1),
+            player_position: agent_type.view(batch_size_0 * batch_size_1, 1),
             opponent_positions[0]: x0.view(batch_size_0 * batch_size_1, 1),
             opponent_positions[1]: x1.view(batch_size_0 * batch_size_1, 1)
         }
@@ -167,11 +164,13 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
     @staticmethod
     def type_cond_on_signal_icdf(o):
         """iCDF of type distribution given observation o"""
-        c = - 4 / (torch.pow(o, 2) - 4)
+        eps = 1e-4
+        oo = torch.clamp(o, 0, 2 - eps)
+        c = (- 4 / (torch.pow(oo, 2) - 4)).clone()
         cond_batch = c.shape[0]
         def icdf(v):
-            vv = v.repeat_interleave(cond_batch, 0).view_as(c)
-            return o / torch.sqrt(-c * torch.pow(o, 2) + 4*c + vv * torch.pow(o, 2) - 4*vv)
+            vv = v.repeat(cond_batch, 1)
+            return oo / torch.sqrt(-c * torch.pow(oo, 2) + 4*c + vv * torch.pow(oo, 2) - 4*vv)
         return icdf
 
     @staticmethod
@@ -243,7 +242,7 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         c_3 = (z - 2*torch.log(z)) / (2*torch.log(z/2))
 
         def cdf(x):
-            xx = x.repeat(cond_batch, 1)
+            xx = x.repeat(1, cond_batch).view(cond_batch, -1)
             sample_batch = xx.shape[1]
 
             zz = z.repeat(1, sample_batch)
@@ -304,7 +303,7 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         factor_2 = (4 - torch.pow(z, 2)) / (16*torch.pow(z, 2))
 
         def icdf(x):
-            xx = x.repeat(cond_batch, 1)
+            xx = x.repeat(cond_batch, 1).view_as(z)
 
             result = torch.zeros_like(z)
             sect1 = xx < z * factor_1 * factor_2
@@ -418,19 +417,19 @@ class AffiliatedObservationsDevice(CorrelationDevice):
 
     #         mask_0 = o2 < 0
     #         result[mask_0] = 0
-            
+
     #         mask_1 = torch.logical_and(o2 >= 0, o2 < o1)
     #         result[mask_1] = (1/(2*o1)) * torch.pow(o2[mask_1], 2)
 
     #         mask_2 = torch.logical_and(o2 >= o1, o2 < 1)
     #         result[mask_2] = -0.5*o1 + o2[mask_2]
-            
+
     #         mask_3 = torch.logical_and(o2 >= 1, o2 < 1 + o1)
     #         result[mask_3] = -0.5 * o1 + 1 + ((1+o1-(o2[mask_3]+1)/2)/o1) * (o2[mask_3] - 1)
-            
+
     #         mask_4 = o2 >= 1 + o1
     #         result[mask_4] = 1
-            
+
     #         return result
 
     #     if o1 < 1.0:
@@ -443,12 +442,16 @@ class AffiliatedObservationsDevice(CorrelationDevice):
     def icdf_o2_cond_o1(o1):
         """Conditional iCDF of observation 2 given observation 1"""
         cond_batch = o1.view(-1, 1).shape[0]
+        o1_flat = o1.view(-1, 1)
 
         def icdf(x):
             sample_batch = x.view(-1, 1).shape[0]
-            xx = x.repeat(cond_batch, 1)
-            oo1 = o1.repeat(1, sample_batch)
-            result = torch.zeros((cond_batch, sample_batch), device=x.device)
+            xx = x.repeat(cond_batch, 1).view(cond_batch, -1)
+            oo1 = o1_flat.repeat(1, sample_batch)
+            result = torch.zeros_like(xx)
+
+            mask_0 = oo1 > 1.0
+            oo1[mask_0] = 2 - oo1[mask_0]
 
             mask_1 = xx < 0.5*oo1
             result[mask_1] = torch.sqrt(2*oo1[mask_1] * xx[mask_1])
@@ -462,6 +465,7 @@ class AffiliatedObservationsDevice(CorrelationDevice):
             mask_4 = oo1 > 1
             result[mask_4] += oo1[mask_4] - 1
 
+            result[mask_0] += (1 - oo1[mask_0])
             return result
 
         return icdf

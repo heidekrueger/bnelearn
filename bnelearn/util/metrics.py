@@ -329,8 +329,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
         else:
             action_profile_actual[:, a.player_position, :] = \
                 a.strategy.play(conditionals[a.player_position]) \
-                    .detach().requires_grad_(False).clone() \
-                    .repeat(agent_batch_size, 1)
+                    .detach().requires_grad_(False).clone()
 
     allocation_actual, payment_actual = mechanism.play(action_profile_actual)
     allocation_actual = allocation_actual[:, player_position, :].type(torch.bool) \
@@ -344,26 +343,22 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     # expectation over opponents
     utility_actual = torch.mean(utility_actual, axis=1)
 
-
-
     """2. CALCULATE EXPECTED UTILITY FOR EACH SAMPLE WITH ALTERNATIVE ACTIONS ON GRID"""
     action_alternative = agent.get_valuation_grid(grid_size, True)
     grid_size = action_alternative.shape[0] # grid is not always the requested size
 
-    # TODO: Debug! Sequential doesn't work yet
+    # TODO Nils: calc adpative batch size based on memory estimate
     utility_alternative = torch.zeros_like(utility_actual)
-    adapted_agent_batch_size = 64 # batch_size
+    adapted_agent_batch_size = batch_size # 1 <= x <= batch_size, batch_size % x == 0
 
-    # TODO Nils: adpativa batch size should be possible
     if agent_batch_size == 1:
         print("Sequential computation of utility loss:")
 
     for b in tqdm(range(0, batch_size, adapted_agent_batch_size)):
 
-        # TODO Nils: drawing conditionals again massivly increases variance
-        # conditionals = env.draw_conditionals(
-        #     player_position, observation[b:b+adapted_agent_batch_size, :], opponent_batch_size
-        # )
+        conditionals = env.draw_conditionals(
+            player_position, observation[b:b+adapted_agent_batch_size, :], opponent_batch_size
+        )
 
         if hasattr(agent, '_unkown_valuation'):
             agent_type = conditionals[agent.player_position]
@@ -391,7 +386,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
                 action_profile_alternative[:, a.player_position, :] = \
                     a.strategy.play(conditionals[a.player_position]) \
                         .detach().requires_grad_(False).clone() \
-                        .repeat(adapted_agent_batch_size * grid_size, 1) \
+                        .repeat(grid_size, 1) \
                         .view(adapted_agent_batch_size * grid_size * opponent_batch_size, n_items)
 
         allocation_alternative, payment_alternative = mechanism.play(action_profile_alternative)
@@ -401,7 +396,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
             .view(adapted_agent_batch_size * grid_size * opponent_batch_size)
         utility_alternative_batch = agent.get_counterfactual_utility(
             allocation_alternative, payment_alternative,
-            agent_type\
+            agent_type \
                 .view(adapted_agent_batch_size, opponent_batch_size, n_items) \
                 .repeat_interleave(grid_size, 0) \
                 .view(adapted_agent_batch_size * grid_size * opponent_batch_size, n_items)
