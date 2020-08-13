@@ -369,17 +369,20 @@ class AffiliatedObservationsDevice(CorrelationDevice):
         opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
         batch_size_0 = cond.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
-        u = torch.zeros((batch_size_1,), device=cond.device).uniform_(0, 1)
+        u = torch.zeros((batch_size_1, 1), device=cond.device).uniform_(0, 1)
 
         # (batch_size, batch_size): 1st dim for cond, 2nd for sample for each cond
-        opponent_observation = self.icdf_o2_cond_o1(cond)(u).view(batch_size_0 * batch_size_1, 1)
+        opponent_observation = self.icdf_o2_cond_o1(cond)(u[:, 0])
 
         # Sample agent's own type conditioned on signal
-        own_type = 0.5 * (cond.repeat_interleave(batch_size_1, 0) + opponent_observation)
+        agent_type = 0.5 * (
+            cond.repeat_interleave(batch_size_1, 0).view(batch_size_0, batch_size_1) \
+            + opponent_observation
+        )
 
         return {
-            player_position: own_type,
-            opponent_positions[0]: opponent_observation,
+            player_position: agent_type.view(batch_size_0 * batch_size_1, 1),
+            opponent_positions[0]: opponent_observation.view(batch_size_0 * batch_size_1, 1),
         }
 
     # @staticmethod
@@ -441,12 +444,12 @@ class AffiliatedObservationsDevice(CorrelationDevice):
     @staticmethod
     def icdf_o2_cond_o1(o1):
         """Conditional iCDF of observation 2 given observation 1"""
-        cond_batch = o1.view(-1, 1).shape[0]
         o1_flat = o1.view(-1, 1)
+        cond_batch = o1_flat.shape[0]
 
         def icdf(x):
             sample_batch = x.view(-1, 1).shape[0]
-            xx = x.repeat(cond_batch, 1).view(cond_batch, -1)
+            xx = x.repeat(1, cond_batch).view(cond_batch, -1)
             oo1 = o1_flat.repeat(1, sample_batch)
             result = torch.zeros_like(xx)
 
