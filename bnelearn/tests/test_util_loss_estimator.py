@@ -213,8 +213,8 @@ def test_ex_interim_util_loss_estimator_fpsb_bne():
 def test_ex_interim_util_loss_estimator_splitaward_bne():
     """Test the util_loss in BNE of fpsb split-award auction. - ex interim util_loss should be close to zero"""
     n_players = 2
-    grid_size = 2**5
-    batch_size = 2**10
+    grid_size = 2**10
+    batch_size = 2**11
     n_items = 2
 
     class SpltAwardConfig:
@@ -248,4 +248,4 @@ def test_ex_interim_util_loss_estimator_splitaward_bne():
     max_util_loss = util_loss.max()
 
     assert mean_util_loss < 0.001, "Util_loss in BNE should be (close to) zero!"
-    assert max_util_loss < 0.011, "Util_loss in BNE should be (close to) zero!"
+    assert max_util_loss < 0.04, "Util_loss in BNE should be (close to) zero!"

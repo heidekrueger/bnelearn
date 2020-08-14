@@ -421,6 +421,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
         utility_alternative[b:b+mini_batch_size] = torch.max(utility_alternative_batch, axis=1)[0]
 
     """3. COMPARE UTILITY"""
-    utility_loss = utility_alternative - utility_actual
+    # we don't accept a negative loss when the gird is not precise enough: set to 0
+    utility_loss = (utility_alternative - utility_actual).relu()
 
     return utility_loss
