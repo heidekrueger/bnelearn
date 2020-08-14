@@ -273,17 +273,34 @@ def ex_interim_util_loss_old(env: Environment, bid_profile: torch.Tensor,
 def ex_interim_util_loss(env: Environment, player_position: int,
                          batch_size: int, grid_size: int):
     """
-    Calculate
-        \max_{v_i \in V_i} \max_{b_i^* \in A_i}
-            E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i})) - u(v_i, b_i, b_{-i}(v_{-i}))]
+    Estimates a bidder's utility loss in the current state of the environment, i.e. the
+    potential benefit of deviating from the current strategy, evaluated at each point of
+    the agent_valuations. therfore, we calculate
+        $$\max_{v_i \in V_i} \max_{b_i^* \in A_i}
+            E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i})) - u(v_i, b_i, b_{-i}(v_{-i}))]$$
 
-    We're conditoning on the agent's signal at `player_position`. That means, types and
-    signals of other palyers as well as its own type have to be conditioned. As it's
-    conditioned on the signal, the agent's action stays the same.
+    We're conditoning on the agent's observation at `player_position`. That means, types and
+    observations of other palyers as well as its own type have to be conditioned. As it's
+    conditioned on the observation, the agent's action stays the same.
 
-    TODO:
-        - Current status: actual_util works / alternative not: how comes???
-        - Set batch_size (first dim) to one! best response should then be close to BNE!
+    Input
+    -----
+        env: bnelearn.Environment.
+        player_position: int, position of the player in the environment.
+        batch_size: int, specifing the sample size for agent itself and other agents.
+        grid_size: int, stating the number of alternative actions sampled via
+            env.agents[player_position].get_valuation_grid(grid_size, True).
+    Output
+    ------
+        utility_loss: torch.Tensor of shape (batch_size) describing the expected
+            possible utiliy increase.
+
+    Remark
+    ------
+        - Relies on the following subprocedures: `agent.get_action()`,
+          `agent.get_counterfactual_utility()`, `env.draw_conditionals()`, and
+          `agent.get_valuation_grid()`. Therefore, these methods need to be provided for the
+          specific setting.
     """
 
     """0. SET UP"""
@@ -295,7 +312,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     n_items = observation.shape[-1]
 
     agent_batch_size = observation.shape[0]
-    opponent_batch_size = batch_size - 1 # TODO Nils: debugging s.t. raises error when dims dont match
+    opponent_batch_size = batch_size
 
     # dict with valuations of (batch_size * batch_size, n_items) for each opponent
     try:
@@ -350,7 +367,8 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     # calc adpative batch size `mini_batch_size` based on memory estimate
     free_size = torch.cuda.memory_snapshot()[0]['total_size'] \
         - torch.cuda.memory_stats(mechanism.device)['active.all.allocated']
-    element_size = torch.zeros(1, dtype=action_actual.dtype, device=mechanism.device).element_size()
+    element_size = torch.zeros(1, dtype=action_actual.dtype, device=mechanism.device) \
+        .element_size()
     tensor_size = grid_size * opponent_batch_size * env.n_players * n_items
     mini_batch_size = batch_size
     while free_size < mini_batch_size * element_size * tensor_size and mini_batch_size > 1:
@@ -378,7 +396,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
                 .repeat_interleave(opponent_batch_size, 0)
 
         # alternative bid profile and alternative utility
-        #   1st dim: different agent valuations (-> actions should be different for given valuations)
+        #   1st dim: different agent valuations (-> actions should be different for given vals)
         #   2nd dim: different agent actions
         #   3rd dim: differnet opponent valuations (-> different actions)
         action_profile_alternative = torch.zeros(
