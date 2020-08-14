@@ -347,8 +347,9 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     action_alternative = agent.get_valuation_grid(grid_size, True)
     grid_size = action_alternative.shape[0] # grid is not always the requested size
 
-    # TODO Nils: calc adpative batch size based on memory estimate
-    free_size = torch.cuda.memory_snapshot()[0]['total_size'] - torch.cuda.memory_stats(mechanism.device)['active.all.allocated']
+    # calc adpative batch size `mini_batch_size` based on memory estimate
+    free_size = torch.cuda.memory_snapshot()[0]['total_size'] \
+        - torch.cuda.memory_stats(mechanism.device)['active.all.allocated']
     element_size = torch.zeros(1, dtype=action_actual.dtype, device=mechanism.device).element_size()
     tensor_size = grid_size * opponent_batch_size * env.n_players * n_items
     mini_batch_size = batch_size
@@ -356,7 +357,7 @@ def ex_interim_util_loss(env: Environment, player_position: int,
         mini_batch_size = int(mini_batch_size / 2)
 
     if mini_batch_size < batch_size:
-        warnings.warn("Sequential computation of utility loss: mini batches of size {}"
+        warnings.warn("Sequential computation of utility loss: mini batches of size {}."
                       .format(mini_batch_size))
         custom_range = tqdm(range(0, batch_size, mini_batch_size))
     else:

@@ -272,7 +272,7 @@ class Bidder(Player):
             elif self.correlation_type == 'affiliated':
                 self.valuations = (
                     common_component.to(self.device)[:, self.player_position]
-                    + common_component.to(self.device)[:, -1]
+                    + common_component.to(self.device)[:, 2]
                 ).view(self.batch_size, -1)
                 self._unkown_valuation = 0.5 * \
                     (common_component.to(self.device) * torch.tensor([1, 1, 2]).to(self.device)) \

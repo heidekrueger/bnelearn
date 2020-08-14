@@ -721,7 +721,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         ]
         for a in agents:
             a._grid_lb = 0
-            a._grid_ub = 2
+            a._grid_ub = 1.5
 
         self.bne_env = AuctionEnvironment(
             mechanism = self.mechanism,
@@ -743,8 +743,8 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         for i, a in enumerate(self.bne_env.agents):
             self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
 
-        print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities))
-        self.bne_utility = torch.tensor(self.bne_utilities).mean()
+        print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities.tolist()))
+        self.bne_utility = self.bne_utilities.mean()
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         correlation_type = 'affiliated'

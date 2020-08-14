@@ -188,7 +188,7 @@ class Experiment(ABC):
                              self.models]
 
         if self.learning.pretrain_iters > 0:
-            print('\tpretraining...')
+            print('Pretraining...')
 
             if hasattr(self, 'pretrain_transform'):
                 pretrain_transform = self.pretrain_transform  # pylint: disable=no-member
@@ -212,7 +212,7 @@ class Experiment(ABC):
         raise NotImplementedError("This Experiment has no implemented BNE. No eval env was created.")
 
     def _setup_learning_environment(self):
-        print(f'Learning env correlation {self.correlation_groups} \n {self.correlation_devices}.')
+        print(f'Learning env correlation {self.correlation_groups}.')
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
                                       batch_size=self.learning.batch_size,
@@ -242,7 +242,7 @@ class Experiment(ABC):
                 dim=1
             )
             if self.v_opt.shape[0] != self.plot_points:
-                print('´plot_points´ changed due to ´get_valuation_gird´')
+                print('´plot_points´ changed due to ´get_valuation_gird´.')
                 self.plot_points = self.v_opt.shape[0]
 
         is_ipython = 'inline' in plt.get_backend()
@@ -259,7 +259,7 @@ class Experiment(ABC):
             if self.logging.save_models:
                 os.mkdir(os.path.join(output_dir, 'models'))
 
-            print('Started run. Logging to {}'.format(output_dir))
+            print('Started run. Logging to {}.'.format(output_dir))
             self.fig = plt.figure()
             self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
@@ -303,9 +303,9 @@ class Experiment(ABC):
         if self.logging.enable_logging:
             self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
-            print('epoch {}:\t elapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead))
+            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead))
         else:
-            print('epoch {}:\t elapsed {:.2f}s'.format(epoch, timer() - tic))
+            print('epoch {}:\telapsed {:.2f}s'.format(epoch, timer() - tic))
         return utilities
 
     def run(self):
@@ -377,7 +377,7 @@ class Experiment(ABC):
                 self.logging.save_tb_events_to_csv_detailed or
                 self.logging.save_tb_events_to_csv_aggregate or
                 self.logging.save_tb_events_to_binary_detailed):
-            print('Tabulating tensorboard logs...')
+            print('Tabulating tensorboard logs...', end=' ')
             logging_utils.tabulate_tensorboard_logs(
                 experiment_dir=self.experiment_log_dir,
                 write_detailed=self.logging.save_tb_events_to_csv_detailed,
@@ -385,7 +385,7 @@ class Experiment(ABC):
                 write_binary=self.logging.save_tb_events_to_binary_detailed)
 
             # logging_utils.print_aggregate_tensorboard_logs(self.experiment_log_dir)
-            print('Finished.')
+            print('finished.')
 
     def _check_convergence(self, values: torch.Tensor, stopping_criterion: float = None, epoch: int = None):
         """
