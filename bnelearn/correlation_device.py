@@ -79,8 +79,40 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
                           cond: torch.Tensor, batch_size: int=None):
         """Draw conditional types of all agents given one agent's observation `cond`"""
-        raise NotImplementedError
+        opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
+        batch_size_0 = cond.shape[0]
+        batch_size_1 = batch_size if batch_size is not None else batch_size_0
 
+        if player_position == 2: # agent is global bidder
+            # no information about local bidders' valuations: independent draws
+            valuation_opp1 = agents[opponent_positions[0]].draw_valuations_(
+                common_component=self.draw_common_component(), weights=self.get_weights()
+            )[:batch_size_1, :].repeat(batch_size_0, 1)
+            valuation_opp2 = agents[opponent_positions[1]].draw_valuations_(
+                common_component=self.draw_common_component(), weights=self.get_weights()
+            )[:batch_size_1, :].repeat(batch_size_0, 1)
+
+        else: # agent is local bidder
+            valuation_opp1 = torch.zeros((batch_size_1, 1), device=cond.device)
+            self.local_cond_sample(cond)(valuation_opp1)
+
+            # TODO Nils: WIP
+            valuation_opp2 = None
+
+
+        return {
+            opponent_positions[0]: valuation_opp1.view(batch_size_0 * batch_size_1, 1),
+            opponent_positions[1]: valuation_opp2.view(batch_size_0 * batch_size_1, 1)
+        }
+
+    def local_cond_sample(self, cond):
+        """Draw samples of the opposing local bidder condtional one the local bidders' valuation."""
+        def icdf(tensor: torch.Tensor):
+            tensor.uniform_(0, 1)
+            switch = torch.zeros_like(tensor).uniform_(0, 1) > self.corr
+            result = 1 * switch * tensor + 1 * torch.logical_not(switch) * cond * torch.ones_like(tensor)
+            return tensor
+        return icdf
 
 class ConstantWeightsCorrelationDevice(CorrelationDevice):
     """Draw valuations according to the constant weights model in Ausubel & Baranov"""
