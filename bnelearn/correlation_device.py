@@ -73,51 +73,54 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
     def get_weights(self):
         """choose individual component with prob (1-gamma), common component with prob gamma"""
         return torch.bernoulli(
-            torch.tensor(self.corr).repeat(self.batch_size, 1) # different weight for each batch 
+            torch.tensor(self.corr).repeat(self.batch_size, 1) # different weight for each batch
         ).repeat(1, self.n_items)                              # same weight for each item in batch
 
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
                           cond: torch.Tensor, batch_size: int=None):
         """Draw conditional types of all agents given one agent's observation `cond`"""
+        # TODO Nils @Stefan: check math here
         opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
         batch_size_0 = cond.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
+        conditionals_dict = dict()
 
         if player_position == 2: # agent is global bidder
-            # no information about local bidders' valuations: independent draws
-            valuation_opp1 = agents[opponent_positions[0]].draw_valuations_(
-                common_component=self.draw_common_component(), weights=self.get_weights()
-            )[:batch_size_1, :].repeat(batch_size_0, 1)
-            valuation_opp2 = agents[opponent_positions[1]].draw_valuations_(
-                common_component=self.draw_common_component(), weights=self.get_weights()
-            )[:batch_size_1, :].repeat(batch_size_0, 1)
+            # no information about local bidders' valuations: can be drawn independently from global bidder
+            for opponent_position in opponent_positions:
+                conditionals_dict[opponent_position] = agents[opponent_position].draw_valuations_(
+                    common_component=self.draw_common_component(), weights=self.get_weights()
+                )[:batch_size_1, :].repeat(batch_size_0, 1).view(batch_size_0 * batch_size_1, 1)
 
         else: # agent is local bidder
-            valuation_opp1 = torch.zeros((batch_size_1, 1), device=cond.device)
-            self.local_cond_sample(cond)(valuation_opp1)
+            # opposing local bidder has to be conditioned
+            local_opponent = min(opponent_positions)
+            conditionals_dict[local_opponent] = torch.zeros((batch_size_1, 1), device=cond.device)
+            self.local_cond_sample(cond)(conditionals_dict[local_opponent])
 
-            # TODO Nils: WIP
-            valuation_opp2 = None
+            # opposing global bidder can be drawn independently
+            global_oppopnent = 2
+            conditionals_dict[global_oppopnent] = agents[global_oppopnent].draw_valuations_(
+                common_component=self.draw_common_component(), weights=self.get_weights()
+            )[:batch_size_1, :].repeat(batch_size_0, 1).view(batch_size_0 * batch_size_1, 1)
 
-
-        return {
-            opponent_positions[0]: valuation_opp1.view(batch_size_0 * batch_size_1, 1),
-            opponent_positions[1]: valuation_opp2.view(batch_size_0 * batch_size_1, 1)
-        }
+        return conditionals_dict
 
     def local_cond_sample(self, cond):
         """Draw samples of the opposing local bidder condtional one the local bidders' valuation."""
         def icdf(tensor: torch.Tensor):
             tensor.uniform_(0, 1)
             switch = torch.zeros_like(tensor).uniform_(0, 1) > self.corr
-            result = 1 * switch * tensor + 1 * torch.logical_not(switch) * cond * torch.ones_like(tensor)
+            tensor = 1 * switch * tensor + 1 * torch.logical_not(switch) * cond * torch.ones_like(tensor)
             return tensor
         return icdf
 
+
 class ConstantWeightsCorrelationDevice(CorrelationDevice):
     """Draw valuations according to the constant weights model in Ausubel & Baranov"""
-    def __init__(self, common_component_dist: Distribution, 
+    def __init__(self, common_component_dist: Distribution,
                  batch_size: int, n_items: int, correlation: float):
+        self.correlation = correlation
         self.weight = 0.5 if correlation == 0.5 \
             else (correlation - math.sqrt(correlation*(1-correlation))) / (2*correlation - 1)
         super().__init__(common_component_dist, batch_size, n_items, "constant_weights_model", correlation)
@@ -128,7 +131,270 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
                           cond: torch.Tensor, batch_size: int=None):
         """Draw conditional types of all agents given one agent's observation `cond`"""
-        raise NotImplementedError
+        # TODO Nils @Stefan: check math here
+        opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
+        batch_size_0 = cond.shape[0]
+        batch_size_1 = batch_size if batch_size is not None else batch_size_0
+        conditionals_dict = dict()
+
+        if player_position == 2: # agent is global bidder
+            # no information about local bidders' valuations: can be drawn independently from global bidder
+            for opponent_position in opponent_positions:
+                conditionals_dict[opponent_position] = agents[opponent_position].draw_valuations_(
+                    common_component=self.draw_common_component(), weights=self.get_weights()
+                )[:batch_size_1, :].repeat(batch_size_0, 1).view(batch_size_0 * batch_size_1, 1)
+
+        else: # agent is local bidder
+            # opposing local bidder has to be conditioned
+            local_opponent = min(opponent_positions)
+            conditionals_dict[local_opponent] = torch.zeros((batch_size_1, 1), device=cond.device)
+            self.icdf_v2_cond_v1(cond)(conditionals_dict[local_opponent])
+
+            # opposing global bidder can be drawn independently
+            global_oppopnent = 2
+            conditionals_dict[global_oppopnent] = agents[global_oppopnent].draw_valuations_(
+                common_component=self.draw_common_component(), weights=self.get_weights()
+            )[:batch_size_1, :].repeat(batch_size_0, 1).view(batch_size_0 * batch_size_1, 1)
+
+        return conditionals_dict
+
+    #@staticmethod
+    # def pdf_v2_cond_v1(self, gamma, v1):
+    #     """Conditional PDF of observation 2 given observation 1"""
+    #     switch = gamma < 0.5
+    #     [mini, maxi] = sorted((gamma, 1 - gamma))
+
+    #     if v1 < mini:
+    #         def pdf(v2):
+    #             result = torch.zeros_like(v2)
+
+    #             increase_mask = v2 < v1
+    #             result[increase_mask] = v2[increase_mask]
+
+    #             constant_mask = torch.logical_and(v2 >= v1, v2 < 1-gamma)
+    #             result[constant_mask] = v1
+
+    #             decrease_mask = torch.logical_and(v2 >= 1-gamma, v2 < (1-gamma) + v1)
+    #             result[decrease_mask] = 1 - gamma + v1 - v2[decrease_mask]
+
+    #             h = v1
+    #             l = 1-gamma - v1 + h
+    #             result /= h*l
+
+    #             return result
+
+    #     elif v1 > maxi:
+    #         def pdf(v2):
+    #             result = torch.zeros_like(v2)
+
+    #             increase_mask = torch.logical_and(v2 > (gamma-1) + v1, v2 < gamma)
+    #             result[increase_mask] = v2[increase_mask] - (gamma-1) - v1
+
+    #             constant_mask = torch.logical_and(v2 >= gamma, v2 < v1)
+    #             result[constant_mask] = 1 - v1
+
+    #             decrease_mask = v2 >= v1
+    #             result[decrease_mask] = 1 - v2[decrease_mask]
+
+    #             h = 1 - v1
+    #             l = v1 - gamma + h
+    #             result /= h*l
+
+    #             return result
+
+    #     else:
+    #         def pdf(v2):
+    #             result = torch.zeros_like(v2)
+
+    #             if switch:
+    #                 increase_mask = v2 < mini
+    #                 result[increase_mask] = v2[increase_mask]
+
+    #                 constant_mask = torch.logical_and(v2 >= mini, v2 < maxi)
+    #                 result[constant_mask] = 1 - maxi
+
+    #                 decrease_mask = v2 >= maxi
+    #                 result[decrease_mask] = 1 - v2[decrease_mask]
+
+    #                 h = 1 - maxi
+    #                 l = maxi - mini + h
+    #                 result /= h*l
+
+    #             else:
+    #                 increase_mask = torch.logical_and(v2 >= (gamma-1) + v1, v2 < v1)
+    #                 result[increase_mask] = v2[increase_mask] - v1 + (1-gamma)
+
+    #                 decrease_mask = torch.logical_and(v2 >= v1, v2 < (1-gamma) + v1)
+    #                 result[decrease_mask] = v1 + (1-gamma) - v2[decrease_mask]
+
+    #                 result /= (1-gamma)**2
+
+    #             return result
+
+    #     return pdf
+
+    #@staticmethod
+    # def cdf_v2_cond_v1(self, gamma, v1):
+    #     """Conditional CDF of observation 2 given observation 1"""
+    #     switch = gamma < 0.5
+    #     [mini, maxi] = sorted((gamma, 1 - gamma))
+
+    #     if v1 < mini:
+    #         def cdf(v2):
+    #             result = torch.zeros_like(v2)
+
+    #             increase_mask = v2 < v1
+    #             result[increase_mask] = 0.5 * v2[increase_mask]**2
+
+    #             constant_mask = torch.logical_and(v2 >= v1, v2 < 1-gamma)
+    #             result[constant_mask] = v1*v2[constant_mask] - 0.5 * v1**2
+
+    #             decrease_mask = torch.logical_and(v2 >= 1-gamma, v2 < (1-gamma) + v1)
+    #             result[decrease_mask] =  (1-gamma + v1)*v2[decrease_mask] \
+    #                 - .5*v2[decrease_mask]**2 + v1*(1-gamma) - .5*v1**2 \
+    #                 + .5*(1-gamma)**2 - (1-gamma+v1)*(1-gamma)
+
+    #             h = v1
+    #             l = 1-gamma - v1 + h
+    #             result /= h*l
+
+    #             final_mask = v2 >= (1-gamma) + v1
+    #             result[final_mask] = 1
+    #             return result
+
+    #     elif v1 > maxi:
+    #         def cdf(v2):
+    #             result = torch.zeros_like(v2)
+
+    #             increase_mask = torch.logical_and(v2 > (gamma-1) + v1, v2 < gamma)
+    #             result[increase_mask] = 0.5 * (v2[increase_mask] - gamma+1 - v1)**2
+
+    #             constant_mask = torch.logical_and(v2 >= gamma, v2 < v1)
+    #             result[constant_mask] = (1 - v1)*(v2[constant_mask] - gamma) + .5*(1-v1)**2
+
+    #             decrease_mask = v2 >= v1
+    #             result[decrease_mask] = (v2[decrease_mask]) - .5*(v2[decrease_mask])**2 \
+    #                 + (1 - v1)*(v1 - gamma) + .5*(1-v1)**2 - v1 + .5*v1**2
+
+    #             h = 1 - v1
+    #             l = v1 - gamma + h
+    #             result /= h*l
+    #             return result
+
+    #     else:
+    #         def cdf(v2):
+    #             result = torch.zeros_like(v2)
+
+    #             if switch:
+    #                 increase_mask = v2 < mini
+    #                 result[increase_mask] = .5*v2[increase_mask]**2
+
+    #                 constant_mask = torch.logical_and(v2 >= mini, v2 < maxi)
+    #                 result[constant_mask] = (1 - maxi)*v2[constant_mask] - (1 - maxi)*mini \
+    #                     + .5*mini**2
+
+    #                 decrease_mask = v2 >= maxi
+    #                 result[decrease_mask] = v2[decrease_mask] - .5*v2[decrease_mask]**2 \
+    #                     - maxi + .5*maxi**2 + (1 - maxi)*maxi - (1 - maxi)*mini + .5*mini**2
+
+    #                 h = 1 - maxi
+    #                 l = maxi - mini + h
+    #                 result /= h*l
+    #             else:
+    #                 increase_mask = torch.logical_and(v2 >= (gamma-1) + v1, v2 < v1)
+    #                 result[increase_mask] = 0.5*(v2[increase_mask])**2 \
+    #                     + (-v1 + (1-gamma))*(v2[increase_mask]) \
+    #                     - 0.5*((gamma-1) + v1)**2 - (-v1 + (1-gamma))*((gamma-1) + v1)
+
+    #                 decrease_mask = torch.logical_and(v2 >= v1, v2 < (1-gamma) + v1)
+    #                 result[decrease_mask] = (v1 + (1-gamma))*v2[decrease_mask] \
+    #                     - .5*v2[decrease_mask]**2 - (v1 + (1-gamma))*v1 + v1**2 \
+    #                     + (-v1 + (1-gamma))*(1-gamma) - .5*(v1 - (1-gamma))**2
+
+    #                 result /= (1-gamma)**2
+
+    #                 final_mask = v2 >= (1-gamma) + v1
+    #                 result[final_mask] = 1
+    #             return result
+
+    #     return cdf
+
+    def icdf_v2_cond_v1(self, v1):
+        """Conditional inverse CDF of observation 2 given observation 1"""
+        gamma = self.gamma
+        switch = gamma < 0.5
+        [mini, maxi] = sorted((gamma, 1 - gamma))
+
+        if v1 < mini:
+            def icdf(x):
+                result = torch.zeros_like(x)
+                h = v1
+                l = 1-gamma - v1 + h
+                c = h*l
+
+                increase_mask = x < 0.5 * v1**2 / c
+                result[increase_mask] = torch.sqrt(2*c * x[increase_mask])
+
+                constant_mask = torch.logical_and(x >= .5*v1**2 / c,
+                                                  x < (v1*(1-gamma) - .5*v1**2)/c)
+                result[constant_mask] = (c*x[constant_mask] + .5*v1**2) / v1
+
+                decrease_mask = v2 >= (v1*(1-gamma) - .5*v1**2)/c
+                c_1 = 1-gamma + v1
+                c_2 = -.5
+                c_3 = v1*(1-gamma) - .5*v1**2 + .5*(1-gamma)**2 - (1-gamma+v1)*(1-gamma)
+                result[decrease_mask] = (torch.sqrt(4*c*c_2*x[decrease_mask] \
+                    + c_1**2 - 4*c_2*c_3) - c_1)/(2*c_2)
+                return result
+
+        elif v1 > maxi:
+            def icdf(x):
+                result = torch.zeros_like(x)
+                h = 1 - v1
+                l = v1 - gamma + h
+                c = h*l
+
+                increase_mask = x < (0.5/c) * (1 - v1)**2
+                result[increase_mask] = torch.sqrt(x[increase_mask]/(.5/c)) - (-gamma+1 - v1)
+
+                constant_mask = torch.logical_and(x >= (0.5/c) * (1 - v1)**2,
+                                                  x < (1 - v1)*(v1 - gamma + .5*(1 - v1))/c)
+                result[constant_mask] = (c/(1 - v1))*x[constant_mask] - .5*(1 - v1) + gamma
+
+                decrease_mask = x >= (1 - v1)*(v1 - gamma + .5*(1 - v1))/c
+                result[decrease_mask] = -torch.sqrt(2 *(-c*x[decrease_mask] + (gamma-1)*(v1 - 1))) + 1
+                return result
+
+        else:
+            def icdf(x):
+                result = torch.zeros_like(x)
+                if switch:
+                    h = 1 - maxi
+                    l = maxi - mini + h
+                    c = h*l
+
+                    increase_mask = x < (.5/c)*mini**2
+                    result[increase_mask] = torch.sqrt(2*c * x[increase_mask])
+
+                    constant_mask = torch.logical_and(x >= (.5/c)*mini**2,
+                                                      v2 < ((1-maxi)*(maxi-mini) + .5*mini**2)/c)
+                    result[constant_mask] = (-2*c*x[constant_mask] + mini**2 \
+                        + 2*(maxi-1)*mini)/(2*(maxi - 1))
+
+                    decrease_mask = x >= ((1-maxi)*(maxi-mini) + .5*mini**2)/c
+                    result[decrease_mask] = 1 - torch.sqrt(-2*c*x[decrease_mask] \
+                                + mini**2 + 2*(maxi-1)*mini - maxi**2 + 1) 
+                else:
+                    c = (1-gamma)**2
+                    increase_mask = x < .5
+                    result[increase_mask] = torch.sqrt(2*c*x[increase_mask]) + gamma + v1 - 1
+
+                    decrease_mask = x >= .5
+                    result[decrease_mask] = -torch.sqrt(2*(-c*x[decrease_mask] + gamma**2 \
+                        - 2*gamma + 1)) + v1 + 1 - gamma
+                return result
+
+        return icdf
 
 
 class MineralRightsCorrelationDevice(CorrelationDevice):
