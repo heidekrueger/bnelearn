@@ -321,7 +321,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
 
     def icdf_v2_cond_v1(self, v1):
         """Conditional inverse CDF of observation 2 given observation 1"""
-        gamma = self.gamma
+        gamma = self.correlation
         switch = gamma < 0.5
         [mini, maxi] = sorted((gamma, 1 - gamma))
 
@@ -339,7 +339,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
                                                   x < (v1*(1-gamma) - .5*v1**2)/c)
                 result[constant_mask] = (c*x[constant_mask] + .5*v1**2) / v1
 
-                decrease_mask = v2 >= (v1*(1-gamma) - .5*v1**2)/c
+                decrease_mask = x >= (v1*(1-gamma) - .5*v1**2)/c
                 c_1 = 1-gamma + v1
                 c_2 = -.5
                 c_3 = v1*(1-gamma) - .5*v1**2 + .5*(1-gamma)**2 - (1-gamma+v1)*(1-gamma)
@@ -377,7 +377,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
                     result[increase_mask] = torch.sqrt(2*c * x[increase_mask])
 
                     constant_mask = torch.logical_and(x >= (.5/c)*mini**2,
-                                                      v2 < ((1-maxi)*(maxi-mini) + .5*mini**2)/c)
+                                                      x < ((1-maxi)*(maxi-mini) + .5*mini**2)/c)
                     result[constant_mask] = (-2*c*x[constant_mask] + mini**2 \
                         + 2*(maxi-1)*mini)/(2*(maxi - 1))
 

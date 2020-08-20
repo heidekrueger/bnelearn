@@ -23,7 +23,11 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
-from bnelearn.correlation_device import BernoulliWeightsCorrelationDevice, IndependentValuationDevice
+from bnelearn.correlation_device import (
+    IndependentValuationDevice,
+    BernoulliWeightsCorrelationDevice,
+    ConstantWeightsCorrelationDevice
+)
 
 
 class LocalGlobalExperiment(Experiment, ABC):
@@ -104,17 +108,30 @@ class LLGExperiment(LocalGlobalExperiment):
         self.gamma = config.setting.gamma
 
         if self.gamma > 0.0:
-            assert config.setting.correlation_types == 'Bernoulli_weights', 'other correlation not implemented.'
-            self.correlation_groups = [[0, 1], [2]]
-            self.correlation_coefficients = [self.gamma, 0.0]
-            self.correlation_devices = [
-                BernoulliWeightsCorrelationDevice(
-                    common_component_dist = torch.distributions.Uniform(config.setting.u_lo[0],
-                                                                        config.setting.u_hi[0]),
-                    batch_size=config.learning.batch_size,
-                    n_items=1,
-                    correlation = self.gamma),
-                IndependentValuationDevice()]
+            if config.setting.correlation_types == 'Bernoulli_weights':
+                self.correlation_groups = [[0, 1], [2]]
+                self.correlation_coefficients = [self.gamma, 0.0]
+                self.correlation_devices = [
+                    BernoulliWeightsCorrelationDevice(
+                        common_component_dist = torch.distributions.Uniform(config.setting.u_lo[0],
+                                                                            config.setting.u_hi[0]),
+                        batch_size=config.learning.batch_size,
+                        n_items=1,
+                        correlation = self.gamma),
+                    IndependentValuationDevice()]
+            elif config.setting.correlation_types == 'constant_weights':
+                self.correlation_groups = [[0, 1], [2]]
+                self.correlation_coefficients = [self.gamma, 0.0]
+                self.correlation_devices = [
+                    ConstantWeightsCorrelationDevice(
+                        common_component_dist = torch.distributions.Uniform(config.setting.u_lo[0],
+                                                                            config.setting.u_hi[0]),
+                        batch_size=config.learning.batch_size,
+                        n_items=1,
+                        correlation = self.gamma),
+                    IndependentValuationDevice()]
+            else:
+                raise NotImplementedError('other correlation not implemented.')
 
         self.input_length = 1
         #self.config.setting.n_players = 3
