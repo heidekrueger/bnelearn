@@ -200,7 +200,7 @@ class LLGExperiment(LocalGlobalExperiment):
             ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
             for i in range(self.n_players)]
 
-        if self.config.setting.correlation_types == 'Bernoulli_weights':
+        if not self.config.setting.correlation_types == 'constant_weights':
             bne_env_corr_devices = None
             if self.correlation_groups:
                 bne_env_corr_devices = [
