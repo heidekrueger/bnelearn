@@ -99,10 +99,16 @@ class ConfigurationManager:
         self.setting.correlation_groups = [[0, 1], [2]]
         self.setting.correlation_types = 'independent'
 
-    def with_correlation(self, gamma, correlation_type = 'Bernoulli_weights'):
-
+    def with_correlation(self, gamma, correlation_type='Bernoulli_weights'):
         self.setting.gamma = gamma
         self.setting.correlation_types = correlation_type if gamma > 0.0 else 'independent'
+
+        if correlation_type == 'constant_weights' and gamma > 0:
+            if 'opt' in self.logging.log_metrics.keys():
+                del self.logging.log_metrics['opt']
+            if 'l2' in self.logging.log_metrics.keys():
+                del self.logging.log_metrics['l2']
+            print('BNE in constant weights correlation model not approximated.')
 
         return self
 

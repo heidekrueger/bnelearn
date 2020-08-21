@@ -157,28 +157,31 @@ class LLGExperiment(LocalGlobalExperiment):
         ##### Local bidders:
 
         ## perfect correlation
-        if self.gamma == 1.0: #limit case, others not well defined
-            sigma = 1.0 # TODO: implement for other valuation profiles!
-            bid = valuation
+        if not self.config.setting.correlation_types == 'constant_weights':
+            if self.gamma == 1.0: #limit case, others not well defined
+                sigma = 1.0 # TODO: implement for other valuation profiles!
+                bid = valuation
+                if self.payment_rule == 'nearest_vcg':
+                    bid.mul_(sigma / (1 + sigma - 2**(-sigma)))
+                elif self.payment_rule == 'nearest_bid':
+                    bid.mul_(sigma / (1 + sigma))
+                # truthful for vcg and proxy/nearest-zero
+                return bid
+            ## no or imperfect correlation
+            if self.payment_rule == 'vcg':
+                return valuation
+            if self.payment_rule in ['proxy', 'nearest_zero']:
+                bid_if_positive = 1 + torch.log(valuation * (1.0 - self.gamma) + self.gamma) / (1.0 - self.gamma)
+                return torch.max(torch.zeros_like(valuation), bid_if_positive)
+            if self.payment_rule == 'nearest_bid':
+                return (np.log(2) - torch.log(2.0 - (1. - self.gamma) * valuation)) / (1. - self.gamma)
             if self.payment_rule == 'nearest_vcg':
-                bid.mul_(sigma / (1 + sigma - 2**(-sigma)))
-            elif self.payment_rule == 'nearest_bid':
-                bid.mul_(sigma / (1 + sigma))
-            # truthful for vcg and proxy/nearest-zero
-            return bid
-        ## no or imperfect correlation
-        if self.payment_rule == 'vcg':
-            return valuation
-        if self.payment_rule in ['proxy', 'nearest_zero']:
-            bid_if_positive = 1 + torch.log(valuation * (1.0 - self.gamma) + self.gamma) / (1.0 - self.gamma)
-            return torch.max(torch.zeros_like(valuation), bid_if_positive)
-        if self.payment_rule == 'nearest_bid':
-            return (np.log(2) - torch.log(2.0 - (1. - self.gamma) * valuation)) / (1. - self.gamma)
-        if self.payment_rule == 'nearest_vcg':
-            bid_if_positive = 2. / (2. + self.gamma) * (
+                bid_if_positive = 2. / (2. + self.gamma) * (
                     valuation - (3. - np.sqrt(9 - (1. - self.gamma) ** 2)) / (1. - self.gamma))
-            return torch.max(torch.zeros_like(valuation), bid_if_positive)
-        raise ValueError('optimal bid not implemented for other rules')
+                return torch.max(torch.zeros_like(valuation), bid_if_positive)
+            raise ValueError('optimal bid not implemented for other rules')
+        else:
+            raise ValueError('optimal bid not implemented for other rules')
 
     def _check_and_set_known_bne(self):
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
@@ -197,17 +200,21 @@ class LLGExperiment(LocalGlobalExperiment):
             ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
             for i in range(self.n_players)]
 
-        # TODO Stefan: this is ugly.
-        bne_env_corr_devices = None
-        if self.correlation_groups:
-            bne_env_corr_devices = [
-                BernoulliWeightsCorrelationDevice(
-                    common_component_dist=torch.distributions.Uniform(self.config.setting.u_lo[0],
-                                                                      self.config.setting.u_hi[0]),
-                    batch_size=self.config.logging.eval_batch_size,
-                    n_items=1,
-                    correlation=self.gamma),
-                IndependentValuationDevice()]
+        if self.config.setting.correlation_types == 'Bernoulli_weights':
+            bne_env_corr_devices = None
+            if self.correlation_groups:
+                bne_env_corr_devices = [
+                    BernoulliWeightsCorrelationDevice(
+                        common_component_dist=torch.distributions.Uniform(self.config.setting.u_lo[0],
+                                                                          self.config.setting.u_hi[0]),
+                        batch_size=self.config.logging.eval_batch_size,
+                        n_items=1,
+                        correlation=self.gamma),
+                    IndependentValuationDevice()]
+
+        else:
+            self.known_bne = False
+            return
 
         bne_env = AuctionEnvironment(
             mechanism=self.mechanism,

@@ -147,8 +147,9 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
         else: # agent is local bidder
             # opposing local bidder has to be conditioned
             local_opponent = min(opponent_positions)
-            conditionals_dict[local_opponent] = torch.zeros((batch_size_1, 1), device=cond.device)
-            self.icdf_v2_cond_v1(cond)(conditionals_dict[local_opponent])
+            uniform = torch.zeros((batch_size_1, 1), device=cond.device).uniform_(0, 1)
+            conditionals_dict[local_opponent] = self.icdf_v2_cond_v1(cond)(uniform) \
+                .view(batch_size_0 * batch_size_1, 1)
 
             # opposing global bidder can be drawn independently
             global_oppopnent = 2
@@ -324,75 +325,97 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
         gamma = self.correlation
         switch = gamma < 0.5
         [mini, maxi] = sorted((gamma, 1 - gamma))
+        cond_batch = v1.shape[0]
 
-        if v1 < mini:
-            def icdf(x):
-                result = torch.zeros_like(x)
-                h = v1
-                l = 1-gamma - v1 + h
+        def icdf(x):
+            sample_batch = x.view(-1, 1).shape[0]
+            xx = x.repeat(1, cond_batch).view(cond_batch, sample_batch)
+            vv1 = v1.repeat(1, sample_batch).view(cond_batch, sample_batch)
+            result = torch.zeros_like(xx)
+
+            # case 1/3 for cond
+            cond_mask_0 = vv1 < mini
+
+            h = vv1
+            l = 1-gamma - vv1 + h
+            c = h*l
+
+            increase_mask = xx < (.5/c) * vv1**2
+            increase_mask = torch.logical_and(cond_mask_0, increase_mask)
+            result[increase_mask] = torch.sqrt(2*c[increase_mask] * xx[increase_mask])
+
+            constant_mask = torch.logical_and(xx >= .5*vv1**2 / c,
+                                              xx < (vv1*(1-gamma) - .5*vv1**2)/c)
+            constant_mask = torch.logical_and(cond_mask_0, constant_mask)
+            result[constant_mask] = (c[constant_mask]*xx[constant_mask] + .5*vv1[constant_mask]**2) \
+                / vv1[constant_mask]
+
+            decrease_mask = xx >= (vv1*(1-gamma) - .5*vv1**2)/c
+            decrease_mask = torch.logical_and(cond_mask_0, decrease_mask)
+            c_1 = 1-gamma + vv1
+            c_2 = -.5
+            c_3 = vv1*(1-gamma) - .5*vv1**2 + .5*(1-gamma)**2 - (1-gamma+vv1)*(1-gamma)
+            result[decrease_mask] = (torch.sqrt(4*c[decrease_mask]*c_2 \
+                * xx[decrease_mask] + torch.pow(c_1[decrease_mask], 2) \
+                - 4*c_2*c_3[decrease_mask]) - c_1[decrease_mask])/(2*c_2)
+
+
+            # case 2/3 for cond
+            cond_mask_1 = vv1 > maxi
+            h = 1 - vv1
+            l = vv1 - gamma + h
+            c = h*l
+
+            increase_mask = xx < (0.5/c) * (1 - vv1)**2
+            increase_mask = torch.logical_and(cond_mask_1, increase_mask)
+            result[increase_mask] = torch.sqrt(xx[increase_mask]/(.5/c[increase_mask])) \
+                - (-gamma+1 - vv1[increase_mask])
+
+            constant_mask = torch.logical_and(xx >= (0.5/c) * (1 - vv1)**2,
+                                              xx < (1 - vv1)*(vv1 - gamma + .5*(1 - vv1))/c)
+            constant_mask = torch.logical_and(cond_mask_1, constant_mask)
+            result[constant_mask] = (c[constant_mask]/(1 - vv1[constant_mask]))*xx[constant_mask] \
+                - .5*(1 - vv1[constant_mask]) + gamma
+
+            decrease_mask = xx >= (1 - vv1)*(vv1 - gamma + .5*(1 - vv1))/c
+            decrease_mask = torch.logical_and(cond_mask_1, decrease_mask)
+            result[decrease_mask] = -torch.sqrt(2 *(-c[decrease_mask]*xx[decrease_mask] \
+                + (gamma-1)*(vv1[decrease_mask] - 1))) + 1
+
+
+            # case 2/3 for cond
+            cond_mask_2 = torch.logical_not(torch.logical_or(cond_mask_0, cond_mask_1))
+            if switch:
+                h = 1 - maxi
+                l = maxi - mini + h
                 c = h*l
 
-                increase_mask = x < 0.5 * v1**2 / c
-                result[increase_mask] = torch.sqrt(2*c * x[increase_mask])
+                increase_mask = xx < (.5/c)*mini**2
+                increase_mask = torch.logical_and(cond_mask_2, increase_mask)
+                result[increase_mask] = torch.sqrt(2*c * xx[increase_mask])
 
-                constant_mask = torch.logical_and(x >= .5*v1**2 / c,
-                                                  x < (v1*(1-gamma) - .5*v1**2)/c)
-                result[constant_mask] = (c*x[constant_mask] + .5*v1**2) / v1
+                constant_mask = torch.logical_and(xx >= (.5/c)*mini**2,
+                                                xx < ((1-maxi)*(maxi-mini) + .5*mini**2)/c)
+                constant_mask = torch.logical_and(cond_mask_2, constant_mask)
+                result[constant_mask] = (-2*c*xx[constant_mask] + mini**2 \
+                    + 2*(maxi-1)*mini)/(2*(maxi - 1))
 
-                decrease_mask = x >= (v1*(1-gamma) - .5*v1**2)/c
-                c_1 = 1-gamma + v1
-                c_2 = -.5
-                c_3 = v1*(1-gamma) - .5*v1**2 + .5*(1-gamma)**2 - (1-gamma+v1)*(1-gamma)
-                result[decrease_mask] = (torch.sqrt(4*c*c_2*x[decrease_mask] \
-                    + c_1**2 - 4*c_2*c_3) - c_1)/(2*c_2)
-                return result
+                decrease_mask = xx >= ((1-maxi)*(maxi-mini) + .5*mini**2)/c
+                decrease_mask = torch.logical_and(cond_mask_2, decrease_mask)
+                result[decrease_mask] = 1 - torch.sqrt(-2*c*xx[decrease_mask] \
+                            + mini**2 + 2*(maxi-1)*mini - maxi**2 + 1) 
+            else:
+                c = (1-gamma)**2
+                increase_mask = xx < .5
+                increase_mask = torch.logical_and(cond_mask_2, increase_mask)
+                result[increase_mask] = torch.sqrt(2*c*xx[increase_mask]) + gamma + vv1[increase_mask] - 1
 
-        elif v1 > maxi:
-            def icdf(x):
-                result = torch.zeros_like(x)
-                h = 1 - v1
-                l = v1 - gamma + h
-                c = h*l
+                decrease_mask = xx >= .5
+                decrease_mask = torch.logical_and(cond_mask_2, decrease_mask)
+                result[decrease_mask] = -torch.sqrt(2*(-c*xx[decrease_mask] + gamma**2 \
+                    - 2*gamma + 1)) + vv1[decrease_mask] + 1 - gamma
 
-                increase_mask = x < (0.5/c) * (1 - v1)**2
-                result[increase_mask] = torch.sqrt(x[increase_mask]/(.5/c)) - (-gamma+1 - v1)
-
-                constant_mask = torch.logical_and(x >= (0.5/c) * (1 - v1)**2,
-                                                  x < (1 - v1)*(v1 - gamma + .5*(1 - v1))/c)
-                result[constant_mask] = (c/(1 - v1))*x[constant_mask] - .5*(1 - v1) + gamma
-
-                decrease_mask = x >= (1 - v1)*(v1 - gamma + .5*(1 - v1))/c
-                result[decrease_mask] = -torch.sqrt(2 *(-c*x[decrease_mask] + (gamma-1)*(v1 - 1))) + 1
-                return result
-
-        else:
-            def icdf(x):
-                result = torch.zeros_like(x)
-                if switch:
-                    h = 1 - maxi
-                    l = maxi - mini + h
-                    c = h*l
-
-                    increase_mask = x < (.5/c)*mini**2
-                    result[increase_mask] = torch.sqrt(2*c * x[increase_mask])
-
-                    constant_mask = torch.logical_and(x >= (.5/c)*mini**2,
-                                                      x < ((1-maxi)*(maxi-mini) + .5*mini**2)/c)
-                    result[constant_mask] = (-2*c*x[constant_mask] + mini**2 \
-                        + 2*(maxi-1)*mini)/(2*(maxi - 1))
-
-                    decrease_mask = x >= ((1-maxi)*(maxi-mini) + .5*mini**2)/c
-                    result[decrease_mask] = 1 - torch.sqrt(-2*c*x[decrease_mask] \
-                                + mini**2 + 2*(maxi-1)*mini - maxi**2 + 1) 
-                else:
-                    c = (1-gamma)**2
-                    increase_mask = x < .5
-                    result[increase_mask] = torch.sqrt(2*c*x[increase_mask]) + gamma + v1 - 1
-
-                    decrease_mask = x >= .5
-                    result[decrease_mask] = -torch.sqrt(2*(-c*x[decrease_mask] + gamma**2 \
-                        - 2*gamma + 1)) + v1 + 1 - gamma
-                return result
+            return result
 
         return icdf
 
