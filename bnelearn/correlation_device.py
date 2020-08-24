@@ -95,8 +95,9 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
         else: # agent is local bidder
             # opposing local bidder has to be conditioned
             local_opponent = min(opponent_positions)
-            conditionals_dict[local_opponent] = torch.zeros((batch_size_1, 1), device=cond.device)
-            self.local_cond_sample(cond)(conditionals_dict[local_opponent])
+            conditionals_dict[local_opponent] = self.local_cond_sample(cond)(
+                torch.zeros(batch_size_1, device=cond.device).uniform_(0, 1)
+            ).view(batch_size_0 * batch_size_1, 1)
 
             # opposing global bidder can be drawn independently
             global_oppopnent = 2
@@ -107,12 +108,18 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
         return conditionals_dict
 
     def local_cond_sample(self, cond):
-        """Draw samples of the opposing local bidder condtional one the local bidders' valuation."""
-        def icdf(tensor: torch.Tensor):
-            tensor.uniform_(0, 1)
-            switch = torch.zeros_like(tensor).uniform_(0, 1) > self.corr
-            tensor = 1 * switch * tensor + 1 * torch.logical_not(switch) * cond * torch.ones_like(tensor)
-            return tensor
+        """Draw samples of the opposing local bidder conditional one the local bidders' valuation."""
+        cond_batch = cond.view(-1, 1).shape[0]
+
+        def icdf(x: torch.Tensor):
+            sample_batch = x.view(-1, 1).shape[0]
+            xx = x.repeat(1, cond_batch).view(cond_batch, sample_batch)
+            ccond = cond.repeat(1, sample_batch).view(cond_batch, sample_batch)
+            switch = (torch.zeros_like(x).uniform_(0, 1) > self.corr) \
+                .repeat(1, cond_batch).view(cond_batch, sample_batch)
+            result = switch * xx + torch.logical_not(switch) * ccond * torch.ones_like(xx)
+            return result
+
         return icdf
 
 
