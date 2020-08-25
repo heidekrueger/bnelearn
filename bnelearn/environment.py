@@ -341,15 +341,35 @@ class AuctionEnvironment(Environment):
 
     def draw_conditionals(self, player_position: int, cond: torch.Tensor, batch_size: int = None):
         """
-        Draws valuations from all agents but the one at `player_position`, conditioned on her
-        valuation `cond` from the correlation_devices.
+        Draws valuations/observations from all agents conditioned on the observation `cond`
+        of the agent at `player_position` from the correlation_devices.
         """
-        group_idx = [player_position in group for group in self.correlation_groups].index(True)
-        device = self.correlation_devices[group_idx]
+        batch_size_0 = cond.shape[0]
+        batch_size_1 = batch_size if batch_size is not None else batch_size_0
 
-        return device.draw_conditionals(
-            agents = self.agents,
-            player_position = player_position,
-            cond = cond,
-            batch_size = batch_size
-        )
+        group_idx = [player_position in group for group in self.correlation_groups].index(True)
+        cond_device = self.correlation_devices[group_idx]
+        conditionals_dict = dict()
+
+        for group, device in zip(self.correlation_groups, self.correlation_devices):
+            common_component, weights = device.get_component_and_weights()
+
+            # draw conditional valuations from all agents in same correlation
+            if cond_device == device:
+                conditionals_dict.update(
+                    device.draw_conditionals(
+                        agents = self.agents,
+                        player_position = player_position,
+                        cond = cond,
+                        batch_size = batch_size
+                    )
+                )
+
+            # draw independent valuations from all agents in other correlations
+            else:
+                for i in group:
+                    conditionals_dict[self.agents[i].player_position] = \
+                        self.agents[i].draw_valuations_(common_component, weights) \
+                            [:batch_size_1, :].repeat(batch_size_0, 1)
+
+        return conditionals_dict

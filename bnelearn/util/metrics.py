@@ -365,6 +365,8 @@ def ex_interim_util_loss(env: Environment, player_position: int,
     grid_size = action_alternative.shape[0] # grid is not always the requested size
 
     # calc adpative batch size `mini_batch_size` based on memory estimate
+    # TODO Nils @Stefan: there's more possible, sometimes GPU usages goes <<50%; in particular,
+    #                    usage seems to decrease over time of one run...
     free_size = torch.cuda.memory_snapshot()[0]['total_size'] \
         - torch.cuda.memory_stats(mechanism.device)['active.all.allocated']
     element_size = torch.zeros(1, dtype=action_actual.dtype, device=mechanism.device) \

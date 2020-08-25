@@ -694,6 +694,7 @@ class Experiment(ABC):
         if not hasattr(self, '_max_util_loss'):
             self._max_util_loss = ex_interim_max_util_loss
         if create_plot_output:
+            # TODO Nils: differentiate models in plot
             # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
             util_losses = torch.stack([util_loss[r] for r in range(len(util_loss))], dim=1)[:, :, None]
             valuations = torch.stack([self.bidders[player_positions[0]].valuations[:batch_size, ...]

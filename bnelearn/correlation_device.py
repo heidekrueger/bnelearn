@@ -77,7 +77,7 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
         ).repeat(1, self.n_items)                              # same weight for each item in batch
 
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
-                          cond: torch.Tensor, batch_size: int=None):
+                          cond: torch.Tensor, batch_size: int=None) -> dict:
         """Draw conditional types of all agents given one agent's observation `cond`"""
         # TODO Nils @Stefan: check math here
         opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
@@ -85,25 +85,23 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
         conditionals_dict = dict()
 
-        if player_position == 2: # agent is global bidder
-            # no information about local bidders' valuations: can be drawn independently from global bidder
-            for opponent_position in opponent_positions:
-                conditionals_dict[opponent_position] = agents[opponent_position].draw_valuations_(
-                    common_component=self.draw_common_component(), weights=self.get_weights()
-                )[:batch_size_1, :].repeat(batch_size_0, 1).view(batch_size_0 * batch_size_1, 1)
+        # own valuation is given
+        conditionals_dict[player_position] = cond.repeat(1, batch_size_1)\
+            .view(batch_size_0 * batch_size_1, 1)
 
-        else: # agent is local bidder
-            # opposing local bidder has to be conditioned
+        # agent is global bidder
+        if player_position == 2:
+            raise ValueError('IndependentValuationDevice should have been called.')
+            # no information about local bidders' valuations: can be drawn independently from global bidder
+
+        # agent is local bidder opposing local bidder has to be conditioned
+        else:
             local_opponent = min(opponent_positions)
-            conditionals_dict[local_opponent] = self.local_cond_sample(cond)(
-                torch.zeros(batch_size_1, device=cond.device).uniform_(0, 1)
-            ).view(batch_size_0 * batch_size_1, 1)
+            u = torch.zeros((batch_size_1, 1), device=cond.device).uniform_(0, 1)
+            conditionals_dict[local_opponent] = self.local_cond_sample(cond)(u[:, 0]) \
+                .view(batch_size_0 * batch_size_1, 1)
 
             # opposing global bidder can be drawn independently
-            global_oppopnent = 2
-            conditionals_dict[global_oppopnent] = agents[global_oppopnent].draw_valuations_(
-                common_component=self.draw_common_component(), weights=self.get_weights()
-            )[:batch_size_1, :].repeat(batch_size_0, 1).view(batch_size_0 * batch_size_1, 1)
 
         return conditionals_dict
 
@@ -111,13 +109,13 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
         """Draw samples of the opposing local bidder conditional one the local bidders' valuation."""
         cond_batch = cond.view(-1, 1).shape[0]
 
-        def icdf(x: torch.Tensor):
+        def icdf(x: torch.Tensor) -> torch.Tensor:
             sample_batch = x.view(-1, 1).shape[0]
             xx = x.repeat(1, cond_batch).view(cond_batch, sample_batch)
             ccond = cond.repeat(1, sample_batch).view(cond_batch, sample_batch)
-            switch = (torch.zeros_like(x).uniform_(0, 1) > self.corr) \
+            equal_local_values = torch.bernoulli(self.corr * torch.zeros_like(x)) \
                 .repeat(1, cond_batch).view(cond_batch, sample_batch)
-            result = switch * xx + torch.logical_not(switch) * ccond * torch.ones_like(xx)
+            result = torch.logical_not(equal_local_values) * xx + equal_local_values * ccond * torch.ones_like(xx)
             return result
 
         return icdf
@@ -136,7 +134,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
         return self.weight
 
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
-                          cond: torch.Tensor, batch_size: int=None):
+                          cond: torch.Tensor, batch_size: int=None) -> dict:
         """Draw conditional types of all agents given one agent's observation `cond`"""
         # TODO Nils @Stefan: check math here
         opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
@@ -144,25 +142,24 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
         conditionals_dict = dict()
 
-        if player_position == 2: # agent is global bidder
-            # no information about local bidders' valuations: can be drawn independently from global bidder
-            for opponent_position in opponent_positions:
-                conditionals_dict[opponent_position] = agents[opponent_position].draw_valuations_(
-                    common_component=self.draw_common_component(), weights=self.get_weights()
-                )[:batch_size_1, :].repeat(batch_size_0, 1).view(batch_size_0 * batch_size_1, 1)
+        # own valuation is given
+        conditionals_dict[player_position] = cond.repeat(1, batch_size_1)\
+            .view(batch_size_0 * batch_size_1, 1)
 
-        else: # agent is local bidder
-            # opposing local bidder has to be conditioned
+        # agent is global bidder
+        if player_position == 2:
+            raise ValueError('IndependentValuationDevice should have been called.')
+            # no information about local bidders' valuations: can be drawn independently from global bidder
+
+         # agent is local bidder: opposing local bidder has to be conditioned
+        else: # agent is local bidder: opposing local bidder has to be conditioned
             local_opponent = min(opponent_positions)
-            uniform = torch.zeros((batch_size_1, 1), device=cond.device).uniform_(0, 1)
-            conditionals_dict[local_opponent] = self.icdf_v2_cond_v1(cond)(uniform) \
+            u = torch.zeros((batch_size_1, 1), device=cond.device).uniform_(0, 1)
+            conditionals_dict[local_opponent] = self.icdf_v2_cond_v1(cond)(u[:, 0]) \
                 .view(batch_size_0 * batch_size_1, 1)
 
             # opposing global bidder can be drawn independently
-            global_oppopnent = 2
-            conditionals_dict[global_oppopnent] = agents[global_oppopnent].draw_valuations_(
-                common_component=self.draw_common_component(), weights=self.get_weights()
-            )[:batch_size_1, :].repeat(batch_size_0, 1).view(batch_size_0 * batch_size_1, 1)
+
 
         return conditionals_dict
 
@@ -402,7 +399,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
                 result[increase_mask] = torch.sqrt(2*c * xx[increase_mask])
 
                 constant_mask = torch.logical_and(xx >= (.5/c)*mini**2,
-                                                xx < ((1-maxi)*(maxi-mini) + .5*mini**2)/c)
+                                                  xx < ((1-maxi)*(maxi-mini) + .5*mini**2)/c)
                 constant_mask = torch.logical_and(cond_mask_2, constant_mask)
                 result[constant_mask] = (-2*c*xx[constant_mask] + mini**2 \
                     + 2*(maxi-1)*mini)/(2*(maxi - 1))
@@ -410,7 +407,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
                 decrease_mask = xx >= ((1-maxi)*(maxi-mini) + .5*mini**2)/c
                 decrease_mask = torch.logical_and(cond_mask_2, decrease_mask)
                 result[decrease_mask] = 1 - torch.sqrt(-2*c*xx[decrease_mask] \
-                            + mini**2 + 2*(maxi-1)*mini - maxi**2 + 1) 
+                    + mini**2 + 2*(maxi-1)*mini - maxi**2 + 1)
             else:
                 c = (1-gamma)**2
                 increase_mask = xx < .5
@@ -437,7 +434,7 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         return torch.tensor(.5) # must be strictly between 0, 1 to trigger right case
 
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
-                          cond: torch.Tensor, batch_size: int=None):
+                          cond: torch.Tensor, batch_size: int=None) -> dict:
         """
         Draw conditional types of all agents given one agent's observation `cond`.
 
@@ -678,7 +675,7 @@ class AffiliatedObservationsDevice(CorrelationDevice):
         return torch.tensor(.5) # must be strictly between 0, 1 to trigger right case
 
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
-                          cond: torch.Tensor, batch_size: int=None):
+                          cond: torch.Tensor, batch_size: int=None) -> dict:
         """
         Draw conditional types of all agents given one agent's observation `cond`.
 
@@ -775,7 +772,7 @@ class AffiliatedObservationsDevice(CorrelationDevice):
         o1_flat = o1.view(-1, 1)
         cond_batch = o1_flat.shape[0]
 
-        def icdf(x):
+        def icdf(x: torch.Tensor) -> torch.Tensor:
             sample_batch = x.view(-1, 1).shape[0]
             xx = x.repeat(1, cond_batch).view(cond_batch, -1)
             oo1 = o1_flat.repeat(1, sample_batch)
