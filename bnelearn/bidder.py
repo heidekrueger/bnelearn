@@ -309,16 +309,15 @@ class Bidder(Player):
         payoff.
         """
         welfare = self.get_welfare(allocations, counterfactual_valuations)
+        payoff = welfare - payments
 
         if self.risk == 1.0:
-            return welfare - payments
+            return payoff
         else:
             # payoff^alpha not well defined in negative domain for risk averse agents
-            # the following is a memory-minimal implementation of 
-            # >> payoff = welfare - payments
-            # >> payoff.relu()**r - (-payoff).relu()**r
-            # Its peak usage is 10/3 the size of payments (or welfare)
-            return (welfare-payments).relu_().pow_(self.risk).sub_((payments-welfare).relu_().pow_(self.risk))
+            # the following is a memory-saving implementation of
+            #return payoff.relu()**self.risk - (-payoff).relu()**self.risk
+            return payoff.relu().pow_(self.risk).sub_(payoff.neg_().relu_().pow_(self.risk))
 
     def get_welfare(self, allocations, valuations=None):
         """

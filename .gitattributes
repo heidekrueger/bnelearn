@@ -1,2 +1,2 @@
-*.ipynb filter=nbstrip_full
+notebooks/*.ipynb filter=nbstrip_full
 *.tar.gz filter=lfs diff=lfs merge=lfs -text

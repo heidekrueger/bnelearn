@@ -578,7 +578,7 @@ class Experiment(ABC):
             utility_vs_bne, epsilon_relative, epsilon_absolute = self._calculate_metrics_known_bne()
             for i in range(len(self.bne_env)):
                 n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
-                self._cur_epoch_log_params['utility_vs_bne' + n if n == '' else n[4:]] \
+                self._cur_epoch_log_params['utility_vs_bne' + (n if n == '' else n[4:])] \
                     = utility_vs_bne[i]
                 self._cur_epoch_log_params['epsilon_relative' + n] = epsilon_relative[i]
                 self._cur_epoch_log_params['epsilon_absolute' + n] = epsilon_absolute[i]
