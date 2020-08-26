@@ -309,7 +309,6 @@ class Bidder(Player):
         payoff.
         """
         welfare = self.get_welfare(allocations, counterfactual_valuations)
-
         payoff = welfare - payments
 
         if self.risk == 1.0:

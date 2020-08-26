@@ -656,8 +656,6 @@ class Experiment(ABC):
                     player_position=m2b(m),
                     draw_valuations=redraw_bne_vals,
                     use_env_valuations=not redraw_bne_vals
-                    # TODO: Stefan. Is strat_to_player_kwargs needed here?
-                    # if yes, get from self.learners[m] (???)
                 ) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(
@@ -676,17 +674,18 @@ class Experiment(ABC):
         Calculate "action space distance" of model and bne-strategy. If
         `self.logging.log_componentwise_norm` is set to true, will only
         return norm of the best action dimension.
-        
+
         Returns:
             L_2 and L_inf: each a List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
         """
 
-        # shorthand for model to agent
-        m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
-
         L_2 = [None] * len(self.bne_env)
         L_inf = [None] * len(self.bne_env)
         for bne_idx, bne_env in enumerate(self.bne_env):
+
+            # shorthand for model to agent
+            m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
+
             L_2[bne_idx] = [
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, 2,

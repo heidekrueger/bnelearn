@@ -79,8 +79,7 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(u_lo: List, u_hi
     Optimal bid in this experiment when bidders do NOT share same lower bound.
     Source: Equilibrium 1 of https://link.springer.com/article/10.1007/s40505-014-0049-1
     """
-    #eps = 1e-8
-    interpol_points = 256
+    interpol_points = 2**11
 
     # 1. Solve implicit bid function
     v1 = np.linspace(u_lo[0], u_hi[0], interpol_points)
@@ -98,7 +97,7 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(u_lo: List, u_hi
             u_lo_cut = i
             break
 
-    b1 = np.copy(v1)  # truthful at beginning
+    b1 = np.copy(v1) # truthful at beginning
     b1[u_lo_cut:] = np.array([optimize.broyden1(lambda x: inverse_bid_player_1(x) - v, v)
                               for v in v1[u_lo_cut:]])
     b2 = np.array([optimize.broyden1(lambda x: inverse_bid_player_2(x) - v, v)
@@ -451,9 +450,9 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                 'asymmetric', self.risk_profile, str(self.n_players) + 'p']
         return os.path.join(*name)
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=None, **strat_to_player_kwargs):
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
-                              player_position=player_position, batch_size=batch_size)
+                              player_position=player_position, batch_size=batch_size, **strat_to_player_kwargs)
 
     def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding
@@ -461,7 +460,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         """
         if self.risk == 1.0:
             # TODO: checks not fully implemented! there are additional requirements! (which?)
-            if len(set(self.u_lo)) != 1:  # BNE for differnt u_lo for each player
+            if len(set(self.u_lo)) != 1: # BNE for differnt u_lo for each player
                 self._optimal_bid = [
                     # BNE 1
                     _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
@@ -511,7 +510,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         if len(set(self.u_lo)) == 1:
             print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
 
-        print('Debug: eval_batch size:{}'.format(self.bne_env[0].batch_size))
+        print('Debug: eval_batch size: {}'.format(self.bne_env[0].batch_size))
 
         # TODO Stefan: generalize using analytical/hardcoded utilities over all settings!
         # In case of 'canonica' overlapping setting, use precomputed bne-utils with higher precision.
