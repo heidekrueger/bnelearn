@@ -45,7 +45,7 @@ class ConfigurationManager:
     def _init_single_item_gaussian_symmetric(self):
         self.learning.model_sharing = True
         self.setting.valuation_mean = 15
-        self.setting.valuation_std = 10
+        self.setting.valuation_std = 5
 
     def _init_single_item_asymmetric_uniform_overlapping(self):
         self.running.n_runs = 1
@@ -215,7 +215,7 @@ class ConfigurationManager:
                    enable_logging: bool = None, log_root_dir: str = None, experiment_name: str = None,
                    experiment_timestamp: str = None, plot_frequency: int = None, plot_points: int = None,
                    plot_show_inline: bool = None, log_metrics: dict = None, log_componentwise_norm: bool = None,
-                   export_step_wise_linear_bid_function_size: bool = None,
+                   export_step_wise_linear_bid_function_size: float = None,
                    stopping_criterion_rel_util_loss_diff: float = None, stopping_criterion_frequency: int = None,
                    stopping_criterion_duration: int = None, stopping_criterion_batch_size: int = None,
                    stopping_criterion_grid_size: int = None, util_loss_batch_size: int = None,

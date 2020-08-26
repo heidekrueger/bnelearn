@@ -1,42 +1,11 @@
-#TODO: Implement option that for eval the epoch is chosen in each run in which a stop_crit is given.
-rm(list = ls())
-### Load Packages
-library(tidyverse)
-library(knitr)
-library(kableExtra)
-
-options(dplyr.print_max = 200)
-options(dplyr.width = 300)
-### Read in data
-subfolder="Journal"
-experiment = "single_item"
-payment_rule = "first_price/uniform/asymmetric/risk_neutral/2p/2020-06-12 Fri 07.21"
-tb_full_raw = read_delim(str_c("experiments",subfolder,experiment,payment_rule,"full_results.csv",
-                              sep = "/", collapse = NULL), ",")
-
-### Preprocess data
-tb_full_raw$tag <- gsub(tb_full_raw$tag, pattern="/", replace = "_")
-### Settings
-stop_criterium_1 = 0.0005
-stop_criterium_2 = 0.0001
-stop_criterium_interval = 100
-results_epoch = 5000
-type_names = "." #c("locals", "global")
-#nearest_zero = c(0.13399262726306915, 0.46403446793556213) 
-#nearest_bid = c(0.12500184774398804, 0.49999746680259705)
-#nearest_vcg = c(0.13316573202610016, 0.4673408269882202)
-#utility_in_bne_exact = c(0.13316573202610016, 0.4673408269882202)
-# Current stopping criterium: eval_util_loss_ex_ante. Alternatives: eval_util_loss_rel_estimate
-# further assumptions:
-# - stopping criteria is fullfilled during 3 consecutive periods, each 100 epochs
-
 ###################### Analyse detailed data#################
 ## Compute stopping criterium and times for any bidder type
 # Compute \hat{L} and in which epochs the stopping criteria are met for each subrun
-tb_stop <- tb_full_raw %>% 
+tb_stop <- tb_full %>% 
   pivot_wider(names_from = tag, values_from = value) %>% 
   filter(subrun %in% type_names,
-         epoch%%stop_criterium_interval==0) %>% 
+         epoch%%stop_criterium_interval==0,
+         epoch <= results_epoch) %>% 
   mutate(# Compute \hat{L} = 1 - u(beta_i)/u(BR)
          eval_util_loss_rel_estimate = 1 - eval_utilities/(eval_utilities+eval_util_loss_ex_ante)) %>% 
   group_by(run,subrun) %>% 
@@ -46,17 +15,17 @@ tb_stop <- tb_full_raw %>%
                                 if_else(is.na(lag(eval_util_loss_ex_ante, n=2L)), 99, 
                                         lag(eval_util_loss_ex_ante, n=2L)),na.rm=TRUE) - 
                                  pmin(eval_util_loss_ex_ante,
-                                       if_else(is.na(lag(eval_util_loss_ex_ante, n=1L)), 9, 
-                                               lag(eval_util_loss_ex_ante, n=1L)),
-                                       if_else(is.na(lag(eval_util_loss_ex_ante, n=2L)), 99, 
-                                               lag(eval_util_loss_ex_ante, n=2L)), na.rm = TRUE))) %>% 
+                                      if_else(is.na(lag(eval_util_loss_ex_ante, n=1L)), 9, 
+                                              lag(eval_util_loss_ex_ante, n=1L)),
+                                      if_else(is.na(lag(eval_util_loss_ex_ante, n=2L)), 99, 
+                                              lag(eval_util_loss_ex_ante, n=2L)), na.rm = TRUE))) %>% 
   ungroup() %>% 
   mutate(stop_diff_1 = if_else(stopping_crit_diff < stop_criterium_1,TRUE, FALSE),
          stop_diff_2 = if_else(stopping_crit_diff < stop_criterium_2,TRUE, FALSE)) %>% 
   select(c(names(.)[1:3],"stopping_crit_diff","stop_diff_1","stop_diff_2"))
 
 # compute times and epochs until convergence and total runtime
-tb_runtime <- tb_full_raw %>% 
+tb_runtime <- tb_full %>% 
   pivot_wider(names_from = tag, values_from = value) %>% 
   select(c(names(.)[1:4],"eval_overhead_hours")) %>% 
   filter(subrun %in% c(".")) %>% 
@@ -95,15 +64,15 @@ tb_stop_print <- tb_stop %>%
          stop_diff_1_e = stop_diff_1 * epoch,
          stop_diff_2_e = stop_diff_2 * epoch,
          stop_diff_1_e = if_else(stop_diff_1_e>min(stop_diff_1_e[stop_diff_1_e>0]),
-                                   0,stop_diff_1_e),
+                                 0,stop_diff_1_e),
          stop_diff_2_e = if_else(stop_diff_2_e>min(stop_diff_2_e[stop_diff_2_e>0]),
-                                   0,stop_diff_2_e),
+                                 0,stop_diff_2_e),
          stop_diff_1_t = (stop_diff_1 * runtime)/60,
          stop_diff_1_t = if_else(stop_diff_1_t>min(stop_diff_1_t[stop_diff_1_t>0]),
-                                   0,stop_diff_1_t),
+                                 0,stop_diff_1_t),
          stop_diff_2_t = (stop_diff_2 * runtime)/60,
          stop_diff_2_t = if_else(stop_diff_2_t>min(stop_diff_2_t[stop_diff_2_t>0]),
-                                   0,stop_diff_2_t),
+                                 0,stop_diff_2_t),
          time = if_else(runtime<max(runtime),
                         0,max(runtime)/60)) %>%
   ungroup() %>% 
@@ -115,13 +84,29 @@ tb_stop_print <- tb_stop_print %>%
   select(-c("run")) %>% 
   group_by(subrun,tag) %>% 
   summarize(avg = mean(value),
-            std = sqrt(var(value)))
+            std = sqrt(var(value)),
+            cnt = n())
 
 ### Analyse eval data###############
 # Select only end and widen
-tb_eval <- tb_full_raw %>% 
+tb_eval <- tb_full %>% 
   filter(epoch == results_epoch) %>% 
   pivot_wider(names_from = tag, values_from = value)
+
+# #### TMP!!: For Journal eval
+# tb_eval %>%
+#  mutate(utility_bne = eval_utility_vs_bne + eval_epsilon_absolute) %>%
+#  pivot_longer(colnames(.)[4:(length(colnames(.)))], names_to="tag",
+#               values_to="value", values_drop_na = TRUE) %>%
+#  group_by(subrun, tag) %>%
+#  summarise(avg = mean(value),
+#            std = sd(value)) %>%
+#  filter(tag %in% c("eval_utilities","eval_utility_vs_bne", "utility_bne",
+#                    "eval_epsilon_relative", "eval_L_2")) %>%
+#  mutate(avg = sprintf("%0.4f", avg),
+#         std = sprintf("%0.4f", std)) %>%
+#  print(n=28)
+# ######
 
 # If we calculated a more exact bne utility, use that
 if(exists("utility_in_bne_exact")){
@@ -130,10 +115,11 @@ if(exists("utility_in_bne_exact")){
                                  if_else(subrun == type_names[2], utility_in_bne_exact[2], 9999)),
            utility_bne = replace(utility_bne, utility_bne==9999, NA),
            # Compute exact epsilone 
-           eval_epsilon_absolute = utility_bne - eval_utility_vs_bne)
+           eval_epsilon_absolute = utility_bne - eval_utility_vs_bne,
+           eval_epsilon_relative = 1 - (eval_utility_vs_bne/utility_bne))
 }
 # More general if no BNE is known!
-if(payment_rule == 'first_price'){
+if(known_bne == F){
   tb_eval <- tb_eval %>% 
     mutate(eval_util_loss_rel_estimate = 1 - eval_utilities/(eval_utilities+eval_util_loss_ex_ante)) %>% 
     # Select only necessary columns
@@ -141,17 +127,15 @@ if(payment_rule == 'first_price'){
              "eval_util_loss_ex_interim","eval_util_loss_rel_estimate")) 
 }else{
   tb_eval <- tb_eval %>% 
-    mutate(# Compute the L = 1 - u(beta*)/u(beta_i, beta_{-1}*)
-           eval_util_loss_bne_rel = 1 - (eval_utility_vs_bne/(eval_utility_vs_bne+eval_epsilon_absolute)), 
-           # temporary estimate for: Compute \hat{L} = 1 - u(beta_i)/u(BR)
+    mutate(# temporary estimate for: Compute \hat{L} = 1 - u(beta_i)/u(BR)
            eval_util_loss_rel_estimate = 1 - eval_utilities/(eval_utilities+eval_util_loss_ex_ante)) %>% 
     # Select only necessary columns
-    select(c("run","subrun","epoch","eval_utilities", "eval_epsilon_absolute", "eval_L_2", "eval_L_inf",
-             "eval_util_loss_bne_rel", "eval_util_loss_ex_ante", "eval_util_loss_ex_interim",
+    select(c("run","subrun","epoch","eval_utilities", "eval_epsilon_absolute", "eval_epsilon_relative", "eval_L_2", "eval_L_inf",
+             "eval_util_loss_ex_ante", "eval_util_loss_ex_interim",
              "eval_util_loss_rel_estimate"))
 }
 tb_eval <- tb_eval %>% 
-  pivot_longer(colnames(tb_eval)[4:length(colnames(tb_eval))], names_to="tag", 
+  pivot_longer(colnames(.)[4:length(colnames(.))], names_to="tag", 
                values_to="value", values_drop_na = TRUE) %>% 
   group_by(subrun, tag) %>% 
   summarise(avg = mean(value),
@@ -168,12 +152,13 @@ tb_final %>%
   mutate(
          #avg = avg * 10^4,
          #std = std * 10^4,
-         avg = sprintf("%0.5f", avg),
-         std = sprintf("%0.5f", std)) %>% 
+         avg = sprintf("%0.4f", avg)) %>% 
+         #std = sprintf("%0.5f", std)) %>% 
   pivot_wider(id_cols=subrun,names_from=tag, values_from=avg) %>% 
-  #contains("eval_util_loss_bne_rel"), 
-  select(subrun, contains("eval_epsilon_absolute"), contains("eval_L_2"), eval_util_loss_ex_ante, 
+  select(subrun, contains("eval_epsilon_relative"), contains("eval_L_2"), eval_util_loss_ex_ante, 
          eval_util_loss_ex_interim, eval_util_loss_rel_estimate, contains("stop_diff_2_e"), contains("stop_diff_1_e"), time) %>%
   arrange(-row_number()) %>% 
   kable("latex", booktabs = T)
+
+
 
