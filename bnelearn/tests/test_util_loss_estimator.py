@@ -159,22 +159,22 @@ def test_ex_interim_util_loss_estimator_truthful(rule, mechanism, bid_profile, b
     )
     # TODO Nils @Paul: Why do we want to test against a sparse grid based on actual bids?
     # TODO       new util_loss always takes grid from the agents themself
-    # grid_values = torch.stack([x.flatten() for x in torch.meshgrid([bids_i.squeeze()] * n_items)]).t()
+    #grid_values = torch.stack([x.flatten() for x in torch.meshgrid([bids_i.squeeze()] * n_items)]).t()
     grid_size = 2**5
 
     for i in range(n_bidders):
         util_loss = metrics.ex_interim_util_loss(env, i, batch_size, grid_size)
 
-        # TODO Nils @Paul: where does expected_util_loss come from? 
-        # assert torch.allclose(util_loss.mean(), expected_util_loss[i, 0], atol = 0.001), \
-        #     "Unexpected avg util_loss {}".format(util_loss.mean() - expected_util_loss[i, 0])
-        # assert torch.allclose(util_loss.max(), expected_util_loss[i, 1], atol = 0.001), \
-        #     "Unexpected max util_loss {}".format(util_loss.max() - expected_util_loss[i, 1])
+        
+        assert torch.allclose(util_loss.mean(), expected_util_loss[i, 0], atol = 0.001), \
+            "Unexpected avg util_loss {}".format(util_loss.mean() - expected_util_loss[i, 0])
+        assert torch.allclose(util_loss.max(), expected_util_loss[i, 1], atol = 0.001), \
+            "Unexpected max util_loss {}".format(util_loss.max() - expected_util_loss[i, 1])
 
 def test_ex_interim_util_loss_estimator_fpsb_bne():
     """Test the util_loss in BNE of fpsb. - ex interim util_loss should be close to zero"""
     n_players = 3
-    grid_size = 2**5
+    grid_size = 2**10
     batch_size = 2**10
     n_items = 1
     risk = 1

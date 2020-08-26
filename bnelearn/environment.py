@@ -6,8 +6,7 @@ implements reward allocation to agents.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
-from typing import Callable, Set, List
+from typing import Callable, Set, List, Iterable
 
 import torch
 
@@ -203,7 +202,7 @@ class AuctionEnvironment(Environment):
     def __init__(
             self,
             mechanism: Mechanism,
-            agents: Iterable,
+            agents: Iterable[Bidder],
             batch_size = 100,
             n_players = None,
             strategy_to_player_closure: Callable[[Strategy], Bidder] = None,
