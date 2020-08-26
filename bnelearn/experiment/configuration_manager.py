@@ -145,6 +145,7 @@ class ConfigurationManager:
         self.setting.u_hi = [1.4, 1.4]
         self.setting.constant_marginal_values = False
         self.setting.efficiency_parameter = 0.3
+        self.logging.log_componentwise_norm = True
 
     experiment_types = {
         'single_item_uniform_symmetric':
@@ -213,7 +214,7 @@ class ConfigurationManager:
                    hidden_activations: List[nn.Module] = None, pretrain_iters: int = None, batch_size: int = None,
                    enable_logging: bool = None, log_root_dir: str = None, experiment_name: str = None,
                    experiment_timestamp: str = None, plot_frequency: int = None, plot_points: int = None,
-                   plot_show_inline: bool = None, log_metrics: dict = None,
+                   plot_show_inline: bool = None, log_metrics: dict = None, log_componentwise_norm: bool = None,
                    export_step_wise_linear_bid_function_size: bool = None,
                    stopping_criterion_rel_util_loss_diff: float = None, stopping_criterion_frequency: int = None,
                    stopping_criterion_duration: int = None, stopping_criterion_batch_size: int = None,
