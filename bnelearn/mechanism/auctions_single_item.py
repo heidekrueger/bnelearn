@@ -4,7 +4,7 @@ from typing import Tuple
 import torch
 
 from .mechanism import Mechanism
-from .auctions_multiunit import batched_index_select
+from ..util.tensor_util import batched_index_select
 
 
 class VickreyAuction(Mechanism):
@@ -74,7 +74,9 @@ class VickreyAuction(Mechanism):
             idx_rev = idx.sort(dim=1)[1]
             allocations = batched_index_select(allocations, 1, idx_rev)
             payments = batched_index_select(payments, 1, idx_rev)
-            bids = batched_index_select(bids, 1, idx_rev) # are bids even needed later on?
+
+            # also revert the order of bids if they're used later on
+            bids = batched_index_select(bids, 1, idx_rev)
 
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 

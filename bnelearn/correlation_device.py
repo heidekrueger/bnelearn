@@ -4,7 +4,7 @@
 from abc import ABC, abstractmethod
 import math
 import numpy as np
-from typing import List
+from typing import List, Dict
 import torch
 from torch.distributions import Distribution
 from bnelearn.bidder import Bidder
@@ -34,8 +34,8 @@ class CorrelationDevice(ABC):
 
     @abstractmethod
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
-                          cond: torch.Tensor, batch_size: int=None):
-        """Draw conditional types of all agents given one agent's observation `cond`"""
+                          conditional_observation: torch.Tensor, batch_size: int=None) -> Dict[int, torch.Tensor]:
+        """Draw conditional types of all agents given one agent's observation `conditional_observation`"""
         raise NotImplementedError
 
     @abstractmethod
@@ -54,8 +54,8 @@ class IndependentValuationDevice(CorrelationDevice):
         return torch.tensor(0.)
 
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
-                          cond: torch.Tensor, batch_size: int=None):
-        batch_size_0 = cond.shape[0]
+                          conditional_observation: torch.Tensor, batch_size: int=None):
+        batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
         return {
             agent.player_position: agent.draw_valuations_(
@@ -77,16 +77,16 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
         ).repeat(1, self.n_items)                              # same weight for each item in batch
 
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
-                          cond: torch.Tensor, batch_size: int=None) -> dict:
+                          conditional_observation: torch.Tensor, batch_size: int=None) -> Dict[int, torch.Tensor]:
         """Draw conditional types of all agents given one agent's observation `cond`"""
         # TODO Nils @Stefan: check math here
         opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
-        batch_size_0 = cond.shape[0]
+        batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
         conditionals_dict = dict()
 
         # own valuation is given
-        conditionals_dict[player_position] = cond.repeat(1, batch_size_1)\
+        conditionals_dict[player_position] = conditional_observation.repeat(1, batch_size_1)\
             .view(batch_size_0 * batch_size_1, 1)
 
         # agent is global bidder
@@ -97,22 +97,26 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
         # agent is local bidder opposing local bidder has to be conditioned
         else:
             local_opponent = min(opponent_positions)
-            u = torch.zeros((batch_size_1, 1), device=cond.device).uniform_(0, 1)
-            conditionals_dict[local_opponent] = self.local_cond_sample(cond)(u[:, 0]) \
+            u = torch.zeros((batch_size_1, 1), device=conditional_observation.device).uniform_(0, 1)
+            conditionals_dict[local_opponent] = self.local_cond_sample(conditional_observation)(u[:, 0]) \
                 .view(batch_size_0 * batch_size_1, 1)
 
             # opposing global bidder can be drawn independently
 
         return conditionals_dict
 
-    def local_cond_sample(self, cond):
-        """Draw samples of the opposing local bidder conditional one the local bidders' valuation."""
-        cond_batch = cond.view(-1, 1).shape[0]
+    def local_cond_sample(self, conditional_observation):
+        """
+        Draw samples of the opposing local bidder conditional on the local bidders' valuation:
+        For a batch of obseravtions of one of the local bidders in LLG `conditional_observation`,
+        this returns the iCDF of the other local bidder.
+        """
+        cond_batch = conditional_observation.view(-1, 1).shape[0]
 
         def icdf(x: torch.Tensor) -> torch.Tensor:
             sample_batch = x.view(-1, 1).shape[0]
             xx = x.repeat(1, cond_batch).view(cond_batch, sample_batch)
-            ccond = cond.repeat(1, sample_batch).view(cond_batch, sample_batch)
+            ccond = conditional_observation.repeat(1, sample_batch).view(cond_batch, sample_batch)
             equal_local_values = torch.bernoulli(self.corr * torch.zeros_like(x)) \
                 .repeat(1, cond_batch).view(cond_batch, sample_batch)
             result = torch.logical_not(equal_local_values) * xx + equal_local_values * ccond * torch.ones_like(xx)
@@ -134,16 +138,16 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
         return self.weight
 
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
-                          cond: torch.Tensor, batch_size: int=None) -> dict:
+                          conditional_observation: torch.Tensor, batch_size: int=None) -> Dict[int, torch.Tensor]:
         """Draw conditional types of all agents given one agent's observation `cond`"""
         # TODO Nils @Stefan: check math here
         opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
-        batch_size_0 = cond.shape[0]
+        batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
         conditionals_dict = dict()
 
         # own valuation is given
-        conditionals_dict[player_position] = cond.repeat(1, batch_size_1)\
+        conditionals_dict[player_position] = conditional_observation.repeat(1, batch_size_1)\
             .view(batch_size_0 * batch_size_1, 1)
 
         # agent is global bidder
@@ -154,12 +158,11 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
          # agent is local bidder: opposing local bidder has to be conditioned
         else: # agent is local bidder: opposing local bidder has to be conditioned
             local_opponent = min(opponent_positions)
-            u = torch.zeros((batch_size_1, 1), device=cond.device).uniform_(0, 1)
-            conditionals_dict[local_opponent] = self.icdf_v2_cond_v1(cond)(u[:, 0]) \
+            u = torch.zeros((batch_size_1, 1), device=conditional_observation.device).uniform_(0, 1)
+            conditionals_dict[local_opponent] = self.icdf_v2_cond_v1(conditional_observation)(u[:, 0]) \
                 .view(batch_size_0 * batch_size_1, 1)
 
             # opposing global bidder can be drawn independently
-
 
         return conditionals_dict
 
@@ -325,7 +328,11 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
     #     return cdf
 
     def icdf_v2_cond_v1(self, v1):
-        """Conditional inverse CDF of observation 2 given observation 1"""
+        """
+        Draw samples of the opposing local bidder conditional on the local bidders' valuation:
+        For a batch of obseravtions of one of the local bidders in LLG `conditional_observation`,
+        this returns the iCDF of the other local bidder.
+        """
         gamma = self.correlation
         switch = gamma < 0.5
         [mini, maxi] = sorted((gamma, 1 - gamma))
@@ -434,7 +441,7 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         return torch.tensor(.5) # must be strictly between 0, 1 to trigger right case
 
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
-                          cond: torch.Tensor, batch_size: int=None) -> dict:
+                          conditional_observation: torch.Tensor, batch_size: int=None) -> Dict[int, torch.Tensor]:
         """
         Draw conditional types of all agents given one agent's observation `cond`.
 
@@ -451,13 +458,14 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
             dict {player_position[int]: cond_valuation[torch.Tensor]}.
         """
         opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
-        batch_size_0 = cond.shape[0]
+        batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
-        u = torch.zeros((batch_size_1, 3), device=cond.device).uniform_(0, 1)
+        u = torch.zeros((batch_size_1, 3), device=conditional_observation.device).uniform_(0, 1)
 
         # (batch_size, batch_size): 1st dim for cond, 2nd for sample for each cond
-        x0 = self.cond_marginal_icdf(cond)(u[:, 0])
-        x1 = self.cond2_icdf(cond.repeat_interleave(batch_size_1, 0).view(batch_size_0, batch_size_1), x0)(u[:, 1])
+        x0 = self.cond_marginal_icdf(conditional_observation)(u[:, 0])
+        x1 = self.cond2_icdf(conditional_observation.repeat_interleave(batch_size_1, 0) \
+            .view(batch_size_0, batch_size_1), x0)(u[:, 1])
 
         # Need to clip for numeric problems at edges
         x0 = torch.clamp(x0, 0, 2)
@@ -477,7 +485,8 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         x1 = x1[:, perm]
 
         # Sample agent's own type conditioned on signals
-        z = torch.max(cond.repeat_interleave(batch_size_1, 0).view(batch_size_0, batch_size_1), torch.max(x0, x1))
+        z = torch.max(conditional_observation.repeat_interleave(batch_size_1, 0) \
+            .view(batch_size_0, batch_size_1), torch.max(x0, x1))
         agent_type = self.type_cond_on_signal_icdf(z)(u[:, 2])
 
         return {
@@ -554,9 +563,12 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
     #     return cdf
 
     @staticmethod
-    def cond_marginal_icdf(cond):
-        """iCDF of one, marginal one and given one"""
-        z = cond.view(-1, 1)
+    def cond_marginal_icdf(conditional_observation):
+        """
+        Returns the iCDF of one opponent's obeservation, marginalizing one other opponent's
+        obeservation and conditioned on the remaing agent's obeservation.
+        """
+        z = conditional_observation.view(-1, 1)
         cond_batch = z.shape[0]
 
         # constants
@@ -675,7 +687,7 @@ class AffiliatedObservationsDevice(CorrelationDevice):
         return torch.tensor(.5) # must be strictly between 0, 1 to trigger right case
 
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
-                          cond: torch.Tensor, batch_size: int=None) -> dict:
+                          conditional_observation: torch.Tensor, batch_size: int=None) -> Dict[int, torch.Tensor]:
         """
         Draw conditional types of all agents given one agent's observation `cond`.
 
@@ -683,7 +695,7 @@ class AffiliatedObservationsDevice(CorrelationDevice):
         ----
             agents: List[Bidder], list of bidders whose valuations are to be drwan.
             player_position: int, player position of agent.
-            cond: torch.Tensor, valuation of bidder on which the other valuations are
+            conditional_observation: torch.Tensor, valuation of bidder on which the other valuations are
                 to be conditioned on.
             batch_size: int, batch size if different from batch size of `cond`.
 
@@ -692,16 +704,16 @@ class AffiliatedObservationsDevice(CorrelationDevice):
             dict {player_position[int]: cond_valuation[torch.Tensor]}.
         """
         opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
-        batch_size_0 = cond.shape[0]
+        batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
-        u = torch.zeros((batch_size_1, 1), device=cond.device).uniform_(0, 1)
+        u = torch.zeros((batch_size_1, 1), device=conditional_observation.device).uniform_(0, 1)
 
         # (batch_size, batch_size): 1st dim for cond, 2nd for sample for each cond
-        opponent_observation = self.icdf_o2_cond_o1(cond)(u[:, 0])
+        opponent_observation = self.icdf_o2_cond_o1(conditional_observation)(u[:, 0])
 
         # Sample agent's own type conditioned on signal
         agent_type = 0.5 * (
-            cond.repeat_interleave(batch_size_1, 0).view(batch_size_0, batch_size_1) \
+            conditional_observation.repeat_interleave(batch_size_1, 0).view(batch_size_0, batch_size_1) \
             + opponent_observation
         )
 

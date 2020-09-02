@@ -339,7 +339,7 @@ class Bidder(Player):
         welfare.
         """
 
-        #assert allocations.dim() == 2 # batch_size x items
+        assert allocations.dim() == 2 # batch_size x items
         if valuations is None:
             valuations = self.valuations
 

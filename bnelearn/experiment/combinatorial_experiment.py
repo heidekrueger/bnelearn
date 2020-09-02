@@ -179,9 +179,9 @@ class LLGExperiment(LocalGlobalExperiment):
                 bid_if_positive = 2. / (2. + self.gamma) * (
                     valuation - (3. - np.sqrt(9 - (1. - self.gamma) ** 2)) / (1. - self.gamma))
                 return torch.max(torch.zeros_like(valuation), bid_if_positive)
-            raise ValueError('optimal bid not implemented for other rules')
+            raise ValueError('optimal bid not implemented for this payment rule')
         else:
-            raise ValueError('optimal bid not implemented for other rules')
+            raise ValueError('optimal bid not implemented for this correlation type')
 
     def _check_and_set_known_bne(self):
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
