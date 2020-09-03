@@ -10,7 +10,7 @@ import warnings
 import math
 import torch
 from torch.distributions import Distribution
-from bnelearn.strategy import MatrixGameStrategy, FictitiousPlayStrategy, FictitiousNeuralPlayStrategy
+from bnelearn.strategy import Strategy, MatrixGameStrategy, FictitiousPlayStrategy, FictitiousNeuralPlayStrategy
 
 
 class Player(ABC):
@@ -116,13 +116,13 @@ class Bidder(Player):
 
     ### Alternative Constructors #############
     @classmethod
-    def uniform(cls, lower, upper, strategy, **kwargs):
+    def uniform(cls, lower: float, upper: float, strategy: Strategy, **kwargs):
         """Constructs a bidder with uniform valuation prior."""
         dist = torch.distributions.uniform.Uniform(low=lower, high=upper)
         return cls(dist, strategy, **kwargs)
 
     @classmethod
-    def normal(cls, mean, stddev, strategy, **kwargs):
+    def normal(cls, mean: float, stddev: float, strategy: Strategy, **kwargs):
         """Constructs a bidder with Gaussian valuation prior."""
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)

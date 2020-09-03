@@ -206,8 +206,8 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
 
     assert batch_size <= agent.batch_size, "invalid batch size!"
 
-    observation = agent.valuations[:batch_size, ...].detach()
-    action_actual = agent.get_action()[:batch_size, ...].detach()
+    observation = agent.valuations[:batch_size, ...].detach().clone()
+    action_actual = agent.get_action()[:batch_size, ...].detach().clone()
     n_items = observation.shape[-1]
 
     agent_batch_size = observation.shape[0]

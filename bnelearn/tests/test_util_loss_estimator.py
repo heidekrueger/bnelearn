@@ -165,7 +165,6 @@ def test_ex_interim_util_loss_estimator_truthful(rule, mechanism, bid_profile, b
     for i in range(n_bidders):
         util_loss = metrics.ex_interim_util_loss(env, i, batch_size, grid_size)
 
-        
         assert torch.allclose(util_loss.mean(), expected_util_loss[i, 0], atol = 0.001), \
             "Unexpected avg util_loss {}".format(util_loss.mean() - expected_util_loss[i, 0])
         assert torch.allclose(util_loss.max(), expected_util_loss[i, 1], atol = 0.001), \
@@ -209,8 +208,8 @@ def test_ex_interim_util_loss_estimator_fpsb_bne():
     mean_util_loss = util_loss.mean()
     max_util_loss = util_loss.max()
 
-    assert mean_util_loss < 0.004, "Util_loss in BNE should be (close to) zero!"
-    assert max_util_loss < 0.02, "Util_loss in BNE should be (close to) zero!"
+    assert mean_util_loss < 0.015, "Util_loss {} in BNE should be (close to) zero!".format(util_loss.mean())
+    assert max_util_loss < 0.02, "Util_loss {} in BNE should be (close to) zero!".format(util_loss.max())
 
 def test_ex_interim_util_loss_estimator_splitaward_bne():
     """Test the util_loss in BNE of fpsb split-award auction. - ex interim util_loss should be close to zero"""
