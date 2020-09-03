@@ -60,7 +60,7 @@ class IndependentValuationDevice(CorrelationDevice):
         return {
             agent.player_position: agent.draw_valuations_(
                 common_component=self.draw_common_component(), weights=self.get_weights()
-            )[:batch_size_1, :].repeat(batch_size_0, 1)
+            )[:batch_size_0, :].repeat(batch_size_1, 1)
             for agent in agents
         }
 

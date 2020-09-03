@@ -164,7 +164,7 @@ def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: B
 
 
 def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
-                         batch_size: int, grid_size: int):
+                         batch_size: int, grid_size: int, opponent_batch_size: int = None):
     """
     Estimates a bidder's utility loss in the current state of the environment, i.e. the
     potential benefit of deviating from the current strategy, evaluated at each point of
@@ -208,10 +208,12 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
 
     observation = agent.valuations[:batch_size, ...].detach().clone()
     action_actual = agent.get_action()[:batch_size, ...].detach().clone()
+    # TODO Nils: Generally, we don't need `clone()` but in some rare instances we do.
+    #            Side effects? Relation to `cache_actions`? ...
     n_items = observation.shape[-1]
 
     agent_batch_size = observation.shape[0]
-    opponent_batch_size = batch_size
+    opponent_batch_size = batch_size if opponent_batch_size is None else opponent_batch_size
 
     # draw opponent observations conditional on `agent`'s observation:
     # dict with valuations of (batch_size * batch_size, n_items) for each opponent

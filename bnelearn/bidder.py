@@ -148,7 +148,7 @@ class Bidder(Player):
 
         if not new_value.equal(self._valuations):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
-            self._valuations_changed =True
+            self._valuations_changed = True
 
     def get_valuation_grid(self, n_points=None, extended_valuation_grid=False, dtype=torch.float32, step=None):
         """ Returns a grid of approximately `n_points` valuations that are

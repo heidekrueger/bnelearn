@@ -360,7 +360,7 @@ class AuctionEnvironment(Environment):
                         agents = self.agents,
                         player_position = player_position,
                         conditional_observation = conditional_observation,
-                        batch_size = batch_size
+                        batch_size = batch_size_1
                     )
                 )
 
