@@ -358,7 +358,7 @@ class Experiment(ABC):
                     start_time = timer()
 
                     # Compute relative utility loss
-                    loss_ex_ante, _ = self._calculate_metrics_util_loss(
+                    loss_ex_ante, _, _ = self._calculate_metrics_util_loss(
                         create_plot_output=False,
                         batch_size=stopping_criterion_batch_size,
                         grid_size=stopping_criterion_grid_size)
@@ -594,10 +594,12 @@ class Experiment(ABC):
 
         if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
             create_plot_output = epoch % self.logging.plot_frequency == 0
-            self._cur_epoch_log_params['util_loss_ex_ante'], self._cur_epoch_log_params['util_loss_ex_interim'] = \
+            self._cur_epoch_log_params['util_loss_ex_ante'], \
+            self._cur_epoch_log_params['util_loss_ex_interim'], \
+            self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
-
             print(self._cur_epoch_log_params['util_loss_ex_interim'])
+
         # plotting
         if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
@@ -736,6 +738,13 @@ class Experiment(ABC):
         ]
         ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_loss]
         ex_interim_max_util_loss = [util_loss_model.max() for util_loss_model in util_loss]
+
+        # TODO Nils @Stefan: check consisteny with journal version
+        estimated_relative_ex_ante_util_loss = [
+            (1 - u / (u - l)).item()
+            for u, l in zip(self._cur_epoch_log_params['utilities'].tolist(), ex_ante_util_loss)
+        ]
+
         if not hasattr(self, '_max_util_loss'):
             self._max_util_loss = ex_interim_max_util_loss
         if create_plot_output:
@@ -749,7 +758,8 @@ class Experiment(ABC):
                        ylim=[0, max(self._max_util_loss).cpu()],
                        figure_name='util_loss_landscape', y_label='ex-interim loss',
                        epoch=epoch, plot_points=self.plot_points)
-        return ex_ante_util_loss, ex_interim_max_util_loss
+
+        return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 
     def _log_experiment_params(self):
         # TODO: write out all experiment params (complete dict) #See issue #113

@@ -11,14 +11,16 @@ def csv_to_tex(
 
     #pylint: disable=anomalous-backslash-in-string
     ALIASES = {
-        'eval/L_2':              '$L_2$',
-        'eval/L_inf':            '$L_\infty$',
-        'eval/epsilon_absolute': '$\epsilon_\text{abs}$',
-        'eval/epsilon_relative': '$\\varepsilon$',
-        'eval/overhead_hours':   '$T$',
-        'eval/update_norm':      '$|\Delta \theta|$',
-        'eval/utilities':        '$u$',
-        'eval/utility_vs_bne':   '$\hat \ell$'
+        'eval/L_2':                  '$L_2$',
+        'eval/L_inf':                '$L_\infty$',
+        'eval/epsilon_absolute':     '$\epsilon_\text{abs}$',
+        'eval/epsilon_relative':     '$\mathcal L$',    
+        'eval/overhead_hours':       '$T$',
+        'eval/update_norm':          '$|\Delta \theta|$',
+        'eval/utilities':            '$u$',
+        'eval/utility_vs_bne':       '$\hat u(\beta_i, \beta^*_{-i})$',
+        'eval/util_loss_ex_ante':    '$\hat \ell$',
+        'eval/util_loss_ex_interim': '$\hat \epsilon_$'
     }
 
     df = pd.read_csv(data_path)
@@ -28,8 +30,10 @@ def csv_to_tex(
     aggregate = df.groupby(['tag'], as_index=False).agg({'value': ['mean','std']})
     aggregate.columns = ['metric', 'mean','std']
     aggregate = aggregate.loc[aggregate['metric'].isin(
-        ['eval/L_2', 'eval/epsilon_relative', 'eval/utility_vs_bne'])]
+        ['eval/L_2', 'eval/epsilon_relative', 'eval/util_loss_ex_interim'])]
     aggregate.metric = aggregate.metric.map(lambda m: ALIASES[m])
 
     # write to file
     aggregate.to_latex(name, float_format="%.4f", escape=False, index=False, caption=caption)
+
+#csv_to_tex()
