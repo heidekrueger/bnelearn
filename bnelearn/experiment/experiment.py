@@ -333,7 +333,7 @@ class Experiment(ABC):
             print(f'Running experiment {run_id} (using seed {seed})')
             self.run_log_dir = os.path.join(
                 self.experiment_log_dir,
-                f'{run_id:02d} ' + time.strftime('%H.%M.%S ') + str(seed))
+                f'{run_id:02d} ' + time.strftime('%T ') + str(seed))
             torch.random.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
             np.random.seed(seed)
@@ -426,7 +426,8 @@ class Experiment(ABC):
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts: list = None,
-              figure_name: str = 'bid_function', plot_points=100):
+              colors: list = None, figure_name: str = 'bid_function',
+              plot_points=100):
         """
         This implements plotting simple 2D data.
 
@@ -470,7 +471,7 @@ class Experiment(ABC):
                     x[:, agent_idx, plot_idx], y[:, agent_idx, plot_idx],
                     fmts[agent_idx % len(fmts)],
                     label=None if labels is None else labels[agent_idx % len(labels)],
-                    color=cycle[agent_idx % n_colors],
+                    color=cycle[agent_idx % n_colors] if colors is None else cycle[colors[agent_idx]],
                 )
 
             # formating
@@ -733,15 +734,30 @@ class Experiment(ABC):
 
         torch.cuda.empty_cache()
         util_loss = [
-            metrics.ex_interim_util_loss(env, player_positions[0], batch_size, grid_size)
+            metrics.ex_interim_util_loss(env, player_positions[0], batch_size, grid_size,
+                                         return_best_response=self.logging.best_response)
             for player_positions in self._model2bidder
         ]
+        if self.logging.best_response:
+            best_responses = (
+                torch.stack([r[1][0] for r in util_loss], dim=1)[:, :, None],
+                torch.stack([r[1][1] for r in util_loss], dim=1)[:, :, None]
+            )
+            util_loss = [t[0] for t in util_loss]
+            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
+            fmts = ['bo'] * len(self.models)
+            self._plot(plot_data=best_responses, writer=self.writer,
+                       ylim=[0, max(a._grid_ub for a in self.env.agents).cpu()],
+                       figure_name='best_responses', y_label='best response',
+                       colors=list(range(len(self.models))), epoch=epoch, labels=labels,
+                       fmts=fmts, plot_points=self.plot_points)
+
         ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_loss]
         ex_interim_max_util_loss = [util_loss_model.max() for util_loss_model in util_loss]
 
         # TODO Nils @Stefan: check consisteny with journal version
         estimated_relative_ex_ante_util_loss = [
-            (1 - u / (u - l)).item()
+            (1 - u / (u + l)).item()
             for u, l in zip(self._cur_epoch_log_params['utilities'].tolist(), ex_ante_util_loss)
         ]
 

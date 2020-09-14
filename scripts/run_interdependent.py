@@ -1,12 +1,14 @@
 import os
 import sys
+import traceback
 import torch
 
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
 #pylint: disable=wrong-import-position
-from bnelearn.experiment.configuration_manager import ConfigurationManager 
+from bnelearn.experiment.configuration_manager import ConfigurationManager
+
 
 if __name__ == '__main__':
     #pylint: disable=pointless-string-statement
@@ -18,27 +20,14 @@ if __name__ == '__main__':
         - Create test for different gammas
     """
 
-    # User Parameters
+    # User parameters
     log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
     specific_gpu = 7
-    n_runs = 2
-    n_epochs = 2
+    n_runs = 10
+    n_epochs = 1000
 
-    # LLG
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
-        .with_correlation(gamma=0.0) \
-        .get_config(log_root_dir=log_root_dir, n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu)
-                    # payment_rule='proxy')
-
-    # Mineral rights
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='mineral_rights') \
-        .get_config(log_root_dir=log_root_dir, n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu)
-
-    # Affiliated observations
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='affiliated_observations') \
-        .get_config(log_root_dir=log_root_dir, n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu)
-
-    try:
+    def run(experiment_config, experiment_class):
+        """Run a experiment class from config"""
         experiment = experiment_class(experiment_config)
         if experiment.known_bne:
             experiment.logging.log_metrics = {
@@ -46,12 +35,60 @@ if __name__ == '__main__':
                 'l2': True,
                 'util_loss': True
             }
-        experiment.logging.util_loss_batch_size = 2**10
-        experiment.logging.util_loss_grid_size = 2**10
+        experiment.logging.util_loss_batch_size = 2**12 #2**12
+        experiment.logging.util_loss_grid_size = 2**10 #2**10
         experiment.logging.util_loss_frequency = 200
+        experiment.logging.best_response = True
 
-        experiment.run()
+        try:
+            experiment.run()
 
-    except KeyboardInterrupt:
-        print('\nKeyboardInterrupt: released memory after interruption')
-        torch.cuda.empty_cache()
+        except Exception: #pylint: disable=broad-except
+            traceback.print_exc()
+            torch.cuda.empty_cache()
+
+
+    ### Run all settings with interdependencies ###
+    # LLG
+    corr_models = ['Bernoulli_weights', 'constant_weights']
+    for corr_model in corr_models:
+        experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
+            .with_correlation(gamma=0.5) \
+            .get_config(
+                log_root_dir=log_root_dir,
+                n_runs=n_runs,
+                n_epochs=n_epochs,
+                correlation_types=corr_model,
+                # payment_rule='proxy',
+                specific_gpu=specific_gpu,
+                # pretrain_iters=1
+            )
+        run(experiment_config, experiment_class)
+
+    # # Mineral rights
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='mineral_rights') \
+    #     .get_config(log_root_dir=log_root_dir, n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu)
+    # run(experiment_config, experiment_class)
+
+    # # Affiliated observations
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='affiliated_observations') \
+    #     .get_config(log_root_dir=log_root_dir, n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu)
+    # run(experiment_config, experiment_class)
+
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
+    #    .get_config(log_root_dir=log_root_dir, n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu)
+    # run(experiment_config, experiment_class)
+
+    # ### Run LLG setting for different correlation strengths ###
+    for gamma in [g/10 for g in range(0, 11)]:
+        experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
+            .with_correlation(gamma=gamma) \
+            .get_config(
+                log_root_dir=log_root_dir,
+                n_runs=n_runs,
+                n_epochs=n_epochs,
+                correlation_types='Bernoulli_weights',
+                # payment_rule='proxy',
+                specific_gpu=specific_gpu,
+            )
+        run(experiment_config, experiment_class)

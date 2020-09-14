@@ -90,8 +90,9 @@ class LocalGlobalExperiment(Experiment, ABC):
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
-        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
-                              batch_size=batch_size, n_items = self.n_items, correlation_type=correlation_type)
+        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
+                              player_position=player_position, batch_size=batch_size,
+                              n_items = self.n_items, correlation_type=correlation_type)
 
 
 class LLGExperiment(LocalGlobalExperiment):
@@ -106,32 +107,25 @@ class LLGExperiment(LocalGlobalExperiment):
         assert self.config.setting.n_players == 3, "Incorrect number of players specified."
 
         self.gamma = config.setting.gamma
+        if config.setting.correlation_types == 'Bernoulli_weights':
+            self.CorrelationDevice = BernoulliWeightsCorrelationDevice
+        elif config.setting.correlation_types == 'constant_weights':
+            self.CorrelationDevice = ConstantWeightsCorrelationDevice
+        else:
+            raise NotImplementedError('Correlation not implemented.')
 
         if self.gamma > 0.0:
-            if config.setting.correlation_types == 'Bernoulli_weights':
-                self.correlation_groups = [[0, 1], [2]]
-                self.correlation_coefficients = [self.gamma, 0.0]
-                self.correlation_devices = [
-                    BernoulliWeightsCorrelationDevice(
-                        common_component_dist = torch.distributions.Uniform(config.setting.u_lo[0],
-                                                                            config.setting.u_hi[0]),
-                        batch_size=config.learning.batch_size,
-                        n_items=1,
-                        correlation = self.gamma),
-                    IndependentValuationDevice()]
-            elif config.setting.correlation_types == 'constant_weights':
-                self.correlation_groups = [[0, 1], [2]]
-                self.correlation_coefficients = [self.gamma, 0.0]
-                self.correlation_devices = [
-                    ConstantWeightsCorrelationDevice(
-                        common_component_dist = torch.distributions.Uniform(config.setting.u_lo[0],
-                                                                            config.setting.u_hi[0]),
-                        batch_size=config.learning.batch_size,
-                        n_items=1,
-                        correlation = self.gamma),
-                    IndependentValuationDevice()]
-            else:
-                raise NotImplementedError('other correlation not implemented.')
+            self.correlation_groups = [[0, 1], [2]]
+            self.correlation_coefficients = [self.gamma, 0.0]
+            self.correlation_devices = [
+                self.CorrelationDevice(
+                    common_component_dist=torch.distributions.Uniform(config.setting.u_lo[0],
+                                                                      config.setting.u_hi[0]),
+                    batch_size=config.learning.batch_size,
+                    n_items=1,
+                    correlation=self.gamma),
+                IndependentValuationDevice()]
+
 
         self.input_length = 1
         #self.config.setting.n_players = 3
@@ -157,7 +151,7 @@ class LLGExperiment(LocalGlobalExperiment):
         ##### Local bidders:
 
         ## perfect correlation
-        if not self.config.setting.correlation_types == 'constant_weights':
+        if self.config.setting.correlation_types in ['Bernoulli_weights', 'constant_weights']:
             if self.gamma == 1.0: #limit case, others not well defined
                 sigma = 1.0 # TODO: implement for other valuation profiles!
                 bid = valuation
@@ -200,22 +194,18 @@ class LLGExperiment(LocalGlobalExperiment):
             ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
             for i in range(self.n_players)]
 
-        if not self.config.setting.correlation_types == 'constant_weights':
-            bne_env_corr_devices = None
-            if self.correlation_groups:
-                bne_env_corr_devices = [
-                    BernoulliWeightsCorrelationDevice(
-                        common_component_dist=torch.distributions.Uniform(self.config.setting.u_lo[0],
-                                                                          self.config.setting.u_hi[0]),
-                        batch_size=self.config.logging.eval_batch_size,
-                        n_items=1,
-                        correlation=self.gamma),
-                    IndependentValuationDevice()]
+        bne_env_corr_devices = None
+        if self.correlation_groups:
+            bne_env_corr_devices = [
+                self.CorrelationDevice(
+                    common_component_dist=torch.distributions.Uniform(self.config.setting.u_lo[0],
+                                                                      self.config.setting.u_hi[0]),
+                    batch_size=self.config.logging.eval_batch_size,
+                    n_items=1,
+                    correlation=self.gamma),
+                IndependentValuationDevice()]
 
-        else:
-            self.known_bne = False
-            return
-
+        self.known_bne = True
         bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
             agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
@@ -226,7 +216,7 @@ class LLGExperiment(LocalGlobalExperiment):
             strategy_to_player_closure=self._strat_to_bidder,
             correlation_groups=self.correlation_groups,
             correlation_devices=bne_env_corr_devices
-            )
+        )
 
         self.bne_env = bne_env
 
@@ -239,7 +229,11 @@ class LLGExperiment(LocalGlobalExperiment):
         self.bne_utilities = bne_utilities_sampled
 
     def _get_logdir_hierarchy(self):
-        name = ['LLG', self.payment_rule, self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
+        name = ['LLG', self.payment_rule]
+        if self.gamma > 0:
+            name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
+        else:
+            name += ['independent']
         return os.path.join(*name)
 
 

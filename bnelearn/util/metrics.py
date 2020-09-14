@@ -164,7 +164,8 @@ def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: B
 
 
 def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
-                         batch_size: int, grid_size: int, opponent_batch_size: int = None):
+                         batch_size: int, grid_size: int, opponent_batch_size: int = None,
+                         return_best_response: bool = False):
     """
     Estimates a bidder's utility loss in the current state of the environment, i.e. the
     potential benefit of deviating from the current strategy, evaluated at each point of
@@ -180,9 +181,11 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     -----
         env: bnelearn.Environment.
         player_position: int, position of the player in the environment.
-        batch_size: int, specifing the sample size for agent itself and other agents.
+        batch_size: int, specifing the sample size for agent itself.
         grid_size: int, stating the number of alternative actions sampled via
             env.agents[player_position].get_valuation_grid(grid_size, True).
+        opponent_batch_size: int, specifing the sample size for opponents.
+        return_best_response: bool, specifing if BR is returned.
     Output
     ------
         utility_loss: torch.Tensor of shape (batch_size) describing the expected
@@ -250,6 +253,8 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     allocation_actual, payment_actual = mechanism.play(action_profile_actual)
 
     # TODO: until here we can just use the real valuations in the player objects to simplify the code.
+    # Nils @Stefan: No, we can't. We want the expected utility for a given valuation over all
+    #               opponents and not just against a single instance of opponents
 
     allocation_actual = allocation_actual[:, player_position, :].type(torch.bool) \
         .view(agent_batch_size * opponent_batch_size, n_items)
@@ -280,6 +285,8 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                 custom_range = range(0, batch_size, mini_batch_size)
 
             utility_alternative = torch.zeros_like(utility_actual)
+            if return_best_response:
+                best_response = torch.zeros_like(utility_actual)
 
             for b in custom_range:
 
@@ -334,7 +341,11 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                 utility_alternative_batch = torch.mean(utility_alternative_batch, axis=2)
 
                 # maximum expected utility over grid of alternative actions
-                utility_alternative[b:b+mini_batch_size] = torch.max(utility_alternative_batch, axis=1)[0]
+                if return_best_response:
+                    utility_alternative[b:b+mini_batch_size], idx = torch.max(utility_alternative_batch, axis=1)
+                    best_response[b:b+mini_batch_size] = action_alternative[idx].view(-1)
+                else:
+                    utility_alternative[b:b+mini_batch_size], _ = torch.max(utility_alternative_batch, axis=1)
 
             break
 
@@ -349,4 +360,8 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     # we don't accept a negative loss when the gird is not precise enough: set to 0
     utility_loss = (utility_alternative - utility_actual).relu()
 
+
+    if return_best_response:
+        return utility_loss, (observation, best_response)
+    
     return utility_loss

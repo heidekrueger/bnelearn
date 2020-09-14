@@ -129,6 +129,7 @@ class LoggingConfig:
     plot_frequency: int = 100
     plot_points: int = 100
     plot_show_inline: bool = True
+    best_response = False
     log_metrics: dict = None
     export_step_wise_linear_bid_function_size:float = None
     log_componentwise_norm: bool = False
