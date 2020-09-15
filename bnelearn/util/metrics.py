@@ -6,7 +6,7 @@ from bnelearn.mechanism import Mechanism
 from bnelearn.environment import Environment, AuctionEnvironment
 from bnelearn.bidder import Bidder
 from tqdm import tqdm
-import warnings
+import warnings, traceback
 
 
 def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> float:
@@ -352,6 +352,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         except RuntimeError as e:
             start = "CUDA out of memory. Tried to allocate"
             if str(e)[:len(start)] != start or mini_batch_size < 1:
+                traceback.print_exc()
                 raise e
 
             mini_batch_size = int(mini_batch_size / 2)
