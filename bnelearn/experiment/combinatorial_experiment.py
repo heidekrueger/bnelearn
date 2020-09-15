@@ -111,6 +111,8 @@ class LLGExperiment(LocalGlobalExperiment):
             self.CorrelationDevice = BernoulliWeightsCorrelationDevice
         elif config.setting.correlation_types == 'constant_weights':
             self.CorrelationDevice = ConstantWeightsCorrelationDevice
+        elif config.setting.correlation_types == 'independent':
+            pass
         else:
             raise NotImplementedError('Correlation not implemented.')
 
@@ -151,7 +153,7 @@ class LLGExperiment(LocalGlobalExperiment):
         ##### Local bidders:
 
         ## perfect correlation
-        if self.config.setting.correlation_types in ['Bernoulli_weights', 'constant_weights']:
+        if self.config.setting.correlation_types in ['Bernoulli_weights', 'constant_weights', 'independent']:
             if self.gamma == 1.0: #limit case, others not well defined
                 sigma = 1.0 # TODO: implement for other valuation profiles!
                 bid = valuation
