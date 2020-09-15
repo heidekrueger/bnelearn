@@ -14,15 +14,11 @@ if __name__ == '__main__':
     #pylint: disable=pointless-string-statement
     """
     Runs predefined experiments with interdependencies.
-
-    TODO:
-        - Create test for all settings and write data to tex-table
-        - Create test for different gammas
     """
 
     # User parameters
     log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
-    specific_gpu = 7
+    specific_gpu = 6
     n_runs = 10
     n_epochs = 1000
 
@@ -35,8 +31,8 @@ if __name__ == '__main__':
                 'l2': True,
                 'util_loss': True
             }
-        experiment.logging.util_loss_batch_size = 2**12 #2**12
-        experiment.logging.util_loss_grid_size = 2**10 #2**10
+        experiment.logging.util_loss_batch_size = 2**12
+        experiment.logging.util_loss_grid_size = 2**10
         experiment.logging.util_loss_frequency = 200
         experiment.logging.best_response = True
 
@@ -50,7 +46,7 @@ if __name__ == '__main__':
 
     ### Run all settings with interdependencies ###
     # LLG
-    corr_models = ['Bernoulli_weights', 'constant_weights']
+    corr_models = ['constant_weights', 'Bernoulli_weights']
     for corr_model in corr_models:
         experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
             .with_correlation(gamma=0.5) \
@@ -59,9 +55,9 @@ if __name__ == '__main__':
                 n_runs=n_runs,
                 n_epochs=n_epochs,
                 correlation_types=corr_model,
-                # payment_rule='proxy',
+                # payment_rule='vcg',
                 specific_gpu=specific_gpu,
-                # pretrain_iters=1
+                # pretrain_iters=10
             )
         run(experiment_config, experiment_class)
 

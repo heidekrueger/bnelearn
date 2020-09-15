@@ -343,7 +343,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                 # maximum expected utility over grid of alternative actions
                 if return_best_response:
                     utility_alternative[b:b+mini_batch_size], idx = torch.max(utility_alternative_batch, axis=1)
-                    best_response[b:b+mini_batch_size] = action_alternative[idx].view(-1)
+                    best_response[b:b+mini_batch_size] = action_alternative[idx].squeeze()
                 else:
                     utility_alternative[b:b+mini_batch_size], _ = torch.max(utility_alternative_batch, axis=1)
 
@@ -360,8 +360,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     # we don't accept a negative loss when the gird is not precise enough: set to 0
     utility_loss = (utility_alternative - utility_actual).relu()
 
-
     if return_best_response:
         return utility_loss, (observation, best_response)
-    
+
     return utility_loss

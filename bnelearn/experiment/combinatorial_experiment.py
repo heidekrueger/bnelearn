@@ -13,6 +13,7 @@ import os
 from abc import ABC
 from functools import partial
 from typing import Iterable, List
+import warnings
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
@@ -146,15 +147,16 @@ class LLGExperiment(LocalGlobalExperiment):
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.tensor(valuation)
 
-        # all core-selecting rules are strategy proof for global player:
+        ### Global bidder: all core-selecting rules are strategy proof for global player
         if self.payment_rule in ['vcg', 'proxy', 'nearest_zero', 'nearest_bid',
                                  'nearest_vcg'] and player_position == 2:
             return valuation
-        ##### Local bidders:
 
-        ## perfect correlation
-        if self.config.setting.correlation_types in ['Bernoulli_weights', 'constant_weights', 'independent']:
-            if self.gamma == 1.0: #limit case, others not well defined
+        ### Local bidders:
+        if self.config.setting.correlation_types in ['Bernoulli_weights', 'independent'] or \
+            (self.config.setting.correlation_types == 'constant_weights' and self.gamma in [0, 1]):
+            ## perfect correlation
+            if self.gamma == 1.0: # limit case, others not well defined
                 sigma = 1.0 # TODO: implement for other valuation profiles!
                 bid = valuation
                 if self.payment_rule == 'nearest_vcg':
@@ -177,14 +179,21 @@ class LLGExperiment(LocalGlobalExperiment):
                 return torch.max(torch.zeros_like(valuation), bid_if_positive)
             raise ValueError('optimal bid not implemented for this payment rule')
         else:
-            raise ValueError('optimal bid not implemented for this correlation type')
+            warnings.warn('optimal bid not implemented for this correlation type')
+            self.known_bne = False
 
     def _check_and_set_known_bne(self):
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
         #  (i.e. uniformity, bounds, etc)
         if self.config.setting.payment_rule in \
             ['vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
-            return True
+            if self.config.setting.correlation_types in ['Bernoulli_weights', 'independent'] or \
+                (self.config.setting.correlation_types == 'constant_weights' and self.gamma in [0, 1]):
+                return True
+            else:
+                self.logging.log_metrics['l2'] = False
+                self.logging.log_metrics['opt'] = False
+                return False
         return super()._check_and_set_known_bne()
 
     def _setup_eval_environment(self):

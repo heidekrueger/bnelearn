@@ -21,7 +21,7 @@ def csv_to_tex(
         'eval/utility_vs_bne':       '$\hat u(\beta_i, \beta^*_{-i})$',
         'eval/util_loss_ex_ante':    '$\hat \ell$',
         'eval/util_loss_ex_interim': '$\hat \epsilon$',
-        'eval/estimated_relative_ex_ante_util_loss': '$\hat \mathcal L$',
+        'eval/estimated_relative_ex_ante_util_loss': '$\hat {\mathcal L}$',
     }
 
     metrics = ['eval/L_2', 'eval/epsilon_relative', 'eval/util_loss_ex_interim',
@@ -37,7 +37,7 @@ def csv_to_tex(
         single_df = single_df.loc[single_df['metric'].isin(metrics)]
 
         single_df[exp_name] = single_df.apply(
-            lambda x: str('{:.4f}'.format(round(x['mean'], 4))) + ' (' \
+            lambda x: str('{:.2f}'.format(round(x['mean'], 2))) + ' (' \
                 + str('{:.2f}'.format(round(x['std'], 2))) + ')',
             axis=1
         )
@@ -58,8 +58,8 @@ if __name__ == '__main__':
             + 'interdependent/uniform/symmetric/risk_neutral/2p/2020-09-11 Fri 17.29/aggregate_log.csv',
         'Correlated values': '/home/kohring/bnelearn/experiments/single_item/second_price/' \
             + 'interdependent/uniform/symmetric/risk_neutral/3p/2020-09-11 Fri 17.29/aggregate_log.csv',
-        'LLG ($\gamma=0$)': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/independent/' \
-            'gamma_0.0/2020-09-11 Fri 17.29/aggregate_log.csv'
+        'LLG ($\gamma=0.5$)': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/' \
+            + 'gamma_0.5/2020-09-14 Mon 21.58/aggregate_log.csv'
     }
 
     csv_to_tex(
