@@ -255,7 +255,7 @@ def test_ex_interim_util_loss_estimator_splitaward_bne():
     mean_util_loss = util_loss.mean()
     max_util_loss = util_loss.max()
 
-    assert mean_util_loss < 0.005, "util_loss in BNE should be (close to) zero " \
+    assert mean_util_loss < 0.02, "util_loss in BNE should be (close to) zero " \
         + "but is {}!".format(mean_util_loss)
     assert max_util_loss < 0.07, "util_loss in BNE should be (close to) zero " \
         + "but is {}!".format(max_util_loss)
