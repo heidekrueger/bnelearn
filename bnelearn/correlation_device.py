@@ -117,7 +117,7 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
             sample_batch = x.view(-1, 1).shape[0]
             xx = x.repeat(1, cond_batch).view(cond_batch, sample_batch)
             ccond = conditional_observation.repeat(1, sample_batch).view(cond_batch, sample_batch)
-            equal_local_values = torch.bernoulli(self.corr * torch.zeros_like(x)) \
+            equal_local_values = torch.bernoulli(self.corr * torch.ones_like(x)) \
                 .repeat(1, cond_batch).view(cond_batch, sample_batch)
             result = torch.logical_not(equal_local_values) * xx + equal_local_values * ccond * torch.ones_like(xx)
             return result

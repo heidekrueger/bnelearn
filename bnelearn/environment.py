@@ -351,7 +351,6 @@ class AuctionEnvironment(Environment):
         conditionals_dict = dict()
 
         for group, device in zip(self.correlation_groups, self.correlation_devices):
-            common_component, weights = device.get_component_and_weights()
 
             # draw conditional valuations from all agents in same correlation
             if cond_device == device:
@@ -366,6 +365,7 @@ class AuctionEnvironment(Environment):
 
             # draw independent valuations from all agents in other correlations
             else:
+                common_component, weights = device.get_component_and_weights()
                 for i in group:
                     conditionals_dict[self.agents[i].player_position] = \
                         self.agents[i].draw_valuations_(common_component, weights) \
