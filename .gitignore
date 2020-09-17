@@ -55,4 +55,4 @@ pylint.txt
 #bnelearn/experiment/run_experiment.py
 
 # auto generated tex-files
-.tex
+#.tex #already captured by /experiments/
