@@ -66,6 +66,11 @@ class IndependentValuationDevice(CorrelationDevice):
 
 
 class BernoulliWeightsCorrelationDevice(CorrelationDevice):
+    """Implements correlation between two or more bidders, where their valuations depend additively
+       on an individual component z_i and a common component s.
+       In this scheme, a Bernoulli (0 or 1) weight determines that either v_i = z_i or v_i = s,
+       with weights/probabilities being set such that correlation gamma is achieved between bidders.
+    """
     def __init__(self, common_component_dist: Distribution,
                  batch_size: int, n_items, correlation: float):
         super().__init__(common_component_dist, batch_size, n_items, "Bernoulli_weights_model", correlation)
@@ -126,7 +131,13 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
 
 
 class ConstantWeightsCorrelationDevice(CorrelationDevice):
-    """Draw valuations according to the constant weights model in Ausubel & Baranov"""
+    """Draw valuations according to the constant weights model in Ausubel & Baranov.
+       Bidders valuations depend additively
+       on an individual component z_i and a common component s.
+       In this scheme, a weight w (across the entire batch!) is chosen such that
+       v_i = (1-w)z_i + ws
+       such that the correlation between v_i becomes gamma.
+    """
     def __init__(self, common_component_dist: Distribution,
                  batch_size: int, n_items: int, correlation: float):
         self.correlation = correlation
