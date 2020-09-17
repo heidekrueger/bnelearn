@@ -84,7 +84,9 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
     def draw_conditionals(self, agents: List[Bidder], player_position: int,
                           conditional_observation: torch.Tensor, batch_size: int=None) -> Dict[int, torch.Tensor]:
         """Draw conditional types of all agents given one agent's observation `cond`"""
-        # TODO Nils @Stefan: check math here
+        
+        assert len(agents) == 2, "conditional draws currently only supported for 2 agents in the correlation group!"
+
         opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
         batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
