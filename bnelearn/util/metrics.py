@@ -279,7 +279,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
 
             if mini_batch_size < batch_size:
                 warnings.warn("Sequential computation of utility loss: mini batches of size {}."
-                              .format(mini_batch_size))
+                              .format(mini_batch_size), ResourceWarning)
                 custom_range = tqdm(range(0, batch_size, mini_batch_size))
             else:
                 custom_range = range(0, batch_size, mini_batch_size)

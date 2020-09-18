@@ -316,9 +316,11 @@ class Experiment(ABC):
         if self.logging.enable_logging:
             self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
-            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead))
+            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),
+                  end="\r")
         else:
-            print('epoch {}:\telapsed {:.2f}s'.format(epoch, timer() - tic))
+            print('epoch {}:\telapsed {:.2f}s'.format(epoch, timer() - tic),
+                  end="\r")
         return utilities
 
     def run(self):
