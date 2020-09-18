@@ -110,6 +110,9 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
             batch_size: int=None
         ) -> Dict[int, torch.Tensor]:
 
+        assert len(agents) == 2, \
+            "conditional draws currently only supported for 2 agents in the correlation group!"
+
         # TODO: possibly unify LLG correlation devices in parent
         batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
@@ -175,6 +178,9 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
             batch_size: int=None
         ) -> Dict[int, torch.Tensor]:
 
+        assert len(agents) == 2, \
+            "conditional draws currently only supported for 2 agents in the correlation group!"
+
         batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
         conditionals_dict = dict()
@@ -234,148 +240,51 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
     def get_weights(self):
         return torch.tensor(.5) # must be strictly between 0, 1 to trigger right case
 
-    def draw_conditionals(self, agents: List[Bidder], player_position: int,
-                          conditional_observation: torch.Tensor, batch_size: int=None) -> Dict[int, torch.Tensor]:
+    def draw_conditionals(
+            self,
+            agents: List[Bidder],
+            player_position: int,
+            conditional_observation: torch.Tensor,
+            batch_size: int=None
+        ) -> Dict[int, torch.Tensor]:
+
+        # This method should work for an arbirtray number of agents
+
         opponent_positions = [a.player_position for a in agents if a.player_position != player_position]
         batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
-        u = torch.zeros((batch_size_1, 3), device=conditional_observation.device).uniform_(0, 1)
+        conditionals_dict = dict()
 
-        # (batch_size, batch_size): 1st dim for cond, 2nd for sample for each cond
-        x0 = self.cond_marginal_icdf(conditional_observation)(u[:, 0])
-        x1 = self.cond2_icdf(conditional_observation.repeat_interleave(batch_size_1, 0) \
-            .view(batch_size_0, batch_size_1), x0)(u[:, 1])
+        # Draw valuation given agent's observation
+        v = self.draw_v_given_o(conditional_observation, batch_size_1) \
+            .view(batch_size_0 * batch_size_1, 1)
+        conditionals_dict[player_position] = v
 
-        # Need to clip for numeric problems at edges
-        x0 = torch.clamp(x0, 0, 2)
-        x1 = torch.clamp(x1, 0, 2)
-
-        # Set NaNs to 2
-        x0[x0 != x0] = 2
-        x1[x1 != x1] = 2
-
-        # Use symmetry to decrease bias
-        perm = torch.randperm(batch_size_1)
-        cut = int(batch_size_1 / 2)
-        temp = x0[:, :cut].clone()
-        x0[:, :cut] = x1[:, :cut]
-        x1[:, :cut] = temp
-        x0 = x0[:, perm]
-        x1 = x1[:, perm]
-
-        # Sample agent's own type conditioned on signals
-        z = torch.max(conditional_observation.repeat_interleave(batch_size_1, 0) \
-            .view(batch_size_0, batch_size_1), torch.max(x0, x1))
-        agent_type = self.type_cond_on_signal_icdf(z)(u[:, 2])
-
-        return {
-            player_position: agent_type.view(batch_size_0 * batch_size_1, 1),
-            opponent_positions[0]: x0.view(batch_size_0 * batch_size_1, 1),
-            opponent_positions[1]: x1.view(batch_size_0 * batch_size_1, 1)
-        }
-
-    @staticmethod
-    def type_cond_on_signal_icdf(o):
-        """iCDF of type distribution given observation o"""
-        eps = 1e-4
-        oo = torch.clamp(o, 0, 2 - eps)
-        c = (- 4 / (torch.pow(oo, 2) - 4)).clone()
-        cond_batch = c.shape[0]
-        def icdf(v):
-            vv = v.repeat(cond_batch, 1)
-            return oo / torch.sqrt(-c * torch.pow(oo, 2) + 4*c + vv * torch.pow(oo, 2) - 4*vv)
-        return icdf
-
-    @staticmethod
-    def density(x):
-        """Mineral rights analytic density. Given in Krishna."""
-        x = x.view(-1, 3)
-        zz = torch.max(x, axis=1)[0]
-        result = (4 - zz**2) / (16 * zz**2)
-        result[torch.any(x < 0, 1)] = 0
-        result[torch.any(x > 2, 1)] = 0
-        return result
-
-    @staticmethod
-    def cond_marginal_icdf(conditional_observation):
-        """
-        Returns the iCDF of one opponent's obeservation, marginalizing one other opponent's
-        obeservation and conditioned on the remaing agent's obeservation.
-        """
-        z = conditional_observation.view(-1, 1)
-        cond_batch = z.shape[0]
-
-        # constants
-        f = (z - 2) / (2*z * torch.log(z/2))
-        f_inv = 1. / f
-        c_1 = f * z
-        c_2 = 2 * torch.log(z/2)
-        c_3 = (z - 2*torch.log(z)) / (2*torch.log(z/2))
-
-        def cdf(x):
-            xx = x.repeat(1, cond_batch).view(cond_batch, -1)
-            sample_batch = xx.shape[1]
-
-            zz = z.repeat(1, sample_batch)
-            ff = f.repeat(1, sample_batch)
-            ff_inv = f_inv.repeat(1, sample_batch)
-            cc_1 = c_1.repeat(1, sample_batch)
-            cc_2 = c_2.repeat(1, sample_batch)
-            cc_3 = c_3.repeat(1, sample_batch)
-
-            result = torch.zeros((cond_batch, sample_batch), device=x.device)
-            mask = xx < ff * zz
-            result[mask] = ff_inv[mask] * xx[mask]
-            result[~mask] = -2 * MineralRightsCorrelationDevice.lambertw_approx(
-                - 1 / (2*torch.sqrt(torch.exp(cc_2[~mask]*(xx[~mask] - cc_1[~mask] + cc_3[~mask]))))
+        # Draw opponents' observations
+        for opponent_position in opponent_positions:
+            conditionals_dict.update(
+                {opponent_position: torch.empty(batch_size_1, device=conditional_observation.device) \
+                    .uniform_(0, 1).repeat(1, batch_size_0).view(batch_size_0 * batch_size_1, 1) * 2 * v}
             )
-            return result
-        return cdf
+
+        return conditionals_dict
 
     @staticmethod
-    def cond2_icdf(cond1, cond2):
-        """iCDF when conditioning on two of three agents"""
-        z = torch.max(cond1, cond2)
-        cond_batch = z.shape[0]
-
-        factor_1 = (4*z) / (2 - z)
-        factor_2 = (4 - torch.pow(z, 2)) / (16*torch.pow(z, 2))
-
-        def icdf(x):
-            xx = x.repeat(cond_batch, 1).view_as(z)
-
-            result = torch.zeros_like(z)
-            sect1 = xx < z * factor_1 * factor_2
-            result[sect1] = xx[sect1] / factor_1[sect1] / factor_2[sect1]
-
-            sect2 = torch.logical_not(sect1)
-            f1 = factor_1[sect2]
-            f2 = factor_2[sect2]
-            zz = z[sect2]
-            result[sect2] = -(torch.sqrt(-32*f1*xx[sect2]*zz*(16*f2*zz**2 + zz**2 + 4) + f1**2*(256*f2**2*zz**4 \
-                + 32*f2*(zz**2 + 4)*zz**2 + (zz**2 - 4)**2) + 256*xx[sect2]**2*zz**2) - f1*(16*f2*zz**2 + zz**2 \
-                + 4) + 16*xx[sect2]*zz) / (2*f1*zz)
-
-            return result
-        return icdf
-
-    @staticmethod
-    def lambertw_approx(z, iters=4):
+    def draw_v_given_o(o: torch.Tensor, batch_size: int):
         """
-        Approximation of Lambert W function via Halley’s method for
-        positive values and via Winitzki approx. for negative values.
+        Draw the common valuation given an observation o. This is done via calling
+        its inverse CDF at a uniformly random sample.
         """
-        a = torch.zeros_like(z)
-        eps = 0
-        mask = z > eps
+        c = -4 / (o**2 - 4)
+        cond_batch_size = o.shape[0]
 
-        for i in range(iters):
-            a[mask] = a[mask] - (a[mask]*torch.exp(a[mask]) - z[mask]) / \
-                (torch.exp(a[mask])*(a[mask] + 1)-((a[mask] + 2)*(a[mask]*torch.exp(a[mask]) - z[mask]))/(2*a[mask]+2))
+        o = o.clone().repeat(1, batch_size).view(cond_batch_size, batch_size)
+        c = c.repeat(1, batch_size).view(cond_batch_size, batch_size)
 
-        a[~mask] = (np.exp(1)*z[~mask]) / \
-            (1 + ((np.exp(1) - 1)**(-1) - 1/np.sqrt(2) + 1/torch.sqrt(2*np.exp(1)*z[~mask] + 2))**(-1))
-        return a
+        uniform = torch.empty((1, batch_size), device=o.device).uniform_(0, 1) \
+            .repeat(1, cond_batch_size).view(cond_batch_size, batch_size)
+
+        return o / torch.sqrt(-c * o**2 + 4*c + uniform*o**2 - 4*uniform)
 
 
 class AffiliatedObservationsDevice(CorrelationDevice):
