@@ -1,31 +1,35 @@
 """utilities for run scripts"""
 import pandas as pd
+import matplotlib.pyplot as plt
+
+#pylint: disable=anomalous-backslash-in-string
+ALIASES = {
+    'eval/L_2':                  '$L_2$',
+    'eval/L_inf':                '$L_\infty$',
+    'eval/epsilon_absolute':     '$\epsilon_\text{abs}$',
+    'eval/epsilon_relative':     '$\mathcal{L}$',
+    'eval/overhead_hours':       '$T$',
+    'eval/update_norm':          '$|\Delta \theta|$',
+    'eval/utilities':            '$u$',
+    'eval/utility_vs_bne':       '$\hat u(\beta_i, \beta^*_{-i})$',
+    'eval/util_loss_ex_ante':    '$\hat \ell$',
+    'eval/util_loss_ex_interim': '$\hat \epsilon$',
+    'eval/estimated_relative_ex_ante_util_loss': '$\hat {\mathcal L}$',
+}
 
 
 def csv_to_tex(
         experiments: dict,
         name: str = 'table.tex',
-        caption: str = 'caption'
+        caption: str = 'caption',
+        metrics: list = ['eval/L_2', 'eval/epsilon_relative', 'eval/util_loss_ex_interim',
+            'eval/estimated_relative_ex_ante_util_loss'],
+        precision: int = 2,
     ):
     """Creates a tex file with the csv at `path` as a LaTeX table."""
 
-    #pylint: disable=anomalous-backslash-in-string
-    ALIASES = {
-        'eval/L_2':                  '$L_2$',
-        'eval/L_inf':                '$L_\infty$',
-        'eval/epsilon_absolute':     '$\epsilon_\text{abs}$',
-        'eval/epsilon_relative':     '$\mathcal L$',
-        'eval/overhead_hours':       '$T$',
-        'eval/update_norm':          '$|\Delta \theta|$',
-        'eval/utilities':            '$u$',
-        'eval/utility_vs_bne':       '$\hat u(\beta_i, \beta^*_{-i})$',
-        'eval/util_loss_ex_ante':    '$\hat \ell$',
-        'eval/util_loss_ex_interim': '$\hat \epsilon$',
-        'eval/estimated_relative_ex_ante_util_loss': '$\hat {\mathcal L}$',
-    }
+    form = '{:.' + str(precision) + 'f}'
 
-    metrics = ['eval/L_2', 'eval/epsilon_relative', 'eval/util_loss_ex_interim',
-               'eval/estimated_relative_ex_ante_util_loss']
     aggregate_df = pd.DataFrame(columns=metrics)
     for exp_name, exp_path in experiments.items():
         df = pd.read_csv(exp_path)
@@ -37,8 +41,8 @@ def csv_to_tex(
         single_df = single_df.loc[single_df['metric'].isin(metrics)]
 
         single_df[exp_name] = single_df.apply(
-            lambda x: str('{:.2f}'.format(round(x['mean'], 2))) + ' (' \
-                + str('{:.2f}'.format(round(x['std'], 2))) + ')',
+            lambda x: str(form.format(round(x['mean'], precision))) + ' (' \
+                + str(form.format(round(x['std'], precision))) + ')',
             axis=1
         )
         single_df.index = single_df['metric']
@@ -51,19 +55,103 @@ def csv_to_tex(
     aggregate_df.to_latex('experiments/' + name, float_format="%.4f", escape=False, index=True, caption=caption)
 
 
+def csv_to_boxplot(
+        experiments: dict,
+        name: str = 'boxplot.png',
+        caption: str = 'caption',
+        metric: str = 'eval/epsilon_relative',
+        precision: int = 4
+    ):
+    """Creates a boxplot."""
+
+    form = '{:.' + str(precision) + 'f}'
+
+    aggregate_df = pd.DataFrame(columns=['gamma', 'locals', 'global'])
+    for exp_name, exp_path in experiments.items():
+        df = pd.read_csv(exp_path)
+        end_epoch = df.epoch.max()
+        df = df[df.epoch == end_epoch]
+        df = df[df['tag'] == metric]
+
+        single_df = pd.DataFrame(columns=['locals', 'global'])
+        locals_ = df[df['subrun'] == 'locals'].value
+        global_ = df[df['subrun'] == 'global'].value
+        single_df['locals'] = locals_.to_numpy()
+        single_df['global'] = global_.to_numpy()
+        single_df['gamma'] = exp_name[-4:-1]
+        aggregate_df = pd.concat([aggregate_df, single_df])
+
+    # write to file
+    c1 = '#1f77b4'
+    c2 = '#ff7f0e'
+
+    def setBoxColors(bp):
+        plt.setp(bp['boxes'][0], color=c1)
+        plt.setp(bp['caps'][0], color=c1)
+        plt.setp(bp['caps'][1], color=c1)
+        plt.setp(bp['whiskers'][0], color=c1)
+        plt.setp(bp['whiskers'][1], color=c1)
+        plt.setp(bp['fliers'][0], marker='.', markeredgecolor=c1)
+        plt.setp(bp['medians'][0], color=c1)
+
+        plt.setp(bp['boxes'][1], color=c2)
+        plt.setp(bp['caps'][2], color=c2)
+        plt.setp(bp['caps'][3], color=c2)
+        plt.setp(bp['whiskers'][2], color=c2)
+        plt.setp(bp['whiskers'][3], color=c2)
+        plt.setp(bp['fliers'][1], marker='.', markeredgecolor=c2)
+        plt.setp(bp['medians'][1], color=c2)
+
+    fig = plt.figure(figsize=(4, 3))
+    ax = plt.axes()
+    pos = [1, 2]
+    for gamma, _ in experiments.items():
+        bp = plt.boxplot(aggregate_df[aggregate_df['gamma'] == gamma[-4:-1]][['locals', 'global']].to_numpy(),
+                         positions=pos, widths=1.5)
+        setBoxColors(bp)
+        pos = [p + 3 for p in pos]
+    hB, = plt.plot([1, 1], color=c1)
+    hR, = plt.plot([1, 1], color=c2)
+    plt.legend((hB, hR), ('locals', 'global'), loc='lower right')
+    ax.set_xticks([-1.5 + 30*float(gamma[-4:-1]) for gamma, _ in experiments.items()])
+    ax.set_xticklabels([float(gamma[-4:-1]) for gamma, _ in experiments.items()])
+    plt.xlim([0, 30])
+    plt.ylim([-0.0015, 0.0015])
+    plt.xlabel('correlation $\gamma$')
+    plt.ylabel('loss ' + ALIASES[metric])
+    # plt.grid()
+    plt.tight_layout()
+    plt.savefig('experiments/' + name)
+
 
 if __name__ == '__main__':
+    
+
+    # All experiments
     exps = {
-        'Affiliated values': '/home/kohring/bnelearn/experiments/single_item/first_price/' \
-            + 'interdependent/uniform/symmetric/risk_neutral/2p/2020-09-11 Fri 17.29/aggregate_log.csv',
-        'Correlated values': '/home/kohring/bnelearn/experiments/single_item/second_price/' \
-            + 'interdependent/uniform/symmetric/risk_neutral/3p/2020-09-11 Fri 17.29/aggregate_log.csv',
-        'LLG ($\gamma=0.5$)': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/' \
-            + 'gamma_0.5/2020-09-14 Mon 21.58/aggregate_log.csv'
+        'Affiliated values': '/home/kohring/bnelearn/experiments/single_item/first_price/interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
+        'Correlated values': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
+        'LLG Bernoulli weights ($\gamma=0.5$)': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/gamma_0.5/2020-09-16 Wed 20.15/aggregate_log.csv'
     }
 
-    csv_to_tex(
+    # csv_to_tex(
+    #     experiments = exps,
+    #     name = 'interdependent_table.tex',
+    #     caption = 'Mean and standard deviation of experiments over ten runs each. For the LLG settings, ' \
+    #         + 'a correlation of $\gamma = 0.5$ was chosen.'
+    # )
+
+    # Comparison over differnt correlations
+    exps = {}
+    for gamma in [g/10 for g in range(1, 11)]:
+        exps.update({'$\gamma = {}$'.format(gamma):
+            '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/' \
+                + 'gamma_{}'.format(gamma) + '/2020-09-16 Wed 20.15/aggregate_log.csv'
+        })
+
+    csv_to_boxplot(
         experiments = exps,
-        name = 'interdependent_table.tex',
-        caption = 'Mean and standard deviation of experiments over ten runs each.'
+        name = 'boxplot.eps',
+        caption = 'Mean and standard deviation of experiments over four runs each.',
+        precision = 4
     )

@@ -351,7 +351,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
 
         except RuntimeError as e:
             start = "CUDA out of memory. Tried to allocate"
-            if str(e)[:len(start)] != start or mini_batch_size < 1:
+            if str(e)[:len(start)] != start or mini_batch_size <= 1:
                 traceback.print_exc()
                 raise e
 
