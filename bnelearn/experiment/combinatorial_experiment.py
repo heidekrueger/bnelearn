@@ -29,6 +29,7 @@ from bnelearn.correlation_device import (
     BernoulliWeightsCorrelationDevice,
     ConstantWeightsCorrelationDevice
 )
+from bnelearn.util.logging import access_bne_utility_database
 
 
 class LocalGlobalExperiment(Experiment, ABC):
@@ -107,7 +108,7 @@ class LLGExperiment(LocalGlobalExperiment):
         self.config = config
         assert self.config.setting.n_players == 3, "Incorrect number of players specified."
 
-        self.gamma = config.setting.gamma
+        self.gamma = self.correlation = config.setting.gamma
         if config.setting.correlation_types == 'Bernoulli_weights':
             self.CorrelationDevice = BernoulliWeightsCorrelationDevice
         elif config.setting.correlation_types == 'constant_weights':
@@ -230,14 +231,18 @@ class LLGExperiment(LocalGlobalExperiment):
         )
 
         self.bne_env = bne_env
-
-        bne_utilities_sampled = torch.tensor(
+        self.bne_utilities_new_sample = torch.tensor(
             [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
+
+        bne_utilities_database = access_bne_utility_database(self, self.bne_utilities_new_sample)
+        if bne_utilities_database:
+            self.bne_utilities = bne_utilities_database
+        else:
+            self.bne_utilities = self.bne_utilities_new_sample
+
         print(f'Setting up BNE env with batch size 2**{np.log2(self.config.logging.eval_batch_size)}.')
-        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
-        print(
-            "No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
-        self.bne_utilities = bne_utilities_sampled
+        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*self.bne_utilities_new_sample))
+        print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
 
     def _get_logdir_hierarchy(self):
         name = ['LLG', self.payment_rule]

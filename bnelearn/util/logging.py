@@ -13,7 +13,9 @@ from torch.utils.tensorboard.summary import hparams
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
 from bnelearn.bidder import Bidder
 
+from bnelearn import util
 from bnelearn.experiment.configurations import *
+import pkg_resources
 
 _full_log_file_name = 'full_results'
 _aggregate_log_file_name = 'aggregate_log'
@@ -373,3 +375,55 @@ def get_experiment_config_from_configurations_log(experiment_log_dir=None):
             raise NotImplementedError
 
     return experiment_config
+
+
+def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
+    """Write the sampled BNE utilities to disk."""
+
+    file_path = pkg_resources.resource_filename(__name__, 'bne_database.csv')
+    bne_database = pd.read_csv(file_path)
+
+    bne_env = exp.bne_env if not isinstance(exp.bne_env, list) \
+        else exp.bne_env[0]
+
+    # see if we already have a sample
+    setting_database = bne_database[
+        (bne_database.experiment_class == str(type(exp))) &
+        (bne_database.payment_rule == exp.payment_rule) &
+        (bne_database.correlation == exp.correlation)
+    ]
+
+    # 1. no entry found: make new db entry
+    if len(setting_database) == 0:
+        for player_position in [agent.player_position for agent in exp.bne_env.agents]:
+            bne_database = bne_database.append(
+                {
+                    'experiment_class': str(type(exp)),
+                    'payment_rule':     exp.payment_rule,
+                    'correlation':      exp.correlation,
+                    'player_position':  player_position,
+                    'batch_size':       bne_env.batch_size,
+                    'bne_utilities':    bne_utilities_sampled[player_position].item()
+                },
+                ignore_index=True
+            )
+
+    # 2. found entry: 2.1 smaller batch size
+    elif setting_database['batch_size'].tolist()[0] > bne_env.batch_size:
+        print('Reading high precision utilities in BNE from database.')
+        return setting_database.bne_utilities.tolist()
+
+    # 2.2 overwrite database entry
+    else:
+        for player_position in [agent.player_position for agent in exp.bne_env.agents]:
+            bne_database.loc[
+                (bne_database.experiment_class == str(type(exp))) &
+                (bne_database.payment_rule == exp.payment_rule) &
+                (bne_database.correlation == exp.correlation) &
+                (bne_database.player_position == player_position)
+            ] = [[str(type(exp)), exp.payment_rule, exp.correlation, player_position,
+                  bne_env.batch_size, bne_utilities_sampled[player_position].item()]]
+
+    print('Writing high precision utilities in BNE to database.')
+    bne_database.to_csv(file_path, index=False)
+    return None

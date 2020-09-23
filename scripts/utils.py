@@ -14,7 +14,7 @@ ALIASES = {
     'eval/utility_vs_bne':       '$\hat u(\beta_i, \beta^*_{-i})$',
     'eval/util_loss_ex_ante':    '$\hat \ell$',
     'eval/util_loss_ex_interim': '$\hat \epsilon$',
-    'eval/estimated_relative_ex_ante_util_loss': '$\hat {\mathcal L}$',
+    'eval/estimated_relative_ex_ante_util_loss': '$\hat{\mathcal{L}}$',
 }
 
 
@@ -30,7 +30,8 @@ def csv_to_tex(
 
     form = '{:.' + str(precision) + 'f}'
 
-    aggregate_df = pd.DataFrame(columns=metrics)
+    columns = ['Auction game'] + metrics
+    aggregate_df = pd.DataFrame(columns=columns)
     for exp_name, exp_path in experiments.items():
         df = pd.read_csv(exp_path)
         end_epoch = df.epoch.max()
@@ -48,11 +49,15 @@ def csv_to_tex(
         single_df.index = single_df['metric']
         del single_df['mean'], single_df['std'], single_df['metric']
         aggregate_df = pd.concat([aggregate_df, single_df.T])
+        aggregate_df['Auction game'][-1] = exp_name
 
-    aggregate_df.columns = aggregate_df.columns.map(lambda m: ALIASES[m])
+    aggregate_df.columns = aggregate_df.columns.map(
+        lambda m: ALIASES[m] if m in ALIASES.keys() else m
+    )
 
     # write to file
-    aggregate_df.to_latex('experiments/' + name, float_format="%.4f", escape=False, index=True, caption=caption)
+    aggregate_df.to_latex('experiments/' + name, float_format="%.4f", na_rep='--', escape=False,
+                          index=False, caption=caption, column_format='l' + 'r'*len(metrics))
 
 
 def csv_to_boxplot(
@@ -115,7 +120,7 @@ def csv_to_boxplot(
     plt.legend((hB, hR), ('locals', 'global'), loc='lower right')
     ax.set_xticks([-1.5 + 30*float(gamma[-4:-1]) for gamma, _ in experiments.items()])
     ax.set_xticklabels([float(gamma[-4:-1]) for gamma, _ in experiments.items()])
-    plt.xlim([0, 30])
+    # plt.xlim([0, 30])
     plt.ylim([-0.0015, 0.0015])
     plt.xlabel('correlation $\gamma$')
     plt.ylabel('loss ' + ALIASES[metric])
@@ -130,28 +135,30 @@ if __name__ == '__main__':
     # All experiments
     exps = {
         'Affiliated values': '/home/kohring/bnelearn/experiments/single_item/first_price/interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
-        'Correlated values': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
-        'LLG Bernoulli weights ($\gamma=0.5$)': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/gamma_0.5/2020-09-16 Wed 20.15/aggregate_log.csv'
+        'Cor. values': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
+        'LLG Bernoulli': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/gamma_0.5/2020-09-16 Wed 20.15/aggregate_log.csv',
+        'LLG constant': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/gamma_0.5/2020-09-21 Mon 09.18/aggregate_log.csv'
     }
 
-    # csv_to_tex(
-    #     experiments = exps,
-    #     name = 'interdependent_table.tex',
-    #     caption = 'Mean and standard deviation of experiments over ten runs each. For the LLG settings, ' \
-    #         + 'a correlation of $\gamma = 0.5$ was chosen.'
-    # )
-
-    # Comparison over differnt correlations
-    exps = {}
-    for gamma in [g/10 for g in range(1, 11)]:
-        exps.update({'$\gamma = {}$'.format(gamma):
-            '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/' \
-                + 'gamma_{}'.format(gamma) + '/2020-09-16 Wed 20.15/aggregate_log.csv'
-        })
-
-    csv_to_boxplot(
+    csv_to_tex(
         experiments = exps,
-        name = 'boxplot.eps',
-        caption = 'Mean and standard deviation of experiments over four runs each.',
-        precision = 4
+        name = 'interdependent_table.tex',
+        caption = 'Mean and standard deviation of experiments over ten runs each. For the LLG settings, ' \
+            + 'a correlation of $\gamma = 0.5$ was chosen.'
     )
+
+    # # Comparison over differnt correlations
+    # exps = {}
+    # for gamma in [g/10 for g in range(1, 11)]:
+    #     exps.update({'$\gamma = {}$'.format(gamma):
+    #         '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/' \
+    #             + 'gamma_{}'.format(gamma) + '/2020-09-16 Wed 20.15/aggregate_log.csv'
+    #     })
+
+    # csv_to_boxplot(
+    #     experiments = exps,
+    #     metric = 'eval/epsilon_relative',
+    #     name = 'boxplot.png',
+    #     caption = 'Mean and standard deviation of experiments over four runs each.',
+    #     precision = 4
+    # )
