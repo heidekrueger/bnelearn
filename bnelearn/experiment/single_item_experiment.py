@@ -549,8 +549,7 @@ class MineralRightsExperiment(SingleItemExperiment):
         self.risk_profile = self.get_risk_profile(self.risk)
 
         self.correlation_groups = config.setting.correlation_groups
-        assert self.correlation_groups == [[0, 1, 2]], \
-            "other settings not implemented properly yet"
+
         assert len(config.setting.correlation_coefficients) == 1
         self.correlation_devices = [
             MineralRightsCorrelationDevice(
@@ -628,7 +627,7 @@ class MineralRightsExperiment(SingleItemExperiment):
         )
 
         # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
-        self.bne_utilities = torch.zeros((3,), device=self.config.hardware.device)
+        self.bne_utilities = torch.zeros((self.n_players,), device=self.config.hardware.device)
         for i, a in enumerate(self.bne_env.agents):
             self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
 
