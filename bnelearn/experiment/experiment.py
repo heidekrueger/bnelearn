@@ -588,7 +588,7 @@ class Experiment(ABC):
                 self._cur_epoch_log_params['epsilon_relative' + n] = epsilon_relative[i]
                 self._cur_epoch_log_params['epsilon_absolute' + n] = epsilon_absolute[i]
 
-        if self.logging.log_metrics['l2']:
+        if self.known_bne and self.logging.log_metrics['l2']:
             L_2, L_inf = self._calculate_metrics_action_space_norms()
             for i in range(len(self.bne_env)):
                 n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
@@ -617,7 +617,7 @@ class Experiment(ABC):
 
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
-            if self.logging.log_metrics['opt']:
+            if self.known_bne and self.logging.log_metrics['opt']:
                 for env_idx, _ in enumerate(self.bne_env):
                     v = torch.cat([v, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)

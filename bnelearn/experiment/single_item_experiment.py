@@ -594,45 +594,48 @@ class MineralRightsExperiment(SingleItemExperiment):
         assert self.known_bne
         assert hasattr(self, '_optimal_bid')
 
-        self._set_symmetric_bne_closure()
-        bne_strategy = ClosureStrategy(self._optimal_bid)
+        if self.n_players == 3:
+            self._set_symmetric_bne_closure()
+            bne_strategy = ClosureStrategy(self._optimal_bid)
 
-        # define bne agents once then use them in all runs
-        agents = [
-            self._strat_to_bidder(
-                bne_strategy,
-                player_position = i,
+            # define bne agents once then use them in all runs
+            agents = [
+                self._strat_to_bidder(
+                    bne_strategy,
+                    player_position = i,
+                    batch_size = self.config.logging.eval_batch_size,
+                    cache_actions = self.config.logging.cache_eval_actions
+                )
+                for i in range(self.n_players)
+            ]
+            for a in agents:
+                a._grid_lb = 0
+                a._grid_ub = 2
+
+            self.bne_env = AuctionEnvironment(
+                mechanism = self.mechanism,
+                agents = agents,
                 batch_size = self.config.logging.eval_batch_size,
-                cache_actions = self.config.logging.cache_eval_actions
+                n_players = self.n_players,
+                strategy_to_player_closure = self._strat_to_bidder,
+                correlation_groups = self.correlation_groups,
+                correlation_devices = [MineralRightsCorrelationDevice(
+                    common_component_dist = self.common_prior,
+                    batch_size = self.config.logging.eval_batch_size,
+                    n_items = 1,
+                    correlation = 1
+                )]
             )
-            for i in range(self.n_players)
-        ]
-        for a in agents:
-            a._grid_lb = 0
-            a._grid_ub = 2
 
-        self.bne_env = AuctionEnvironment(
-            mechanism = self.mechanism,
-            agents = agents,
-            batch_size = self.config.logging.eval_batch_size,
-            n_players = self.n_players,
-            strategy_to_player_closure = self._strat_to_bidder,
-            correlation_groups = self.correlation_groups,
-            correlation_devices = [MineralRightsCorrelationDevice(
-                common_component_dist = self.common_prior,
-                batch_size = self.config.logging.eval_batch_size,
-                n_items = 1,
-                correlation = 1
-            )]
-        )
+            # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
+            self.bne_utilities = torch.zeros((self.n_players,), device=self.config.hardware.device)
+            for i, a in enumerate(self.bne_env.agents):
+                self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
 
-        # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
-        self.bne_utilities = torch.zeros((self.n_players,), device=self.config.hardware.device)
-        for i, a in enumerate(self.bne_env.agents):
-            self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
-
-        print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities))
-        self.bne_utility = torch.tensor(self.bne_utilities).mean()
+            print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities))
+            self.bne_utility = torch.tensor(self.bne_utilities).mean()
+        else:
+            self.known_bne = False
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         correlation_type = 'multiplicative'

@@ -118,10 +118,11 @@ def csv_to_boxplot(
     hB, = plt.plot([1, 1], color=c1)
     hR, = plt.plot([1, 1], color=c2)
     plt.legend((hB, hR), ('locals', 'global'), loc='lower right')
-    ax.set_xticks([-1.5 + 30*float(gamma[-4:-1]) for gamma, _ in experiments.items()])
+    ax.set_xticks([1 + 31*float(gamma[-4:-1]) for gamma, _ in experiments.items()])
     ax.set_xticklabels([float(gamma[-4:-1]) for gamma, _ in experiments.items()])
     # plt.xlim([0, 30])
     plt.ylim([-0.0015, 0.0015])
+    plt.ticklabel_format(axis="y", style="sci", scilimits=(0,0))
     plt.xlabel('correlation $\gamma$')
     plt.ylabel('loss ' + ALIASES[metric])
     # plt.grid()
@@ -130,35 +131,38 @@ def csv_to_boxplot(
 
 
 if __name__ == '__main__':
-    
 
     # All experiments
-    exps = {
-        'Affiliated values': '/home/kohring/bnelearn/experiments/single_item/first_price/interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
-        'Cor. values': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
-        'LLG Bernoulli': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/gamma_0.5/2020-09-16 Wed 20.15/aggregate_log.csv',
-        'LLG constant': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/gamma_0.5/2020-09-21 Mon 09.18/aggregate_log.csv'
-    }
+    # exps = {
+    #     'Affiliated values': '/home/kohring/bnelearn/experiments/single_item/first_price/interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
+    #     'Cor. values': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
+    #     'LLG Bernoulli': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/gamma_0.5/2020-09-16 Wed 20.15/aggregate_log.csv',
+    #     'LLG constant': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/gamma_0.5/2020-09-21 Mon 09.18/aggregate_log.csv',
+    #     'Cor. values 10p': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/10p/2020-09-26 Sat 19.54/aggregate_log.csv'
+    # }
 
-    csv_to_tex(
-        experiments = exps,
-        name = 'interdependent_table.tex',
-        caption = 'Mean and standard deviation of experiments over ten runs each. For the LLG settings, ' \
-            + 'a correlation of $\gamma = 0.5$ was chosen.'
-    )
-
-    # # Comparison over differnt correlations
-    # exps = {}
-    # for gamma in [g/10 for g in range(1, 11)]:
-    #     exps.update({'$\gamma = {}$'.format(gamma):
-    #         '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/' \
-    #             + 'gamma_{}'.format(gamma) + '/2020-09-16 Wed 20.15/aggregate_log.csv'
-    #     })
-
-    # csv_to_boxplot(
+    # csv_to_tex(
     #     experiments = exps,
-    #     metric = 'eval/epsilon_relative',
-    #     name = 'boxplot.png',
-    #     caption = 'Mean and standard deviation of experiments over four runs each.',
-    #     precision = 4
+    #     name = 'interdependent_table.tex',
+    #     caption = 'Mean and standard deviation of experiments over ten runs each. For the LLG settings, ' \
+    #         + 'a correlation of $\gamma = 0.5$ was chosen.'
     # )
+
+    # Comparison over differnt correlations
+    exp_time = '2020-09-16 Wed 20.15'
+    exps = {'$\gamma = 0.0$': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/independent/' \
+                + '/' + exp_time + '/aggregate_log.csv'}
+    for gamma in [g/10 for g in range(1, 11)]:
+        exps.update({'$\gamma = {}$'.format(gamma):
+            '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/' \
+                + 'gamma_{}'.format(gamma) + '/' + exp_time + '/aggregate_log.csv'
+        })
+
+    csv_to_boxplot(
+        experiments = exps,
+        metric = 'eval/epsilon_relative',
+        name = 'boxplot.eps',
+        caption = 'Mean and standard deviation of experiments over four runs each.',
+        precision = 4
+    )
+    

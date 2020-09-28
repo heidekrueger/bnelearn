@@ -33,7 +33,7 @@ if __name__ == '__main__':
             }
         experiment.logging.util_loss_batch_size = 2**12
         experiment.logging.util_loss_grid_size = 2**10
-        experiment.logging.util_loss_frequency = 200
+        experiment.logging.util_loss_frequency = 2000
         experiment.logging.best_response = True
 
         try:
@@ -46,45 +46,55 @@ if __name__ == '__main__':
 
     ### Run all settings with interdependencies ###
     # LLG
-    corr_models = ['constant_weights', 'Bernoulli_weights']
-    for corr_model in corr_models:
-        experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
-            .with_correlation(gamma=0.5) \
-            .get_config(
-                log_root_dir=log_root_dir,
-                n_runs=n_runs,
-                n_epochs=n_epochs,
-                correlation_types=corr_model,
-                # payment_rule='vcg',
-                specific_gpu=specific_gpu,
-                # pretrain_iters=10
-            )
-        run(experiment_config, experiment_class)
+    payment_rules = ['vcg', 'proxy', 'nearest_bid', 'nearest_vcg'] #'nearest_zero',
+    corr_models = ['Bernoulli_weights']# 'constant_weights'
+    for payment_rule in payment_rules:
+        for corr_model in corr_models:
+            experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
+                .with_correlation(gamma=0.5) \
+                .get_config(
+                    log_root_dir=log_root_dir,
+                    n_runs=n_runs,
+                    n_epochs=n_epochs,
+                    correlation_types=corr_model,
+                    payment_rule=payment_rule,
+                    specific_gpu=specific_gpu,
+                    # pretrain_iters=10
+                )
+            run(experiment_config, experiment_class)
 
-    # # Mineral rights
+    # Mineral rights
+    # n_players = 10
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='mineral_rights') \
-    #     .get_config(log_root_dir=log_root_dir, n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu)
+    #     .get_config(log_root_dir=log_root_dir, n_runs=n_runs, n_epochs=n_epochs,
+    #         specific_gpu=specific_gpu,
+    #         n_players=n_players,
+    #         correlation_groups=[list(range(n_players))],
+    #         # pretrain_iters=10
+    #     )
     # run(experiment_config, experiment_class)
 
-    # # Affiliated observations
+    # Affiliated observations
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='affiliated_observations') \
-    #     .get_config(log_root_dir=log_root_dir, n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu)
+    #     .get_config(log_root_dir=log_root_dir, n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu,
+    #         # pretrain_iters=10
+    #     )
     # run(experiment_config, experiment_class)
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
     #    .get_config(log_root_dir=log_root_dir, n_runs=n_runs, n_epochs=n_epochs, specific_gpu=specific_gpu)
     # run(experiment_config, experiment_class)
 
-    # ### Run LLG setting for different correlation strengths ###
-    for gamma in [g/10 for g in range(0, 11)]:
-        experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
-            .with_correlation(gamma=gamma) \
-            .get_config(
-                log_root_dir=log_root_dir,
-                n_runs=n_runs,
-                n_epochs=n_epochs,
-                correlation_types='Bernoulli_weights',
-                # payment_rule='proxy',
-                specific_gpu=specific_gpu,
-            )
-        run(experiment_config, experiment_class)
+    ### Run LLG setting for different correlation strengths ###
+    # for gamma in [g/10 for g in range(0, 11)]:
+    #     experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
+    #         .with_correlation(gamma=gamma) \
+    #         .get_config(
+    #             log_root_dir=log_root_dir,
+    #             n_runs=n_runs,
+    #             n_epochs=n_epochs,
+    #             correlation_types='Bernoulli_weights',
+    #             # payment_rule='proxy',
+    #             specific_gpu=specific_gpu,
+    #         )
+    #     run(experiment_config, experiment_class)
