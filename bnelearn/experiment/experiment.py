@@ -175,7 +175,6 @@ class Experiment(ABC):
                 self.input_length,
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
-                ensure_positive_output=self.positive_output_point,
                 output_length=self.n_items
             ).to(self.hardware.device)
 

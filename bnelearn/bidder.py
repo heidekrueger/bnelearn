@@ -444,3 +444,10 @@ class ReverseBidder(Bidder):
         """For reverse bidders, returns are inverted.
         """
         return - super().get_counterfactual_utility(allocations, payments, counterfactual_valuations)
+
+
+class CycleBidder(Bidder):
+    """A dummy player for cyclic games."""
+
+    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
+        return -payments

@@ -20,7 +20,8 @@ from bnelearn.experiment.single_item_experiment import (
     GaussianSymmetricPriorSingleItemExperiment,
     TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
     UniformSymmetricPriorSingleItemExperiment,
-    MineralRightsExperiment)
+    MineralRightsExperiment,
+    CycleExperiment)
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
 # pylint: disable = dangerous-default-value
@@ -125,6 +126,12 @@ class ConfigurationManager:
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
 
+    def _init_cycle(self):
+        self.learning.model_sharing = False
+        self.setting.n_players = 2
+        self.setting.u_lo = 0
+        self.setting.u_hi = 2
+
     experiment_types = {
         'single_item_uniform_symmetric':
             (_init_single_item_uniform_symmetric, UniformSymmetricPriorSingleItemExperiment),
@@ -142,7 +149,9 @@ class ConfigurationManager:
         'multiunit':
             (_init_multiunit, MultiUnitExperiment),
         'splitaward':
-            (_init_splitaward, SplitAwardExperiment)
+            (_init_splitaward, SplitAwardExperiment),
+        'cycle':
+            (_init_cycle, CycleExperiment)
     }
 
     def __init__(self, experiment_type: str):
