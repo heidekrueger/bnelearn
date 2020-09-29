@@ -57,7 +57,8 @@ def csv_to_tex(
 
     # write to file
     aggregate_df.to_latex('experiments/' + name, float_format="%.4f", na_rep='--', escape=False,
-                          index=False, caption=caption, column_format='l' + 'r'*len(metrics))
+                          index=False, caption=caption, column_format='l' + 'r'*len(metrics)
+                          label='tab:full_results')
 
 
 def csv_to_boxplot(
