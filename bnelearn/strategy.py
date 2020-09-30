@@ -318,6 +318,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.hidden_nodes = copy(hidden_nodes)
         self.activations = copy(hidden_activations) # do not write to list outside!
         self.dropout = dropout
+        self.non_negative_output = non_negative_output
 
         self.layers = nn.ModuleDict()
 
@@ -403,11 +404,11 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
-        if non_negative_output:
+        if self.non_negative_output:
             activations = self.activations[:-1]
         else:
             activations = self.activations
-        self.__init__(self.input_length, self.hidden_nodes, self.activations,
+        self.__init__(self.input_length, self.hidden_nodes, activations,
                       ensure_positive_output, self.output_length)
 
     def forward(self, x):
