@@ -185,31 +185,8 @@ class CycleAuction(Mechanism):
     "Game mechanism that has cyclic gradient dynamics."
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Runs a (batch of) Vickrey/Second Price Sealed Bid Auctions.
-
-        This function is meant for single-item auctions.
-        If a bid tensor for multiple items is submitted, each item is auctioned
-        independently of one another.
-
-        Parameters
-        ----------
-        bids: torch.Tensor
-            of bids with dimensions (batch_size, n_players, n_items)
-
-        Returns
-        -------
-        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
-            allocation: tensor of dimension (n_batches x n_players x n_items),
-                        1 indicating item is allocated to corresponding player
-                        in that batch, 0 otherwise
-            payments:   tensor of dimension (n_batches x n_players)
-                        Total payment from player to auctioneer for her
-                        allocation in that batch.
-        """
 
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
-        assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)

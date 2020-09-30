@@ -131,6 +131,7 @@ class ConfigurationManager:
         self.setting.n_players = 2
         self.setting.u_lo = 0
         self.setting.u_hi = 2
+        self.learning.optimizer = torch.optim.SGD
 
     experiment_types = {
         'single_item_uniform_symmetric':

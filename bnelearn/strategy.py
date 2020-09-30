@@ -303,7 +303,9 @@ class NeuralNetStrategy(Strategy, nn.Module):
                  hidden_activations: Iterable[nn.Module],
                  ensure_positive_output: torch.Tensor or None = None,
                  output_length: int = 1, # currently last argument for backwards-compatibility
-                 dropout: float = 0.0
+                 dropout: float = 0.0,
+                 non_negative_output = True,
+                 use_bias = True
                  ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
@@ -322,13 +324,13 @@ class NeuralNetStrategy(Strategy, nn.Module):
         if len(hidden_nodes) > 0:
             ## create hdiden layers
             # first hidden layer (from input)
-            self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
+            self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0], bias=use_bias)
             self.layers['activation_0'] = self.activations[0]
             if self.dropout:
                 self.layers['dropout_0'] = nn.AlphaDropout(p=self.dropout)
             # hidden-to-hidden-layers
             for i in range (1, len(hidden_nodes)):
-                self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
+                self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i], bias=use_bias)
                 self.layers['activation_' + str(i)] = self.activations[i]
                 if self.dropout:
                     self.layers['dropout_' + str(i)] = nn.AlphaDropout(p=self.dropout)
@@ -337,9 +339,10 @@ class NeuralNetStrategy(Strategy, nn.Module):
             hidden_nodes = [input_length] #don't write to self.hidden nodes, just ensure correct creation
 
         # create output layer
-        self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
-        self.layers['activation_out'] = nn.ReLU()
-        self.activations.append(self.layers['activation_out'])
+        self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length, bias=use_bias)
+        if non_negative_output:
+            self.layers['activation_out'] = nn.ReLU()
+            self.activations.append(self.layers['activation_out'])
 
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization
@@ -400,8 +403,12 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
-        self.__init__(self.input_length, self.hidden_nodes,
-                      self.activations[:-1], ensure_positive_output, self.output_length)
+        if non_negative_output:
+            activations = self.activations[:-1]
+        else:
+            activations = self.activations
+        self.__init__(self.input_length, self.hidden_nodes, self.activations,
+                      ensure_positive_output, self.output_length)
 
     def forward(self, x):
         for layer in self.layers.values():

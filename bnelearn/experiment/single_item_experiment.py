@@ -16,7 +16,7 @@ from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, CycleAuction
-from bnelearn.strategy import ClosureStrategy
+from bnelearn.strategy import ClosureStrategy, NeuralNetStrategy
 from bnelearn.correlation_device import MineralRightsCorrelationDevice
 
 
@@ -656,7 +656,7 @@ class CycleExperiment(SingleItemExperiment):
 
         self.plot_xmin = self.u_lo
         self.plot_xmax = self.u_hi
-        self.plot_ymin = 0
+        self.plot_ymin = - self.u_hi * 1.05
         self.plot_ymax = self.u_hi * 1.05
 
         self.model_sharing = self.config.learning.model_sharing
@@ -702,6 +702,49 @@ class CycleExperiment(SingleItemExperiment):
         bne_utility_analytical = self._get_analytical_bne_utility()
         self.bne_utility = bne_utility_analytical
         self.bne_utilities = [self.bne_utility] * self.n_models
+
+    def _setup_bidders(self):
+        """
+        1. Create and save the models and bidders
+        2. Save the model parameters
+        """
+        print('Setting up bidders...')
+        self.models = [None] * self.n_models
+
+        # Reduced NN
+        self.learning.hidden_nodes = []
+        self.learning.hidden_activations = []
+        non_negative_output = False
+        use_bias = False
+
+        for i in range(len(self.models)):
+            self.models[i] = NeuralNetStrategy(
+                self.input_length,
+                hidden_nodes=self.learning.hidden_nodes,
+                hidden_activations=self.learning.hidden_activations,
+                output_length=self.n_items,
+                non_negative_output=non_negative_output,
+                use_bias=use_bias
+            ).to(self.hardware.device)
+
+        self.bidders = [
+            self._strat_to_bidder(self.models[m_id], batch_size=self.learning.batch_size, player_position=i)
+            for i, m_id in enumerate(self._bidder2model)]
+
+        self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
+                             self.models]
+
+        if self.learning.pretrain_iters > 0:
+            print('\tpretraining...')
+
+            if hasattr(self, 'pretrain_transform'):
+                pretrain_transform = self.pretrain_transform  # pylint: disable=no-member
+            else:
+                pretrain_transform = None
+
+            for i, model in enumerate(self.models):
+                model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
+                               self.learning.pretrain_iters, pretrain_transform)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         return CycleBidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions)
