@@ -94,7 +94,8 @@ class LocalGlobalExperiment(Experiment, ABC):
         correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
                               player_position=player_position, batch_size=batch_size,
-                              n_items = self.n_items, correlation_type=correlation_type)
+                              n_items = self.n_items, correlation_type=correlation_type,
+                              cache_actions=cache_actions)
 
 
 class LLGExperiment(LocalGlobalExperiment):

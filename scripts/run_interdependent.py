@@ -17,10 +17,12 @@ if __name__ == '__main__':
     """
 
     # User parameters
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments',
+                        'different_correlations')
     specific_gpu = 6
     n_runs = 10
     n_epochs = 1000
+    eval_batch_size = 2**23
 
     def run(experiment_config, experiment_class):
         """Run a experiment class from config"""
@@ -33,7 +35,7 @@ if __name__ == '__main__':
             }
         experiment.logging.util_loss_batch_size = 2**12
         experiment.logging.util_loss_grid_size = 2**10
-        experiment.logging.util_loss_frequency = 2000
+        experiment.logging.util_loss_frequency = n_epochs
         experiment.logging.best_response = True
 
         try:
@@ -46,8 +48,8 @@ if __name__ == '__main__':
 
     ### Run all settings with interdependencies ###
     # LLG
-    payment_rules = ['vcg', 'proxy', 'nearest_bid', 'nearest_vcg'] #'nearest_zero',
-    corr_models = ['Bernoulli_weights']# 'constant_weights'
+    payment_rules = ['nearest_zero', 'vcg', 'nearest_bid', 'nearest_vcg']
+    corr_models = ['constant_weights'] #''
     for payment_rule in payment_rules:
         for corr_model in corr_models:
             experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
@@ -59,6 +61,7 @@ if __name__ == '__main__':
                     correlation_types=corr_model,
                     payment_rule=payment_rule,
                     specific_gpu=specific_gpu,
+                    eval_batch_size=eval_batch_size,
                     # pretrain_iters=10
                 )
             run(experiment_config, experiment_class)
@@ -94,7 +97,7 @@ if __name__ == '__main__':
     #             n_runs=n_runs,
     #             n_epochs=n_epochs,
     #             correlation_types='Bernoulli_weights',
-    #             # payment_rule='proxy',
+    #             eval_batch_size=eval_batch_size,
     #             specific_gpu=specific_gpu,
     #         )
     #     run(experiment_config, experiment_class)

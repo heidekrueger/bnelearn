@@ -57,7 +57,7 @@ def csv_to_tex(
 
     # write to file
     aggregate_df.to_latex('experiments/' + name, float_format="%.4f", na_rep='--', escape=False,
-                          index=False, caption=caption, column_format='l' + 'r'*len(metrics)
+                          index=False, caption=caption, column_format='l' + 'r'*len(metrics),
                           label='tab:full_results')
 
 
@@ -134,36 +134,40 @@ def csv_to_boxplot(
 if __name__ == '__main__':
 
     # All experiments
-    # exps = {
-    #     'Affiliated values': '/home/kohring/bnelearn/experiments/single_item/first_price/interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
-    #     'Cor. values': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
-    #     'LLG Bernoulli': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/gamma_0.5/2020-09-16 Wed 20.15/aggregate_log.csv',
-    #     'LLG constant': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/gamma_0.5/2020-09-21 Mon 09.18/aggregate_log.csv',
-    #     'Cor. values 10p': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/10p/2020-09-26 Sat 19.54/aggregate_log.csv'
-    # }
+    exps = {
+        'Affiliated values': '/home/kohring/bnelearn/experiments/single_item/first_price/interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
+        'Cor. values': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
+        'LLG Bernoulli NZ': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/gamma_0.5/2020-09-16 Wed 20.15/aggregate_log.csv',
+        'LLG Bernoulli VCG': '/home/kohring/bnelearn/experiments/LLG/vcg/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
+        'LLG Bernoulli P': '/home/kohring/bnelearn/experiments/LLG/proxy/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
+        'LLG Bernoulli NVCG': '/home/kohring/bnelearn/experiments/LLG/nearest_vcg/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
+        'LLG Bernoulli NB': '/home/kohring/bnelearn/experiments/LLG/nearest_bid/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
+        'LLG constant': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/gamma_0.5/2020-09-21 Mon 09.18/aggregate_log.csv',
+        'Cor. values 10p': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/10p/2020-09-26 Sat 19.54/aggregate_log.csv'
+    }
 
-    # csv_to_tex(
-    #     experiments = exps,
-    #     name = 'interdependent_table.tex',
-    #     caption = 'Mean and standard deviation of experiments over ten runs each. For the LLG settings, ' \
-    #         + 'a correlation of $\gamma = 0.5$ was chosen.'
-    # )
-
-    # Comparison over differnt correlations
-    exp_time = '2020-09-16 Wed 20.15'
-    exps = {'$\gamma = 0.0$': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/independent/' \
-                + '/' + exp_time + '/aggregate_log.csv'}
-    for gamma in [g/10 for g in range(1, 11)]:
-        exps.update({'$\gamma = {}$'.format(gamma):
-            '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/' \
-                + 'gamma_{}'.format(gamma) + '/' + exp_time + '/aggregate_log.csv'
-        })
-
-    csv_to_boxplot(
+    csv_to_tex(
         experiments = exps,
-        metric = 'eval/epsilon_relative',
-        name = 'boxplot.eps',
-        caption = 'Mean and standard deviation of experiments over four runs each.',
-        precision = 4
+        name = 'interdependent_table.tex',
+        caption = 'Mean and standard deviation of experiments over ten runs each. For the LLG settings, ' \
+            + 'a correlation of $\gamma = 0.5$ was chosen.'
     )
+
+    # # Comparison over differnt correlations
+    # exp_time = '2020-09-16 Wed 20.15'
+    # exps = {'$\gamma = 0.0$': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/independent/' \
+    #             + '/' + exp_time + '/aggregate_log.csv'}
+    # for gamma in [g/10 for g in range(1, 11)]:
+    #     exps.update({'$\gamma = {}$'.format(gamma):
+    #         '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/' \
+    #             + 'gamma_{}'.format(gamma) + '/' + exp_time + '/aggregate_log.csv'
+    #     })
+
+    # csv_to_boxplot(
+    #     experiments = exps,
+    #     metric = 'eval/epsilon_relative',
+    #     name = 'boxplot.eps',
+    #     caption = 'Mean and standard deviation of experiments over four runs each.',
+    #     precision = 4
+    # )
     
