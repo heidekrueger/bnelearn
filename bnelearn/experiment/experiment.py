@@ -332,7 +332,7 @@ class Experiment(ABC):
             "Number of seeds doesn't match number of runs."
 
         for run_id, seed in enumerate(self.running.seeds):
-            print(f'Running experiment {run_id} (using seed {seed})')
+            print(f'\nRunning experiment {run_id} (using seed {seed})')
             self.run_log_dir = os.path.join(
                 self.experiment_log_dir,
                 f'{run_id:02d} ' + time.strftime('%T ') + str(seed))

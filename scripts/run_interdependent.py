@@ -17,12 +17,14 @@ if __name__ == '__main__':
     """
 
     # User parameters
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments',
-                        'different_correlations')
-    specific_gpu = 6
+    log_root_dir = os.path.join(
+        os.path.expanduser('~'), 'bnelearn', 'experiments'
+    )
+    specific_gpu = 7
     n_runs = 10
     n_epochs = 1000
     eval_batch_size = 2**23
+    model_sharing = False
 
     def run(experiment_config, experiment_class):
         """Run a experiment class from config"""
@@ -49,7 +51,7 @@ if __name__ == '__main__':
     ### Run all settings with interdependencies ###
     # LLG
     payment_rules = ['nearest_zero', 'vcg', 'nearest_bid', 'nearest_vcg']
-    corr_models = ['constant_weights'] #''
+    corr_models = ['constant_weights'] # 'Bernoulli_weights', 'constant_weights'
     for payment_rule in payment_rules:
         for corr_model in corr_models:
             experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
@@ -62,6 +64,7 @@ if __name__ == '__main__':
                     payment_rule=payment_rule,
                     specific_gpu=specific_gpu,
                     eval_batch_size=eval_batch_size,
+                    model_sharing=model_sharing,
                     # pretrain_iters=10
                 )
             run(experiment_config, experiment_class)
@@ -99,5 +102,6 @@ if __name__ == '__main__':
     #             correlation_types='Bernoulli_weights',
     #             eval_batch_size=eval_batch_size,
     #             specific_gpu=specific_gpu,
+    #             model_sharing=model_sharing,
     #         )
     #     run(experiment_config, experiment_class)
