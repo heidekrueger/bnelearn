@@ -134,12 +134,15 @@ class ConfigurationManager:
         self.setting.u_lo = 0
         self.setting.u_hi = 2
         self.learning.optimizer = torch.optim.SGD
+        self.learning.optimizer_hyperparams = {'lr': 1e-1}
+        self.setting.bayesian = False
 
     def _init_jordan(self):
         self.setting.n_players = 3
         self.learning.model_sharing = False
         self.logging.log_metrics = {}
         self.logging.plotting = False
+        self.learning.optimizer_hyperparams = {'lr': 1e-1}
 
     experiment_types = {
         'single_item_uniform_symmetric':

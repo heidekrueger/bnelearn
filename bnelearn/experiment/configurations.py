@@ -66,7 +66,10 @@ class SettingConfig:
     # LLLLGG
     core_solver: str = 'NoCore'
     # parallel: int = 1 in hardware config now
-    
+
+    # Whether the game is Bayesian or complete information:
+    # Degenerate one-point Prior = complete information
+    bayesian: bool = True
 
 
 @dataclass

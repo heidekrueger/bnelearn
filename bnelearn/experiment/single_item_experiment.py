@@ -645,15 +645,20 @@ class CycleExperiment(SingleItemExperiment):
     def __init__(self, config: ExperimentConfig):
         self.config = config
 
+        if self.config.setting.bayesian:
+            self.bayesian = True
+            self.u_lo = self.config.setting.u_lo
+            self.u_hi = self.config.setting.u_hi
+        else:
+            self.bayesian = False
+            self.u_lo = self.u_hi = 1
+
         assert self.config.setting.u_lo is not None, """Prior boundaries not specified!"""
         assert self.config.setting.u_hi is not None, """Prior boundaries not specified!"""
 
         self.n_players = config.setting.n_players
         self.valuation_prior = 'uniform'
-        self.u_lo = self.config.setting.u_lo
-        self.u_hi = self.config.setting.u_hi
         self.common_prior = torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
-
         self.plot_xmin = self.u_lo
         self.plot_xmax = self.u_hi
         self.plot_ymin = - self.u_hi * 1.05
