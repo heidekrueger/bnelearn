@@ -596,7 +596,7 @@ class Experiment(ABC):
 
             print(self._cur_epoch_log_params['util_loss_ex_interim'])
         # plotting
-        if epoch % self.logging.plot_frequency == 0:
+        if self.logging.plotting and epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
 
             unique_bidders = [self.env.agents[i[0]] for i in self._model2bidder]

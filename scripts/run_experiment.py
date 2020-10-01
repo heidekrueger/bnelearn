@@ -59,8 +59,10 @@ if __name__ == '__main__':
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
     #     .get_config(log_root_dir=log_root_dir)
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='cycle')\
-        .get_config(log_root_dir=log_root_dir, n_runs=1, n_epochs=1000, specific_gpu=1)
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='cycle')\
+    #     .get_config(log_root_dir=log_root_dir, n_runs=1, n_epochs=1000, specific_gpu=1)
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='jordan')\
+        .get_config(log_root_dir=log_root_dir, n_runs=1, n_epochs=1000, specific_gpu=2)
 
     try:
         experiment = experiment_class(experiment_config)

@@ -126,6 +126,7 @@ class LoggingConfig:
     # Rationale behind timestamp format: should be ordered chronologically but include weekday.
     # Using . instead of : for compatability with Windows
     experiment_timestamp: str = time.strftime('%Y-%m-%d %a %H.%M')  # removed %S here, we won't need seconds
+    plotting: bool = True
     plot_frequency: int = 100
     plot_points: int = 100
     plot_show_inline: bool = True

@@ -123,7 +123,7 @@ class MatrixGameStrategy(Strategy, nn.Module):
 
     def _update_distribution(self):
         self.device = next(self.parameters()).device
-        probs = self.forward(torch.ones(1,  device=self.device)).detach()
+        probs = self.forward(torch.ones(1, device=self.device)).detach()
         self.distribution = Categorical(probs=probs)
 
     def forward(self, x):
@@ -133,7 +133,7 @@ class MatrixGameStrategy(Strategy, nn.Module):
 
     def play(self, inputs=None, batch_size = 1):
         if inputs is None:
-            inputs= torch.ones(batch_size, 1, device=self.device)
+            inputs = torch.ones(batch_size, 1, device=self.device)
 
         self._update_distribution()
         # is of shape batch size x 1

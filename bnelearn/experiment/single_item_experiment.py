@@ -298,9 +298,9 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.bne_env = AuctionEnvironment(
             self.mechanism,
             agents=[self._strat_to_bidder(bne_strategy,
-                                            player_position=i,
-                                            batch_size=self.logging.eval_batch_size,
-                                            cache_actions=self.logging.cache_eval_actions)
+                                          player_position=i,
+                                          batch_size=self.logging.eval_batch_size,
+                                          cache_actions=self.logging.cache_eval_actions)
                     for i in range(self.n_players)],
             batch_size=self.logging.eval_batch_size,
             n_players=self.n_players,

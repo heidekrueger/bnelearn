@@ -23,6 +23,8 @@ from bnelearn.experiment.single_item_experiment import (
     MineralRightsExperiment,
     CycleExperiment)
 
+from bnelearn.experiment.matrix_experiment import JordanExperiment
+
 # the lists that are defaults will never be mutated, so we're ok with using them here.
 # pylint: disable = dangerous-default-value
 
@@ -133,6 +135,12 @@ class ConfigurationManager:
         self.setting.u_hi = 2
         self.learning.optimizer = torch.optim.SGD
 
+    def _init_jordan(self):
+        self.setting.n_players = 3
+        self.learning.model_sharing = False
+        self.logging.log_metrics = {}
+        self.logging.plotting = False
+
     experiment_types = {
         'single_item_uniform_symmetric':
             (_init_single_item_uniform_symmetric, UniformSymmetricPriorSingleItemExperiment),
@@ -152,7 +160,9 @@ class ConfigurationManager:
         'splitaward':
             (_init_splitaward, SplitAwardExperiment),
         'cycle':
-            (_init_cycle, CycleExperiment)
+            (_init_cycle, CycleExperiment),
+        'jordan':
+            (_init_jordan, JordanExperiment)
     }
 
     def __init__(self, experiment_type: str):
