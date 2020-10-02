@@ -212,7 +212,7 @@ class Experiment(ABC):
         raise NotImplementedError("This Experiment has no implemented BNE. No eval env was created.")
 
     def _setup_learning_environment(self):
-        print(f'Learning env correlation {self.correlation_groups}.')
+        print(f'Learning env correlation {self.correlation_groups}: {self.correlation_devices}.')
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
                                       batch_size=self.learning.batch_size,
