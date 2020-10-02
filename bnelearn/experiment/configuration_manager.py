@@ -20,7 +20,8 @@ from bnelearn.experiment.single_item_experiment import (
     GaussianSymmetricPriorSingleItemExperiment,
     TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
     UniformSymmetricPriorSingleItemExperiment,
-    MineralRightsExperiment)
+    MineralRightsExperiment,
+    AffiliatedObservationsExperiment)
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
 # pylint: disable = dangerous-default-value
@@ -64,12 +65,27 @@ class ConfigurationManager:
         self.setting.n_players = 3
         self.logging.log_metrics = {'opt': True,
                                     'l2': True,
-                                    'util_loss': False}
+                                    'util_loss': True}
         self.setting.correlation_groups = [[0, 1, 2]]
         self.setting.correlation_types = 'corr_type'
         self.setting.correlation_coefficients = [1.0]
         self.setting.u_lo = 0
         self.setting.u_hi = 1
+        self.setting.payment_rule = 'second_price'
+
+    def _init_affiliated_observations(self):
+        self.running.n_runs = 1
+        self.running.n_epochs = 2000
+        self.setting.n_players = 2
+        self.logging.log_metrics = {'opt': True,
+                                    'l2': True,
+                                    'util_loss': True}
+        self.setting.correlation_groups = [[0, 1]]
+        self.setting.correlation_types = 'corr_type'
+        self.setting.correlation_coefficients = [1.0]
+        self.setting.u_lo = 0
+        self.setting.u_hi = 1
+        self.setting.payment_rule = 'first_price'
 
     def _init_llg(self):
         self.running.n_runs = 1
@@ -83,10 +99,16 @@ class ConfigurationManager:
         self.setting.correlation_groups = [[0, 1], [2]]
         self.setting.correlation_types = 'independent'
 
-    def with_correlation(self, gamma, correlation_type = 'Bernoulli_weights'):
-
+    def with_correlation(self, gamma, correlation_type='Bernoulli_weights'):
         self.setting.gamma = gamma
         self.setting.correlation_types = correlation_type if gamma > 0.0 else 'independent'
+
+        if correlation_type == 'constant_weights' and gamma > 0:
+            if 'opt' in self.logging.log_metrics.keys():
+                del self.logging.log_metrics['opt']
+            if 'l2' in self.logging.log_metrics.keys():
+                del self.logging.log_metrics['l2']
+            print('BNE in constant weights correlation model not approximated.')
 
         return self
 
@@ -134,7 +156,10 @@ class ConfigurationManager:
             (_init_single_item_asymmetric_uniform_overlapping, TwoPlayerAsymmetricUniformPriorSingleItemExperiment),
         'single_item_asymmetric_uniform_disjunct':
             (_init_single_item_asymmetric_uniform_disjunct, TwoPlayerAsymmetricUniformPriorSingleItemExperiment),
-        'mineral_rights': (_init_mineral_rights, MineralRightsExperiment),
+        'mineral_rights':
+            (_init_mineral_rights, MineralRightsExperiment),
+        'affiliated_observations':
+            (_init_affiliated_observations, AffiliatedObservationsExperiment),
         'llg':
             (_init_llg, LLGExperiment),
         'llllgg':

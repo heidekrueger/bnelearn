@@ -6,8 +6,7 @@ implements reward allocation to agents.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
-from typing import Callable, Set, List
+from typing import Callable, Set, List, Iterable
 
 import torch
 
@@ -203,7 +202,7 @@ class AuctionEnvironment(Environment):
     def __init__(
             self,
             mechanism: Mechanism,
-            agents: Iterable,
+            agents: Iterable[Bidder],
             batch_size = 100,
             n_players = None,
             strategy_to_player_closure: Callable[[Strategy], Bidder] = None,
@@ -338,3 +337,38 @@ class AuctionEnvironment(Environment):
             common_component, weights = device.get_component_and_weights()
             for i in group:
                 self.agents[i].draw_valuations_(common_component, weights)
+
+    def draw_conditionals(self, player_position: int, conditional_observation: torch.Tensor, batch_size: int = None):
+        """
+        Draws valuations/observations from all agents conditioned on the observation `cond`
+        of the agent at `player_position` from the correlation_devices.
+        """
+        batch_size_0 = conditional_observation.shape[0]
+        batch_size_1 = batch_size if batch_size is not None else batch_size_0
+
+        group_idx = [player_position in group for group in self.correlation_groups].index(True)
+        cond_device = self.correlation_devices[group_idx]
+        conditionals_dict = dict()
+
+        for group, device in zip(self.correlation_groups, self.correlation_devices):
+
+            # draw conditional valuations from all agents in same correlation
+            if cond_device == device:
+                conditionals_dict.update(
+                    device.draw_conditionals(
+                        agents = [a for a in self.agents if a.player_position in group],
+                        player_position = player_position,
+                        conditional_observation = conditional_observation,
+                        batch_size = batch_size_1
+                    )
+                )
+
+            # draw independent valuations from all agents in other correlations
+            else:
+                common_component, weights = device.get_component_and_weights()
+                for player_position in group:
+                    agent = [a for a in self.agents if a.player_position == player_position][0]
+                    conditionals_dict[player_position] = agent.draw_valuations_(common_component, weights) \
+                            [:batch_size_1, :].repeat(batch_size_0, 1)
+
+        return conditionals_dict

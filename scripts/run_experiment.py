@@ -31,8 +31,8 @@ if __name__ == '__main__':
     log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
 
     # ToDo reset all the commented out settings to the same number of runs and epochs as before
-    #experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
-    #    .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir, n_runs=1, n_epochs=200)
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
+    #    .get_config(save_tb_events_to_csv_detailed=True, log_root_dir=log_root_dir, risk=1.1, n_runs=1, n_epochs=200)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \
     #     .get_config(log_root_dir=log_root_dir)
 
@@ -54,8 +54,13 @@ if __name__ == '__main__':
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg') \
     #     .get_config(log_root_dir=log_root_dir)
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
-        .get_config(log_root_dir=log_root_dir)
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='mineral_rights') \
+    #     .get_config(log_root_dir=log_root_dir, specific_gpu=7, pretrain_iters=3)
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='affiliated_observations') \
+        .get_config(log_root_dir=log_root_dir, specific_gpu=7, pretrain_iters=3)
+
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
+    #     .get_config(log_root_dir=log_root_dir)
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
     #     .get_config(log_root_dir=log_root_dir)
     try:
@@ -68,6 +73,10 @@ if __name__ == '__main__':
                 'l2': True,
                 'util_loss': True
             }
+
+        experiment.logging.util_loss_batch_size = 2 ** 7
+        experiment.logging.util_loss_grid_size = 2 ** 6
+        experiment.logging.util_loss_frequency = 1
 
         # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
         if ConfigurationManager.experiment_config_could_be_serialized_properly(experiment_config):

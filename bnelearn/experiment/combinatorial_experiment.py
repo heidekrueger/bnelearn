@@ -13,6 +13,7 @@ import os
 from abc import ABC
 from functools import partial
 from typing import Iterable, List
+import warnings
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
@@ -23,7 +24,12 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
-from bnelearn.correlation_device import BernoulliWeightsCorrelationDevice, IndependentValuationDevice
+from bnelearn.correlation_device import (
+    IndependentValuationDevice,
+    BernoulliWeightsCorrelationDevice,
+    ConstantWeightsCorrelationDevice
+)
+from bnelearn.util.logging import access_bne_utility_database
 
 
 class LocalGlobalExperiment(Experiment, ABC):
@@ -86,8 +92,10 @@ class LocalGlobalExperiment(Experiment, ABC):
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
-        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
-                              batch_size=batch_size, n_items = self.n_items, correlation_type=correlation_type)
+        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
+                              player_position=player_position, batch_size=batch_size,
+                              n_items = self.n_items, correlation_type=correlation_type,
+                              cache_actions=cache_actions)
 
 
 class LLGExperiment(LocalGlobalExperiment):
@@ -101,20 +109,28 @@ class LLGExperiment(LocalGlobalExperiment):
         self.config = config
         assert self.config.setting.n_players == 3, "Incorrect number of players specified."
 
-        self.gamma = config.setting.gamma
+        self.gamma = self.correlation = config.setting.gamma
+        if config.setting.correlation_types == 'Bernoulli_weights':
+            self.CorrelationDevice = BernoulliWeightsCorrelationDevice
+        elif config.setting.correlation_types == 'constant_weights':
+            self.CorrelationDevice = ConstantWeightsCorrelationDevice
+        elif config.setting.correlation_types == 'independent':
+            pass
+        else:
+            raise NotImplementedError('Correlation not implemented.')
 
         if self.gamma > 0.0:
-            assert config.setting.correlation_types == 'Bernoulli_weights', 'other correlation not implemented.'
             self.correlation_groups = [[0, 1], [2]]
             self.correlation_coefficients = [self.gamma, 0.0]
             self.correlation_devices = [
-                BernoulliWeightsCorrelationDevice(
-                    common_component_dist = torch.distributions.Uniform(config.setting.u_lo[0],
-                                                                        config.setting.u_hi[0]),
+                self.CorrelationDevice(
+                    common_component_dist=torch.distributions.Uniform(config.setting.u_lo[0],
+                                                                      config.setting.u_hi[0]),
                     batch_size=config.learning.batch_size,
                     n_items=1,
-                    correlation = self.gamma),
+                    correlation=self.gamma),
                 IndependentValuationDevice()]
+
 
         self.input_length = 1
         #self.config.setting.n_players = 3
@@ -133,42 +149,53 @@ class LLGExperiment(LocalGlobalExperiment):
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.tensor(valuation)
 
-        # all core-selecting rules are strategy proof for global player:
+        ### Global bidder: all core-selecting rules are strategy proof for global player
         if self.payment_rule in ['vcg', 'proxy', 'nearest_zero', 'nearest_bid',
                                  'nearest_vcg'] and player_position == 2:
             return valuation
-        ##### Local bidders:
 
-        ## perfect correlation
-        if self.gamma == 1.0: #limit case, others not well defined
-            sigma = 1.0 # TODO: implement for other valuation profiles!
-            bid = valuation
+        ### Local bidders:
+        if self.config.setting.correlation_types in ['Bernoulli_weights', 'independent'] or \
+            (self.config.setting.correlation_types == 'constant_weights' and self.gamma in [0, 1]):
+            ## perfect correlation
+            if self.gamma == 1.0: # limit case, others not well defined
+                sigma = 1.0 # TODO: implement for other valuation profiles!
+                bid = valuation
+                if self.payment_rule == 'nearest_vcg':
+                    bid.mul_(sigma / (1 + sigma - 2**(-sigma)))
+                elif self.payment_rule == 'nearest_bid':
+                    bid.mul_(sigma / (1 + sigma))
+                # truthful for vcg and proxy/nearest-zero
+                return bid
+            ## no or imperfect correlation
+            if self.payment_rule == 'vcg':
+                return valuation
+            if self.payment_rule in ['proxy', 'nearest_zero']:
+                bid_if_positive = 1 + torch.log(valuation * (1.0 - self.gamma) + self.gamma) / (1.0 - self.gamma)
+                return torch.max(torch.zeros_like(valuation), bid_if_positive)
+            if self.payment_rule == 'nearest_bid':
+                return (np.log(2) - torch.log(2.0 - (1. - self.gamma) * valuation)) / (1. - self.gamma)
             if self.payment_rule == 'nearest_vcg':
-                bid.mul_(sigma / (1 + sigma - 2**(-sigma)))
-            elif self.payment_rule == 'nearest_bid':
-                bid.mul_(sigma / (1 + sigma))
-            # truthful for vcg and proxy/nearest-zero
-            return bid
-        ## no or imperfect correlation
-        if self.payment_rule == 'vcg':
-            return valuation
-        if self.payment_rule in ['proxy', 'nearest_zero']:
-            bid_if_positive = 1 + torch.log(valuation * (1.0 - self.gamma) + self.gamma) / (1.0 - self.gamma)
-            return torch.max(torch.zeros_like(valuation), bid_if_positive)
-        if self.payment_rule == 'nearest_bid':
-            return (np.log(2) - torch.log(2.0 - (1. - self.gamma) * valuation)) / (1. - self.gamma)
-        if self.payment_rule == 'nearest_vcg':
-            bid_if_positive = 2. / (2. + self.gamma) * (
+                bid_if_positive = 2. / (2. + self.gamma) * (
                     valuation - (3. - np.sqrt(9 - (1. - self.gamma) ** 2)) / (1. - self.gamma))
-            return torch.max(torch.zeros_like(valuation), bid_if_positive)
-        raise ValueError('optimal bid not implemented for other rules')
+                return torch.max(torch.zeros_like(valuation), bid_if_positive)
+            raise ValueError('optimal bid not implemented for this payment rule')
+        else:
+            warnings.warn('optimal bid not implemented for this correlation type')
+            self.known_bne = False
 
     def _check_and_set_known_bne(self):
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
         #  (i.e. uniformity, bounds, etc)
         if self.config.setting.payment_rule in \
             ['vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
-            return True
+            if self.config.setting.correlation_types in ['Bernoulli_weights', 'independent'] or \
+                (self.config.setting.correlation_types == 'constant_weights' and self.gamma in [0, 1]):
+                return True
+            else:
+                self.logging.log_metrics['l2'] = False
+                self.logging.log_metrics['opt'] = False
+                return False
         return super()._check_and_set_known_bne()
 
     def _setup_eval_environment(self):
@@ -180,11 +207,10 @@ class LLGExperiment(LocalGlobalExperiment):
             ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
             for i in range(self.n_players)]
 
-        # TODO Stefan: this is ugly.
         bne_env_corr_devices = None
         if self.correlation_groups:
             bne_env_corr_devices = [
-                BernoulliWeightsCorrelationDevice(
+                self.CorrelationDevice(
                     common_component_dist=torch.distributions.Uniform(self.config.setting.u_lo[0],
                                                                       self.config.setting.u_hi[0]),
                     batch_size=self.config.logging.eval_batch_size,
@@ -192,6 +218,7 @@ class LLGExperiment(LocalGlobalExperiment):
                     correlation=self.gamma),
                 IndependentValuationDevice()]
 
+        self.known_bne = True
         bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
             agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
@@ -202,20 +229,28 @@ class LLGExperiment(LocalGlobalExperiment):
             strategy_to_player_closure=self._strat_to_bidder,
             correlation_groups=self.correlation_groups,
             correlation_devices=bne_env_corr_devices
-            )
+        )
 
         self.bne_env = bne_env
-
-        bne_utilities_sampled = torch.tensor(
+        self.bne_utilities_new_sample = torch.tensor(
             [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
+
+        bne_utilities_database = access_bne_utility_database(self, self.bne_utilities_new_sample)
+        if bne_utilities_database:
+            self.bne_utilities = bne_utilities_database
+        else:
+            self.bne_utilities = self.bne_utilities_new_sample
+
         print(f'Setting up BNE env with batch size 2**{np.log2(self.config.logging.eval_batch_size)}.')
-        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
-        print(
-            "No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
-        self.bne_utilities = bne_utilities_sampled
+        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*self.bne_utilities_new_sample))
+        print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
 
     def _get_logdir_hierarchy(self):
-        name = ['LLG', self.payment_rule, f"gamma_{self.gamma:.3}"]
+        name = ['LLG', self.payment_rule]
+        if self.gamma > 0:
+            name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
+        else:
+            name += ['independent']
         return os.path.join(*name)
 
 
