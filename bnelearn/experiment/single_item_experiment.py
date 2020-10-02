@@ -170,11 +170,11 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3(
     return bids
 
 
-def _optimal_bid_single_item_mineral_rights(valuation: torch.Tensor, player_position: int = 0) -> torch.Tensor:
+def _optimal_bid_single_item_3p_mineral_rights(valuation: torch.Tensor, player_position: int = 0) -> torch.Tensor:
     return (2 * valuation) / (2 + valuation)
 
 
-def _optimal_bid_single_item_affiliated_observations(valuation: torch.Tensor, player_position: int = 0) -> torch.Tensor:
+def _optimal_bid_single_item_2p_affiliated_observations(valuation: torch.Tensor, player_position: int = 0) -> torch.Tensor:
     return (2/3) * valuation
 
 
@@ -576,16 +576,9 @@ class MineralRightsExperiment(SingleItemExperiment):
         else:
             raise ValueError('Invalid Mechanism type!')
 
-    def _set_symmetric_bne_closure(self):
-        if self.payment_rule == 'second_price':
-            self._optimal_bid = partial(_optimal_bid_single_item_mineral_rights)
-        else:
-            # This should never happen due to check in init
-            raise ValueError("Trying to set up unknown BNE...")
-
     def _check_and_set_known_bne(self):
-        if self.payment_rule == 'second_price':
-            self._optimal_bid = partial(_optimal_bid_single_item_mineral_rights)
+        if self.payment_rule == 'second_price' and self.n_players == 3:
+            self._optimal_bid = partial(_optimal_bid_single_item_3p_mineral_rights)
             return True
         else:
             return super()._check_and_set_known_bne()
@@ -595,7 +588,6 @@ class MineralRightsExperiment(SingleItemExperiment):
         assert hasattr(self, '_optimal_bid')
 
         if self.n_players == 3:
-            self._set_symmetric_bne_closure()
             bne_strategy = ClosureStrategy(self._optimal_bid)
 
             # define bne agents once then use them in all runs
@@ -697,16 +689,9 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         else:
             raise ValueError('Invalid Mechanism type!')
 
-    def _set_symmetric_bne_closure(self):
-        if self.payment_rule == 'first_price':
-            self._optimal_bid = partial(_optimal_bid_single_item_affiliated_observations)
-        else:
-            # This should never happen due to check in init
-            raise ValueError("Trying to set up unknown BNE...")
-
     def _check_and_set_known_bne(self):
-        if self.payment_rule == 'first_price':
-            self._optimal_bid = partial(_optimal_bid_single_item_affiliated_observations)
+        if self.payment_rule == 'first_price' and self.n_players == 2:
+            self._optimal_bid = partial(_optimal_bid_single_item_2p_affiliated_observations)
             return True
         else:
             return super()._check_and_set_known_bne()
@@ -715,7 +700,6 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         assert self.known_bne
         assert hasattr(self, '_optimal_bid')
 
-        self._set_symmetric_bne_closure()
         bne_strategy = ClosureStrategy(self._optimal_bid)
 
         # define bne agents once then use them in all runs

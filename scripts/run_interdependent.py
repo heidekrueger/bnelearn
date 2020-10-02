@@ -49,7 +49,7 @@ if __name__ == '__main__':
 
 
     ### Run all settings with interdependencies ###
-    # LLG
+    #LLG
     payment_rules = ['nearest_zero', 'vcg', 'nearest_bid', 'nearest_vcg']
     corr_models = ['constant_weights'] # 'Bernoulli_weights', 'constant_weights'
     for payment_rule in payment_rules:
@@ -70,7 +70,7 @@ if __name__ == '__main__':
             run(experiment_config, experiment_class)
 
     # Mineral rights
-    # n_players = 10
+    # n_players = 3
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='mineral_rights') \
     #     .get_config(log_root_dir=log_root_dir, n_runs=n_runs, n_epochs=n_epochs,
     #         specific_gpu=specific_gpu,
