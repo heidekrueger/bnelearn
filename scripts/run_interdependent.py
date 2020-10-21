@@ -25,6 +25,7 @@ if __name__ == '__main__':
     n_epochs = 1000
     eval_batch_size = 2**23
     model_sharing = False
+    risk = 0.1
 
     def run(experiment_config, experiment_class):
         """Run a experiment class from config"""
@@ -35,9 +36,9 @@ if __name__ == '__main__':
                 'l2': True,
                 'util_loss': True
             }
-        experiment.logging.util_loss_batch_size = 2**12
-        experiment.logging.util_loss_grid_size = 2**10
-        experiment.logging.util_loss_frequency = n_epochs
+        experiment.logging.util_loss_batch_size = 2**10
+        experiment.logging.util_loss_grid_size = 2**6
+        experiment.logging.util_loss_frequency = 50#n_epochs
         experiment.logging.best_response = True
 
         try:
@@ -65,7 +66,8 @@ if __name__ == '__main__':
                     specific_gpu=specific_gpu,
                     eval_batch_size=eval_batch_size,
                     model_sharing=model_sharing,
-                    # pretrain_iters=10
+                    # pretrain_iters=10,
+                    risk=risk
                 )
             run(experiment_config, experiment_class)
 

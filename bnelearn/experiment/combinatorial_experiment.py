@@ -44,6 +44,8 @@ class LocalGlobalExperiment(Experiment, ABC):
         self.n_local = self.config.setting.n_local
         self.n_items = self.config.setting.n_items
 
+        self.risk = float(config.setting.risk)
+
         assert self.config.setting.u_lo is not None, """Missing prior information!"""
         assert self.config.setting.u_hi is not None, """Missing prior information!"""
         u_lo = self.config.setting.u_lo
@@ -89,13 +91,12 @@ class LocalGlobalExperiment(Experiment, ABC):
         else:
             return super()._get_model_names()
 
-
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
                               player_position=player_position, batch_size=batch_size,
                               n_items = self.n_items, correlation_type=correlation_type,
-                              cache_actions=cache_actions)
+                              risk=self.risk, cache_actions=cache_actions)
 
 
 class LLGExperiment(LocalGlobalExperiment):
@@ -149,6 +150,11 @@ class LLGExperiment(LocalGlobalExperiment):
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.tensor(valuation)
 
+        if self.risk != 1.0:
+            warnings.warn('optimal bid not implemented for this risk value')
+            self.known_bne = False
+            return
+
         ### Global bidder: all core-selecting rules are strategy proof for global player
         if self.payment_rule in ['vcg', 'proxy', 'nearest_zero', 'nearest_bid',
                                  'nearest_vcg'] and player_position == 2:
@@ -179,10 +185,11 @@ class LLGExperiment(LocalGlobalExperiment):
                 bid_if_positive = 2. / (2. + self.gamma) * (
                     valuation - (3. - np.sqrt(9 - (1. - self.gamma) ** 2)) / (1. - self.gamma))
                 return torch.max(torch.zeros_like(valuation), bid_if_positive)
-            raise ValueError('optimal bid not implemented for this payment rule')
+            warnings.warn('optimal bid not implemented for this payment rule')
         else:
             warnings.warn('optimal bid not implemented for this correlation type')
-            self.known_bne = False
+
+        self.known_bne = False
 
     def _check_and_set_known_bne(self):
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
