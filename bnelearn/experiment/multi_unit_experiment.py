@@ -2,11 +2,6 @@
 In this file multi-unit experiments ´MultiUnitExperiment´ and their analytical
 BNEs (if known) are defiened. Also, the ´SplitAwardExperiment´ is implemented as well,
 as it shares most its properties.
-
-TODO:
-    - support for multiple BNE
-    - valuations of plotting BNE _optimal_bid_multidiscriminatory2x2 are wrong
-
 """
 
 import os
