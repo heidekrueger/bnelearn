@@ -240,6 +240,22 @@ class LLGAuction(Mechanism):
 
         return (allocations.unsqueeze(-1), payments)  # payments: batches x players, allocation: batch x players x items
 
+    def check_efficiency(self, env):
+        """
+        Returns the percentage of efficient allocated outcomes over a batch.
+        """
+        bid_profile = torch.zeros(env.batch_size, env.n_players, 1,
+                                  device=self.device)
+        for pos, bid in env._generate_agent_actions():
+            bid_profile[:, pos, :] = bid
+        allocations, _ = env.mechanism.play(bid_profile)
+
+        locals_have_higher_value = env.agents[2].valuations < \
+            env.agents[0].valuations + env.agents[1].valuations
+        locals_win = allocations[:, 2] == 0
+        efficiency = locals_have_higher_value == locals_win
+        return efficiency.float().mean()
+
 
 class LLLLGGAuction(Mechanism):
     """

@@ -168,7 +168,8 @@ class LoggingConfig:
         metrics = self.log_metrics
         self.log_metrics = {'opt': False,
                             'l2': False,
-                            'util_loss': False}
+                            'util_loss': False,
+                            'efficiency': False}
         if metrics is not None:
             for metric, value in metrics.items():
                 assert metric in self.log_metrics.keys(), "Metric not known."

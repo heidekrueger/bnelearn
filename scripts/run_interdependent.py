@@ -18,7 +18,7 @@ if __name__ == '__main__':
 
     # User parameters
     log_root_dir = os.path.join(
-        os.path.expanduser('~'), 'bnelearn', 'experiments'
+        os.path.expanduser('~'), 'bnelearn', 'experiments', 'comp_statics'
     )
     specific_gpu = 7
     n_runs = 10
@@ -34,8 +34,11 @@ if __name__ == '__main__':
             experiment.logging.log_metrics = {
                 'opt': True,
                 'l2': True,
-                'util_loss': True
+                'util_loss': True,
+                'efficiency': True,
             }
+        experiment.logging.log_metrics['efficiency'] = True
+
         experiment.logging.util_loss_batch_size = 2**10
         experiment.logging.util_loss_grid_size = 2**6
         experiment.logging.util_loss_frequency = 50#n_epochs
@@ -51,7 +54,7 @@ if __name__ == '__main__':
 
     ### Run all settings with interdependencies ###
     #LLG
-    payment_rules = ['nearest_zero', 'vcg', 'nearest_bid', 'nearest_vcg']
+    payment_rules = ['vcg'] #['nearest_zero'] #, 'vcg', 'nearest_bid', 'nearest_vcg']
     corr_models = ['constant_weights'] # 'Bernoulli_weights', 'constant_weights'
     for payment_rule in payment_rules:
         for corr_model in corr_models:

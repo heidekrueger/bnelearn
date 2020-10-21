@@ -603,6 +603,10 @@ class Experiment(ABC):
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
             print(self._cur_epoch_log_params['util_loss_ex_interim'])
 
+        if self.logging.log_metrics['efficiency'] and (epoch % self.logging.util_loss_frequency) == 0:
+            self._cur_epoch_log_params['efficiency'] = \
+                self.mechanism.check_efficiency(self.env)
+
         # plotting
         if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
