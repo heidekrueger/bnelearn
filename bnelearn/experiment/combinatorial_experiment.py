@@ -110,7 +110,8 @@ class LLGExperiment(LocalGlobalExperiment):
         self.config = config
         assert self.config.setting.n_players == 3, "Incorrect number of players specified."
 
-        self.gamma = self.correlation = config.setting.gamma
+        self.gamma = self.correlation = float(config.setting.gamma)
+
         if config.setting.correlation_types == 'Bernoulli_weights':
             self.CorrelationDevice = BernoulliWeightsCorrelationDevice
         elif config.setting.correlation_types == 'constant_weights':
@@ -150,15 +151,16 @@ class LLGExperiment(LocalGlobalExperiment):
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.tensor(valuation)
 
-        if self.risk != 1.0:
-            warnings.warn('optimal bid not implemented for this risk value')
-            self.known_bne = False
-            return
-
         ### Global bidder: all core-selecting rules are strategy proof for global player
         if self.payment_rule in ['vcg', 'proxy', 'nearest_zero', 'nearest_bid',
                                  'nearest_vcg'] and player_position == 2:
             return valuation
+
+        ### Local bidders: vcg => truthfull bidding
+        if self.payment_rule in ['vcg'] and player_position in [0, 1]:
+            return valuation
+
+        assert self.risk == 1.0, 'BNE known for risk-neutral only (or in VCG)'
 
         ### Local bidders:
         if self.config.setting.correlation_types in ['Bernoulli_weights', 'independent'] or \
@@ -174,8 +176,6 @@ class LLGExperiment(LocalGlobalExperiment):
                 # truthful for vcg and proxy/nearest-zero
                 return bid
             ## no or imperfect correlation
-            if self.payment_rule == 'vcg':
-                return valuation
             if self.payment_rule in ['proxy', 'nearest_zero']:
                 bid_if_positive = 1 + torch.log(valuation * (1.0 - self.gamma) + self.gamma) / (1.0 - self.gamma)
                 return torch.max(torch.zeros_like(valuation), bid_if_positive)
@@ -194,8 +194,12 @@ class LLGExperiment(LocalGlobalExperiment):
     def _check_and_set_known_bne(self):
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
         #  (i.e. uniformity, bounds, etc)
-        if self.config.setting.payment_rule in \
-            ['vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
+        if self.config.setting.payment_rule == 'vcg':
+            return True
+        elif self.risk != 1.0:
+            return False
+        elif self.config.setting.payment_rule in \
+            ['nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
             if self.config.setting.correlation_types in ['Bernoulli_weights', 'independent'] or \
                 (self.config.setting.correlation_types == 'constant_weights' and self.gamma in [0, 1]):
                 return True
@@ -258,6 +262,8 @@ class LLGExperiment(LocalGlobalExperiment):
             name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
         else:
             name += ['independent']
+        if self.risk != 1.0:
+            name += ['risk_{}'.format(self.risk)]
         return os.path.join(*name)
 
 
