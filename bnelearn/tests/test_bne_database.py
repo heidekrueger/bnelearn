@@ -1,13 +1,6 @@
 """Testing correctness of the BNE utilities database."""
 
-import pytest
-import os
-import sys
-
-
-
 from bnelearn.experiment.configuration_manager import ConfigurationManager
-from bnelearn.util.logging import access_bne_utility_database
 
 
 def test_bne_utility_database():

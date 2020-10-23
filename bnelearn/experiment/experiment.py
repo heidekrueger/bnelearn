@@ -99,6 +99,7 @@ class Experiment(ABC):
             self.util_loss_batch_size = self.logging.util_loss_batch_size
         if self.logging.util_loss_grid_size is not None:
             self.util_loss_grid_size = self.logging.util_loss_grid_size
+        self.n_parameters = None
 
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
@@ -485,11 +486,9 @@ class Experiment(ABC):
                 if n_players < 10 and labels is not None:
                     axs[plot_idx].legend(loc='upper left')
 
-            """
-            set axis limits based on function parameters ´xlim´, ´ylim´ if provided otherwise
-            based on ´self.plot_xmin´ etc. object attributes. In either case, these variables
-            can also be lists for sperate limits of individual plots.
-            """
+            # Set axis limits based on function parameters ´xlim´, ´ylim´ if provided otherwise
+            # based on ´self.plot_xmin´ etc. object attributes. In either case, these variables
+            # can also be lists for sperate limits of individual plots.
             lims = (xlim, ylim)
             set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
@@ -501,11 +500,12 @@ class Experiment(ABC):
                     else:
                         a, b = lim[0], lim[1]
                 elif hasattr(self, str_lim[0]):  # use attributes ´self.plot_xmin´ etc.
-                    if isinstance(eval('self.' + str(str_lim[0])), list):
-                        a = eval('self.' + str(str_lim[plot_idx]))[0]
-                        b = eval('self.' + str(str_lim[plot_idx]))[1]
+                    if isinstance(eval('self.' + str(str_lim[0])), list): # pylint: disable=eval-used
+                        a = eval('self.' + str(str_lim[plot_idx]))[0] # pylint: disable=eval-used
+                        b = eval('self.' + str(str_lim[plot_idx]))[1] # pylint: disable=eval-used
                     else:
-                        a, b = eval('self.' + str(str_lim[0])), eval('self.' + str(str_lim[1]))
+                        a = eval('self.' + str(str_lim[0])) # pylint: disable=eval-used
+                        b = eval('self.' + str(str_lim[1])) # pylint: disable=eval-used
                 if a is not None:
                     set_lim(a, b)  # call matplotlib function
 
@@ -697,7 +697,7 @@ class Experiment(ABC):
         for bne_idx, bne_env in enumerate(self.bne_env):
 
             # shorthand for model to agent
-            m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
+            m2a = lambda m: bne_env.agents[self._model2bidder[m][0]] # pylint: disable=cell-var-from-loop
 
             L_2[bne_idx] = [
                 metrics.norm_strategy_and_actions(
@@ -797,11 +797,12 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
         try:
-            self._hparams_metrics['epsilon_relative'] = self.self._cur_epoch_log_params['epsilon_relative']
-        except:
+            self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
+        except: # pylint: disable=bare-except
             try:
-                self._hparams_metrics['util_loss_ex_interim'] = self.self._cur_epoch_log_params['util_loss_ex_interim']
-            except:
+                self._hparams_metrics['util_loss_ex_interim'] = \
+                    self._cur_epoch_log_params['util_loss_ex_interim']
+            except: # pylint: disable=bare-except
                 pass
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
 

@@ -50,7 +50,7 @@ class LocalGlobalExperiment(Experiment, ABC):
         assert self.config.setting.u_hi is not None, """Missing prior information!"""
         u_lo = self.config.setting.u_lo
         # Frontend could either provide single number u_lo that is shared or a list for each player.
-        if isinstance(u_lo, Iterable):
+        if isinstance(u_lo, Iterable): # pylint: disable=isinstance-second-argument-not-valid-type
             assert len(u_lo) == self.n_players
             u_lo = [float(l) for l in u_lo]
         else:
@@ -58,7 +58,7 @@ class LocalGlobalExperiment(Experiment, ABC):
         self.u_lo = u_lo
 
         u_hi = self.config.setting.u_hi
-        assert isinstance(u_hi, Iterable)
+        assert isinstance(u_hi, Iterable) # pylint: disable=isinstance-second-argument-not-valid-type
         assert len(u_hi) == self.n_players
         assert u_hi[1:self.config.setting.n_local] == \
                u_hi[:self.config.setting.n_local - 1], "local bidders should be identical"
@@ -142,7 +142,7 @@ class LLGExperiment(LocalGlobalExperiment):
     def _setup_mechanism(self):
         self.mechanism = LLGAuction(rule=self.payment_rule)
 
-    def _optimal_bid(self, valuation, player_position):
+    def _optimal_bid(self, valuation, player_position): # pylint: disable=method-hidden
         """Core selecting and vcg equilibria for the Bernoulli weigths model in Ausubel & Baranov (2019)
 
            Note: for gamma=0 or gamma=1, these are identical to the constant weights model.

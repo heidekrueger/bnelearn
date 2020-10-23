@@ -1,3 +1,7 @@
+"""
+Script for running experiments that specifically adress dependencies within
+the games.
+"""
 import os
 import sys
 import traceback
@@ -29,7 +33,7 @@ if __name__ == '__main__':
     gammas = [1.0]
     pretrain_iters = None
 
-    def run(experiment_config, experiment_class):
+    def run(experiment_config, experiment_class): # pylint: disable=redefined-outer-name
         """Run a experiment class from config"""
         experiment = experiment_class(experiment_config)
         if experiment.known_bne:

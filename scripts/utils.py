@@ -194,15 +194,24 @@ if __name__ == '__main__':
 
     ### All experiments
     # exps = {
-    #     'Affiliated values': '/home/kohring/bnelearn/experiments/single_item/first_price/interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
-    #     'Cor. values': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
-    #     'LLG Bernoulli NZ': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/gamma_0.5/2020-09-16 Wed 20.15/aggregate_log.csv',
-    #     'LLG Bernoulli VCG': '/home/kohring/bnelearn/experiments/LLG/vcg/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
-    #     'LLG Bernoulli P': '/home/kohring/bnelearn/experiments/LLG/proxy/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
-    #     'LLG Bernoulli NVCG': '/home/kohring/bnelearn/experiments/LLG/nearest_vcg/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
-    #     'LLG Bernoulli NB': '/home/kohring/bnelearn/experiments/LLG/nearest_bid/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
-    #     'LLG constant': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/gamma_0.5/2020-09-21 Mon 09.18/aggregate_log.csv',
-    #     'Cor. values 10p': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/10p/2020-09-26 Sat 19.54/aggregate_log.csv'
+    #     'Affiliated values': '/home/kohring/bnelearn/experiments/single_item/first_price/' + \
+    #                   'interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
+    #     'Cor. values': '/home/kohring/bnelearn/experiments/single_item/second_price/' + \
+    #                   'interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
+    #     'LLG Bernoulli NZ': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/' + \
+    #                   'Bernoulli_weights/gamma_0.5/2020-09-16 Wed 20.15/aggregate_log.csv',
+    #     'LLG Bernoulli VCG': '/home/kohring/bnelearn/experiments/LLG/vcg/Bernoulli_weights/' + \
+    #                   'gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
+    #     'LLG Bernoulli P': '/home/kohring/bnelearn/experiments/LLG/proxy/Bernoulli_weights/' + \
+    #                   'gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
+    #     'LLG Bernoulli NVCG': '/home/kohring/bnelearn/experiments/LLG/nearest_vcg/Bernoulli_weights/' + \
+    #                   'gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
+    #     'LLG Bernoulli NB': '/home/kohring/bnelearn/experiments/LLG/nearest_bid/Bernoulli_weights/' + \
+    #                   'gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
+    #     'LLG constant': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/' + \
+    #                   'gamma_0.5/2020-09-21 Mon 09.18/aggregate_log.csv',
+    #     'Cor. values 10p': '/home/kohring/bnelearn/experiments/single_item/second_price/' + \
+    #                   'interdependent/uniform/symmetric/risk_neutral/10p/2020-09-26 Sat 19.54/aggregate_log.csv'
     # }
 
     # csv_to_tex(

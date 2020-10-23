@@ -3,7 +3,6 @@
 """
 from abc import ABC, abstractmethod
 import math
-import numpy as np
 from typing import List, Dict
 import torch
 from torch.distributions import Distribution
@@ -79,6 +78,7 @@ class CorrelationDevice(ABC):
 
 
 class IndependentValuationDevice(CorrelationDevice):
+    """Dummy `CorrelationDevice` for no correlation between agents."""
     def __init__(self):
         super().__init__(None, None, None, 'independent_valuations', 0.0)
 
@@ -109,7 +109,7 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
     """
     def __init__(self, common_component_dist: Distribution,
                  batch_size: int, n_items, correlation: float):
-        super().__init__(common_component_dist, batch_size, n_items, 
+        super().__init__(common_component_dist, batch_size, n_items,
                          "Bernoulli_weights_model", correlation)
 
     def get_weights(self):
@@ -139,8 +139,9 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
         conditionals_dict = dict()
 
         # own valuation is given: repeat for new sample dimension
-        conditionals_dict[player_position] = conditional_observation.repeat(1,
-            batch_size_1).view(batch_size_0 * batch_size_1, 1)
+        conditionals_dict[player_position] = conditional_observation\
+            .repeat(1,batch_size_1) \
+            .view(batch_size_0 * batch_size_1, 1)
 
         # draw conditional observation of other local bidder
         local_opponent = 1 if player_position == 0 else 0
@@ -180,7 +181,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
     """
     Draw valuations according to the constant weights model in Ausubel &
     Baranov.
-    
+
     Bidders valuations depend additively on an individual component z_i and a
     common component s. In this scheme, a weight w (across the entire batch!)
     is chosen such that
