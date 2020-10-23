@@ -390,7 +390,8 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
     setting_database = bne_database[
         (bne_database.experiment_class == str(type(exp))) &
         (bne_database.payment_rule == exp.payment_rule) &
-        (bne_database.correlation == exp.correlation)
+        (bne_database.correlation == exp.correlation) &
+        (bne_database.risk == exp.risk)
     ]
 
     # 1. no entry found: make new db entry
@@ -401,6 +402,7 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
                     'experiment_class': str(type(exp)),
                     'payment_rule':     exp.payment_rule,
                     'correlation':      exp.correlation,
+                    'risk':             exp.risk,
                     'player_position':  player_position,
                     'batch_size':       bne_env.batch_size,
                     'bne_utilities':    bne_utilities_sampled[player_position].item()
@@ -420,9 +422,11 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
                 (bne_database.experiment_class == str(type(exp))) &
                 (bne_database.payment_rule == exp.payment_rule) &
                 (bne_database.correlation == exp.correlation) &
+                (bne_database.risk == exp.risk) &
                 (bne_database.player_position == player_position)
-            ] = [[str(type(exp)), exp.payment_rule, exp.correlation, player_position,
-                  bne_env.batch_size, bne_utilities_sampled[player_position].item()]]
+            ] = [[str(type(exp)), exp.payment_rule, exp.correlation, exp.risk,
+                  player_position, bne_env.batch_size,
+                  bne_utilities_sampled[player_position].item()]]
 
     print('Writing high precision utilities in BNE to database.')
     bne_database.to_csv(file_path, index=False)

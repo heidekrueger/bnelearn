@@ -14,17 +14,15 @@ def test_bne_utility_database():
     """Testing correctness of the BNE utilities database."""
     specific_gpu = 0
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
-        .get_config(
+    experiment_config, experiment_class = ConfigurationManager(
+        experiment_type='llg').get_config(
             specific_gpu=specific_gpu,
             pretrain_iters=0,
             batch_size=2,
             enable_logging=False,
+            eval_batch_size=2,
+            util_loss_batch_size=2,
+            util_loss_grid_size=2
         )
 
-    experiment = experiment_class(experiment_config)
-    experiment.logging.eval_batch_size = 2
-    experiment.logging.util_loss_batch_size = 2
-    experiment.logging.util_loss_grid_size = 2
-    experiment._setup_eval_environment() #pylint: disable=protected-access
-    access_bne_utility_database(experiment, experiment.bne_utilities_new_sample)
+    _ = experiment_class(experiment_config)

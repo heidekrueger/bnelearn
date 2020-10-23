@@ -241,16 +241,22 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
 
         # degenerate case: z1 doesn't matter, but we still need the interface
         if gamma == 1.0:
-            return torch.distributions.Uniform(0, 1)
+            return torch.empty((batch_size_1, 1), device=v1.device) \
+                .uniform_(0, 1) \
+                .repeat(batch_size_0, 1) \
+                .view(batch_size_0, batch_size_1)
 
         w = self.weight
         l_bounds = torch.max(torch.zeros_like(v1), (v1 - w)/(1 - w)) \
-            .repeat(1, batch_size_1).view(batch_size_0, batch_size_1)
+            .repeat(1, batch_size_1) \
+            .view(batch_size_0, batch_size_1)
         u_bounds = torch.min(torch.ones_like(v1), v1/(1 - w)) \
-            .repeat(1, batch_size_1).view(batch_size_0, batch_size_1)
+            .repeat(1, batch_size_1) \
+            .view(batch_size_0, batch_size_1)
         uniform = torch.empty((batch_size_1, 1), device=v1.device) \
             .uniform_(0, 1) \
-            .repeat(batch_size_0, 1).view(batch_size_0, batch_size_1)
+            .repeat(batch_size_0, 1) \
+            .view(batch_size_0, batch_size_1)
         return (u_bounds - l_bounds) * uniform + l_bounds
 
     def draw_conditional_v2(self, v1: torch.Tensor, batch_size: int):

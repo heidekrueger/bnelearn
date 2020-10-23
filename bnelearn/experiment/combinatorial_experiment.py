@@ -133,7 +133,6 @@ class LLGExperiment(LocalGlobalExperiment):
                     correlation=self.gamma),
                 IndependentValuationDevice()]
 
-
         self.input_length = 1
         #self.config.setting.n_players = 3
         self.config.setting.n_local = 2

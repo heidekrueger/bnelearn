@@ -1,4 +1,5 @@
 """utilities for run scripts"""
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -15,18 +16,23 @@ ALIASES = {
     'eval/util_loss_ex_ante':    '$\hat \ell$',
     'eval/util_loss_ex_interim': '$\hat \epsilon$',
     'eval/estimated_relative_ex_ante_util_loss': '$\hat{\mathcal{L}}$',
+    'eval/efficiency':           '$\mathcal{E}$',
 }
 
-
-def csv_to_tex(
-        experiments: dict,
-        name: str = 'table.tex',
-        caption: str = 'caption',
-        metrics: list = ['eval/L_2', 'eval/epsilon_relative', 'eval/util_loss_ex_interim',
-            'eval/estimated_relative_ex_ante_util_loss'],
-        precision: int = 2,
+def logs_to_df(
+        path: str or dict,
+        metrics: list = ['eval/epsilon_relative', 'eval/util_loss_ex_interim',
+                         'eval/estimated_relative_ex_ante_util_loss',
+                         'eval/efficiency'],
+        precision: int = 2
     ):
-    """Creates a tex file with the csv at `path` as a LaTeX table."""
+    """Creates and returns a Pandas DataFrame from all logs in `path`."""
+
+    if type(path) == str:
+        experiments = [os.path.join(dp, f) for dp, dn, filenames
+                       in os.walk(path) for f in filenames
+                       if os.path.splitext(f)[1] == '.csv']
+        experiments = {str(e): e for e in experiments}
 
     form = '{:.' + str(precision) + 'f}'
 
@@ -37,7 +43,8 @@ def csv_to_tex(
         end_epoch = df.epoch.max()
         df = df[df.epoch == end_epoch]
 
-        single_df = df.groupby(['tag'], as_index=False).agg({'value': ['mean','std']})
+        single_df = df.groupby(['tag'], as_index=False) \
+            .agg({'value': ['mean','std']})
         single_df.columns = ['metric', 'mean','std']
         single_df = single_df.loc[single_df['metric'].isin(metrics)]
 
@@ -55,9 +62,55 @@ def csv_to_tex(
         lambda m: ALIASES[m] if m in ALIASES.keys() else m
     )
 
+    def map_type(row):
+        for t in ['Bernoulli', 'constant', 'independent']:
+            if t in row['Auction game']:
+                return t
+        return None
+    aggregate_df['Corr Type'] = aggregate_df.apply(map_type, axis=1)
+
+    def map_strength(row):
+        if row['Corr Type'] == 'independent':
+            return 0.0
+        elif 'gamma_' in row['Auction game']:
+            start = row['Auction game'].find('gamma_') + 6
+            end = row['Auction game'].find('/', start)
+            return row['Auction game'][start:end]
+        return None
+    aggregate_df['Corr Strength'] = aggregate_df.apply(map_strength, axis=1)
+
+    def map_risk(row):
+        if 'risk_' in row['Auction game']:
+            start = row['Auction game'].find('risk_') + 5
+            end = row['Auction game'].find('/', start)
+            return row['Auction game'][start:end]
+        return 1.0
+    aggregate_df['Risk'] = aggregate_df.apply(map_risk, axis=1)
+
     # write to file
-    aggregate_df.to_latex('experiments/' + name, float_format="%.4f", na_rep='--', escape=False,
-                          index=False, caption=caption, column_format='l' + 'r'*len(metrics),
+    aggregate_df.to_csv('experiments/summary.csv', index=False)
+
+    return aggregate_df
+
+
+def csv_to_tex(
+        experiments: dict,
+        name: str = 'table.tex',
+        caption: str = 'caption',
+        metrics: list = ['eval/epsilon_relative', 'eval/util_loss_ex_interim',
+                         'eval/estimated_relative_ex_ante_util_loss',
+                         'eval/efficiency'],
+        precision: int = 2,
+    ):
+    """Creates a tex file with the csv at `path` as a LaTeX table."""
+
+    aggregate_df = logs_to_df(path=experiments, metrics=metrics,
+                              precision=precision)
+
+    # write to file
+    aggregate_df.to_latex('experiments/'+name, float_format="%.4f",
+                          na_rep='--', escape=False, index=False,
+                          caption=caption, column_format='l'+'r'*len(metrics),
                           label='tab:full_results')
 
 
@@ -112,15 +165,18 @@ def csv_to_boxplot(
     ax = plt.axes()
     pos = [1, 2]
     for gamma, _ in experiments.items():
-        bp = plt.boxplot(aggregate_df[aggregate_df['gamma'] == gamma[-4:-1]][['locals', 'global']].to_numpy(),
+        bp = plt.boxplot(aggregate_df[aggregate_df['gamma'] == gamma[-4:-1]] \
+                         [['locals', 'global']].to_numpy(),
                          positions=pos, widths=1.5)
         setBoxColors(bp)
         pos = [p + 3 for p in pos]
     hB, = plt.plot([1, 1], color=c1)
     hR, = plt.plot([1, 1], color=c2)
     plt.legend((hB, hR), ('locals', 'global'), loc='lower right')
-    ax.set_xticks([1 + 31*float(gamma[-4:-1]) for gamma, _ in experiments.items()])
-    ax.set_xticklabels([float(gamma[-4:-1]) for gamma, _ in experiments.items()])
+    ax.set_xticks(
+        [1 + 31*float(gamma[-4:-1]) for gamma, _ in experiments.items()])
+    ax.set_xticklabels(
+        [float(gamma[-4:-1]) for gamma, _ in experiments.items()])
     # plt.xlim([0, 30])
     plt.ylim([-0.0015, 0.0015])
     plt.ticklabel_format(axis="y", style="sci", scilimits=(0,0))
@@ -133,27 +189,31 @@ def csv_to_boxplot(
 
 if __name__ == '__main__':
 
-    # All experiments
-    exps = {
-        'Affiliated values': '/home/kohring/bnelearn/experiments/single_item/first_price/interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
-        'Cor. values': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
-        'LLG Bernoulli NZ': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/gamma_0.5/2020-09-16 Wed 20.15/aggregate_log.csv',
-        'LLG Bernoulli VCG': '/home/kohring/bnelearn/experiments/LLG/vcg/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
-        'LLG Bernoulli P': '/home/kohring/bnelearn/experiments/LLG/proxy/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
-        'LLG Bernoulli NVCG': '/home/kohring/bnelearn/experiments/LLG/nearest_vcg/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
-        'LLG Bernoulli NB': '/home/kohring/bnelearn/experiments/LLG/nearest_bid/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
-        'LLG constant': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/gamma_0.5/2020-09-21 Mon 09.18/aggregate_log.csv',
-        'Cor. values 10p': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/10p/2020-09-26 Sat 19.54/aggregate_log.csv'
-    }
+    logs_to_df(path='/home/kohring/bnelearn/experiments/comp_statics',
+               precision=4)
 
-    csv_to_tex(
-        experiments = exps,
-        name = 'interdependent_table.tex',
-        caption = 'Mean and standard deviation of experiments over ten runs each. For the LLG settings, ' \
-            + 'a correlation of $\gamma = 0.5$ was chosen.'
-    )
+    ### All experiments
+    # exps = {
+    #     'Affiliated values': '/home/kohring/bnelearn/experiments/single_item/first_price/interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
+    #     'Cor. values': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
+    #     'LLG Bernoulli NZ': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/gamma_0.5/2020-09-16 Wed 20.15/aggregate_log.csv',
+    #     'LLG Bernoulli VCG': '/home/kohring/bnelearn/experiments/LLG/vcg/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
+    #     'LLG Bernoulli P': '/home/kohring/bnelearn/experiments/LLG/proxy/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
+    #     'LLG Bernoulli NVCG': '/home/kohring/bnelearn/experiments/LLG/nearest_vcg/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
+    #     'LLG Bernoulli NB': '/home/kohring/bnelearn/experiments/LLG/nearest_bid/Bernoulli_weights/gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
+    #     'LLG constant': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/gamma_0.5/2020-09-21 Mon 09.18/aggregate_log.csv',
+    #     'Cor. values 10p': '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/10p/2020-09-26 Sat 19.54/aggregate_log.csv'
+    # }
 
-    # # Comparison over differnt correlations
+    # csv_to_tex(
+    #     experiments = exps,
+    #     name = 'interdependent_table.tex',
+    #     caption = 'Mean and standard deviation of experiments over ten runs' \
+    #         + ' each. For the LLG settings, a correlation of $\gamma = 0.5$' \
+    #         + ' was chosen.'
+    # )
+
+    ### Comparison over differnt correlations
     # exp_time = '2020-09-16 Wed 20.15'
     # exps = {'$\gamma = 0.0$': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/independent/' \
     #             + '/' + exp_time + '/aggregate_log.csv'}

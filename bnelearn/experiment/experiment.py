@@ -333,59 +333,61 @@ class Experiment(ABC):
 
         for run_id, seed in enumerate(self.running.seeds):
             print(f'\nRunning experiment {run_id} (using seed {seed})')
-            self.run_log_dir = os.path.join(
-                self.experiment_log_dir,
-                f'{run_id:02d} ' + time.strftime('%T ') + str(seed))
-            torch.random.manual_seed(seed)
-            torch.cuda.manual_seed_all(seed)
-            np.random.seed(seed)
-            if self.logging.stopping_criterion_rel_util_loss_diff:
-                # stopping_list = np.empty((self.n_models,0))
-                stopping_criterion_length = self.logging.stopping_criterion_duration
-                stopping_queue = deque(maxlen=stopping_criterion_length)
-                stopping_criterion_batch_size = min(self.logging.util_loss_batch_size,
-                                                    self.logging.stopping_criterion_batch_size)
-                stopping_criterion_grid_size = self.logging.stopping_criterion_grid_size
-                stopping_criterion_frequency = self.logging.stopping_criterion_frequency
-                stop = False
 
-            self._init_new_run()
+            try:
+                self.run_log_dir = os.path.join(
+                    self.experiment_log_dir,
+                    f'{run_id:02d} ' + time.strftime('%T ') + str(seed))
+                torch.random.manual_seed(seed)
+                torch.cuda.manual_seed_all(seed)
+                np.random.seed(seed)
+                if self.logging.stopping_criterion_rel_util_loss_diff:
+                    # stopping_list = np.empty((self.n_models,0))
+                    stopping_criterion_length = self.logging.stopping_criterion_duration
+                    stopping_queue = deque(maxlen=stopping_criterion_length)
+                    stopping_criterion_batch_size = min(self.logging.util_loss_batch_size,
+                                                        self.logging.stopping_criterion_batch_size)
+                    stopping_criterion_grid_size = self.logging.stopping_criterion_grid_size
+                    stopping_criterion_frequency = self.logging.stopping_criterion_frequency
+                    stop = False
 
-            for e in range(self.running.n_epochs + 1):
-                utilities = self._training_loop(epoch=e)
+                self._init_new_run()
 
-                # Check stopping criterion
-                if self.logging.stopping_criterion_rel_util_loss_diff is not None and \
-                        e > 0 and not e % stopping_criterion_frequency:
-                    start_time = timer()
+                for e in range(self.running.n_epochs + 1):
+                    utilities = self._training_loop(epoch=e)
 
-                    # Compute relative utility loss
-                    loss_ex_ante, _, _ = self._calculate_metrics_util_loss(
-                        create_plot_output=False,
-                        batch_size=stopping_criterion_batch_size,
-                        grid_size=stopping_criterion_grid_size)
-                    rel_util_loss = 1 - utilities / (utilities + torch.tensor(loss_ex_ante))
-                    stopping_queue.append(rel_util_loss)
+                    # Check stopping criterion
+                    if self.logging.stopping_criterion_rel_util_loss_diff is not None and \
+                            e > 0 and not e % stopping_criterion_frequency:
+                        start_time = timer()
 
-                    # Check for convergence when enough data is available
-                    if len(stopping_queue) == stopping_queue.maxlen:
-                        values = torch.stack(tuple(stopping_queue))
-                        stop = self._check_convergence(values, epoch=e)
+                        # Compute relative utility loss
+                        loss_ex_ante, _, _ = self._calculate_metrics_util_loss(
+                            create_plot_output=False,
+                            batch_size=stopping_criterion_batch_size,
+                            grid_size=stopping_criterion_grid_size)
+                        rel_util_loss = 1 - utilities / (utilities + torch.tensor(loss_ex_ante))
+                        stopping_queue.append(rel_util_loss)
 
-                    self.overhead = self.overhead + timer() - start_time
-                    if stop:
-                        print(f'Stopping criterion reached after {e} iterations.')
-                        break
+                        # Check for convergence when enough data is available
+                        if len(stopping_queue) == stopping_queue.maxlen:
+                            values = torch.stack(tuple(stopping_queue))
+                            stop = self._check_convergence(values, epoch=e)
 
+                        self.overhead = self.overhead + timer() - start_time
+                        if stop:
+                            print(f'Stopping criterion reached after {e} iterations.')
+                            break
 
-            if self.logging.enable_logging and (
-                    self.logging.export_step_wise_linear_bid_function_size is not None):
-                bidders = [self.bidders[self._model2bidder[m][0]] for m in range(self.n_models)]
-                logging_utils.export_stepwise_linear_bid(
-                    experiment_dir=self.run_log_dir, bidders=bidders,
-                    step=self.logging.export_step_wise_linear_bid_function_size)
+                if self.logging.enable_logging and (
+                        self.logging.export_step_wise_linear_bid_function_size is not None):
+                    bidders = [self.bidders[self._model2bidder[m][0]] for m in range(self.n_models)]
+                    logging_utils.export_stepwise_linear_bid(
+                        experiment_dir=self.run_log_dir, bidders=bidders,
+                        step=self.logging.export_step_wise_linear_bid_function_size)
 
-            self._exit_run()
+            finally:
+                self._exit_run()
 
         # Once all runs are done, convert tb event files to csv
         if self.logging.enable_logging and (
