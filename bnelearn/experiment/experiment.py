@@ -621,13 +621,13 @@ class Experiment(ABC):
             b = torch.stack([b.get_action()[:self.plot_points, ...]
                              for b in unique_bidders], dim=1)
 
-            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
+            labels = ['NPGA agent {}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
             if self.known_bne and self.logging.log_metrics['opt']:
                 for env_idx, _ in enumerate(self.bne_env):
                     v = torch.cat([v, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
-                    labels += ['BNE{}_{}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
+                    labels += ['BNE {} agent {}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
                                for j in range(len(self.models))]
                     fmts += ['b--'] * len(self.models)
 

@@ -1,7 +1,17 @@
 """utilities for run scripts"""
-import os
+import os, sys
+import torch
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
+
+sys.path.append(os.path.realpath('.'))
+sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
+
+from bnelearn.strategy import NeuralNetStrategy
+from bnelearn.experiment.configuration_manager import ConfigurationManager
+from bnelearn.util import logging
+
 
 #pylint: disable=anomalous-backslash-in-string
 ALIASES = {
@@ -187,12 +197,38 @@ def csv_to_boxplot(
     plt.savefig('experiments/' + name)
 
 
+def plot_bid_functions(experiments: dict):
+    """Plot LLG locals"""
+    valuation_t = torch.linspace(0, 1, 1000).view(-1, 1)
+    valuation_n = valuation_t.detach().numpy()
+    with plt.style.context('grayscale'):
+        fig = plt.figure()
+        plt.plot(valuation_n, valuation_n, label='truthful',
+                 color='lightgrey', linestyle='dotted')
+        for exp_name, exp_path in experiments.items():
+            model = NeuralNetStrategy.load(exp_path + '/models/model_0.pt')
+            bid = model.play(valuation_t).detach().numpy()
+            plt.plot(valuation_n, bid, label=exp_name)
+
+        plt.title('LLG local bidders')
+        plt.legend()
+        plt.xlabel('valuation'); plt.ylabel('bid')
+        plt.xlim([0, 1]); plt.ylim([0, 1])
+        plt.tight_layout()
+        plt.savefig('experiments/llg_locals.png')
+
 if __name__ == '__main__':
 
-    logs_to_df(path='/home/kohring/bnelearn/experiments/comp_statics',
-               precision=4)
+    # logs_to_df(path='/home/kohring/bnelearn/experiments/comp_statics',
+    #            precision=4)
 
-    ### All experiments
+    ### Create bid function plot ----------------------------------------------
+    exps = {'test': '/home/kohring/bnelearn/experiments/LLG/nearest_bid/' + \
+        'Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/00 02:22:22 0'}
+    plot_bid_functions(exps)
+
+
+    ### All experiments -------------------------------------------------------
     # exps = {
     #     'Affiliated values': '/home/kohring/bnelearn/experiments/single_item/first_price/' + \
     #                   'interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
@@ -222,7 +258,8 @@ if __name__ == '__main__':
     #         + ' was chosen.'
     # )
 
-    ### Comparison over differnt correlations
+
+    ### Comparison over differnt correlations ---------------------------------
     # exp_time = '2020-09-16 Wed 20.15'
     # exps = {'$\gamma = 0.0$': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/independent/' \
     #             + '/' + exp_time + '/aggregate_log.csv'}

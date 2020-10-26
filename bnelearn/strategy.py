@@ -323,13 +323,13 @@ class NeuralNetStrategy(Strategy, nn.Module):
             ## create hdiden layers
             # first hidden layer (from input)
             self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
-            self.layers['activation_0'] = self.activations[0]
+            self.layers[str(self.activations[0]) + '_0'] = self.activations[0]
             if self.dropout:
                 self.layers['dropout_0'] = nn.AlphaDropout(p=self.dropout)
             # hidden-to-hidden-layers
             for i in range (1, len(hidden_nodes)):
                 self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
-                self.layers['activation_' + str(i)] = self.activations[i]
+                self.layers[str(self.activations[i]) + '_' + str(i)] = self.activations[i]
                 if self.dropout:
                     self.layers['dropout_' + str(i)] = nn.AlphaDropout(p=self.dropout)
         else:
@@ -338,8 +338,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         # create output layer
         self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
-        self.layers['activation_out'] = nn.ReLU()
-        self.activations.append(self.layers['activation_out'])
+        self.layers[str(nn.ReLU()) + '_out'] = nn.ReLU()
+        self.activations.append(self.layers[str(nn.ReLU()) + '_out'])
 
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization
@@ -355,9 +355,25 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         model_dict = torch.load(path)
 
-        # TODO Nils: WIP! Needs careful handling as it's not a default ´torch.nn.Module´.
-        #            Read out the needed parameters
+        # TODO: Dangerous hack for reloading a startegy
         params = {}
+        params["hidden_nodes"] = []
+        params["hidden_activations"] = []
+        length = len(list(model_dict.values()))
+        layer_idx = 0
+        for tensor, layer_activation in zip(list(model_dict.values()),
+            list(model_dict._metadata.keys())[2:]):
+            if layer_idx == 0:
+                params["input_length"] = tensor.shape[1]
+            elif layer_idx == length - 1:
+                params["output_length"] = tensor.shape[0]
+            elif layer_idx % 2 == 1:
+                params["hidden_nodes"].append(tensor.shape[0])
+                params["hidden_activations"].append(
+                    # TODO Nils: change once models are saved correctly
+                    # eval('nn.' + layer_activation[7:-2]))
+                    nn.SELU())
+            layer_idx += 1
 
         # standard initialization
         strategy = cls(
