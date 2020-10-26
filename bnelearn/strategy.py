@@ -348,12 +348,12 @@ class NeuralNetStrategy(Strategy, nn.Module):
                 self.reset(ensure_positive_output)
 
     @classmethod
-    def load(cls, path: str):
+    def load(cls, path: str, device='cpu'):
         """
         Initializes a saved NeuralNetStrategy from ´path´.
         """
 
-        model_dict = torch.load(path)
+        model_dict = torch.load(path, map_location=device)
 
         # TODO: Dangerous hack for reloading a startegy
         params = {}
@@ -361,8 +361,11 @@ class NeuralNetStrategy(Strategy, nn.Module):
         params["hidden_activations"] = []
         length = len(list(model_dict.values()))
         layer_idx = 0
-        for tensor, layer_activation in zip(list(model_dict.values()),
-            list(model_dict._metadata.keys())[2:]):
+        value_key_zip = zip(
+            list(model_dict.values()),
+            list(model_dict._metadata.keys())[2:] # pylint: disable=protected-access
+        )
+        for tensor, layer_activation in value_key_zip:
             if layer_idx == 0:
                 params["input_length"] = tensor.shape[1]
             elif layer_idx == length - 1:
