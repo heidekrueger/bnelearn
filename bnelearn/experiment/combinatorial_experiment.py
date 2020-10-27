@@ -245,6 +245,7 @@ class LLGExperiment(LocalGlobalExperiment):
         self.bne_utilities_new_sample = torch.tensor(
             [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
 
+        # TODO Nils: check risk compatability
         bne_utilities_database = access_bne_utility_database(self, self.bne_utilities_new_sample)
         if bne_utilities_database:
             self.bne_utilities = bne_utilities_database

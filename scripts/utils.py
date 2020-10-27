@@ -33,16 +33,20 @@ def logs_to_df(
         path: str or dict,
         metrics: list = ['eval/epsilon_relative', 'eval/util_loss_ex_interim',
                          'eval/estimated_relative_ex_ante_util_loss',
-                         'eval/efficiency'],
-        precision: int = 2
+                         'eval/efficiency', 'eval/utilities'],
+        precision: int = 4,
+        with_stddev: bool = False,
+        with_setting_parameters: bool = True,
     ):
     """Creates and returns a Pandas DataFrame from all logs in `path`."""
 
-    if type(path) == str:
+    if isinstance(path, str):
         experiments = [os.path.join(dp, f) for dp, dn, filenames
                        in os.walk(path) for f in filenames
                        if os.path.splitext(f)[1] == '.csv']
         experiments = {str(e): e for e in experiments}
+    else:
+        experiments = path
 
     form = '{:.' + str(precision) + 'f}'
 
@@ -54,15 +58,18 @@ def logs_to_df(
         df = df[df.epoch == end_epoch]
 
         single_df = df.groupby(['tag'], as_index=False) \
-            .agg({'value': ['mean','std']})
+            .agg({'value': ['mean', 'std']})
         single_df.columns = ['metric', 'mean','std']
         single_df = single_df.loc[single_df['metric'].isin(metrics)]
 
-        single_df[exp_name] = single_df.apply(
-            lambda x: str(form.format(round(x['mean'], precision))) + ' (' \
-                + str(form.format(round(x['std'], precision))) + ')',
-            axis=1
-        )
+        def map_mean_std(row):
+            result = str(form.format(round(row['mean'], precision)))
+            if with_stddev:
+                result += ' (' + str(form.format(round(row['std'], precision))) \
+                    + ')'
+            return result
+        single_df[exp_name] = single_df.apply(map_mean_std, axis=1)
+
         single_df.index = single_df['metric']
         del single_df['mean'], single_df['std'], single_df['metric']
         aggregate_df = pd.concat([aggregate_df, single_df.T])
@@ -72,30 +79,31 @@ def logs_to_df(
         lambda m: ALIASES[m] if m in ALIASES.keys() else m
     )
 
-    def map_type(row):
-        for t in ['Bernoulli', 'constant', 'independent']:
-            if t in row['Auction game']:
-                return t
-        return None
-    aggregate_df['Corr Type'] = aggregate_df.apply(map_type, axis=1)
+    if with_setting_parameters:
+        def map_type(row):
+            for t in ['Bernoulli', 'constant', 'independent']:
+                if t in row['Auction game']:
+                    return t
+            return None
+        aggregate_df['Corr Type'] = aggregate_df.apply(map_type, axis=1)
 
-    def map_strength(row):
-        if row['Corr Type'] == 'independent':
-            return 0.0
-        elif 'gamma_' in row['Auction game']:
-            start = row['Auction game'].find('gamma_') + 6
-            end = row['Auction game'].find('/', start)
-            return row['Auction game'][start:end]
-        return None
-    aggregate_df['Corr Strength'] = aggregate_df.apply(map_strength, axis=1)
+        def map_strength(row):
+            if row['Corr Type'] == 'independent':
+                return 0.0
+            elif 'gamma_' in row['Auction game']:
+                start = row['Auction game'].find('gamma_') + 6
+                end = row['Auction game'].find('/', start)
+                return row['Auction game'][start:end]
+            return None
+        aggregate_df['Corr Strength'] = aggregate_df.apply(map_strength, axis=1)
 
-    def map_risk(row):
-        if 'risk_' in row['Auction game']:
-            start = row['Auction game'].find('risk_') + 5
-            end = row['Auction game'].find('/', start)
-            return row['Auction game'][start:end]
-        return 1.0
-    aggregate_df['Risk'] = aggregate_df.apply(map_risk, axis=1)
+        def map_risk(row):
+            if 'risk_' in row['Auction game']:
+                start = row['Auction game'].find('risk_') + 5
+                end = row['Auction game'].find('/', start)
+                return row['Auction game'][start:end]
+            return 1.0
+        aggregate_df['Risk'] = aggregate_df.apply(map_risk, axis=1)
 
     # write to file
     aggregate_df.to_csv('experiments/summary.csv', index=False)
@@ -107,18 +115,18 @@ def csv_to_tex(
         experiments: dict,
         name: str = 'table.tex',
         caption: str = 'caption',
-        metrics: list = ['eval/epsilon_relative', 'eval/util_loss_ex_interim',
-                         'eval/estimated_relative_ex_ante_util_loss',
-                         'eval/efficiency'],
+        metrics: list = ['eval/L_2', 'eval/epsilon_relative',
+                         'eval/estimated_relative_ex_ante_util_loss'],
         precision: int = 2,
     ):
     """Creates a tex file with the csv at `path` as a LaTeX table."""
 
     aggregate_df = logs_to_df(path=experiments, metrics=metrics,
-                              precision=precision)
+                              precision=precision, with_stddev=True,
+                              with_setting_parameters=False)
 
     # write to file
-    aggregate_df.to_latex('experiments/'+name, float_format="%.4f",
+    aggregate_df.to_latex('experiments/' + name, float_format="%.4f",
                           na_rep='--', escape=False, index=False,
                           caption=caption, column_format='l'+'r'*len(metrics),
                           label='tab:full_results')
@@ -221,42 +229,40 @@ def plot_bid_functions(experiments: dict):
         plt.tight_layout()
         plt.savefig('experiments/interdependence/llg_bid_functions.eps')
 
+
 if __name__ == '__main__':
 
     # logs_to_df(path='/home/kohring/bnelearn/experiments/comp_statics',
     #            precision=4)
 
     ### Create bid function plot ----------------------------------------------
-    exps = {
-        'Bernoulli weights': '/home/kohring/bnelearn/experiments/LLG/' + \
-            'nearest_vcg/Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/' + \
-            '00 05:14:47 0',
-        'constant weights': '/home/kohring/bnelearn/experiments/LLG/' + \
-            'nearest_vcg/constant_weights/gamma_0.5/2020-09-30 Wed 22.13/' + \
-            '07 07:05:30 7'}
-    plot_bid_functions(exps)
+    # exps = {
+    #     '$\gamma = 0.1$': '/home/kohring/bnelearn/experiments/' + \
+    #         'interdependence/risk-vs-correlation/LLG/nearest_vcg/' + \
+    #             'Bernoulli_weights/gamma_0.1/risk_0.9/2020-10-26 Mon 13.58/00 09:43:03 0',
+    #     '$\gamma = 0.5$': '/home/kohring/bnelearn/experiments/' + \
+    #         'interdependence/risk-vs-correlation/LLG/nearest_vcg/' + \
+    #         'Bernoulli_weights/gamma_0.5/risk_0.9/2020-10-26 Mon 13.58/00 10:41:46 0',
+    #     '$\gamma = 0.9$': '/home/kohring/bnelearn/experiments/' + \
+    #         'interdependence/risk-vs-correlation/LLG/nearest_vcg/' + \
+    #         'Bernoulli_weights/gamma_0.9/risk_0.9/2020-10-26 Mon 13.58/00 11:40:35 0',
+    # }
+    # plot_bid_functions(exps)
 
 
     ### All experiments -------------------------------------------------------
     # exps = {
-    #     'Affiliated values': '/home/kohring/bnelearn/experiments/single_item/first_price/' + \
-    #                   'interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
-    #     'Cor. values': '/home/kohring/bnelearn/experiments/single_item/second_price/' + \
-    #                   'interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
-    #     'LLG Bernoulli NZ': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/' + \
-    #                   'Bernoulli_weights/gamma_0.5/2020-09-16 Wed 20.15/aggregate_log.csv',
-    #     'LLG Bernoulli VCG': '/home/kohring/bnelearn/experiments/LLG/vcg/Bernoulli_weights/' + \
-    #                   'gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
-    #     'LLG Bernoulli P': '/home/kohring/bnelearn/experiments/LLG/proxy/Bernoulli_weights/' + \
-    #                   'gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
-    #     'LLG Bernoulli NVCG': '/home/kohring/bnelearn/experiments/LLG/nearest_vcg/Bernoulli_weights/' + \
-    #                   'gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
-    #     'LLG Bernoulli NB': '/home/kohring/bnelearn/experiments/LLG/nearest_bid/Bernoulli_weights/' + \
-    #                   'gamma_0.5/2020-09-28 Mon 11.04/aggregate_log.csv',
-    #     'LLG constant': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/' + \
-    #                   'gamma_0.5/2020-09-21 Mon 09.18/aggregate_log.csv',
-    #     'Cor. values 10p': '/home/kohring/bnelearn/experiments/single_item/second_price/' + \
-    #                   'interdependent/uniform/symmetric/risk_neutral/10p/2020-09-26 Sat 19.54/aggregate_log.csv'
+    #     'Affiliated values':  '/home/kohring/bnelearn/experiments/single_item/first_price/interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
+    #     'Cor. values':        '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
+    #     'Cor. values 10p':    '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/10p/2020-09-26 Sat 19.54/aggregate_log.csv',
+    #     'LLG Bernoulli NZ':   '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/aggregate_log.csv',
+    #     'LLG Bernoulli VCG':  '/home/kohring/bnelearn/experiments/LLG/vcg/Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/aggregate_log.csv',
+    #     'LLG Bernoulli NVCG': '/home/kohring/bnelearn/experiments/LLG/nearest_vcg/Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/aggregate_log.csv',
+    #     'LLG Bernoulli NB':   '/home/kohring/bnelearn/experiments/LLG/nearest_bid/Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/aggregate_log.csv',
+    #     'LLG constant NZ':    '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/gamma_0.5/2020-09-30 Wed 22.13/aggregate_log.csv',
+    #     'LLG constant VCG':   '/home/kohring/bnelearn/experiments/LLG/vcg/constant_weights/gamma_0.5/2020-09-30 Wed 22.13/aggregate_log.csv',
+    #     'LLG constant NVCG':  '/home/kohring/bnelearn/experiments/LLG/nearest_vcg/constant_weights/gamma_0.5/2020-09-30 Wed 22.13/aggregate_log.csv',
+    #     'LLG constant NB':    '/home/kohring/bnelearn/experiments/LLG/nearest_bid/constant_weights/gamma_0.5/2020-09-30 Wed 22.13/aggregate_log.csv',
     # }
 
     # csv_to_tex(
@@ -269,9 +275,10 @@ if __name__ == '__main__':
 
 
     ### Comparison over differnt correlations ---------------------------------
-    # exp_time = '2020-09-16 Wed 20.15'
+    # TODO Nils: is broke
+    # exp_time = '2020-10-02 Fri 21.00'
     # exps = {'$\gamma = 0.0$': '/home/kohring/bnelearn/experiments/LLG/nearest_zero/independent/' \
-    #             + '/' + exp_time + '/aggregate_log.csv'}
+    #             + exp_time + '/aggregate_log.csv'}
     # for gamma in [g/10 for g in range(1, 11)]:
     #     exps.update({'$\gamma = {}$'.format(gamma):
     #         '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/' \
@@ -281,8 +288,52 @@ if __name__ == '__main__':
     # csv_to_boxplot(
     #     experiments = exps,
     #     metric = 'eval/epsilon_relative',
-    #     name = 'boxplot.eps',
+    #     name = 'boxplot.png',
     #     caption = 'Mean and standard deviation of experiments over four runs each.',
     #     precision = 4
     # )
+
+
+    ### Risk vs correlation experiment ----------------------------------------
+    path = '/home/kohring/bnelearn/experiments/interdependence/' + \
+        'risk-vs-correlation'
+    metric = '$\hat{\mathcal{L}}$'
     
+    df = logs_to_df(path=path)
+
+    with plt.style.context('grayscale'):
+        plt.figure(figsize=(5, 4))
+
+        for corr_type in ['constant', 'Bernoulli']:
+            df_sub = df[df['Corr Type'] == corr_type]
+            corrs = sorted(pd.unique(df_sub['Corr Strength']))
+            risks = sorted(pd.unique(df_sub['Risk']))
+            efficiency = np.zeros((len(corrs), len(risks)))
+            for i, corr in enumerate(corrs):
+                for j, risk in enumerate(risks):
+                    efficiency[i, j] = float(
+                        df_sub[df_sub['Corr Strength'] == corr] \
+                            [df_sub['Risk'] == risk][metric]
+                    )
+
+            plt.errorbar([float(r) for r in risks], efficiency.mean(axis=1), yerr=efficiency.std(axis=0),
+                     label=corr_type + ' weights', marker='o')
+            
+            # fig, ax = plt.subplots()
+            # plt.imshow(efficiency, cmap='gray', interpolation='nearest')
+            # plt.xlabel('risk parameter $\\rho$')
+            # ax.set_xticklabels(corrs)
+            # ax.set_xticks(np.arange(len(corrs)))
+            # plt.ylabel('correlation strength $\gamma$')
+            # ax.set_yticks(np.arange(len(risks)))
+            # ax.set_yticklabels(risks)
+            # plt.colorbar()
+
+        plt.xlim([0.1, 0.9])
+        plt.ylim([0.0, 0.02])
+        plt.xlabel('risk parameter $\\rho$')
+        plt.ylabel(metric)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig('experiments/interdependence/risk-vs-correlation/' + \
+            'loss.png')

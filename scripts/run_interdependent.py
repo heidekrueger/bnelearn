@@ -111,12 +111,12 @@ if __name__ == '__main__':
     ### Run LLG nearest-vcg for different risks / correlations ################
     log_root_dir = os.path.join(
         os.path.expanduser('~'), 'bnelearn', 'experiments', 'interdependence',
-        'risk_vs_correlation'
+        'risk-vs-correlation'
     )
     risks = list(i/10 for i in range(1, 10))
     gammas = list(i/10 for i in range(0, 10))
     payment_rule = 'nearest_vcg'
-    corr_models = ['constant_weights'] #['Bernoulli_weights', 'constant_weights']
+    corr_models = ['Bernoulli_weights', 'constant_weights'] #['Bernoulli_weights', 'constant_weights']
     for corr_model in corr_models:
         for risk in risks:
             for gamma in gammas:
