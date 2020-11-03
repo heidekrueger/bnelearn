@@ -22,7 +22,7 @@ if __name__ == '__main__':
     specific_gpu = 7
     n_runs = 1
     n_epochs = 1000
-    eval_batch_size = 2**23
+    eval_batch_size = 2**22
     model_sharing = False
     pretrain_iters = None
 
@@ -36,6 +36,7 @@ if __name__ == '__main__':
                 'util_loss': True
             }
         experiment.logging.log_metrics['efficiency'] = True
+        experiment.logging.log_metrics['revenue'] = True
 
         experiment.logging.util_loss_batch_size = 2**12
         experiment.logging.util_loss_grid_size = 2**10
@@ -111,7 +112,7 @@ if __name__ == '__main__':
     ### Run LLG nearest-vcg for different risks / correlations ################
     log_root_dir = os.path.join(
         os.path.expanduser('~'), 'bnelearn', 'experiments', 'interdependence',
-        'risk-vs-correlation'
+        'risk-vs-correlation-with-rne'
     )
     risks = list(i/10 for i in range(1, 10))
     gammas = list(i/10 for i in range(0, 10))

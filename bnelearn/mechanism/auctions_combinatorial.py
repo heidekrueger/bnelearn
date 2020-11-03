@@ -71,7 +71,8 @@ class _OptNet_for_LLLLGG(nn.Module):
         Q = (0,...,0)
         q = (1,...,1)
         """
-        self.Q = torch.diag(torch.tensor([1e-5, ] * self.n_player, dtype=self.precision, device=self.device)).repeat(self.n_batch,1,1)
+        self.Q = torch.diag(torch.tensor([1e-5, ] * self.n_player, dtype=self.precision,
+                            device=self.device)).repeat(self.n_batch,1,1)
         self.q = torch.ones([self.n_batch, self.n_player], dtype=self.precision, device=self.device)
 
     def _add_objective_min_vcg_distance(self, min_payments=None):
@@ -110,8 +111,8 @@ class _OptNet_for_LLLLGG(nn.Module):
                 self.e_no_grad=None
                 self.mu_no_grad=None
             x_mpc, opt_mpc = mpc_solver.solve(self.Q.detach(), self.q.detach(), self.G.detach(),
-                                            self.h.detach(), self.e_no_grad, self.mu_no_grad,
-                                            print_warning=False)
+                                              self.h.detach(), self.e_no_grad, self.mu_no_grad,
+                                              print_warning=False)
             return x_mpc
         else:
             raise NotImplementedError(":/")
@@ -240,7 +241,7 @@ class LLGAuction(Mechanism):
 
         return (allocations.unsqueeze(-1), payments)  # payments: batches x players, allocation: batch x players x items
 
-    def check_efficiency(self, env):
+    def get_efficiency(self, env):
         """
         Returns the percentage of efficient allocated outcomes over a batch.
         """
@@ -248,7 +249,7 @@ class LLGAuction(Mechanism):
                                   device=self.device)
         for pos, bid in env._generate_agent_actions():
             bid_profile[:, pos, :] = bid
-        allocations, _ = env.mechanism.play(bid_profile)
+        allocations, _ = self.play(bid_profile)
 
         locals_have_higher_value = env.agents[2].valuations < \
             env.agents[0].valuations + env.agents[1].valuations

@@ -27,6 +27,7 @@ ALIASES = {
     'eval/util_loss_ex_interim': '$\hat \epsilon$',
     'eval/estimated_relative_ex_ante_util_loss': '$\hat{\mathcal{L}}$',
     'eval/efficiency':           '$\mathcal{E}$',
+    'eval/revenue':              '$\mathcal{R}$'
 }
 
 def logs_to_df(
@@ -95,7 +96,8 @@ def logs_to_df(
                 end = row['Auction game'].find('/', start)
                 return row['Auction game'][start:end]
             return None
-        aggregate_df['Corr Strength'] = aggregate_df.apply(map_strength, axis=1)
+        aggregate_df['Corr Strength'] = pd.to_numeric(
+            aggregate_df.apply(map_strength, axis=1))
 
         def map_risk(row):
             if 'risk_' in row['Auction game']:
@@ -103,7 +105,8 @@ def logs_to_df(
                 end = row['Auction game'].find('/', start)
                 return row['Auction game'][start:end]
             return 1.0
-        aggregate_df['Risk'] = aggregate_df.apply(map_risk, axis=1)
+        aggregate_df['Risk'] = pd.to_numeric(
+            aggregate_df.apply(map_risk, axis=1))
 
     # write to file
     aggregate_df.to_csv('experiments/summary.csv', index=False)
@@ -270,7 +273,7 @@ if __name__ == '__main__':
     #     name = 'interdependent_table.tex',
     #     caption = 'Mean and standard deviation of experiments over ten runs' \
     #         + ' each. For the LLG settings, a correlation of $\gamma = 0.5$' \
-    #         + ' was chosen.'
+    #         + ' under risk-neutral bidders was chosen.'
     # )
 
 
@@ -296,31 +299,46 @@ if __name__ == '__main__':
 
     ### Risk vs correlation experiment ----------------------------------------
     path = '/home/kohring/bnelearn/experiments/interdependence/' + \
-        'risk-vs-correlation'
-    metric = '$\hat{\mathcal{L}}$'
-    
+        'risk-vs-correlation-rne'
+    metric = '$\mathcal{R}$' # either one of the metricies
+    xaxis = 'Corr Strength' # either one in ['Corr Strength', 'Risk']
+
     df = logs_to_df(path=path)
-
     with plt.style.context('grayscale'):
-        plt.figure(figsize=(5, 4))
-
+        plt.figure(figsize=(5, 3))
+        # plt.plot([0, 1], [0.01, 0.01], label='1%', color='lightgrey',
+        #          linestyle='dotted')
         for corr_type in ['constant', 'Bernoulli']:
             df_sub = df[df['Corr Type'] == corr_type]
             corrs = sorted(pd.unique(df_sub['Corr Strength']))
+            corrs.insert(0, 0)
             risks = sorted(pd.unique(df_sub['Risk']))
-            efficiency = np.zeros((len(corrs), len(risks)))
+            data = np.zeros((len(corrs), len(risks)))
             for i, corr in enumerate(corrs):
                 for j, risk in enumerate(risks):
-                    efficiency[i, j] = float(
-                        df_sub[df_sub['Corr Strength'] == corr] \
-                            [df_sub['Risk'] == risk][metric]
-                    )
+                    if corr == 0:
+                        data[i, j] = float(
+                            df[df['Corr Strength'] == corr] \
+                                [df['Risk'] == risk][metric][0]
+                        )
+                    else:
+                        data[i, j] = float(
+                            df_sub[df_sub['Corr Strength'] == corr] \
+                                [df_sub['Risk'] == risk][metric]
+                        )
+            if xaxis == 'Corr Strength':
+                x = corrs
+                axis = 1
+            else:
+                x = risks
+                axis = 0
+            # plt.errorbar(x, data.mean(axis=axis),
+            #              yerr=data.std(axis=axis),
+            #              label=corr_type + ' weights', marker='o')
+            plt.plot(x, data.mean(axis=axis), label=corr_type + ' weights')
 
-            plt.errorbar([float(r) for r in risks], efficiency.mean(axis=1), yerr=efficiency.std(axis=0),
-                     label=corr_type + ' weights', marker='o')
-            
             # fig, ax = plt.subplots()
-            # plt.imshow(efficiency, cmap='gray', interpolation='nearest')
+            # plt.imshow(data, cmap='gray', interpolation='nearest')
             # plt.xlabel('risk parameter $\\rho$')
             # ax.set_xticklabels(corrs)
             # ax.set_xticks(np.arange(len(corrs)))
@@ -329,11 +347,23 @@ if __name__ == '__main__':
             # ax.set_yticklabels(risks)
             # plt.colorbar()
 
-        plt.xlim([0.1, 0.9])
-        plt.ylim([0.0, 0.02])
-        plt.xlabel('risk parameter $\\rho$')
+
+        if metric == '$u$':
+            plt.ylim([0.2, 0.5])
+        elif metric == '$\mathcal{E}$':
+            plt.ylim([0.8, 1.0])
+        elif metric == '$\hat{\mathcal{L}}$':
+            plt.ylim([0.005, 0.015])
+
+        if xaxis == 'Corr Strength':
+            plt.xlim([0, 1])
+            plt.xlabel('correlation strength $\gamma$')
+        else:
+            plt.xlim([0.1, 1.0])
+            plt.xlabel('risk parameter $\\rho$')
+
         plt.ylabel(metric)
         plt.legend()
         plt.tight_layout()
         plt.savefig('experiments/interdependence/risk-vs-correlation/' + \
-            'loss.png')
+            '{}.eps'.format(metric))

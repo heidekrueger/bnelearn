@@ -40,3 +40,15 @@ class Mechanism(Game, ABC):
     def run(self, bids):
         """Alias for play for auction mechanisms"""
         raise NotImplementedError()
+
+    def get_revenue(self, env):
+        """
+        Returns the average seller revenue over a batch.
+        """
+        bid_profile = torch.zeros(env.batch_size, env.n_players,
+                                  env.agents[0].n_items, device=self.device)
+        for pos, bid in env._generate_agent_actions(): # pylint: disable=protected-access
+            bid_profile[:, pos, :] = bid
+        _, payments = self.play(bid_profile)
+
+        return payments.sum(axis=1).float().mean()

@@ -607,8 +607,11 @@ class Experiment(ABC):
 
         if self.logging.log_metrics['efficiency'] and (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['efficiency'] = \
-                self.mechanism.check_efficiency(self.env)
+                self.mechanism.get_efficiency(self.env)
 
+        if self.logging.log_metrics['revenue'] and (epoch % self.logging.util_loss_frequency) == 0:
+            self._cur_epoch_log_params['revenue'] = \
+                self.mechanism.get_revenue(self.env)
         # plotting
         if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
