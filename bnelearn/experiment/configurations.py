@@ -87,6 +87,7 @@ class LoggingConfig:
                 experiment_timestamp + experiment_name /
                     run_timestamp + run_seed
     """
+
     enable_logging: bool  # If false, disables ALL logging
     log_root_dir: str
 
@@ -114,6 +115,8 @@ class LoggingConfig:
     save_figure_to_disk_png: bool
     save_figure_to_disk_svg: bool
     save_figure_data_to_disk: bool
+
+    best_response = False
 
     # Stopping Criterion #TODO: this section should go into ExperimentConfiguration
     stopping_criterion_rel_util_loss_diff: float = None

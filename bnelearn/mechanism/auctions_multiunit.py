@@ -5,6 +5,7 @@ import warnings
 import torch
 
 from .mechanism import Mechanism
+from ..util.tensor_util import batched_index_select
 
 
 def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
@@ -40,7 +41,7 @@ def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
 
 def _get_multiunit_allocation(
         bids: torch.Tensor,
-        random_tie_break: bool = True,
+        random_tie_break: bool = False,
         accept_zero_bids: bool = False,
     ) -> torch.Tensor:
     """For bids (batch x player x item) in descending order for each batch/player,
@@ -250,30 +251,6 @@ class MultiUnitVickreyAuction(Mechanism):
 
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
-def batched_index_select(input, dim, index):
-    """
-    Extends the torch ´index_select´ function to be used for multiple batches
-    at once.
-
-    author:
-        dashesy @ https://discuss.pytorch.org/t/batched-index-select/9115/11
-
-    args:
-        input: Tensor which is to be indexed
-        dim: Dimension
-        index: Index tensor which proviedes the seleting and ordering.
-
-    returns/yields:
-        Indexed tensor
-    """
-    for ii in range(1, len(input.shape)):
-        if ii != dim:
-            index = index.unsqueeze(ii)
-    expanse = list(input.shape)
-    expanse[0] = -1
-    expanse[dim] = -1
-    index = index.expand(expanse)
-    return torch.gather(input, dim, index)
 
 class FPSBSplitAwardAuction(Mechanism):
     """

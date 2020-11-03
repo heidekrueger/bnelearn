@@ -31,7 +31,7 @@ pylint.txt
 /notebooks/**/*.csv
 # no typo: matched both Untitled and Untitled_2
 /notebooks/Untitle*.ipynb
-/temp
+/temp/*
 /scripts/temp
 
 # dont check in figures created from R -- only keep the source code
@@ -53,3 +53,6 @@ pylint.txt
 
 # Running script
 #bnelearn/experiment/run_experiment.py
+
+# auto generated tex-files
+#.tex #already captured by /experiments/

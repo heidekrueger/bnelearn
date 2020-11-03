@@ -57,6 +57,7 @@ class Experiment(ABC):
     plot_xmax: float
     plot_ymin: float
     plot_ymax: float
+    _max_util_loss: float
     ## Optional - set only in some settings
 
     ## Equilibrium environment
@@ -187,7 +188,7 @@ class Experiment(ABC):
                              self.models]
 
         if self.learning.pretrain_iters > 0:
-            print('\tpretraining...')
+            print('Pretraining...')
 
             if hasattr(self, 'pretrain_transform'):
                 pretrain_transform = self.pretrain_transform  # pylint: disable=no-member
@@ -211,7 +212,7 @@ class Experiment(ABC):
         raise NotImplementedError("This Experiment has no implemented BNE. No eval env was created.")
 
     def _setup_learning_environment(self):
-        print(f'Learning env correlation {self.correlation_groups} \n {self.correlation_devices}.')
+        print(f'Learning env correlation {self.correlation_groups}: {self.correlation_devices}.')
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
                                       batch_size=self.learning.batch_size,
@@ -270,11 +271,12 @@ class Experiment(ABC):
             if self.logging.save_models:
                 os.mkdir(os.path.join(output_dir, 'models'))
 
-            print('Started run. Logging to {}'.format(output_dir))
+            print('Started run. Logging to {}.'.format(output_dir))
             self.fig = plt.figure()
             self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
             tic = timer()
+            self._log_experiment_params()
             self._log_hyperparams()
 
             self._log_experiment_params()
@@ -316,9 +318,11 @@ class Experiment(ABC):
         if self.logging.enable_logging:
             self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
-            print('epoch {}:\t elapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead))
+            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),
+                  end="\r")
         else:
-            print('epoch {}:\t elapsed {:.2f}s'.format(epoch, timer() - tic))
+            print('epoch {}:\telapsed {:.2f}s'.format(epoch, timer() - tic),
+                  end="\r")
         return utilities
 
     def run(self):
@@ -330,10 +334,10 @@ class Experiment(ABC):
             "Number of seeds doesn't match number of runs."
 
         for run_id, seed in enumerate(self.running.seeds):
-            print(f'Running experiment {run_id} (using seed {seed})')
+            print(f'\nRunning experiment {run_id} (using seed {seed})')
             self.run_log_dir = os.path.join(
                 self.experiment_log_dir,
-                f'{run_id:02d} ' + time.strftime('%H.%M.%S ') + str(seed))
+                f'{run_id:02d} ' + time.strftime('%T ') + str(seed))
             torch.random.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
             np.random.seed(seed)
@@ -358,7 +362,7 @@ class Experiment(ABC):
                     start_time = timer()
 
                     # Compute relative utility loss
-                    loss_ex_ante, _ = self._calculate_metrics_util_loss(
+                    loss_ex_ante, _, _ = self._calculate_metrics_util_loss(
                         create_plot_output=False,
                         batch_size=stopping_criterion_batch_size,
                         grid_size=stopping_criterion_grid_size)
@@ -391,7 +395,7 @@ class Experiment(ABC):
                 self.logging.save_tb_events_to_csv_detailed or
                 self.logging.save_tb_events_to_csv_aggregate or
                 self.logging.save_tb_events_to_binary_detailed):
-            print('Tabulating tensorboard logs...')
+            print('Tabulating tensorboard logs...', end=' ')
             logging_utils.tabulate_tensorboard_logs(
                 experiment_dir=self.experiment_log_dir,
                 write_detailed=self.logging.save_tb_events_to_csv_detailed,
@@ -399,7 +403,7 @@ class Experiment(ABC):
                 write_binary=self.logging.save_tb_events_to_binary_detailed)
 
             # logging_utils.print_aggregate_tensorboard_logs(self.experiment_log_dir)
-            print('Finished.')
+            print('finished.')
 
     def _check_convergence(self, values: torch.Tensor, stopping_criterion: float = None, epoch: int = None):
         """
@@ -427,7 +431,8 @@ class Experiment(ABC):
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts: list = None,
-              figure_name: str = 'bid_function', plot_points=100):
+              colors: list = None, figure_name: str = 'bid_function',
+              plot_points=100):
         """
         This implements plotting simple 2D data.
 
@@ -471,7 +476,7 @@ class Experiment(ABC):
                     x[:, agent_idx, plot_idx], y[:, agent_idx, plot_idx],
                     fmts[agent_idx % len(fmts)],
                     label=None if labels is None else labels[agent_idx % len(labels)],
-                    color=cycle[agent_idx % n_colors],
+                    color=cycle[agent_idx % n_colors] if colors is None else cycle[colors[agent_idx]],
                 )
 
             # formating
@@ -581,12 +586,12 @@ class Experiment(ABC):
             utility_vs_bne, epsilon_relative, epsilon_absolute = self._calculate_metrics_known_bne()
             for i in range(len(self.bne_env)):
                 n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
-                self._cur_epoch_log_params['utility_vs_bne' + n if n == '' else n[4:]] \
+                self._cur_epoch_log_params['utility_vs_bne' + (n if n == '' else n[4:])] \
                     = utility_vs_bne[i]
                 self._cur_epoch_log_params['epsilon_relative' + n] = epsilon_relative[i]
                 self._cur_epoch_log_params['epsilon_absolute' + n] = epsilon_absolute[i]
 
-        if self.logging.log_metrics['l2']:
+        if self.known_bne and self.logging.log_metrics['l2']:
             L_2, L_inf = self._calculate_metrics_action_space_norms()
             for i in range(len(self.bne_env)):
                 n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
@@ -595,10 +600,12 @@ class Experiment(ABC):
 
         if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
             create_plot_output = epoch % self.logging.plot_frequency == 0
-            self._cur_epoch_log_params['util_loss_ex_ante'], self._cur_epoch_log_params['util_loss_ex_interim'] = \
+            self._cur_epoch_log_params['util_loss_ex_ante'], \
+            self._cur_epoch_log_params['util_loss_ex_interim'], \
+            self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
-
             print(self._cur_epoch_log_params['util_loss_ex_interim'])
+
         # plotting
         if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
@@ -613,7 +620,7 @@ class Experiment(ABC):
 
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
-            if self.logging.log_metrics['opt']:
+            if self.known_bne and self.logging.log_metrics['opt']:
                 for env_idx, _ in enumerate(self.bne_env):
                     v = torch.cat([v, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
@@ -659,8 +666,6 @@ class Experiment(ABC):
                     player_position=m2b(m),
                     draw_valuations=redraw_bne_vals,
                     use_env_valuations=not redraw_bne_vals
-                    # TODO: Stefan. Is strat_to_player_kwargs needed here?
-                    # if yes, get from self.learners[m] (???)
                 ) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(
@@ -679,17 +684,18 @@ class Experiment(ABC):
         Calculate "action space distance" of model and bne-strategy. If
         `self.logging.log_componentwise_norm` is set to true, will only
         return norm of the best action dimension.
-        
+
         Returns:
             L_2 and L_inf: each a List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
         """
 
-        # shorthand for model to agent
-        m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
-
         L_2 = [None] * len(self.bne_env)
         L_inf = [None] * len(self.bne_env)
         for bne_idx, bne_env in enumerate(self.bne_env):
+
+            # shorthand for model to agent
+            m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
+
             L_2[bne_idx] = [
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, 2,
@@ -733,27 +739,48 @@ class Experiment(ABC):
 
         torch.cuda.empty_cache()
         util_loss = [
-            metrics.ex_interim_util_loss(
-                env.mechanism, bid_profile, self.bidders[player_positions[0]],
-                self.bidders[player_positions[0]].valuations[:batch_size, ...],
-                self.bidders[player_positions[0]].get_valuation_grid(grid_size, True)
-            )
+            metrics.ex_interim_util_loss(env, player_positions[0], batch_size, grid_size,
+                                         return_best_response=self.logging.best_response)
             for player_positions in self._model2bidder
         ]
-        ex_ante_util_loss = [model_tuple[0].mean() for model_tuple in util_loss]
-        ex_interim_max_util_loss = [model_tuple[0].max() for model_tuple in util_loss]
+        if self.logging.best_response:
+            best_responses = (
+                torch.stack([r[1][0] for r in util_loss], dim=1)[:, :, None],
+                torch.stack([r[1][1] for r in util_loss], dim=1)[:, :, None]
+            )
+            util_loss = [t[0] for t in util_loss]
+            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
+            fmts = ['bo'] * len(self.models)
+            self._plot(plot_data=best_responses, writer=self.writer,
+                       ylim=[0, max(a._grid_ub for a in self.env.agents).cpu()],
+                       figure_name='best_responses', y_label='best response',
+                       colors=list(range(len(self.models))), epoch=epoch, labels=labels,
+                       fmts=fmts, plot_points=self.plot_points)
+
+        ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_loss]
+        ex_interim_max_util_loss = [util_loss_model.max() for util_loss_model in util_loss]
+
+        # TODO Nils @Stefan: check consisteny with journal version
+        estimated_relative_ex_ante_util_loss = [
+            (1 - u / (u + l)).item()
+            for u, l in zip(self._cur_epoch_log_params['utilities'].tolist(), ex_ante_util_loss)
+        ]
+
         if not hasattr(self, '_max_util_loss'):
             self._max_util_loss = ex_interim_max_util_loss
         if create_plot_output:
+            # TODO Nils: differentiate models in plot
             # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
-            util_losses = torch.stack([util_loss[r][0] for r in range(len(util_loss))], dim=1)[:, :, None]
-            valuations = torch.stack([util_loss[r][1] for r in range(len(util_loss))], dim=1)
+            util_losses = torch.stack([util_loss[r] for r in range(len(util_loss))], dim=1)[:, :, None]
+            valuations = torch.stack([self.bidders[player_positions[0]].valuations[:batch_size, ...]
+                                      for player_positions in self._model2bidder], dim=1)
             plot_output = (valuations, util_losses)
             self._plot(plot_data=plot_output, writer=self.writer,
                        ylim=[0, max(self._max_util_loss).cpu()],
                        figure_name='util_loss_landscape', y_label='ex-interim loss',
                        epoch=epoch, plot_points=self.plot_points)
-        return ex_ante_util_loss, ex_interim_max_util_loss
+
+        return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 
     def _log_experiment_params(self):
         # TODO: write out all experiment params (complete dict) #See issue #113

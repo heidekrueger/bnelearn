@@ -17,12 +17,14 @@ from bnelearn.experiment.configurations import (SettingConfig,
 
 from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
                                                           LLLLGGExperiment)
-from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment,
-                                                       SplitAwardExperiment)
+from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
+
 from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSingleItemExperiment,
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
                                                         UniformSymmetricPriorSingleItemExperiment,
-                                                        MineralRightsExperiment)
+                                                        MineralRightsExperiment,
+                                                        AffiliatedObservationsExperiment)
+
 
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
@@ -77,7 +79,7 @@ class ConfigurationManager:
     def _init_single_item_gaussian_symmetric(self):
         self.learning.model_sharing = True
         self.setting.valuation_mean = 15
-        self.setting.valuation_std = 10
+        self.setting.valuation_std = 5
 
     def _init_single_item_asymmetric_uniform_overlapping(self):
         self.learning.model_sharing = False
@@ -93,12 +95,27 @@ class ConfigurationManager:
         self.setting.n_players = 3
         self.logging.log_metrics = {'opt': True,
                                     'l2': True,
-                                    'util_loss': False}
+                                    'util_loss': True}
         self.setting.correlation_groups = [[0, 1, 2]]
         self.setting.correlation_types = 'corr_type'
         self.setting.correlation_coefficients = [1.0]
         self.setting.u_lo = 0
         self.setting.u_hi = 1
+        self.setting.payment_rule = 'second_price'
+
+    def _init_affiliated_observations(self):
+        self.running.n_runs = 1
+        self.running.n_epochs = 2000
+        self.setting.n_players = 2
+        self.logging.log_metrics = {'opt': True,
+                                    'l2': True,
+                                    'util_loss': True}
+        self.setting.correlation_groups = [[0, 1]]
+        self.setting.correlation_types = 'corr_type'
+        self.setting.correlation_coefficients = [1.0]
+        self.setting.u_lo = 0
+        self.setting.u_hi = 1
+        self.setting.payment_rule = 'first_price'
 
     def _init_llg(self):
         self.learning.model_sharing = True
@@ -108,6 +125,21 @@ class ConfigurationManager:
         self.setting.payment_rule = 'nearest_zero'
         self.setting.correlation_groups = [[0, 1], [2]]
         self.setting.gamma = 0.0
+
+    #     self.setting.correlation_types = 'independent'
+    #
+    # def with_correlation(self, gamma, correlation_type='Bernoulli_weights'):
+    #     self.setting.gamma = gamma
+    #     self.setting.correlation_types = correlation_type if gamma > 0.0 else 'independent'
+    #
+    #     if correlation_type == 'constant_weights' and gamma > 0:
+    #         if 'opt' in self.logging.log_metrics.keys():
+    #             del self.logging.log_metrics['opt']
+    #         if 'l2' in self.logging.log_metrics.keys():
+    #             del self.logging.log_metrics['l2']
+    #         print('BNE in constant weights correlation model not approximated.')
+    #
+    #     return self
 
     def _init_llllgg(self):
         self.logging.util_loss_batch_size = 2 ** 12
@@ -199,6 +231,9 @@ class ConfigurationManager:
     def _post_init_mineral_rights(self):
         pass
 
+    def _post_init_affiliated_observations(self):
+        pass
+
     def _post_init_llg(self):
         # How many of those types are there and how do they correspond to gamma values?
         # I might wrongly understand the relationship here
@@ -231,7 +266,10 @@ class ConfigurationManager:
         'single_item_asymmetric_uniform_disjunct':
             (TwoPlayerAsymmetricUniformPriorSingleItemExperiment, _init_single_item_asymmetric_uniform_disjunct,
              _post_init_single_item_asymmetric_uniform_disjunct),
-        'mineral_rights': (MineralRightsExperiment, _init_mineral_rights, _post_init_mineral_rights),
+        'mineral_rights':
+            (MineralRightsExperiment, _init_mineral_rights, _post_init_mineral_rights),
+        'affiliated_observations':
+            (AffiliatedObservationsExperiment, _init_affiliated_observations, _post_init_affiliated_observations),
         'llg':
             (LLGExperiment, _init_llg, _post_init_llg),
         'llllgg':

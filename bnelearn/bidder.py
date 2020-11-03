@@ -10,7 +10,7 @@ import warnings
 import math
 import torch
 from torch.distributions import Distribution
-from bnelearn.strategy import MatrixGameStrategy, FictitiousPlayStrategy, FictitiousNeuralPlayStrategy
+from bnelearn.strategy import Strategy, MatrixGameStrategy, FictitiousPlayStrategy, FictitiousNeuralPlayStrategy
 
 
 class Player(ABC):
@@ -71,6 +71,8 @@ class Bidder(Player):
         in decreasing order.
         `cache_actions` determines whether actions should be cached and retrieved from memory,
             rather than recomputed as long as valuations haven't changed.
+
+        # TODO Nils: clearly distinguish observation and type! (Nedded for correlation, splt-award, etc.)
     """
     def __init__(self,
                  value_distribution: Distribution,
@@ -114,13 +116,13 @@ class Bidder(Player):
 
     ### Alternative Constructors #############
     @classmethod
-    def uniform(cls, lower, upper, strategy, **kwargs):
+    def uniform(cls, lower: float, upper: float, strategy: Strategy, **kwargs):
         """Constructs a bidder with uniform valuation prior."""
         dist = torch.distributions.uniform.Uniform(low=lower, high=upper)
         return cls(dist, strategy, **kwargs)
 
     @classmethod
-    def normal(cls, mean, stddev, strategy, **kwargs):
+    def normal(cls, mean: float, stddev: float, strategy: Strategy, **kwargs):
         """Constructs a bidder with Gaussian valuation prior."""
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
@@ -146,7 +148,7 @@ class Bidder(Player):
 
         if not new_value.equal(self._valuations):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
-            self._valuations_changed =True
+            self._valuations_changed = True
 
     def get_valuation_grid(self, n_points=None, extended_valuation_grid=False, dtype=torch.float32, step=None):
         """ Returns a grid of approximately `n_points` valuations that are
@@ -259,7 +261,7 @@ class Bidder(Player):
             # add additional internal in-place samplers above as needed!
             self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device)
 
-        ### 3. Determine mixture of individual an common component
+        ### 3. Determine mixture of individual and common component
         if torch.any(weights > 0):
             if self.correlation_type == 'additive':
                 weights = weights.to(self.device)
@@ -267,6 +269,14 @@ class Bidder(Player):
             elif self.correlation_type == 'multiplicative':
                 self.valuations = 2 * common_component.to(self.device) * self.valuations
                 self._unkown_valuation = common_component.to(self.device)
+            elif self.correlation_type == 'affiliated':
+                self.valuations = (
+                    common_component.to(self.device)[:, self.player_position]
+                    + common_component.to(self.device)[:, 2]
+                ).view(self.batch_size, -1)
+                self._unkown_valuation = 0.5 * \
+                    (common_component.to(self.device) * torch.tensor([1, 1, 2]).to(self.device)) \
+                        .sum(axis=1, keepdim=True)
             else:
                 raise NotImplementedError('correlation type unknown')
 
@@ -309,14 +319,15 @@ class Bidder(Player):
         payoff.
         """
         welfare = self.get_welfare(allocations, counterfactual_valuations)
-
         payoff = welfare - payments
 
         if self.risk == 1.0:
             return payoff
         else:
             # payoff^alpha not well defined in negative domain for risk averse agents
-            return payoff.relu()**self.risk - (-payoff).relu()**self.risk
+            # the following is a memory-saving implementation of
+            #return payoff.relu()**self.risk - (-payoff).relu()**self.risk
+            return payoff.relu().pow_(self.risk).sub_(payoff.neg_().relu_().pow_(self.risk))
 
     def get_welfare(self, allocations, valuations=None):
         """

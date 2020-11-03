@@ -32,13 +32,13 @@ if __name__ == '__main__':
 
     # Well, path is user-specific
     log_root_dir = os.path.join(os.path.expanduser('~'), 'Projects/bnelearn', 'experiments')
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
+    #                                                            n_epochs=200) \
+    #     .set_setting(risk=1.1)\
+    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
+    #     .set_learning(pretrain_iters=5) \
+    #     .set_running(n_runs=1, n_epochs=5).set_logging(eval_batch_size=2**4).get_config()
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
-                                                               n_epochs=5) \
-        .set_logging(log_root_dir=log_root_dir).set_learning(pretrain_iters=5) \
-        .set_running(n_runs=1, n_epochs=5).set_logging(eval_batch_size=2**4).get_config()
-    exp = experiment_class(experiment_config).run()
-    pass
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \
     #     .set_logging(log_root_dir=log_root_dir).set_running(n_runs=1, n_epochs=5).get_config()
 
@@ -68,30 +68,47 @@ if __name__ == '__main__':
     #     .set_running().set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
     #     .set_setting().set_learning().set_hardware() \
     #     .get_config()
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
-    #     .get_config(log_root_dir=log_root_dir)
+    # experiment_config, experiment_class = \
+    # ConfigurationManager(experiment_type='mineral_rights', n_runs=1, n_epochs=0)\
+    #     .set_learning(pretrain_iters=3)\
+    #     .set_logging(log_root_dir=log_root_dir)\
+    #     .set_hardware(specific_gpu=7)\
+    #     .get_config()
+    pass
+    experiment_config, experiment_class = \
+        ConfigurationManager(experiment_type='affiliated_observations', n_runs=1, n_epochs=1) \
+        .set_learning(pretrain_iters=1) \
+        .set_logging(log_root_dir=log_root_dir) \
+        .set_hardware(specific_gpu=1) \
+        .get_config()
 
-    # try:
-    #     experiment = experiment_class(experiment_config)
-    #     # TODO: this is a short term fix - we can only determine whether BNE exists once experiment has been
-    #     #  initialized. Medium Term -->  Set 'opt logging in experiment itself.
-    #     if experiment.known_bne:
-    #         experiment.logging.log_metrics = {
-    #             'opt': True,
-    #             'l2': True,
-    #             'util_loss': True
-    #         }
-    #
-    #     # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
-    #     if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
-    #         experiment.run()
-    #     else:
-    #         raise Exception('Unable to perform the correct serialization')
-    # except KeyboardInterrupt:
-    #     print('\nKeyboardInterrupt: released memory after interruption')
-    #     torch.cuda.empty_cache()
+    try:
+        experiment = experiment_class(experiment_config)
+
+        experiment.logging.util_loss_batch_size = 2 ** 7
+        experiment.logging.util_loss_grid_size = 2 ** 6
+        experiment.logging.util_loss_frequency = 1
+
+        # TODO: this is a short term fix - we can only determine whether BNE exists once experiment has been
+        #  initialized. Medium Term -->  Set 'opt logging in experiment itself.
+        if experiment.known_bne:
+            experiment.logging.log_metrics = {
+                'opt': True,
+                'l2': True,
+                'util_loss': True
+            }
+
+        # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
+        if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
+            experiment.run()
+        else:
+            raise Exception('Unable to perform the correct serialization')
+    except KeyboardInterrupt:
+        print('\nKeyboardInterrupt: released memory after interruption')
+        torch.cuda.empty_cache()
 
 
+    # 10k epoch bug
     # log_dir = os.path.join('/home/gleb/Projects/bnelearn/experiments/test/subrun')
     # writer = SummaryWriter(log_dir)
     #
@@ -102,3 +119,6 @@ if __name__ == '__main__':
     # writer.close()
     #
     # logging.tabulate_tensorboard_logs('/home/gleb/Projects/bnelearn/experiments/', write_detailed=True)
+
+
+
