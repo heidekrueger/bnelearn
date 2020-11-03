@@ -2,11 +2,6 @@
 In this file multi-unit experiments ´MultiUnitExperiment´ and their analytical
 BNEs (if known) are defiened. Also, the ´SplitAwardExperiment´ is implemented as well,
 as it shares most its properties.
-
-TODO:
-    - support for multiple BNE
-    - valuations of plotting BNE _optimal_bid_multidiscriminatory2x2 are wrong
-
 """
 
 import os
@@ -209,6 +204,7 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
 
         Returns callable.
     """
+    print('Warning: BNE is approximated on CPU.')
 
     efficiency_parameter = experiment_config.efficiency_parameter
     u_lo = experiment_config.u_lo
@@ -251,7 +247,6 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
 
     # use interpolation of opt_bid done on first batch
     def _optimal_bid(valuation, player_position=None):
-        print('Warning: BNE is approximated on CPU.')
         bid = torch.tensor(
             [opt_bid_function[0](valuation[:,0].cpu().numpy()),
              opt_bid_function[1](valuation[:,0].cpu().numpy())
@@ -308,10 +303,6 @@ class MultiUnitExperiment(Experiment, ABC):
 
         super().__init__(config=config)
 
-        print('\n=== Hyperparameters ===')
-        for k in self.config.learning.learner_hyperparams.keys():
-            print('{}: {}'.format(k, self.config.learning.learner_hyperparams[k]))
-        print('=======================\n')
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         """
@@ -389,8 +380,10 @@ class MultiUnitExperiment(Experiment, ABC):
               x_label="valuation", y_label="bid", fmts=['o'],
               figure_name: str = 'bid_function', plot_points=100):
 
-        super()._plot(plot_data, writer, epoch, xlim, ylim, labels,
-                      x_label, y_label, fmts, figure_name, plot_points)
+        super()._plot(plot_data=plot_data, writer=writer, epoch=epoch,
+                      xlim=xlim, ylim=ylim, labels=labels, x_label=x_label,
+                      y_label=y_label, fmts=fmts, figure_name=figure_name,
+                      plot_points=plot_points)
 
         if self.n_units == 2 and not isinstance(self, SplitAwardExperiment):
             super()._plot_3d(plot_data, writer, epoch, figure_name)
@@ -471,12 +464,3 @@ class SplitAwardExperiment(MultiUnitExperiment):
         name = ['SplitAward', self.payment_rule, str(self.n_players) + 'players_' +
                 str(self.n_units) + 'units']
         return os.path.join(*name)
-
-    # TODO Nils: obsolete in this child class?
-    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
-              xlim: list = None, ylim: list = None, labels: list = None,
-              x_label="valuation", y_label="bid", fmts=['o'],
-              figure_name: str = 'bid_function', plot_points=100):
-
-        super()._plot(plot_data, writer, epoch, xlim, ylim, labels,
-                      x_label, y_label, fmts, figure_name, plot_points)
