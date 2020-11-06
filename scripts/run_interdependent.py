@@ -114,8 +114,8 @@ if __name__ == '__main__':
         os.path.expanduser('~'), 'bnelearn', 'experiments', 'interdependence',
         'risk-vs-correlation-with-rne'
     )
-    risks = list(i/10 for i in range(1, 10))
-    gammas = list(i/10 for i in range(0, 10))
+    risks = list(i/10 for i in range(1, 11))
+    gammas = list(i/10 for i in range(0, 11))
     payment_rule = 'nearest_vcg'
     corr_models = ['Bernoulli_weights', 'constant_weights'] #['Bernoulli_weights', 'constant_weights']
     for corr_model in corr_models:

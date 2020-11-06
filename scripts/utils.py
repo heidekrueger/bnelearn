@@ -34,7 +34,7 @@ def logs_to_df(
         path: str or dict,
         metrics: list = ['eval/epsilon_relative', 'eval/util_loss_ex_interim',
                          'eval/estimated_relative_ex_ante_util_loss',
-                         'eval/efficiency', 'eval/utilities'],
+                         'eval/efficiency', 'eval/revenue', 'eval/utilities'],
         precision: int = 4,
         with_stddev: bool = False,
         with_setting_parameters: bool = True,
@@ -299,43 +299,44 @@ if __name__ == '__main__':
 
     ### Risk vs correlation experiment ----------------------------------------
     path = '/home/kohring/bnelearn/experiments/interdependence/' + \
-        'risk-vs-correlation-rne'
-    metric = '$\mathcal{R}$' # either one of the metricies
-    xaxis = 'Corr Strength' # either one in ['Corr Strength', 'Risk']
+        'risk-vs-correlation-with-rne'
+    metrics = ['$u$', '$\mathcal{R}$'] # either one of the metricies
+    xaxis = 'Risk' # either one in ['Corr Strength', 'Risk']
 
     df = logs_to_df(path=path)
     with plt.style.context('grayscale'):
-        plt.figure(figsize=(5, 3))
+        _, axs = plt.subplots(len(metrics), 1, sharex=True, figsize=(5, 1*len(metrics)+2))
         # plt.plot([0, 1], [0.01, 0.01], label='1%', color='lightgrey',
         #          linestyle='dotted')
-        for corr_type in ['constant', 'Bernoulli']:
-            df_sub = df[df['Corr Type'] == corr_type]
-            corrs = sorted(pd.unique(df_sub['Corr Strength']))
-            corrs.insert(0, 0)
-            risks = sorted(pd.unique(df_sub['Risk']))
-            data = np.zeros((len(corrs), len(risks)))
-            for i, corr in enumerate(corrs):
-                for j, risk in enumerate(risks):
-                    if corr == 0:
-                        data[i, j] = float(
-                            df[df['Corr Strength'] == corr] \
-                                [df['Risk'] == risk][metric][0]
-                        )
-                    else:
-                        data[i, j] = float(
-                            df_sub[df_sub['Corr Strength'] == corr] \
-                                [df_sub['Risk'] == risk][metric]
-                        )
-            if xaxis == 'Corr Strength':
-                x = corrs
-                axis = 1
-            else:
-                x = risks
-                axis = 0
-            # plt.errorbar(x, data.mean(axis=axis),
-            #              yerr=data.std(axis=axis),
-            #              label=corr_type + ' weights', marker='o')
-            plt.plot(x, data.mean(axis=axis), label=corr_type + ' weights')
+        for ax, metric in zip(axs, metrics):
+            for corr_type in ['constant', 'Bernoulli']:
+                df_sub = df[df['Corr Type'] == corr_type]
+                corrs = sorted(pd.unique(df_sub['Corr Strength']))[:-1]
+                corrs.insert(0, 0)
+                risks = sorted(pd.unique(df_sub['Risk']))
+                data = np.zeros((len(corrs), len(risks)))
+                for i, corr in enumerate(corrs):
+                    for j, risk in enumerate(risks):
+                        if corr == 0:
+                            data[i, j] = float(
+                                df[df['Corr Strength'] == corr] \
+                                    [df['Risk'] == risk][metric][0]
+                            )
+                        else:
+                            data[i, j] = float(
+                                df_sub[df_sub['Corr Strength'] == corr] \
+                                    [df_sub['Risk'] == risk][metric]
+                            )
+                if xaxis == 'Corr Strength':
+                    x = corrs
+                    axis = 1
+                else:
+                    x = risks
+                    axis = 0
+                # plt.errorbar(x, data.mean(axis=axis),
+                #              yerr=data.std(axis=axis),
+                #              label=corr_type + ' weights', marker='o')
+                ax.plot(x, data.mean(axis=axis), label=corr_type + ' weights')
 
             # fig, ax = plt.subplots()
             # plt.imshow(data, cmap='gray', interpolation='nearest')
@@ -347,23 +348,26 @@ if __name__ == '__main__':
             # ax.set_yticklabels(risks)
             # plt.colorbar()
 
+            if metric == '$u$':
+                ax.set_ylim([0.2, 0.5])
+            elif metric == '$\mathcal{E}$':
+                ax.set_ylim([0.8, 1.0])
+            elif metric == '$\hat{\mathcal{L}}$':
+                ax.set_ylim([0.005, 0.015])
+            elif metric == '$\mathcal{R}$':
+                ax.set_ylim([0.5, 0.7])
 
-        if metric == '$u$':
-            plt.ylim([0.2, 0.5])
-        elif metric == '$\mathcal{E}$':
-            plt.ylim([0.8, 1.0])
-        elif metric == '$\hat{\mathcal{L}}$':
-            plt.ylim([0.005, 0.015])
+            # if xaxis == 'Corr Strength':
+            #     ax.xlim([0, 1])
+            #     ax.xlabel('correlation strength $\gamma$')
+            # else:
+            #     ax.xlim([0.1, 1.0])
+            ax.set_ylabel(metric)
+            ax.set_xlim([0.1, 1])
 
-        if xaxis == 'Corr Strength':
-            plt.xlim([0, 1])
-            plt.xlabel('correlation strength $\gamma$')
-        else:
-            plt.xlim([0.1, 1.0])
-            plt.xlabel('risk parameter $\\rho$')
+        plt.xlabel('risk parameter $\\rho$')
 
-        plt.ylabel(metric)
-        plt.legend()
+        axs[0].legend()
         plt.tight_layout()
         plt.savefig('experiments/interdependence/risk-vs-correlation/' + \
-            '{}.eps'.format(metric))
+            '{}.eps'.format(metrics))
