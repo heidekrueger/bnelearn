@@ -61,7 +61,6 @@ class ConfigurationManager:
 
     Example of class usage:
     experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit', n_runs=1, n_epochs=20) \
-        .set_running() \
         .set_logging(log_root_dir=log_root_dir) \
         .set_setting(payment_rule='discriminatory') \
         .set_learning(model_sharing=False) \
@@ -279,7 +278,7 @@ class ConfigurationManager:
         'splitaward':
             (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)}
 
-    def __init__(self, experiment_type: str, n_runs: int, n_epochs: int):
+    def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type
 
         # Common defaults
@@ -294,14 +293,7 @@ class ConfigurationManager:
 
         self.running.n_runs = n_runs
         self.running.n_epochs = n_epochs
-
-    # pylint: disable=too-many-arguments, unused-argument
-    def set_running(self, n_runs: int = 'None', n_epochs: int = 'None', n_players: int = 'None', seeds: Iterable[int] = 'None'):
-        """Sets only the parameters of running which were passed, returns self"""
-        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
-            if hasattr(self.running, arg):
-                setattr(self.running, arg, v)
-        return self
+        self.running.seeds = seeds
 
     # pylint: disable=too-many-arguments, unused-argument
     def set_setting(self, n_players: int = 'None', payment_rule: str = 'None', risk: float = 'None',
