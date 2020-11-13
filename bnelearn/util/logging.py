@@ -61,6 +61,8 @@ def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detail
                 last_epoch_tb_events['run'].append(run)
                 last_epoch_tb_events['subrun'].append(subrun)
                 last_epoch_tb_events['tag'].append(tag)
+                # a last event is always guaranteed to exist, we can ignore pylint's warning
+                # pylint: disable=undefined-loop-variable
                 last_epoch_tb_events['value'].append(event.value)
                 last_epoch_tb_events['wall_time'].append(event.wall_time)
                 last_epoch_tb_events['epoch'].append(event.step)

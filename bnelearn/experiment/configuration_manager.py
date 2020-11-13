@@ -30,8 +30,9 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
 # the lists that are defaults will never be mutated, so we're ok with using them here.
 # pylint: disable = dangerous-default-value
 
-# ToDO Some default parameters are still set inside the inheritors of Experiment, should some of the logging of which
-# parameters go with which class be encapsulated here?
+# This module explicitly takes care of unifying lots of variables, it's okay to use many locals here.
+# pylint: disable=too-many-instance-attributes
+
 
 
 class ConfigurationManager:
@@ -610,5 +611,3 @@ class ConfigurationManager:
                 return torch.optim.SGD
             # add more optimizers as needed
         raise ValueError('Optimizer type could not be inferred!')
-
-

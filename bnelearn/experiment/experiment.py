@@ -169,6 +169,7 @@ class Experiment(ABC):
         2. Save the model parameters
         """
         print('Setting up bidders...')
+        # this method is part of the init workflow, so we #pylint: disable=attribute-defined-outside-init
         self.models = [None] * self.n_models
 
         for i in range(len(self.models)):
@@ -259,7 +260,7 @@ class Experiment(ABC):
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
-            from IPython import display
+            from IPython import display #pylint: disable=unused-import,import-outside-toplevel
         plt.rcParams['figure.figsize'] = [8, 5]
 
         if self.logging.enable_logging:
@@ -696,6 +697,10 @@ class Experiment(ABC):
         for bne_idx, bne_env in enumerate(self.bne_env):
 
             # shorthand for model to agent
+
+            # we are only using m2a locally within this loop, so we can safely ignore the following pylint warning:
+            # pylint: disable=cell-var-from-loop
+
             m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
 
             L_2[bne_idx] = [
