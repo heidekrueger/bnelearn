@@ -13,19 +13,19 @@ import pytest
 # pylint: disable=wrong-import-order
 from bnelearn.experiment.configuration_manager import ConfigurationManager
 
-
 # Single item
 # id , config, class, known_bne
 ids_si, *testdata_si = zip(*[
     [
         'single_item-symmetric-uniform-fp',
-        *ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
-            .get_config(n_runs=2, n_epochs=3),
+        *ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=2, n_epochs=3) \
+                           .get_config(),
         True
-    ],[
+    ], [
         'single_item-symmetric-uniform-fp-no_model_sharing',
-        *ConfigurationManager(experiment_type='single_item_uniform_symmetric') \
-            .get_config(n_runs=2, n_epochs=3, model_sharing=False),
+        *ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=2, n_epochs=3) \
+                           .set_learning(model_sharing=False)
+                           .get_config(),
         True
     ],
     # doesn't test anything significantly different
@@ -34,22 +34,23 @@ ids_si, *testdata_si = zip(*[
     # ['single_item-symmetric-gaussian-fp', (single_item_gaussian_symmetric(2,3, [4], 'first_price')),True],
     [
         'single_item-symmetric-gaussian-vcg',
-        *ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \
-            .get_config(n_runs=2, n_epochs=3, n_players=5, payment_rule='second_price'),
+        *ConfigurationManager(experiment_type='single_item_gaussian_symmetric', n_runs=2, n_epochs=3) \
+                           .set_setting(payment_rule='second_price', n_players=5)
+                           .get_config(),
         True
-    ],[
+    ], [
         'single_item-asymmetric-uniform-fp',
-        *ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping') \
-            .get_config(n_runs=2, n_epochs=3),
+        *ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping', n_runs=2, n_epochs=3) \
+                           .get_config(),
         True
-    ],[
+    ], [
         'single_item-asymmetric-uniform-vcg',
-        *ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping') \
-            .get_config(n_runs=2, n_epochs=3, payment_rule='second_price'),
+        *ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping', n_runs=2, n_epochs=3) \
+                           .set_setting(payment_rule='second_price')
+                           .get_config(),
         True
     ]
 ])
-
 
 # Local Global Auctions
 # id , config, class, known_bne
@@ -57,52 +58,64 @@ ids_si, *testdata_si = zip(*[
 ids_lg, *testdata_lg = zip(*[
     [
         'LLG-fp',
-        *ConfigurationManager(experiment_type='llg') \
-            .get_config(payment_rule='first_price', n_runs=2, n_epochs=3),
+        *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3) \
+                           .set_setting(payment_rule='first_price')
+                           .get_config(),
         False],
     [
         'LLG-fp-no_model_sharing',
-        *ConfigurationManager(experiment_type='llg') \
-            .get_config(payment_rule='first_price', n_runs=2, n_epochs=3, model_sharing=False),
+        *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3) \
+                           .set_setting(payment_rule='first_price')
+                           .set_learning(model_sharing=False)
+                           .get_config(),
         False],
     [
         'LLG-vcg',
-        *ConfigurationManager(experiment_type='llg') \
-            .get_config(n_runs=2, n_epochs=3, payment_rule='vcg'),
+        *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3) \
+                           .set_setting(payment_rule='vcg')
+                           .get_config(),
         True
-        ],
+    ],
     [
         'LLG-nearest_bid',
-        *ConfigurationManager(experiment_type='llg').get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid'),
+        *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3)
+                           .set_setting(payment_rule='nearest_bid')
+                           .get_config(),
         True
-        ],
+    ],
     [
         'LLG-nearest_bid_correlated',
-        *ConfigurationManager(experiment_type='llg').with_correlation(gamma=0.5) \
-            .get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid'),
+        *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3)
+                           .set_setting(payment_rule='nearest_bid', gamma=0.5)
+                           .get_config(),
         True
-        ],
-    [ # Used to fail when 0.5 didn't, due to neg bids
+    ],
+    [  # Used to fail when 0.5 didn't, due to neg bids
         'LLG-nearest_bid_perfectly_correlated',
-        *ConfigurationManager(experiment_type='llg') \
-            .with_correlation(gamma=1.0).get_config(n_runs=2, n_epochs=3, payment_rule='nearest_bid'),
+        *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3) \
+                           .set_setting(payment_rule='nearest_bid', gamma=1.0)
+                           .get_config(),
         True],
+
     # ['LLG-nearest_zero', (llg(2,3,'nearest_zero'))],
     # ['LLG-nearest_vcg', (llg(2,3,'nearest_vcg'))],
     # LLLLGG
     # ['LLLLGG-fp', (llllgg(2,2,'first_price'))],
+
     [
         'LLLLGG-fp-no_model_sharing',
-        *ConfigurationManager(experiment_type='llllgg') \
-            .get_config(n_runs=2, n_epochs=2, model_sharing=False),
+        *ConfigurationManager(experiment_type='llllgg', n_runs=2, n_epochs=3) \
+                           .set_learning(model_sharing=False)
+                           .get_config(),
         False
-        ],
+    ],
     [
         'LLLLGG-vcg',
-        *ConfigurationManager(experiment_type='llllgg') \
-            .get_config(n_runs=2, n_epochs=2, payment_rule='vcg'),
-        False # TODO: vcg BNE not implemented! change this test when done.
-        ]
+        *ConfigurationManager(experiment_type='llllgg', n_runs=2, n_epochs=2) \
+                           .set_setting(payment_rule='vcg')
+                           .get_config(),
+        False  # TODO: vcg BNE not implemented! change this test when done.
+    ]
     # ['LLLLGG-nearest_vcg', (llllgg(2,2,'nearest_vcg',core_solver='gurobi'))]
 ])
 
@@ -113,35 +126,40 @@ ids_mu, *testdata_mu = zip(*[
     # Those where this didn't match Nils's expectations have been marked. @Nils, please take a look.
     [
         'MultiUnit-discr',
-        *ConfigurationManager(experiment_type='multiunit')
-        .get_config(n_runs=2, n_epochs=3, payment_rule='discriminatory'),
-        True #TODO: Nils said should find False for bne, but finds true
-    ],[
+        *ConfigurationManager(experiment_type='multiunit', n_runs=2, n_epochs=3)
+                           .set_setting(payment_rule='discriminatory')
+                           .get_config(),
+        True  # TODO: Nils said should find False for bne, but finds true
+    ], [
         'MultiUnit-discr-no_model_sharing',
-        *ConfigurationManager(experiment_type='multiunit')
-        .get_config(n_runs=2, n_epochs=3, payment_rule='discriminatory', model_sharing=False),
-        True #TODO: Nils said should find False for bne, but finds true
-    ],[
+        *ConfigurationManager(experiment_type='multiunit', n_runs=2, n_epochs=3)
+                           .set_setting(payment_rule='discriminatory')
+                           .set_learning(model_sharing=False)
+                           .get_config(),
+        True  # TODO: Nils said should find False for bne, but finds true
+    ], [
         'MultiUnit-vcg',
-        *ConfigurationManager(experiment_type='multiunit') \
-            .get_config(n_runs=2, n_epochs=3, payment_rule='vcg'),
+        *ConfigurationManager(experiment_type='multiunit', n_runs=2, n_epochs=3) \
+                           .set_setting(payment_rule='vcg').get_config(),
         True
-    ],[
+    ], [
         'MultiUnit-uniform',
-        *ConfigurationManager(experiment_type='multiunit') \
-            .get_config(n_runs=2, n_epochs=3, payment_rule='uniform'),
+        *ConfigurationManager(experiment_type='multiunit', n_runs=2, n_epochs=3) \
+                           .set_setting(payment_rule='uniform').get_config(),
         True
-    ],[
+    ], [
         'SplitAward-fp',
-        *ConfigurationManager(experiment_type='splitaward') \
-            .get_config(n_runs=2, n_epochs=3),
-        True #TODO: Nils said should find False for bne, but finds true
-    ],[
+        *ConfigurationManager(experiment_type='splitaward', n_runs=2, n_epochs=3) \
+                           .get_config(),
+        True  # TODO: Nils said should find False for bne, but finds true
+    ], [
         'SplitAward-fp-no_model_sharing',
-        *ConfigurationManager(experiment_type='splitaward') \
-            .get_config(n_runs=2, n_epochs=3, model_sharing=False),
-        True #TODO: Nils said should find False for bne, but finds true
+        *ConfigurationManager(experiment_type='splitaward', n_runs=2, n_epochs=3) \
+                           .set_learning(model_sharing=False)
+                           .get_config(),
+        True  # TODO: Nils said should find False for bne, but finds true
     ]
+
 ])
 
 
@@ -165,10 +183,12 @@ def run_auction_test(config, exp_class, known_bne):
         "known_bne setting is not as expected!"
     experiment.run()
 
+
 print(type(testdata_si))
 print(len(testdata_si))
 
 print('hi')
+
 
 @pytest.mark.parametrize("config, exp_class, known_bne", zip(*testdata_si), ids=ids_si)
 def test_single_item_auctions(config, exp_class, known_bne):

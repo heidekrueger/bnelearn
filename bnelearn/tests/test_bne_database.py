@@ -14,13 +14,10 @@ def test_bne_utility_database():
     """Testing correctness of the BNE utilities database."""
     specific_gpu = 0
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='llg') \
-        .get_config(
-            specific_gpu=specific_gpu,
-            pretrain_iters=0,
-            batch_size=2,
-            enable_logging=False,
-        )
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=1)\
+        .set_hardware(specific_gpu=specific_gpu)\
+        .set_learning(pretrain_iters=0, batch_size=2).set_logging(enable_logging=False) \
+        .get_config()
 
     experiment = experiment_class(experiment_config)
     experiment.logging.eval_batch_size = 2

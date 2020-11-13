@@ -7,7 +7,7 @@ jupyterlab
 pytorch # conda -c pytorch
 tensorboard
 matplotlib
-pynvml #conda -c fastai
+pynvml #conda install -c fastai pynvml
 pytest
 pytest-cov
 pytest-xdist #parallel tests

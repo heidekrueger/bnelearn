@@ -169,6 +169,7 @@ class Experiment(ABC):
         2. Save the model parameters
         """
         print('Setting up bidders...')
+        # this method is part of the init workflow, so we #pylint: disable=attribute-defined-outside-init
         self.models = [None] * self.n_models
 
         for i in range(len(self.models)):
@@ -259,7 +260,7 @@ class Experiment(ABC):
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
-            from IPython import display
+            from IPython import display #pylint: disable=unused-import,import-outside-toplevel
         plt.rcParams['figure.figsize'] = [8, 5]
 
         if self.logging.enable_logging:
@@ -278,9 +279,11 @@ class Experiment(ABC):
             tic = timer()
             self._log_experiment_params()
             self._log_hyperparams()
+
             self._log_experiment_params()
-            logging_utils.log_experiment_configurations(self.experiment_log_dir, self.config)
+            logging_utils.save_experiment_config(self.experiment_log_dir, self.config)
             elapsed = timer() - tic
+            logging_utils.log_git_commit_hash(self.experiment_log_dir)
         else:
             print('Logging disabled.')
             elapsed = 0
@@ -370,7 +373,8 @@ class Experiment(ABC):
                     # Check for convergence when enough data is available
                     if len(stopping_queue) == stopping_queue.maxlen:
                         values = torch.stack(tuple(stopping_queue))
-                        stop = self._check_convergence(values, epoch=e)
+                        if self.logging.enable_logging:
+                            stop = self._check_convergence(values, epoch=e)
 
                     self.overhead = self.overhead + timer() - start_time
                     if stop:
@@ -491,6 +495,7 @@ class Experiment(ABC):
             lims = (xlim, ylim)
             set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
+            # pylint: disable=eval-used
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
                 a, b = None, None
                 if lim is not None:  # use parameters ´xlim´ etc.
@@ -601,7 +606,8 @@ class Experiment(ABC):
             self._cur_epoch_log_params['util_loss_ex_interim'], \
             self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
-            print(self._cur_epoch_log_params['util_loss_ex_interim'])
+            print("\tcurrent est. ex-interim loss:" + str(
+                [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
 
         # plotting
         if epoch % self.logging.plot_frequency == 0:
@@ -691,6 +697,10 @@ class Experiment(ABC):
         for bne_idx, bne_env in enumerate(self.bne_env):
 
             # shorthand for model to agent
+
+            # we are only using m2a locally within this loop, so we can safely ignore the following pylint warning:
+            # pylint: disable=cell-var-from-loop
+
             m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
 
             L_2[bne_idx] = [
@@ -791,10 +801,10 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
         try:
-            self._hparams_metrics['epsilon_relative'] = self.self._cur_epoch_log_params['epsilon_relative']
+            self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
         except:
             try:
-                self._hparams_metrics['util_loss_ex_interim'] = self.self._cur_epoch_log_params['util_loss_ex_interim']
+                self._hparams_metrics['util_loss_ex_interim'] = self._cur_epoch_log_params['util_loss_ex_interim']
             except:
                 pass
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
