@@ -27,6 +27,17 @@ All contributions of source code should fit the following pattern.
     * User code does not have to adhere to the standards above. 
     * Try to keep your user code modular and readable, think about whether you can turn parts of it into core package functionality later on.
 
+## git-filters
+There are a few things that can be automated, e.g. taking care of trimming notebook output before pushing to the repo and we have included some git pre-commit hooks for this purpose.
+When developing on a new machine, run
+`git config --local include.path ../.gitconfig`
+in your repository root once.
+This ensures the filters in `.gitconfig` will be applied to commits (e.g. cleaning up notebook output)
+
+## Autodocs
+We are adding automatic documentation via Sphinx. For this to work, please add meaningful docstrings to each module, class and method that you add. (Some exceptions may apply for obvious private methods.)
+* Please adhere to the Google-Style docstring formatting: https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html
+
 # Taking Snapshots of the Repository
 When submitting a paper, releasing code etc, we need to create a persistent snapshot of the repo. 
 This should be done in the following way:
