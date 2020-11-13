@@ -604,7 +604,8 @@ class Experiment(ABC):
             self._cur_epoch_log_params['util_loss_ex_interim'], \
             self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
-            print(self._cur_epoch_log_params['util_loss_ex_interim'])
+            print("\tcurrent est. ex-interim loss:" + str(
+                [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
 
         # plotting
         if epoch % self.logging.plot_frequency == 0:

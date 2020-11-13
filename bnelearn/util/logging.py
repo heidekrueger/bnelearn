@@ -11,11 +11,12 @@ import pandas as pd
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from torch.utils.tensorboard.summary import hparams
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
-from bnelearn.bidder import Bidder
+import pkg_resources
 
+from bnelearn.bidder import Bidder
 from bnelearn import util
 from bnelearn.experiment.configurations import *
-import pkg_resources
+
 
 _full_log_file_name = 'full_results'
 _aggregate_log_file_name = 'aggregate_log'

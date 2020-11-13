@@ -1,14 +1,17 @@
 import os
 import sys
 import numpy as np
+
+import torch
 from torch.utils.tensorboard import SummaryWriter
 
-from bnelearn.util import logging
-
+# put bnelearn imports after this.
+# pylint: disable=wrong-import-position
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
-# pylint: disable=wrong-import-position
+
+#from bnelearn.util import logging
 from bnelearn.experiment.configuration_manager import ConfigurationManager
 
 if __name__ == '__main__':
@@ -31,41 +34,42 @@ if __name__ == '__main__':
     # experiment_class = ConfigurationManager.get_class_by_experiment_type(experiment_config.experiment_class)
 
     # Well, path is user-specific
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'Projects/bnelearn', 'experiments')
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
     #                                                            n_epochs=200) \
     #     .set_setting(risk=1.1)\
     #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
     #     .set_learning(pretrain_iters=5) \
-    #     .set_running(n_runs=1, n_epochs=5).set_logging(eval_batch_size=2**4).get_config()
+    #     .set_logging(eval_batch_size=2**4).get_config()
 
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric') \
-    #     .set_logging(log_root_dir=log_root_dir).set_running(n_runs=1, n_epochs=5).get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',n_runs=1, n_epochs=5) \
+    #     .set_logging(log_root_dir=log_root_dir).get_config()
 
     # All three next experiments get AssertionError: scalar should be 0D
     # experiment_config, experiment_class = \
-    #    ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping') \
+    #    ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping', n_runs=1, n_epochs=200) \
     #     .set_logging(log_root_dir=log_root_dir) \
-    #     .set_running(n_runs=1, n_epochs=200).get_config()
+    #     .get_config()
     # experiment_config, experiment_class = \
-    #     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_disjunct') \
+    #     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_disjunct', n_runs=1, n_epochs=200) \
     #     .set_logging(log_root_dir=log_root_dir) \
-    #     .set_running(n_runs=1, n_epochs=200).get_config()
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg')\
-    #    .set_running(n_runs=1, n_epochs=100).set_logging(log_root_dir=log_root_dir).get_config()
+    #     .get_config()
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=100)\
+        .set_setting(gamma=0.5) \
+        .set_logging(log_root_dir=log_root_dir).get_config()
 
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg') \
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg', n_runs=1, n_epochs=200) \
     #     .set_logging(log_root_dir=log_root_dir) \
-    #     .set_running(n_runs=1, n_epochs=200).get_config()
+    #     .get_config()
     # RuntimeError: Sizes of tensors must match
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit') \
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit',n_runs=1, n_epochs=200) \
     #     .set_logging(log_root_dir=log_root_dir) \
-    #     .set_running(n_runs=1, n_epochs=200).get_config()
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward')\
+    #     .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward',n_runs=1, n_epochs=200)\
     #     .set_logging(log_root_dir=log_root_dir) \
-    #     .set_running(n_runs=1, n_epochs=200).get_config()
+    #     .get_config()
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit', n_runs=1, n_epochs=2) \
-    #     .set_running().set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
+    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
     #     .set_setting().set_learning().set_hardware() \
     #     .get_config()
     # experiment_config, experiment_class = \
@@ -75,12 +79,12 @@ if __name__ == '__main__':
     #     .set_hardware(specific_gpu=7)\
     #     .get_config()
     pass
-    experiment_config, experiment_class = \
-        ConfigurationManager(experiment_type='affiliated_observations', n_runs=1, n_epochs=1) \
-        .set_learning(pretrain_iters=1) \
-        .set_logging(log_root_dir=log_root_dir) \
-        .set_hardware(specific_gpu=1) \
-        .get_config()
+    # experiment_config, experiment_class = \
+    #     ConfigurationManager(experiment_type='affiliated_observations', n_runs=1, n_epochs=1) \
+    #     .set_learning(pretrain_iters=1) \
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .set_hardware(specific_gpu=1) \
+    #     .get_config()
 
     try:
         experiment = experiment_class(experiment_config)
