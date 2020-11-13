@@ -494,6 +494,7 @@ class Experiment(ABC):
             lims = (xlim, ylim)
             set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
+            # pylint: disable=eval-used
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
                 a, b = None, None
                 if lim is not None:  # use parameters ´xlim´ etc.
@@ -795,10 +796,10 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
         try:
-            self._hparams_metrics['epsilon_relative'] = self.self._cur_epoch_log_params['epsilon_relative']
+            self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
         except:
             try:
-                self._hparams_metrics['util_loss_ex_interim'] = self.self._cur_epoch_log_params['util_loss_ex_interim']
+                self._hparams_metrics['util_loss_ex_interim'] = self._cur_epoch_log_params['util_loss_ex_interim']
             except:
                 pass
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
