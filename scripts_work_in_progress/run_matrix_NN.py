@@ -90,13 +90,13 @@ def main(args):
             actions = [None] * game.outcomes.shape[player]
             for action in range(game.outcomes.shape[player]):
                 actions[action] = [args[3][player][action]]
-            initial_beliefs[player] = torch.Tensor(actions).t().to('cpu')
+            initial_beliefs[player] = torch.tensor(actions, device='cpu').t()
     ##############################End Read parameters#######################
     strats = [None] * game.n_players
     strats_copies = [None] * game.n_players
     players = [None] * game.n_players
     hist_utility = [0] * game.n_players
-    hist_probs = [torch.Tensor([0] * game.outcomes.shape[i]).to(device) for i in range(game.n_players)]
+    hist_probs = [torch.tensor([0] * game.outcomes.shape[i]).to(device) for i in range(game.n_players)]
     for i in range(game.n_players):
         strats[i] = FictitiousNeuralPlayStrategy(n_actions=game.outcomes.shape[i],
                                        beliefs = initial_beliefs[i],
