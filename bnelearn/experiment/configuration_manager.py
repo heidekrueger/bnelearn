@@ -300,8 +300,8 @@ class ConfigurationManager:
             payment_rule: The payment rule to be used.
             risk: A strictly positive risk-parameter. A value of 1 corresponds to risk-neutral agents,
                 values <1 indicate risk-aversion.
-            common_prior: The common type distribution shared by all players, explicitly given as a 
-                ``torch.distributions.Distribution`` object. 
+            common_prior: The common type distribution shared by all players, explicitly given as a
+                ``torch.distributions.Distribution`` object.
             valuation_mean: The expectation of the valuation distribution, when implicitly setting up a
                 Gaussian distribution.
             valuation_std: The standard deviation of the valuation distribution, when implicitly setting up a
@@ -312,14 +312,15 @@ class ConfigurationManager:
             correlation_types: Specifies the type of correlation model. (Most relevant settings: LLG)
             correlation_groups: A list of lists that 'groups' players into correlated subsets. All players
                 should be part of exactly one sublist. (Relevant settings: LLG)
-            correlation_coefficients: List of correlation coefficients for each group specified with ``correlation_groups``.
+            correlation_coefficients: List of correlation coefficients for each
+                group specified with ``correlation_groups``.
             n_units: TODO: @Nils?
             pretrain_transform: A function used to explicitly give the desired behavior in pretraining for
                 given neural net inputs. Defaults to identity, i.e. truthful bidding.
             constant_marginal_values: TODO @Nils
             item_interest_limit: TODO @Nils
             efficiency_parameters: TODO @Nils
-            core_solver: Specifies which solver should be used to calculate core prices. 
+            core_solver: Specifies which solver should be used to calculate core prices.
                 Should be one of 'NoCore', 'mpc', 'gurobi', 'cvxpy' (Relevant settings: LLLLGG)
 
         Returns:
