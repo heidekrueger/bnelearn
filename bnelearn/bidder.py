@@ -274,7 +274,7 @@ class Bidder(Player):
                     + common_component.to(self.device)[:, 2]
                 ).view(self.batch_size, -1)
                 self._unkown_valuation = 0.5 * \
-                    (common_component.to(self.device) * torch.tensor([1, 1, 2]).to(self.device)) \
+                    (common_component.to(self.device) * torch.tensor([1, 1, 2], device=self.device)) \
                         .sum(axis=1, keepdim=True)
             else:
                 raise NotImplementedError('correlation type unknown')

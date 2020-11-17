@@ -172,7 +172,7 @@ def test_FictitiousPlaySmoothStrategy_BoS():
     tau_update =  10
     tau = 0.99
     tau_minimum = 0.5
-    initial_beliefs = torch.Tensor([[60,40],[40,60]]).to(device)
+    initial_beliefs = torch.Tensor([[60,40],[40,60]], device=device)
 
 
     strats, players, env = init_setup(BattleOfTheSexes(), FictitiousPlaySmoothStrategy, initial_beliefs)
@@ -224,7 +224,7 @@ def test_FictitiousPlayMixedStrategy_BoS():
     tau_update =  10
     tau = 0.99
     tau_minimum = 0.5
-    initial_beliefs = torch.Tensor([[60,40],[40,60]]).to(device)
+    initial_beliefs = torch.Tensor([[60,40],[40,60]], device=device)
 
     strats, players, env = init_setup(BattleOfTheSexes(), FictitiousPlayMixedStrategy, initial_beliefs)
     strats, players = train(5000, players, strats, tau_update = tau_update, tau = tau, tau_minimum = tau_minimum)
