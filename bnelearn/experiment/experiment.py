@@ -587,18 +587,16 @@ class Experiment(ABC):
         # TODO: should just check if logging is enabled in general... if bne_exists and we log, we always want this
         if self.known_bne and self.logging.log_metrics['opt']:
             utility_vs_bne, epsilon_relative, epsilon_absolute = self._calculate_metrics_known_bne()
+            L_2, L_inf = self._calculate_metrics_action_space_norms()
             for i in range(len(self.bne_env)):
                 n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
                 self._cur_epoch_log_params['utility_vs_bne' + (n if n == '' else n[4:])] \
                     = utility_vs_bne[i]
                 self._cur_epoch_log_params['epsilon_relative' + n] = epsilon_relative[i]
                 self._cur_epoch_log_params['epsilon_absolute' + n] = epsilon_absolute[i]
-
-            L_2, L_inf = self._calculate_metrics_action_space_norms()
-            for i in range(len(self.bne_env)):
-                n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
                 self._cur_epoch_log_params['L_2' + n] = L_2[i]
                 self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
+
 
         if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
             create_plot_output = epoch % self.logging.plot_frequency == 0

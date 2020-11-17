@@ -283,7 +283,6 @@ class ConfigurationManager:
             ConfigurationManager.experiment_types[self.experiment_type][1](self)
 
     # pylint: disable=too-many-arguments, unused-argument
-    # ToDo @Stefan I believe we need some comments an all the not self-evident params here
     def set_setting(self, n_players: int = 'None', payment_rule: str = 'None', risk: float = 'None',
                     common_prior: torch.distributions.Distribution = 'None', valuation_mean: float = 'None',
                     valuation_std: float = 'None', u_lo: list = 'None', u_hi: list = 'None', gamma: float = 'None',
@@ -293,8 +292,39 @@ class ConfigurationManager:
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
                     core_solver: str = 'None'):
         """
-        Sets only the parameters of setting which were passed, returns self. Using None hew and below
-        as a string allows to explicitly st parameters to None
+        Sets only the parameters of setting which were passed, returns self. Using None here and below
+        as a string allows to explicitly st parameters to None.
+
+        Args:
+            n_players: The number of players in the game.
+            payment_rule: The payment rule to be used.
+            risk: A strictly positive risk-parameter. A value of 1 corresponds to risk-neutral agents,
+                values <1 indicate risk-aversion.
+            common_prior: The common type distribution shared by all players, explicitly given as a 
+                ``torch.distributions.Distribution`` object. 
+            valuation_mean: The expectation of the valuation distribution, when implicitly setting up a
+                Gaussian distribution.
+            valuation_std: The standard deviation of the valuation distribution, when implicitly setting up a
+                Gaussian distribution.
+            u_lo: Lower bound of valuation distribution, when implicitly setting up a Uniform distribution.
+            u_hi: Upper bound of valuation distribution, when implicitly setting up a Uniform distribution.
+            gamma: Correlation parameter for correlated value distributions of bidders. (Relevant Settings: LLG)
+            correlation_types: Specifies the type of correlation model. (Most relevant settings: LLG)
+            correlation_groups: A list of lists that 'groups' players into correlated subsets. All players
+                should be part of exactly one sublist. (Relevant settings: LLG)
+            correlation_coefficients: List of correlation coefficients for each group specified with ``correlation_groups``.
+            n_units: TODO: @Nils?
+            pretrain_transform: A function used to explicitly give the desired behavior in pretraining for
+                given neural net inputs. Defaults to identity, i.e. truthful bidding.
+            constant_marginal_values: TODO @Nils
+            item_interest_limit: TODO @Nils
+            efficiency_parameters: TODO @Nils
+            core_solver: Specifies which solver should be used to calculate core prices. 
+                Should be one of 'NoCore', 'mpc', 'gurobi', 'cvxpy' (Relevant settings: LLLLGG)
+
+        Returns:
+            ``self`` with updated parameters.
+
         """
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.setting, arg):
