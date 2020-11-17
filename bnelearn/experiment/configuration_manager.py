@@ -26,15 +26,11 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         AffiliatedObservationsExperiment)
 
 
-
 # the lists that are defaults will never be mutated, so we're ok with using them here.
 # pylint: disable = dangerous-default-value
 
 # This module explicitly takes care of unifying lots of variables, it's okay to use many locals here.
 # pylint: disable=too-many-instance-attributes
-
-
-
 class ConfigurationManager:
     """
     The class provides a 'front-end' for the whole package. It allows for creation of a full and
@@ -93,9 +89,6 @@ class ConfigurationManager:
 
     def _init_mineral_rights(self):
         self.setting.n_players = 3
-        self.logging.log_metrics = {'opt': True,
-                                    'l2': True,
-                                    'util_loss': True}
         self.setting.correlation_groups = [[0, 1, 2]]
         self.setting.correlation_types = 'corr_type'
         self.setting.correlation_coefficients = [1.0]
@@ -107,9 +100,6 @@ class ConfigurationManager:
         self.running.n_runs = 1
         self.running.n_epochs = 2000
         self.setting.n_players = 2
-        self.logging.log_metrics = {'opt': True,
-                                    'l2': True,
-                                    'util_loss': True}
         self.setting.correlation_groups = [[0, 1]]
         self.setting.correlation_types = 'corr_type'
         self.setting.correlation_coefficients = [1.0]
@@ -151,7 +141,6 @@ class ConfigurationManager:
         self.setting.n_players = 6
         self.logging.util_loss_frequency = 1000  # Or 100?
         self.logging.log_metrics = {'opt': False,
-                                    'l2': False,
                                     'util_loss': True}
 
     def _init_multiunit(self):
@@ -188,7 +177,7 @@ class ConfigurationManager:
         if self.logging.experiment_name:
             self.logging.experiment_dir += ' ' + str(self.logging.experiment_name)
 
-        valid_log_metrics = ['opt', 'l2', 'util_loss']
+        valid_log_metrics = ['opt', 'util_loss']
         if self.logging.log_metrics is not None:
             for metric in self.logging.log_metrics:
                 assert metric in valid_log_metrics, "Metric not known."
@@ -281,20 +270,17 @@ class ConfigurationManager:
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type
-
         # Common defaults
         self.running, self.setting, self.learning, self.logging, self.hardware = \
             ConfigurationManager.get_default_config_members()
-
+        self.running.n_runs = n_runs
+        self.running.n_epochs = n_epochs
+        self.running.seeds = seeds
         # Defaults specific to an experiment type
         if self.experiment_type not in ConfigurationManager.experiment_types:
             raise Exception('The experiment type does not exist')
         else:
             ConfigurationManager.experiment_types[self.experiment_type][1](self)
-
-        self.running.n_runs = n_runs
-        self.running.n_epochs = n_epochs
-        self.running.seeds = seeds
 
     # pylint: disable=too-many-arguments, unused-argument
     def set_setting(self, n_players: int = 'None', payment_rule: str = 'None', risk: float = 'None',
@@ -305,15 +291,52 @@ class ConfigurationManager:
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
                     core_solver: str = 'None'):
-        """Sets only the parameters of setting which were passed, returns self"""
+        """
+        Sets only the parameters of setting which were passed, returns self. Using None here and below
+        as a string allows to explicitly st parameters to None.
+
+        Args:
+            n_players: The number of players in the game.
+            payment_rule: The payment rule to be used.
+            risk: A strictly positive risk-parameter. A value of 1 corresponds to risk-neutral agents,
+                values <1 indicate risk-aversion.
+            common_prior: The common type distribution shared by all players, explicitly given as a
+                ``torch.distributions.Distribution`` object.
+            valuation_mean: The expectation of the valuation distribution, when implicitly setting up a
+                Gaussian distribution.
+            valuation_std: The standard deviation of the valuation distribution, when implicitly setting up a
+                Gaussian distribution.
+            u_lo: Lower bound of valuation distribution, when implicitly setting up a Uniform distribution.
+            u_hi: Upper bound of valuation distribution, when implicitly setting up a Uniform distribution.
+            gamma: Correlation parameter for correlated value distributions of bidders. (Relevant Settings: LLG)
+            correlation_types: Specifies the type of correlation model. (Most relevant settings: LLG)
+            correlation_groups: A list of lists that 'groups' players into correlated subsets. All players
+                should be part of exactly one sublist. (Relevant settings: LLG)
+            correlation_coefficients: List of correlation coefficients for each
+                group specified with ``correlation_groups``.
+            n_units: TODO: @Nils?
+            pretrain_transform: A function used to explicitly give the desired behavior in pretraining for
+                given neural net inputs. Defaults to identity, i.e. truthful bidding.
+            constant_marginal_values: TODO @Nils
+            item_interest_limit: TODO @Nils
+            efficiency_parameters: TODO @Nils
+            core_solver: Specifies which solver should be used to calculate core prices.
+                Should be one of 'NoCore', 'mpc', 'gurobi', 'cvxpy' (Relevant settings: LLLLGG)
+
+        Returns:
+            ``self`` with updated parameters.
+
+        """
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.setting, arg):
                 setattr(self.setting, arg, v)
         return self
 
     # pylint: disable=too-many-arguments, unused-argument
-    def set_learning(self, model_sharing: bool = 'None', learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
-                     optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None', pretrain_iters: int = 'None',
+    def set_learning(self, model_sharing: bool = 'None', learner_hyperparams: dict = 'None',
+                     optimizer_type: str = 'None',
+                     optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
+                     pretrain_iters: int = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
@@ -373,8 +396,8 @@ class ConfigurationManager:
 
     @staticmethod
     def get_default_config_members() -> (RunningConfig, SettingConfig, LearningConfig, LoggingConfig, HardwareConfig):
-        """Creates with default parameters and returns members of the ExperimentConfig"""
-        running = RunningConfig(n_runs=1, n_epochs=1)
+        """Creates with default (or most common) parameters and returns members of the ExperimentConfig"""
+        running = RunningConfig(n_runs=0, n_epochs=0)
         setting = SettingConfig(n_players=2,
                                 payment_rule='first_price',
                                 risk=1.0)
@@ -394,7 +417,6 @@ class ConfigurationManager:
                                 plot_points=100,
                                 plot_show_inline=True,
                                 log_metrics={'opt': True,
-                                             'l2': True,
                                              'util_loss': True},
                                 log_componentwise_norm=False,
                                 save_tb_events_to_csv_aggregate=True,

@@ -128,6 +128,8 @@ class Experiment(ABC):
         self.known_bne = self._check_and_set_known_bne()
         if self.known_bne:
             self._setup_eval_environment()
+        else:
+            self.logging.log_metrics['opt'] = False
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -260,7 +262,7 @@ class Experiment(ABC):
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
-            from IPython import display #pylint: disable=unused-import,import-outside-toplevel
+            from IPython import display  # pylint: disable=unused-import,import-outside-toplevel
         plt.rcParams['figure.figsize'] = [8, 5]
 
         if self.logging.enable_logging:
@@ -380,7 +382,6 @@ class Experiment(ABC):
                     if stop:
                         print(f'Stopping criterion reached after {e} iterations.')
                         break
-
 
             if self.logging.enable_logging and (
                     self.logging.export_step_wise_linear_bid_function_size is not None):
@@ -586,19 +587,16 @@ class Experiment(ABC):
         # TODO: should just check if logging is enabled in general... if bne_exists and we log, we always want this
         if self.known_bne and self.logging.log_metrics['opt']:
             utility_vs_bne, epsilon_relative, epsilon_absolute = self._calculate_metrics_known_bne()
+            L_2, L_inf = self._calculate_metrics_action_space_norms()
             for i in range(len(self.bne_env)):
                 n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
                 self._cur_epoch_log_params['utility_vs_bne' + (n if n == '' else n[4:])] \
                     = utility_vs_bne[i]
                 self._cur_epoch_log_params['epsilon_relative' + n] = epsilon_relative[i]
                 self._cur_epoch_log_params['epsilon_absolute' + n] = epsilon_absolute[i]
-
-        if self.known_bne and self.logging.log_metrics['l2']:
-            L_2, L_inf = self._calculate_metrics_action_space_norms()
-            for i in range(len(self.bne_env)):
-                n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
                 self._cur_epoch_log_params['L_2' + n] = L_2[i]
                 self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
+
 
         if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
             create_plot_output = epoch % self.logging.plot_frequency == 0
@@ -695,7 +693,6 @@ class Experiment(ABC):
         L_2 = [None] * len(self.bne_env)
         L_inf = [None] * len(self.bne_env)
         for bne_idx, bne_env in enumerate(self.bne_env):
-
             # shorthand for model to agent
 
             # we are only using m2a locally within this loop, so we can safely ignore the following pylint warning:
@@ -706,14 +703,14 @@ class Experiment(ABC):
             L_2[bne_idx] = [
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, 2,
-                    componentwise = self.logging.log_componentwise_norm
+                    componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
             ]
             L_inf[bne_idx] = [
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, float('inf'),
-                    componentwise = self.logging.log_componentwise_norm
+                    componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
             ]
