@@ -114,10 +114,10 @@ def forward(Q, p, G, h, A, b, Q_LU, S_LU, R, eps=1e-12, verbose=0, notImprovedLi
         ry = torch.bmm(x.unsqueeze(1), A.transpose(
             1, 2)).squeeze(1) - b if neq > 0 else 0.0
         mu = torch.abs((s * z).sum(1).squeeze() / nineq)
-        z_resid = torch.norm(rz, 2, 1).squeeze()
-        y_resid = torch.norm(ry, 2, 1).squeeze() if neq > 0 else 0
+        z_resid = torch.norm(rz, 2, 1).squeeze() #NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
+        y_resid = torch.norm(ry, 2, 1).squeeze() if neq > 0 else 0 #NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
         pri_resid = y_resid + z_resid
-        dual_resid = torch.norm(rx, 2, 1).squeeze()
+        dual_resid = torch.norm(rx, 2, 1).squeeze() #NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
         resids = pri_resid + dual_resid + nineq * mu
 
         d = z / s
