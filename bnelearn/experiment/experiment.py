@@ -237,8 +237,8 @@ class Experiment(ABC):
 
             if not isinstance(self.bne_env, list):
                 # TODO Nils: should perhaps always be a list, even when there is only one BNE
-                self.bne_env = [self.bne_env]
-                self._optimal_bid = [self._optimal_bid]
+                self.bne_env: List[Environment] = [self.bne_env]
+                self._optimal_bid: List[callable] = [self._optimal_bid]
                 self.bne_utilities = [self.bne_utilities]
 
             # set up list for (multiple) BNE valuations and bids

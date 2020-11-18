@@ -319,17 +319,17 @@ class LLLLGGAuction(Mechanism):
         """
         Computes allocation and welfare
 
-        Parameters
-        ----------
-        bids: torch.Tensor
-            of bids with dimensions (batch_size, n_players=6, n_bids=2), values = [0,Inf]
-        solutions: torch.Tensor
-            of possible allocations.
+        Args:
+            bids: torch.Tensor
+                of bids with dimensions (batch_size, n_players=6, n_bids=2), values = [0,Inf]
+            solutions: torch.Tensor
+                of possible allocations.
 
-        Returns
-        -------
-        allocation: torch.Tensor(batch_size, b_bundles = 18), values = {0,1}
-        welfare: torch.Tensor(batch_size), values = [0, Inf]
+        Returns:        
+            allocation: torch.Tensor, dims (batch_size, b_bundles = 18), values = {0,1}
+            welfare: torch.Tensor, dims (batch_size), values = [0, Inf]
+
+        
         """
         solutions = self.solutions_non_sparse.to(self.device)
 
@@ -347,15 +347,13 @@ class LLLLGGAuction(Mechanism):
         """
         Computes first prices
 
-        Parameters
-        ----------
-        bids: torch.Tensor
-            of bids with dimensions (batch_size, n_players=6, n_bids=2), values = [0,Inf]
-        allocation: torch.Tensor(batch_size, b_bundles = 18), values = {0,1}
+        Args:
+            bids: torch.Tensor
+                of bids with dimensions (batch_size, n_players=6, nbids=2), values in [0,Inf]
+            allocation: torch.Tensor of dim (batch_size, b_bundles = 18), values = {0,1}
 
-        Returns
-        -------
-        payments: torch.Tensor(batch_size, n_bidders), values = [0, Inf]
+        Returns:
+            payments: torch.Tensor, dim (batch_size, n_bidders)
         """
         n_batch, n_players, n_bundles = bids.shape
         return (allocation.view(n_batch, n_players, n_bundles) * bids).sum(dim=2)
@@ -364,16 +362,14 @@ class LLLLGGAuction(Mechanism):
         """
         Computes VCG prices
 
-        Parameters
-        ----------
-        bids: torch.Tensor
-            of bids with dimensions (batch_size, n_players=6, n_bids=2), values = [0,Inf]
-        allocation: torch.Tensor(batch_size, b_bundles = 18), values = {0,1}
-        welfare: torch.Tensor(batch_size), values = [0, Inf]
+        Args:
+            bids: torch.Tensor, dims (batch_size, n_players=6, n_bids=2), values = [0,Inf]
+            allocation: torch.Tensor, dims (batch_size, b_bundles = 18), values = {0,1}
+            welfare: torch.Tensor, dims (batch_size), values = [0, Inf]
 
-        Returns
-        -------
-        payments: torch.Tensor(batch_size, n_bidders), values = [0, Inf]
+        Returns:
+            payments: torch.Tensor, dim (batch_size, n_bidders), values = [0, Inf]
+        
         """
         player_bundles = self.player_bundles.to(self.device)
 
@@ -760,17 +756,15 @@ class LLLLGGAuction(Mechanism):
         """
         Performs a specific LLLLGG auction as in Seuken Paper (Bosshard et al. (2019))
 
-        Parameters
-        ----------
-        bids: torch.Tensor
-            of bids with dimensions (batch_size, n_players, 2) [0,Inf]
-        bundles: torch.Tensor
-            of bundles with dimensions (batch_size, 2, n_items), {0,1}
+        Args:
+            bids: torch.Tensor
+                of bids with dimensions (batch_size, n_players, 2) [0,Inf]
+            bundles: torch.Tensor
+                of bundles with dimensions (batch_size, 2, n_items), {0,1}
 
-        Returns
-        -------
-        allocation: torch.Tensor(batch_size, n_bidders, 2)
-        payments: torch.Tensor(batch_size, n_bidders)
+        Returns:
+            allocation: torch.Tensor, dim (batch_size, n_bidders, 2)
+            payments: torch.Tensor, dim (batch_size, n_bidders)
         """
 
         allocation, welfare = self._solve_allocation_problem(bids)
@@ -820,17 +814,15 @@ class CombinatorialAuction(Mechanism):
         """
         Performs a general Combinatorial auction
 
-        Parameters
-        ----------
-        bids: torch.Tensor
-            of bids with dimensions (batch_size, n_players, 2) [0,Inf]
-        bundles: torch.Tensor
-            of bundles with dimensions (batch_size, 2, n_items), {0,1}
+        Args:
+            bids: torch.Tensor
+                of bids with dimensions (batch_size, n_players, 2) [0,Inf]
+            bundles: torch.Tensor
+                of bundles with dimensions (batch_size, 2, n_items), {0,1}
 
-        Returns
-        -------
-        allocation: torch.Tensor(batch_size, n_bidders, 2)
-        payments: torch.Tensor(batch_size, n_bidders)
+        Returns:
+            allocation: torch.Tensor, dim (batch_size, n_bidders, 2)
+            payments: torch.Tensor, dim (batch_size, n_bidders)
         """
 
         # detect appropriate pool size

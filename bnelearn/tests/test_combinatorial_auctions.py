@@ -31,12 +31,12 @@ expected_allocation_2 = torch.tensor([[
     [0,0,1], #G2
     ]], dtype=torch.float)
 
-bundles_1 = torch.Tensor([
+bundles_1 = torch.tensor([
     #A
     [1] #B1
     ])
 
-bundles_2 = torch.Tensor([
+bundles_2 = torch.tensor([
     #A,B
     [1,0], #B1
     [0,1], #B2
@@ -46,8 +46,8 @@ bundles_2 = torch.Tensor([
 # each test input takes form rule: string, bids:torch.tensor, bundles: torch.tensor,
 #                            expected_allocation: torch.tensor, expected_payments: torch.tensor
 ids, testdata = zip(*[
-    ['vcg - single-item', ('vcg', bids_1, bundles_1, expected_allocation_1, torch.Tensor([[1.5, 0.0, 0.0]]))],
-    ['vcg - multi-item', ('vcg', bids_2, bundles_2, expected_allocation_2, torch.Tensor([[0.0, 0.0, 1.8]]))]
+    ['vcg - single-item', ('vcg', bids_1, bundles_1, expected_allocation_1, torch.tensor([[1.5, 0.0, 0.0]]))],
+    ['vcg - multi-item', ('vcg', bids_2, bundles_2, expected_allocation_2, torch.tensor([[0.0, 0.0, 1.8]]))]
 ])
 
 def run_Combinatorial_test(rule, device, bids, bundle, expected_allocation, expected_VCG_payments):

@@ -510,7 +510,8 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
             bne_utilities_sampled[i] = torch.tensor(
                 [self.bne_env[i].get_reward(a, draw_valuations=True) for a in self.bne_env[i].agents])
 
-            print(('Utilities in BNE{} (sampled):' + '\t{:.5f}' * self.n_players + '.').format(i + 1,*bne_utilities_sampled[i]))
+            print(('Utilities in BNE{} (sampled):' + '\t{:.5f}' * self.n_players + '.') \
+                .format(i + 1,*bne_utilities_sampled[i]))
 
         if len(set(self.u_lo)) == 1:
             print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
@@ -524,7 +525,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
             self.bne_env[0].batch_size <= 2**22:
             # replace by known optimum with higher precision
             bne_utilities_sampled[0] = torch.tensor([0.9694, 5.0688]) # calculated using 100x batch size above
-            print("\tReplacing sampled bne utilities by precalculated utilities with higher precision: {}".format(bne_utilities_sampled[0]))
+            print(f"\tReplacing sampled bne utilities by precalculated utilities with higher precision: {bne_utilities_sampled[0]}")
 
         self.bne_utilities = bne_utilities_sampled
 
@@ -625,7 +626,7 @@ class MineralRightsExperiment(SingleItemExperiment):
                 self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
 
             print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities))
-            self.bne_utility = torch.tensor(self.bne_utilities).mean()
+            self.bne_utility = torch.tensor(self.bne_utilities).mean() #Stefan: Update to pytorch 1.7 will move this from 'cpu' to self.config.hardware.device. Will this cause problems? What behavior do we want?
         else:
             self.known_bne = False
 
