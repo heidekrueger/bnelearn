@@ -129,6 +129,8 @@ class Experiment(ABC):
         self.known_bne = self._check_and_set_known_bne()
         if self.known_bne:
             self._setup_eval_environment()
+        else:
+            self.logging.log_metrics['opt'] = False
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -170,6 +172,7 @@ class Experiment(ABC):
         2. Save the model parameters
         """
         print('Setting up bidders...')
+        # this method is part of the init workflow, so we #pylint: disable=attribute-defined-outside-init
         self.models = [None] * self.n_models
 
         for i in range(len(self.models)):
@@ -260,7 +263,7 @@ class Experiment(ABC):
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
-            from IPython import display
+            from IPython import display  # pylint: disable=unused-import,import-outside-toplevel
         plt.rcParams['figure.figsize'] = [8, 5]
 
         if self.logging.enable_logging:
@@ -279,9 +282,11 @@ class Experiment(ABC):
             tic = timer()
             self._log_experiment_params()
             self._log_hyperparams()
+
             self._log_experiment_params()
-            logging_utils.log_experiment_configurations(self.experiment_log_dir, self.config)
+            logging_utils.save_experiment_config(self.experiment_log_dir, self.config)
             elapsed = timer() - tic
+            logging_utils.log_git_commit_hash(self.experiment_log_dir)
         else:
             print('Logging disabled.')
             elapsed = 0
@@ -373,7 +378,8 @@ class Experiment(ABC):
                         # Check for convergence when enough data is available
                         if len(stopping_queue) == stopping_queue.maxlen:
                             values = torch.stack(tuple(stopping_queue))
-                            stop = self._check_convergence(values, epoch=e)
+                            if self.logging.enable_logging:
+                                stop = self._check_convergence(values, epoch=e)
 
                         self.overhead = self.overhead + timer() - start_time
                         if stop:
@@ -492,6 +498,7 @@ class Experiment(ABC):
             lims = (xlim, ylim)
             set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
+            # pylint: disable=eval-used
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
                 a, b = None, None
                 if lim is not None:  # use parameters ´xlim´ etc.
@@ -583,19 +590,16 @@ class Experiment(ABC):
         # TODO: should just check if logging is enabled in general... if bne_exists and we log, we always want this
         if self.known_bne and self.logging.log_metrics['opt']:
             utility_vs_bne, epsilon_relative, epsilon_absolute = self._calculate_metrics_known_bne()
+            L_2, L_inf = self._calculate_metrics_action_space_norms()
             for i in range(len(self.bne_env)):
                 n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
                 self._cur_epoch_log_params['utility_vs_bne' + (n if n == '' else n[4:])] \
                     = utility_vs_bne[i]
                 self._cur_epoch_log_params['epsilon_relative' + n] = epsilon_relative[i]
                 self._cur_epoch_log_params['epsilon_absolute' + n] = epsilon_absolute[i]
-
-        if self.known_bne and self.logging.log_metrics['l2']:
-            L_2, L_inf = self._calculate_metrics_action_space_norms()
-            for i in range(len(self.bne_env)):
-                n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
                 self._cur_epoch_log_params['L_2' + n] = L_2[i]
                 self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
+
 
         if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
             create_plot_output = epoch % self.logging.plot_frequency == 0
@@ -603,7 +607,8 @@ class Experiment(ABC):
             self._cur_epoch_log_params['util_loss_ex_interim'], \
             self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
-            print(self._cur_epoch_log_params['util_loss_ex_interim'])
+            print("\tcurrent est. ex-interim loss:" + str(
+                [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
 
         if self.logging.log_metrics['efficiency'] and (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['efficiency'] = \
@@ -698,21 +703,24 @@ class Experiment(ABC):
         L_2 = [None] * len(self.bne_env)
         L_inf = [None] * len(self.bne_env)
         for bne_idx, bne_env in enumerate(self.bne_env):
-
             # shorthand for model to agent
-            m2a = lambda m: bne_env.agents[self._model2bidder[m][0]] # pylint: disable=cell-var-from-loop
+
+            # we are only using m2a locally within this loop, so we can safely ignore the following pylint warning:
+            # pylint: disable=cell-var-from-loop
+
+            m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
 
             L_2[bne_idx] = [
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, 2,
-                    componentwise = self.logging.log_componentwise_norm
+                    componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
             ]
             L_inf[bne_idx] = [
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, float('inf'),
-                    componentwise = self.logging.log_componentwise_norm
+                    componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
             ]

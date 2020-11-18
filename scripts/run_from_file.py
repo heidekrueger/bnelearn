@@ -1,9 +1,8 @@
 import torch
 
 from bnelearn.experiment.configuration_manager import ConfigurationManager
-from bnelearn.util import logging
 
-experiment_config = logging.get_experiment_config_from_configurations_log()
+experiment_config = ConfigurationManager.load_experiment_config()
 experiment_class = ConfigurationManager.get_class_by_experiment_type(experiment_config.experiment_class)
 
 try:

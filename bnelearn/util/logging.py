@@ -1,9 +1,9 @@
 """This module contains utilities for logging of experiments"""
-
+import os
 import pickle
+import subprocess
+import time
 from typing import List
-
-from dataclasses import replace
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,15 +11,17 @@ import pandas as pd
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from torch.utils.tensorboard.summary import hparams
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
-from bnelearn.bidder import Bidder
+import pkg_resources
 
+from bnelearn.bidder import Bidder
 from bnelearn import util
 from bnelearn.experiment.configurations import *
-import pkg_resources
+
 
 _full_log_file_name = 'full_results'
 _aggregate_log_file_name = 'aggregate_log'
 _configurations_f_name = 'experiment_configurations.json'
+_git_commit_hash_file_name = 'git_hash'
 
 
 # based on https://stackoverflow.com/a/57411105/4755970
@@ -59,6 +61,8 @@ def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detail
                 last_epoch_tb_events['run'].append(run)
                 last_epoch_tb_events['subrun'].append(subrun)
                 last_epoch_tb_events['tag'].append(tag)
+                # a last event is always guaranteed to exist, we can ignore pylint's warning
+                # pylint: disable=undefined-loop-variable
                 last_epoch_tb_events['value'].append(event.value)
                 last_epoch_tb_events['wall_time'].append(event.wall_time)
                 last_epoch_tb_events['epoch'].append(event.step)
@@ -110,6 +114,41 @@ def print_aggregate_tensorboard_logs(experiment_dir):
     df = pd.read_csv(f_name)
     print('Aggregate log:')
     print(df.to_markdown())
+
+
+def log_git_commit_hash(experiment_dir):
+    """Saves the hash of the current git commit"""
+
+    # Will leave it here as a comment in case we'll ever need to log the full dependency tree or the environment.
+    # os.system('pipdeptree --json-tree > dependencies.json')
+    # os.system('conda env export > environment.yml')
+
+    commit_hash = str(subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip())[2:-1]
+    with open(os.path.join(experiment_dir, f'{_git_commit_hash_file_name}.txt'), "w") as text_file:
+        text_file.write(commit_hash)
+
+
+def save_experiment_config(experiment_log_dir, experiment_configuration: ExperimentConfig):
+    """
+    Serializes ExperimentConfiguration into a readable JSON file
+
+    :param experiment_log_dir: full path except for the file name
+    :param experiment_configuration: experiment configuration as given by ConfigurationManager
+    """
+    f_name = os.path.join(experiment_log_dir, _configurations_f_name)
+
+    temp_cp = experiment_configuration.setting.common_prior
+    temp_ha = experiment_configuration.learning.hidden_activations
+
+    experiment_configuration.setting.common_prior = str(experiment_configuration.setting.common_prior)
+    experiment_configuration.learning.hidden_activations = str(
+        experiment_configuration.learning.hidden_activations)
+    with open(f_name, 'w+') as outfile:
+        json.dump(experiment_configuration, outfile, cls=EnhancedJSONEncoder, indent=4)
+
+    # Doesn't look so shiny, but probably the quickest way to prevent compromising the object
+    experiment_configuration.setting.common_prior = temp_cp
+    experiment_configuration.learning.hidden_activations = temp_ha
 
 
 def process_figure(fig, epoch=None, figure_name='plot', tb_group='eval',
@@ -232,151 +271,6 @@ class CustomSummaryWriter(SummaryWriter):
                 raise ValueError('Got list of invalid length.')
 
 
-def log_experiment_configurations(experiment_log_dir, experiment_configuration: ExperimentConfig):
-    """
-    Serializes ExperimentConfiguration into a readable JSON file
-
-    :param experiment_log_dir: full path except for the file name
-    :param experiment_configuration: experiment configuration as given by ConfigurationManager
-    """
-    f_name = os.path.join(experiment_log_dir, _configurations_f_name)
-
-    temp_cp = experiment_configuration.setting.common_prior
-    temp_ha = experiment_configuration.learning.hidden_activations
-
-    experiment_configuration.setting.common_prior = str(experiment_configuration.setting.common_prior)
-    experiment_configuration.learning.hidden_activations = str(
-        experiment_configuration.learning.hidden_activations)
-    with open(f_name, 'w+') as outfile:
-        json.dump(experiment_configuration, outfile, cls=EnhancedJSONEncoder, indent=4)
-
-    # Doesn't look so shiny, but probably the quickest way to prevent compromising the object
-    experiment_configuration.setting.common_prior = temp_cp
-    experiment_configuration.learning.hidden_activations = temp_ha
-
-
-def get_experiment_config_from_configurations_log(experiment_log_dir=None):
-    """
-    Retrieves stored configurations from JSON and turns them into ExperimentConfiguration object
-    By default creates configuration from the file stored alongside the running script
-
-    :param experiment_log_dir: full path except for the file name, current working directory by default
-    :return: ExperimentConfiguration object
-    """
-    if experiment_log_dir is None:
-        experiment_log_dir = os.path.abspath(os.getcwd())
-    f_name = os.path.join(experiment_log_dir, _configurations_f_name)
-
-    with open(f_name) as json_file:
-        experiment_config_as_dict = json.load(json_file)
-
-    experiment_config = ExperimentConfig(experiment_class=experiment_config_as_dict['experiment_class'])
-
-    config_set_name_to_obj = {
-        'running': RunningConfig(),
-        'setting': SettingConfig(),
-        'learning': LearningConfig(),
-        'logging': LoggingConfig(),
-        'hardware': HardwareConfig()
-    }
-
-    # Parse a dictionary retrieved from JSON into ExperimentConfiguration object
-    # Attribute assignment pattern: experiment_config.config_group_name.config_group_object_attr = attr_val
-    # e.g. experiment_config.run_config.n_runs = experiment_config_as_dict['run_config']['n_runs']
-    # config_group_object assignment pattern: experiment_config.config_group_name = config_group_object
-    # e.g. experiment_config.run_config = earlier initialised and filled instance of RunningConfiguration class
-    experiment_config_as_dict = {k: v for (k, v) in experiment_config_as_dict.items() if
-                                 k != 'experiment_class'}.items()
-    for config_set_name, config_group_dict in experiment_config_as_dict:
-        config_obj = replace(config_set_name_to_obj[config_set_name], **config_group_dict)
-        setattr(experiment_config, config_set_name, config_obj)
-
-    # Create hidden activations object based on the loaded string
-    # Tested for SELU only
-    hidden_activations_methods = {'SELU': lambda: nn.SELU,
-                                  'Threshold': lambda: nn.Threshold,
-                                  'ReLU': lambda: nn.ReLU,
-                                  'RReLU': lambda: nn.RReLU,
-                                  'Hardtanh': lambda: nn.Hardtanh,
-                                  'ReLU6': lambda: nn.ReLU6,
-                                  'Sigmoid': lambda: nn.Sigmoid,
-                                  'Hardsigmoid': lambda: nn.Hardsigmoid,
-                                  'Tanh': lambda: nn.Tanh,
-                                  'ELU': lambda: nn.ELU,
-                                  'CELU': lambda: nn.CELU,
-                                  'GLU': lambda: nn.GLU,
-                                  'GELU': lambda: nn.GELU,
-                                  'Hardshrink': lambda: nn.Hardshrink,
-                                  'LeakyReLU': lambda: nn.LeakyReLU,
-                                  'LogSigmoid': lambda: nn.LogSigmoid,
-                                  'Softplus': lambda: nn.Softplus,
-                                  'Softshrink': lambda: nn.Softshrink,
-                                  'MultiheadAttention': lambda: nn.MultiheadAttention,
-                                  'PReLU': lambda: nn.PReLU,
-                                  'Softsign': lambda: nn.Softsign,
-                                  'Tanhshrink': lambda: nn.Tanhshrink,
-                                  'Softmin': lambda: nn.Softmin,
-                                  'Softmax': lambda: nn.Softmax,
-                                  'Softmax2d': lambda: nn.Softmax2d,
-                                  'LogSoftmax': lambda: nn.LogSoftmax, }
-
-    ha = str(experiment_config.learning.hidden_activations).split('()')
-    for symb in ['[', ']', ' ', ',']:
-        ha = list(map(lambda s: str(s).replace(symb, ''), ha))
-    ha = [i for i in ha if i != '']
-    ha = [hidden_activations_methods[layer]()() for layer in ha]
-    experiment_config.learning.hidden_activations = ha
-
-    if experiment_config.setting.common_prior != 'None':
-        # Create common_prior object based on the loaded string
-        common_priors = {'Uniform': torch.distributions.Uniform,
-                         'Normal': torch.distributions.Normal,
-                         'Bernoulli': torch.distributions.Bernoulli,
-                         'Beta': torch.distributions.Beta,
-                         'Binomial': torch.distributions.Binomial,
-                         'Categorical': torch.distributions.Categorical,
-                         'Cauchy': torch.distributions.Cauchy,
-                         'Chi2': torch.distributions.Chi2,
-                         'ContinuousBernoulli': torch.distributions.ContinuousBernoulli,
-                         'Dirichlet': torch.distributions.Dirichlet,
-                         'Exponential': torch.distributions.Exponential,
-                         'FisherSnedecor': torch.distributions.FisherSnedecor,
-                         'Gamma': torch.distributions.Gamma,
-                         'Geometric': torch.distributions.Geometric,
-                         'Gumbel': torch.distributions.Gumbel,
-                         'HalfCauchy': torch.distributions.HalfCauchy,
-                         'HalfNormal': torch.distributions.HalfNormal,
-                         'Independent': torch.distributions.Independent,
-                         'Laplace': torch.distributions.Laplace,
-                         'LogNormal': torch.distributions.LogNormal,
-                         'LogisticNormal': torch.distributions.LogisticNormal,
-                         'LowRankMultivariateNormal': torch.distributions.LowRankMultivariateNormal,
-                         'Multinomial': torch.distributions.Multinomial,
-                         'MultivariateNormal': torch.distributions.MultivariateNormal,
-                         'NegativeBinomial': torch.distributions.NegativeBinomial,
-                         'OneHotCategorical': torch.distributions.OneHotCategorical,
-                         'Pareto': torch.distributions.Pareto,
-                         'RelaxedBernoulli': torch.distributions.RelaxedBernoulli,
-                         'RelaxedOneHotCategorical': torch.distributions.RelaxedOneHotCategorical,
-                         'StudentT': torch.distributions.StudentT,
-                         'Poisson': torch.distributions.Poisson,
-                         'VonMises': torch.distributions.VonMises,
-                         'Weibull': torch.distributions.Weibull
-                         }
-        distribution = str(experiment_config.setting.common_prior).split('(')[0]
-        if distribution == 'Uniform':
-            experiment_config.setting.common_prior = common_priors[distribution](experiment_config.setting.u_lo,
-                                                                                 experiment_config.setting.u_hi)
-        elif distribution == 'Normal':
-            experiment_config.setting.common_prior = common_priors[distribution](
-                experiment_config.setting.valuation_mean,
-                experiment_config.setting.valuation_std)
-        else:
-            raise NotImplementedError
-
-    return experiment_config
-
-
 def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
     """Write the sampled BNE utilities to disk."""
 
@@ -431,3 +325,5 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
     print('Writing high precision utilities in BNE to database.')
     bne_database.to_csv(file_path, index=False)
     return None
+
+
