@@ -142,6 +142,15 @@ if __name__ == '__main__':
     #     .set_hardware(specific_gpu=1) \
     #     .get_config()
 
+    # for making a toy experiment
+    # experiment_config.logging.plot_frequency = 1
+    # experiment_config.logging.util_loss_frequency = 1
+    # experiment_config.logging.plot_points = 10
+    # experiment_config.logging.util_loss_batch_size = 2 ** 2
+    # experiment_config.logging.util_loss_grid_size = 2 ** 2
+    # experiment_config.learning.batch_size = 2 ** 2
+    # experiment_config.logging.eval_batch_size = 2 ** 2
+
     try:
         experiment = experiment_class(experiment_config)
 

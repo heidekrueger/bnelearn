@@ -290,10 +290,10 @@ class Experiment(ABC):
             self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
             tic = timer()
-            self._log_experiment_params()
-            self._log_hyperparams()
+            # self._log_experiment_params()
+            # self._log_hyperparams()
 
-            self._log_experiment_params()
+            # self._log_experiment_params()
             logging_utils.save_experiment_config(self.experiment_log_dir, self.config)
             elapsed = timer() - tic
             logging_utils.log_git_commit_hash(self.experiment_log_dir)
@@ -304,8 +304,12 @@ class Experiment(ABC):
 
     def _exit_run(self):
         """Cleans up a run after it is completed"""
-        if self.logging.enable_logging and self.logging.save_models:
-            self._save_models(directory=self.run_log_dir)
+        if self.logging.enable_logging:
+            self._log_experiment_params()
+            if self.logging.save_models:
+                self._save_models(directory=self.run_log_dir)
+
+
 
         del self.writer  # make this explicit to force cleanup and closing of tb-logfiles
         self.writer = None
@@ -611,7 +615,6 @@ class Experiment(ABC):
                 self._cur_epoch_log_params['L_2' + n] = L_2[i]
                 self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
 
-
         if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
             create_plot_output = epoch % self.logging.plot_frequency == 0
             self._cur_epoch_log_params['util_loss_ex_ante'], \
@@ -825,6 +828,9 @@ class Experiment(ABC):
     def _log_experiment_params(self):
         # TODO: write out all experiment params (complete dict) #See issue #113
         # TODO: Stefan: this currently called _per run_. is this desired behavior?
+        for i, model in enumerate(self.models):
+            self.writer.add_text('hyperparameters/neural_net_spec', str(model))
+            self.writer.add_graph(model, self.env.agents[i].valuations)
 
         h_params = {'hyperparameters/batch_size': self.learning.batch_size,
                     'hyperparameters/pretrain_iters': self.learning.pretrain_iters,
@@ -833,14 +839,28 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_hyperparams': str(self.learning.optimizer_hyperparams),
                     'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
+        try:
+            self._hparams_metrics['utilities'] = self._cur_epoch_log_params['utilities']
+            self._hparams_metrics['update_norm'] = self._cur_epoch_log_params['update_norm'][0]
+            self._hparams_metrics['utility_vs_bne'] = self._cur_epoch_log_params['utility_vs_bne']
+            self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
+            self._hparams_metrics['epsilon_absolute'] = self._cur_epoch_log_params['epsilon_absolute']
+            self._hparams_metrics['L_2'] = self._cur_epoch_log_params['L_2'][0]
+            self._hparams_metrics['L_inf'] = self._cur_epoch_log_params['L_inf'][0]
+            self._hparams_metrics['util_loss_ex_ante'] = self._cur_epoch_log_params['util_loss_ex_ante'][0]
+            self._hparams_metrics['util_loss_ex_interim'] = self._cur_epoch_log_params['util_loss_ex_interim'][0]
+            self._hparams_metrics['estimated_relative_ex_ante_util_loss'] = \
+                self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'][0]
+        except Exception as e:
+            print(e)
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
 
-    def _log_hyperparams(self, epoch=0):
-        """Everything that should be logged on every learning_rate update"""
-
-        for i, model in enumerate(self.models):
-            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)  # ToDO To hyperparams
-            self.writer.add_graph(model, self.env.agents[i].valuations)
+    # def _log_hyperparams(self, epoch=0):
+    #     """Everything that should be logged on every learning_rate update"""
+    #
+    #     for i, model in enumerate(self.models):
+    #         self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)  # ToDO To hyperparams
+    #         self.writer.add_graph(model, self.env.agents[i].valuations)
 
     def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to
