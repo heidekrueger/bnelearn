@@ -118,7 +118,6 @@ class _OptNet_for_LLLLGG(nn.Module):
             raise NotImplementedError(":/")
 
 
-
 class LLGAuction(Mechanism):
     """
         Implements simple auctions in the LLG setting with 3 bidders and
@@ -242,8 +241,15 @@ class LLGAuction(Mechanism):
         return (allocations.unsqueeze(-1), payments)  # payments: batches x players, allocation: batch x players x items
 
     def get_efficiency(self, env):
-        """
-        Returns the percentage of efficient allocated outcomes over a batch.
+        """Returns the percentage of efficiently allocated outcomes over a
+        batch.
+
+        Args:
+            env (:obj:`Environment`).
+
+        Returns:
+            efficiency (float): precentage of efficiently allocated outcomes.
+
         """
         bid_profile = torch.zeros(env.batch_size, env.n_players, 1,
                                   device=self.device)
@@ -256,6 +262,87 @@ class LLGAuction(Mechanism):
         locals_win = allocations[:, 2] == 0
         efficiency = locals_have_higher_value == locals_win
         return efficiency.float().mean()
+
+
+class LLGFullAuction(Mechanism):
+    """Implements auctions in the LLG setting with 3 bidders and 2 goods.
+
+    Here, bidders do submit full bundle (XOR) bids. For this specific LLG
+    domain see Beck & Ott 2013.
+
+    Note: Item dim 0 corresponds to item A, dim 1 to item B and dim 2 to the
+        budle of both. Bundle dim is not used for locals, b/c they don't have
+        a value for it: they get allocation of [1, 1, 0] instead of [0, 0, 1]
+        (in accordance to `get_welfare` of the `CombinatorialBidder`.)
+    """
+
+    def __init__(self, rule='first_price', cuda: bool=True):
+        super().__init__(cuda)
+
+        if rule not in ['first_price', 'nearest_vcg']:
+            raise ValueError('Invalid Pricing rule!')
+        self.rule = rule
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Runs a (batch of) LLG Combinatorial auction(s).
+
+        We assume n_players == 3 with 0, 1 being local bidders and 3 being the
+        global bidder.
+
+        Args:
+            bids (:obj:`torch.Tensor`): of bids with dimensions (batch_size,
+                n_players, 3).
+
+        Returns:
+            (allocation, payments) (:obj:`tuple` of :obj:`torch.Tensor`):
+                allocation: tensor of dimension (n_batches x n_players x 3)
+                payments: tensor of dimension (n_batches x n_players)
+
+        """
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x 3)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+        # name dimensions for readibility
+        # pylint: disable=unused-variable
+        batch_dim, player_dim, item_dim = 0, 1, 3
+        batch_size, n_players, n_items = bids.shape
+
+        assert n_players == 3, "invalid n_players in full LLG setting"
+        assert n_items == 3, "invalid bid_dimensionality in full LLG setting"
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # allocate return variables
+        payments = torch.zeros(batch_size, n_players, device=self.device)
+        allocations = torch.zeros(batch_size, n_players, n_items,
+                                  device=self.device)
+
+        # 1. Determine allocations
+        max_individually = bids[:, :, :2].max(axis=1)
+        max_bundle = bids[:, :, 2].max(axis=1)
+        individually = \
+            (max_individually.values.sum(axis=1) > max_bundle.values)
+        # locals
+        allocations_individual = max_individually.indices[individually, :]
+        allocations[individually, allocations_individual[:, 0], 0] = 1
+        allocations[individually, allocations_individual[:, 1], 1] = 1
+        # global
+        individually = torch.logical_not(individually)
+        allocations_bundle = max_bundle.indices[individually]
+        allocations[individually, allocations_bundle, 2] = 1
+
+        # 2. Determine payments
+        if self.rule == 'first_price':
+            payments = (allocations * bids).sum(axis=2)  # batch x players
+
+        elif self.rule == 'nearest_vcg':
+            raise ValueError("not implemented yet")  # TODO Nils
+
+        else:
+            raise ValueError("invalid bid rule")
+
+        # allocation: batch x players x items, payments: batches x players
+        return (allocations, payments)
 
 
 class LLLLGGAuction(Mechanism):
@@ -325,11 +412,10 @@ class LLLLGGAuction(Mechanism):
             solutions: torch.Tensor
                 of possible allocations.
 
-        Returns:        
+        Returns:
             allocation: torch.Tensor, dims (batch_size, b_bundles = 18), values = {0,1}
             welfare: torch.Tensor, dims (batch_size), values = [0, Inf]
 
-        
         """
         solutions = self.solutions_non_sparse.to(self.device)
 

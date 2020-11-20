@@ -406,7 +406,10 @@ class NeuralNetStrategy(Strategy, nn.Module):
         if transformation is not None:
             desired_output = transformation(input_tensor)
 
-        if desired_output.shape[-1] != self.output_length:
+        if desired_output.shape[-1] < self.output_length:
+            # TODO: not appropriate for CAs
+            torch.cat([desired_output] * self.output_length, axis=1)
+        elif desired_output.shape[-1] > self.output_length:
             raise ValueError('Desired pretraining output does not match NN output dimension.')
 
         optimizer = torch.optim.Adam(self.parameters())

@@ -450,7 +450,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
         return ReverseBidder.uniform(
             lower=self.u_lo[0], upper=self.u_hi[0],
             strategy=strategy,
-            n_units=self.n_units,
+            n_items=self.n_units,
             item_interest_limit=self.item_interest_limit,
             descending_valuations=False,
             constant_marginal_values=self.constant_marginal_values,

@@ -743,13 +743,8 @@ class Experiment(ABC):
         if grid_size is None:
             grid_size = self.logging.util_loss_grid_size
 
-        assert batch_size <= env.batch_size, "Util_loss for larger than actual batch size not implemented."
-        bid_profile = torch.zeros(batch_size, env.n_players, env.agents[0].n_items,
-                                  dtype=env.agents[0].valuations.dtype, device=env.mechanism.device)
-
-        # Only supports regret_batch_size <= batch_size
-        for agent in env.agents:
-            bid_profile[:, agent.player_position, :] = agent.get_action()[:batch_size, ...]
+        assert batch_size <= env.batch_size, \
+            "Util_loss for larger than actual batch size not implemented."
 
         torch.cuda.empty_cache()
         util_loss = [

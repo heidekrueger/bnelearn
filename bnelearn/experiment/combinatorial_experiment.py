@@ -18,8 +18,10 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
 
-from bnelearn.mechanism.auctions_combinatorial import LLGAuction, LLLLGGAuction
-from bnelearn.bidder import Bidder
+from bnelearn.mechanism.auctions_combinatorial import (
+    LLGAuction, LLGFullAuction, LLLLGGAuction
+)
+from bnelearn.bidder import Bidder, CombinatorialBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.experiment import Experiment
@@ -66,7 +68,7 @@ class LocalGlobalExperiment(Experiment, ABC):
                u_hi[self.config.setting.n_local], "local bidders must be weaker than global bidder"
         self.u_hi = [float(h) for h in u_hi]
 
-        self.positive_output_point = torch.tensor([min(self.u_hi)] * self.n_items)
+        self.positive_output_point = torch.tensor([min(self.u_hi)] * self.input_length)
 
         self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
@@ -95,7 +97,7 @@ class LocalGlobalExperiment(Experiment, ABC):
         correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
                               player_position=player_position, batch_size=batch_size,
-                              n_items = self.n_items, correlation_type=correlation_type,
+                              n_items=self.input_length, correlation_type=correlation_type,
                               risk=self.risk, cache_actions=cache_actions)
 
 
@@ -264,6 +266,89 @@ class LLGExperiment(LocalGlobalExperiment):
         if self.risk != 1.0:
             name += ['risk_{}'.format(self.risk)]
         return os.path.join(*name)
+
+
+class LLGFullExperiment(LocalGlobalExperiment):
+    """A combinatorial experiment with 2 local and 1 global bidder and 2 items.
+
+    Each bidders bids on both bundles. Local bidder 1 has only a value for the
+    first item, the second only for the second and global only on both.
+
+    """
+
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        assert self.config.setting.n_players == 3, \
+            "Incorrect number of players specified."
+
+        self.gamma = self.correlation = float(config.setting.gamma)
+
+        if config.setting.correlation_types == 'Bernoulli_weights':
+            self.CorrelationDevice = BernoulliWeightsCorrelationDevice
+        elif config.setting.correlation_types == 'constant_weights':
+            self.CorrelationDevice = ConstantWeightsCorrelationDevice
+        elif config.setting.correlation_types == 'independent':
+            pass
+        else:
+            raise NotImplementedError('Correlation not implemented.')
+
+        if self.gamma > 0.0:
+            self.correlation_groups = [[0, 1], [2]]
+            self.correlation_coefficients = [self.gamma, 0.0]
+            self.correlation_devices = [
+                self.CorrelationDevice(
+                    common_component_dist=torch.distributions.Uniform(
+                        config.setting.u_lo[0], config.setting.u_hi[0]),
+                    batch_size=config.learning.batch_size,
+                    n_items=1,
+                    correlation=self.gamma),
+                IndependentValuationDevice()]
+
+        self.input_length = 1
+        self.config.setting.n_local = 2
+        self.config.setting.n_items = 3
+        super().__init__(config=config)
+
+    def _setup_mechanism(self):
+        self.mechanism = LLGFullAuction(rule=self.payment_rule)
+        self.known_bne = False
+
+    def _check_and_set_known_bne(self):
+        return False
+
+    def _get_logdir_hierarchy(self):
+        name = ['LLGFull', self.payment_rule]
+        if self.gamma > 0:
+            name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
+        else:
+            name += ['independent']
+        if self.risk != 1.0:
+            name += ['risk_{}'.format(self.risk)]
+        return os.path.join(*name)
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0,
+                         cache_actions=False):
+        correlation_type = 'additive' if hasattr(self, 'correlation_groups') \
+            else None
+        return CombinatorialBidder.uniform(
+            self.u_lo[player_position],
+            self.u_hi[player_position],
+            strategy=strategy,
+            player_position=player_position,
+            batch_size=batch_size,
+            n_items=self.input_length,
+            correlation_type=correlation_type,
+            risk=self.risk,
+            cache_actions=cache_actions
+        )
+
+    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
+              xlim: list=None, ylim: list=None, labels: list=None,
+              x_label="val", y_label="bid", fmts=['o'],
+              figure_name: str='bid_function', plot_points=100,
+              ):
+        # TODO Nils
+        pass
 
 
 class LLLLGGExperiment(LocalGlobalExperiment):

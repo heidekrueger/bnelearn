@@ -119,17 +119,13 @@ class Bidder(Player):
     def uniform(cls, lower: float, upper: float, strategy: Strategy, **kwargs):
         """Constructs a bidder with uniform valuation prior."""
         dist = torch.distributions.uniform.Uniform(low=lower, high=upper)
-        return cls(dist, strategy, **kwargs)
+        return cls(value_distribution=dist, strategy=strategy, **kwargs)
 
     @classmethod
     def normal(cls, mean: float, stddev: float, strategy: Strategy, **kwargs):
         """Constructs a bidder with Gaussian valuation prior."""
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
-
-    # ### Members ####################
-    # def prepare_iteration(self):
-    #     self.draw_valuations_()
 
     @property
     def valuations(self):
@@ -150,7 +146,8 @@ class Bidder(Player):
             self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
             self._valuations_changed = True
 
-    def get_valuation_grid(self, n_points=None, extended_valuation_grid=False, dtype=torch.float32, step=None):
+    def get_valuation_grid(self, n_points=None, extended_valuation_grid=False,
+                           dtype=torch.float32, step=None, dimension=None):
         """ Returns a grid of approximately `n_points` valuations that are
             equidistant (in each dimension) on the support of self.value_distribution.
             If the support is unbounded, the 0.1th and 99.9th percentiles are used instead.
@@ -164,6 +161,9 @@ class Bidder(Player):
                 n_points: int, minimum number of total points in the grid
                 extended_valuation_grid: bool, switch for bounds of interval
                 step: float, step length. Only used when `n_points` is None
+                dimension: int (otional), provide if `n_items`,
+                    `strategy.input_lenght`, and `strategy.output_lenght`
+                    are not all equal.
             returns:
                 grid_values (dim: [ceil(n_points^(1/n_items)]*n_items)
 
@@ -183,26 +183,29 @@ class Bidder(Player):
             lb = self._grid_lb
             ub = self._grid_ub
 
+        if dimension is None:
+            dimension = self.n_items
+
         if n_points is None:
             batch_size_per_dim = math.ceil((ub - lb) / step + 1)
         else:
             # change batch_size s.t. it'll approx. end up at intended n_points in the end
             adapted_size = n_points
             if self.descending_valuations:
-                adapted_size = n_points * math.factorial(self.n_items)
+                adapted_size = n_points * math.factorial(dimension)
 
-            batch_size_per_dim = math.ceil(adapted_size ** (1/self.n_items))
+            batch_size_per_dim = math.ceil(adapted_size ** (1/dimension))
 
         lin = torch.linspace(lb, ub, batch_size_per_dim, device=self.device, dtype=dtype)
 
         grid_values = torch.stack([
-            x.flatten() for x in torch.meshgrid([lin] * self.n_items)]).t()
+            x.flatten() for x in torch.meshgrid([lin] * dimension)]).t()
 
         if isinstance(self.item_interest_limit, int):
             grid_values[:,self.item_interest_limit:] = 0
         if self.constant_marginal_values:
-            grid_values.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
-                                    grid_values[:,0:1].repeat(1, self.n_items-1))
+            grid_values.index_copy_(1, torch.arange(1, dimension, device=self.device),
+                                    grid_values[:,0:1].repeat(1, dimension-1))
         if self.descending_valuations:
             grid_values = grid_values.sort(dim=1, descending=True)[0].unique(dim=0)
 
@@ -329,15 +332,16 @@ class Bidder(Player):
             return payoff.relu().pow_(self.risk).sub_(payoff.neg_().relu_().pow_(self.risk))
 
     def get_welfare(self, allocations, valuations=None):
-        """
-        For a batch of allocations and payments return the player's welfare.
-        If valuations are not specified, welfare is calculated for `self.valuations`.
+        """For a batch of allocations return the player's welfare.
+
+        If valuations are not specified, welfare is calculated for
+        `self.valuations`.
 
         Can handle multiple batch dimensions, e.g. for valuations a shape of
         (..., batch_size, n_items). These batch dimensions are kept in returned
         welfare.
-        """
 
+        """
         assert allocations.dim() == 2 # batch_size x items
         if valuations is None:
             valuations = self.valuations
@@ -373,49 +377,11 @@ class ReverseBidder(Bidder):
     Bidder that has reversed utility (*(-1)) as valuations correspond to
     their costs and payments to what they get payed.
     """
-    def __init__(self,
-                 value_distribution: Distribution,
-                 strategy,
-                 player_position = None,
-                 batch_size = 1,
-                 n_units = 1,
-                 cuda = True,
-                 cache_actions: bool = False,
-                 descending_valuations = False,
-                 risk: float = 1.0,
-                 item_interest_limit = None,
-                 constant_marginal_values = False,
-                 efficiency_parameter = None,
-                 ):
-
+    def __init__(self, efficiency_parameter=None, **kwargs):
         self.efficiency_parameter = efficiency_parameter
-        super().__init__(
-            value_distribution,
-            strategy,
-            player_position,
-            batch_size,
-            n_units,
-            cuda,
-            cache_actions,
-            descending_valuations,
-            risk,
-            item_interest_limit,
-            constant_marginal_values
-        )
+        super().__init__(**kwargs)
         self._grid_lb_util_loss = 0
         self._grid_ub_util_loss = float(2 * self._grid_ub)
-
-    @classmethod
-    def uniform(cls, lower, upper, strategy, **kwargs):
-        """Constructs a bidder with uniform valuation prior."""
-        dist = torch.distributions.uniform.Uniform(low=lower, high=upper)
-        return cls(dist, strategy, **kwargs)
-
-    @classmethod
-    def normal(cls, mean, stddev, strategy, **kwargs):
-        """Constructs a bidder with Gaussian valuation prior."""
-        dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
-        return cls(dist, strategy, **kwargs)
 
     def get_valuation_grid(self, n_points, extended_valuation_grid=False):
         """ Extends `Bidder.draw_values_grid` with efficiency parameter
@@ -453,3 +419,33 @@ class ReverseBidder(Bidder):
         """For reverse bidders, returns are inverted.
         """
         return - super().get_counterfactual_utility(allocations, payments, counterfactual_valuations)
+
+
+class CombinatorialBidder(Bidder):
+    """Bidder in combinatrorial auctions.
+
+    Note: Currently only set up for full LLG setting.
+
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.input_length = self.strategy.input_length
+        self.output_length = self.strategy.output_length
+
+    def get_valuation_grid(self, **kwargs):
+        return super().get_valuation_grid(
+            dimension=self.output_length,
+            **kwargs
+        )
+
+    def get_welfare(self, allocations, valuations=None):
+        assert allocations.dim() == 2 # batch_size x items
+        if valuations is None:
+            valuations = self.valuations
+
+        item_dimension = valuations.dim() - 1
+        # 0: item A | 1: item B | 2: bundle {A, B}
+        welfare = (valuations * allocations[:, self.player_position].view(-1, 1)) \
+            .sum(dim=item_dimension)
+
+        return welfare

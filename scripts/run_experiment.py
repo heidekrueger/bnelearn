@@ -53,10 +53,19 @@ if __name__ == '__main__':
     #     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_disjunct', n_runs=1, n_epochs=200) \
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .get_config()
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=100) \
-        .set_setting(gamma=0.5) \
-        .set_logging(log_root_dir=log_root_dir, util_loss_batch_size=2 ** 7, util_loss_grid_size=2 ** 6,
-                     util_loss_frequency=1).get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=100) \
+    #     .set_setting(gamma=0.5) \
+    #     .set_logging(log_root_dir=log_root_dir, util_loss_batch_size=2 ** 7, util_loss_grid_size=2 ** 6,
+    #                  util_loss_frequency=1).get_config()
+    experiment_config, experiment_class = ConfigurationManager(
+        experiment_type='llg_full', n_runs=1, n_epochs=1000) \
+        .set_logging(
+            log_root_dir=log_root_dir,
+            util_loss_batch_size=2**10,
+            util_loss_grid_size=2**7,
+            util_loss_frequency=10) \
+        .set_hardware(specific_gpu=7) \
+        .get_config()
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg', n_runs=1, n_epochs=200) \
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .get_config()
