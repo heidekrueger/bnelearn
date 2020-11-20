@@ -151,36 +151,36 @@ expected_allocation_5 = torch.tensor([[
 #                            expected_allocation: torch.tensor, expected_payments: torch.tensor
 # Each tuple specified here will then be tested for all implemented solvers.
 ids, testdata = zip(*[
-    ['vcg - multi-batch', (1,'vcg', bids_1, expected_allocation_1, torch.Tensor(
+    ['vcg - multi-batch', (1,'vcg', bids_1, expected_allocation_1, torch.tensor(
                                           [[0.0, 0.0, 0.0, 0.0, 3.0, 0.0],
                                           [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                                           [1.0, 2.0, 0.0, 0.0, 0.0, 0.0],
                                           [1.0, 2.0, 0.0, 1.0, 0.0, 0.0]]))],
-    ['vcg - single-batch', (1,'vcg', bids_2, expected_allocation_2, torch.Tensor([[0.4, 0.0, 0.3, 0.4, 0.0, 0.0]]))],
-    ['vcg - single-batch', (1,'vcg', bids_4, expected_allocation_4, torch.Tensor([[12.0, 12.0, 0.0, 0.0, 0.0, 0.0]]))],
-    ['vcg - single-batch - zero_bids', (1,'vcg', bids_5, expected_allocation_5, torch.Tensor([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]))],
-    ['fp - multi-batch', (1,'first_price', bids_1, expected_allocation_1, torch.Tensor(
+    ['vcg - single-batch', (1,'vcg', bids_2, expected_allocation_2, torch.tensor([[0.4, 0.0, 0.3, 0.4, 0.0, 0.0]]))],
+    ['vcg - single-batch', (1,'vcg', bids_4, expected_allocation_4, torch.tensor([[12.0, 12.0, 0.0, 0.0, 0.0, 0.0]]))],
+    ['vcg - single-batch - zero_bids', (1,'vcg', bids_5, expected_allocation_5, torch.tensor([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]))],
+    ['fp - multi-batch', (1,'first_price', bids_1, expected_allocation_1, torch.tensor(
                                           [[0.0, 0.0, 1.0, 1.0, 4.0, 0.0],
                                           [4.0, 6.0, 3.0, 5.0, 0.0, 0.0],
                                           [4.0, 5.0, 3.0, 5.0, 0.0, 0.0],
                                           [4.0, 5.0, 3.0, 5.0, 0.0, 0.0]]))],
-    ['fp - single-batch', (1,'first_price', bids_2, expected_allocation_2, torch.Tensor([[0.9, 0.0, 0.9, 0.9, 0.0, 0.0]]))],
-    ['fp - single-batch - zero_bids', (1,'first_price', bids_5, expected_allocation_5, torch.Tensor([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]))],
-    #['fp - neg. bids and nn.SELU()', (1,'first_price', bids_3, expected_allocation_3, torch.Tensor([[0.5, 0.7, 1.5, 0.0, 0.9, 1.1]]))],
+    ['fp - single-batch', (1,'first_price', bids_2, expected_allocation_2, torch.tensor([[0.9, 0.0, 0.9, 0.9, 0.0, 0.0]]))],
+    ['fp - single-batch - zero_bids', (1,'first_price', bids_5, expected_allocation_5, torch.tensor([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]))],
+    #['fp - neg. bids and nn.SELU()', (1,'first_price', bids_3, expected_allocation_3, torch.tensor([[0.5, 0.7, 1.5, 0.0, 0.9, 1.1]]))],
 
-    ['nearest vcg - single-batch', (1,'nearest_vcg', bids_4, expected_allocation_4, torch.Tensor([[16.0, 16.0, 0.0, 0.0, 0.0, 0.0]]))],
-    ['nearest vcg - single-batch - zero_bids', (1,'nearest_vcg', bids_5, expected_allocation_5, torch.Tensor([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]))],
+    ['nearest vcg - single-batch', (1,'nearest_vcg', bids_4, expected_allocation_4, torch.tensor([[16.0, 16.0, 0.0, 0.0, 0.0, 0.0]]))],
+    ['nearest vcg - single-batch - zero_bids', (1,'nearest_vcg', bids_5, expected_allocation_5, torch.tensor([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]))],
     ['nearest vcg - multi-batch', (1,'nearest_vcg', bids_1, expected_allocation_1, torch.tensor([
                                                                                     [0.0, 0.0, 0.5, 0.5, 3.5, 0.0],
                                                                                     [2.0, 2.0, 1.5, 1.5, 0.0, 0.0],
                                                                                     [2.5, 3.5, 1.5, 1.5, 0.0, 0.0],
                                                                                     [2.5, 3.5, 1.0, 2.0, 0.0, 0.0]], dtype = torch.float))],
-    ['nearest vcg - single-batch - multi_core', (2,'nearest_vcg', bids_4, expected_allocation_4, torch.Tensor([[16.0, 16.0, 0.0, 0.0, 0.0, 0.0]]))],
+    ['nearest vcg - single-batch - multi_core', (2,'nearest_vcg', bids_4, expected_allocation_4, torch.tensor([[16.0, 16.0, 0.0, 0.0, 0.0, 0.0]]))],
     ['nearest vcg - multi-batch - multi_core', (2,'nearest_vcg', bids_1, expected_allocation_1, torch.tensor([
                                                                                     [0.0, 0.0, 0.5, 0.5, 3.5, 0.0],
                                                                                     [2.0, 2.0, 1.5, 1.5, 0.0, 0.0],
                                                                                     [2.5, 3.5, 1.5, 1.5, 0.0, 0.0],
-                                                                                    [2.5, 3.5, 1.0, 2.0, 0.0, 0.0]], dtype = torch.float))]                                                                                
+                                                                                    [2.5, 3.5, 1.0, 2.0, 0.0, 0.0]], dtype = torch.float))]
 ])
 
 def run_LLLLGG_test(parallel, rule, device, bids, expected_allocation, expected_payments, solver):
@@ -205,11 +205,13 @@ def test_LLLLGG(parallel, rule,bids,expected_allocation,expected_payments):
     Testing batch_size > 1, VCG 0 prices, FP, global/local winning
     """
     run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'gurobi')
-    run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'cvxpy')
+    #run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'cvxpy')
     run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'qpth')
+    run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'mpc')
 
     run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'gurobi')
-    run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'cvxpy')
+    #run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'cvxpy')
     run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'qpth')
-    
+    run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'mpc')
+
 

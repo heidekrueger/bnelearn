@@ -13,6 +13,7 @@ import os
 from abc import ABC
 from functools import partial
 from typing import Iterable, List
+import warnings
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
@@ -20,24 +21,32 @@ import torch
 from bnelearn.mechanism import (LLGAuction, LLLLGGAuction, FirstPriceSealedBidAuction, VickreyAuction)
 from bnelearn.bidder import Bidder, CombinatorialItemBidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.experiment import Experiment, GPUController
-from bnelearn.experiment.configurations import ExperimentConfiguration, LearningConfiguration, LoggingConfiguration
+from bnelearn.experiment.configurations import ExperimentConfig
+from bnelearn.experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
+from bnelearn.correlation_device import (
+    IndependentValuationDevice,
+    BernoulliWeightsCorrelationDevice,
+    ConstantWeightsCorrelationDevice
+)
+
+import bnelearn.util.logging as logging_utils
 
 class LocalGlobalExperiment(Experiment, ABC):
     """
     This class represents Local Global experiments in general as considered by Bosshard et al. (2018).
     It serves only to provide common logic and parameters for LLG and LLLLGG.
     """
-    def __init__(self, n_players, n_local, n_items, experiment_config, learning_config,
-                 logging_config, gpu_config, known_bne):
-        self.n_players = n_players
-        self.n_local = n_local
-        self.n_items = n_items
 
-        assert experiment_config.u_lo is not None, """Missing prior information!"""
-        assert experiment_config.u_hi is not None, """Missing prior information!"""
-        u_lo = experiment_config.u_lo
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        self.n_players = self.config.setting.n_players
+        self.n_local = self.config.setting.n_local
+        self.n_items = self.config.setting.n_items
+
+        assert self.config.setting.u_lo is not None, """Missing prior information!"""
+        assert self.config.setting.u_hi is not None, """Missing prior information!"""
+        u_lo = self.config.setting.u_lo
         # Frontend could either provide single number u_lo that is shared or a list for each player.
         if isinstance(u_lo, Iterable):
             assert len(u_lo) == self.n_players
@@ -46,24 +55,27 @@ class LocalGlobalExperiment(Experiment, ABC):
             u_lo = [float(u_lo)] * self.n_players
         self.u_lo = u_lo
 
-        u_hi = experiment_config.u_hi
+        u_hi = self.config.setting.u_hi
         assert isinstance(u_hi, Iterable)
         assert len(u_hi) == self.n_players
-        assert u_hi[1:n_local] == u_hi[:n_local-1], "local bidders should be identical"
-        assert u_hi[0] < u_hi[n_local], "local bidders must be weaker than global bidder"
+        assert u_hi[1:self.config.setting.n_local] == \
+               u_hi[:self.config.setting.n_local - 1], "local bidders should be identical"
+        assert u_hi[0] < \
+               u_hi[self.config.setting.n_local], "local bidders must be weaker than global bidder"
         self.u_hi = [float(h) for h in u_hi]
 
-        self.positive_output_point = torch.tensor([min(self.u_hi)]*self.n_items)
+        self.positive_output_point = torch.tensor([min(self.u_hi)] * self.n_items)
 
-        self.model_sharing = experiment_config.model_sharing
+        self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
             self.n_models = 2
-            self._bidder2model: List[int] = [0] * n_local + [1] * (self.n_players - n_local)
+            self._bidder2model: List[int] = [0] * self.config.setting.n_local \
+                                            + [1] * (self.n_players - self.config.setting.n_local)
         else:
             self.n_models = self.n_players
             self._bidder2model: List[int] = list(range(self.n_players))
 
-        super().__init__(experiment_config,  learning_config, logging_config, gpu_config, known_bne)
+        super().__init__(config=config)
 
         self.plot_xmin = min(u_lo)
         self.plot_xmax = max(u_hi)
@@ -77,9 +89,14 @@ class LocalGlobalExperiment(Experiment, ABC):
         else:
             return super()._get_model_names()
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0):
-        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy, player_position=player_position,
-                              batch_size=batch_size, n_items = self.n_items)
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+        correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
+        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
+                              player_position=player_position, batch_size=batch_size,
+                              n_items = self.n_items, correlation_type=correlation_type,
+                              cache_actions=cache_actions)
+
 
 class LLGExperiment(LocalGlobalExperiment):
     """
@@ -87,72 +104,155 @@ class LLGExperiment(LocalGlobalExperiment):
     Local bidder 1 bids only on the first item, the second only on the second and global only on both.
     Ausubel and Baranov (2018) provide closed form solutions for the 3 core selecting rules.
     """
-    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
-                 logging_config: LoggingConfiguration, gpu_config: GPUController):
 
-        assert experiment_config.n_players == 3, "Incorrect number of players specified."
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        assert self.config.setting.n_players == 3, "Incorrect number of players specified."
 
-        self.gamma = experiment_config.gamma
-        assert self.gamma == 0, "Gamma > 0 implemented yet."
+        self.gamma = self.correlation = config.setting.gamma
+        if config.setting.correlation_types == 'Bernoulli_weights':
+            self.CorrelationDevice = BernoulliWeightsCorrelationDevice
+        elif config.setting.correlation_types == 'constant_weights':
+            self.CorrelationDevice = ConstantWeightsCorrelationDevice
+        elif config.setting.correlation_types == 'independent':
+            pass
+        else:
+            raise NotImplementedError('Correlation not implemented.')
 
-        # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known! (i.e. uniformity, bounds, etc)
-        known_bne = experiment_config.payment_rule in \
-            ['vcg', 'nearest_bid','nearest_zero', 'proxy', 'nearest_vcg']
+        if self.gamma > 0.0:
+            self.correlation_groups = [[0, 1], [2]]
+            self.correlation_coefficients = [self.gamma, 0.0]
+            self.correlation_devices = [
+                self.CorrelationDevice(
+                    common_component_dist=torch.distributions.Uniform(config.setting.u_lo[0],
+                                                                      config.setting.u_hi[0]),
+                    batch_size=config.learning.batch_size,
+                    n_items=1,
+                    correlation=self.gamma),
+                IndependentValuationDevice()]
+
+
         self.input_length = 1
-        super().__init__(3,2, 1, experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        #self.config.setting.n_players = 3
+        self.config.setting.n_local = 2
+        self.config.setting.n_items = 1
+        super().__init__(config=config)
 
     def _setup_mechanism(self):
-        self.mechanism = LLGAuction(rule = self.payment_rule)
+        self.mechanism = LLGAuction(rule=self.payment_rule)
 
     def _optimal_bid(self, valuation, player_position):
+        """Core selecting and vcg equilibria for the Bernoulli weigths model in Ausubel & Baranov (2019)
+
+           Note: for gamma=0 or gamma=1, these are identical to the constant weights model.
+        """
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.tensor(valuation)
 
-        # all core-selecting rules are strategy proof for global player:
+        ### Global bidder: all core-selecting rules are strategy proof for global player
         if self.payment_rule in ['vcg', 'proxy', 'nearest_zero', 'nearest_bid',
-                                   'nearest_vcg'] and player_position == 2:
+                                 'nearest_vcg'] and player_position == 2:
             return valuation
-        # local bidders:
-        if self.payment_rule == 'vcg':
-            return valuation
-        if self.payment_rule in ['proxy', 'nearest_zero']:
-            bid_if_positive = 1 + torch.log(valuation * (1.0 - self.gamma) + self.gamma) / (1.0 - self.gamma)
-            return torch.max(torch.zeros_like(valuation), bid_if_positive)
-        if self.payment_rule == 'nearest_bid':
-            return (np.log(2) - torch.log(2.0 - (1. - self.gamma) * valuation)) / (1. - self.gamma)
-        if self.payment_rule == 'nearest_vcg':
-            bid_if_positive = 2. / (2. + self.gamma) * (
-                        valuation - (3. - np.sqrt(9 - (1. - self.gamma) ** 2)) / (1. - self.gamma))
-            return torch.max(torch.zeros_like(valuation), bid_if_positive)
-        raise ValueError('optimal bid not implemented for other rules')
+
+        ### Local bidders:
+        if self.config.setting.correlation_types in ['Bernoulli_weights', 'independent'] or \
+            (self.config.setting.correlation_types == 'constant_weights' and self.gamma in [0, 1]):
+            ## perfect correlation
+            if self.gamma == 1.0: # limit case, others not well defined
+                sigma = 1.0 # TODO: implement for other valuation profiles!
+                bid = valuation
+                if self.payment_rule == 'nearest_vcg':
+                    bid.mul_(sigma / (1 + sigma - 2**(-sigma)))
+                elif self.payment_rule == 'nearest_bid':
+                    bid.mul_(sigma / (1 + sigma))
+                # truthful for vcg and proxy/nearest-zero
+                return bid
+            ## no or imperfect correlation
+            if self.payment_rule == 'vcg':
+                return valuation
+            if self.payment_rule in ['proxy', 'nearest_zero']:
+                bid_if_positive = 1 + torch.log(valuation * (1.0 - self.gamma) + self.gamma) / (1.0 - self.gamma)
+                return torch.max(torch.zeros_like(valuation), bid_if_positive)
+            if self.payment_rule == 'nearest_bid':
+                return (np.log(2) - torch.log(2.0 - (1. - self.gamma) * valuation)) / (1. - self.gamma)
+            if self.payment_rule == 'nearest_vcg':
+                bid_if_positive = 2. / (2. + self.gamma) * (
+                    valuation - (3. - np.sqrt(9 - (1. - self.gamma) ** 2)) / (1. - self.gamma))
+                return torch.max(torch.zeros_like(valuation), bid_if_positive)
+            raise ValueError('optimal bid not implemented for this payment rule')
+        else:
+            warnings.warn('optimal bid not implemented for this correlation type')
+            self.known_bne = False
+
+    def _check_and_set_known_bne(self):
+        # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
+        #  (i.e. uniformity, bounds, etc)
+        if self.config.setting.payment_rule in \
+            ['vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
+            if self.config.setting.correlation_types in ['Bernoulli_weights', 'independent'] or \
+                (self.config.setting.correlation_types == 'constant_weights' and self.gamma in [0, 1]):
+                return True
+            else:
+                self.logging.log_metrics['l2'] = False
+                self.logging.log_metrics['opt'] = False
+                return False
+        return super()._check_and_set_known_bne()
 
     def _setup_eval_environment(self):
-        bne_strategies = [
-            ClosureStrategy(partial(self._optimal_bid, player_position=i)) # pylint: disable=no-member
-            for i in range(self.n_players)
-        ]
 
+        assert self.known_bne
+        assert hasattr(self, '_optimal_bid')
+
+        bne_strategies = [
+            ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
+            for i in range(self.n_players)]
+
+        bne_env_corr_devices = None
+        if self.correlation_groups:
+            bne_env_corr_devices = [
+                self.CorrelationDevice(
+                    common_component_dist=torch.distributions.Uniform(self.config.setting.u_lo[0],
+                                                                      self.config.setting.u_hi[0]),
+                    batch_size=self.config.logging.eval_batch_size,
+                    n_items=1,
+                    correlation=self.gamma),
+                IndependentValuationDevice()]
+
+        self.known_bne = True
         bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
-            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i, batch_size=self.logging_config.eval_batch_size)
+            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
+                                          batch_size=self.config.logging.eval_batch_size)
                     for i in range(self.n_players)],
             n_players=self.n_players,
-            batch_size=self.logging_config.eval_batch_size,
-            strategy_to_player_closure=self._strat_to_bidder
+            batch_size=self.config.logging.eval_batch_size,
+            strategy_to_player_closure=self._strat_to_bidder,
+            correlation_groups=self.correlation_groups,
+            correlation_devices=bne_env_corr_devices
         )
 
         self.bne_env = bne_env
-
-        bne_utilities_sampled = torch.tensor(
+        self.bne_utilities_new_sample = torch.tensor(
             [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
 
-        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*bne_utilities_sampled))
+        bne_utilities_database = logging_utils.access_bne_utility_database(self, self.bne_utilities_new_sample)
+        if bne_utilities_database:
+            self.bne_utilities = bne_utilities_database
+        else:
+            self.bne_utilities = self.bne_utilities_new_sample
+
+        print(f'Setting up BNE env with batch size 2**{np.log2(self.config.logging.eval_batch_size)}.')
+        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*self.bne_utilities_new_sample))
         print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
-        self.bne_utilities = bne_utilities_sampled
 
     def _get_logdir_hierarchy(self):
         name = ['LLG', self.payment_rule]
+        if self.gamma > 0:
+            name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
+        else:
+            name += ['independent']
         return os.path.join(*name)
+
 
 class LLLLGGExperiment(LocalGlobalExperiment):
     """
@@ -168,63 +268,64 @@ class LLLLGGExperiment(LocalGlobalExperiment):
     TODO:
         - Implement eval_env for VCG
     """
-    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
-                 logging_config: LoggingConfiguration, gpu_config: GPUController):
 
-        assert experiment_config.n_players == 6, "not right number of players for setting"
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        assert self.config.setting.n_players == 6, "not right number of players for setting"
         self.input_length = 2
 
-        known_bne = False
-        super().__init__(6, 4, 2, experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        self.config.running.n_players = 6
+        self.config.setting.n_local = 4
+        self.config.setting.n_items = 2
+        super().__init__(config=config)
 
     def _setup_mechanism(self):
-        self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver=self.experiment_config.core_solver, 
-                                       parallel=self.experiment_config.parallel, cuda=self.gpu_config.cuda)
+        self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver=self.setting.core_solver,
+                                       parallel=self.hardware.max_cpu_threads, cuda=self.hardware.cuda)
 
     def _get_logdir_hierarchy(self):
         name = ['LLLLGG', self.payment_rule, str(self.n_players) + 'p']
         return os.path.join(*name)
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
-              xlim: list=None, ylim: list=None, labels: list=None,
+              xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts=['o'],
-              figure_name: str='bid_function', plot_points=100):
-
+              figure_name: str = 'bid_function', plot_points=100):
         super()._plot(plot_data, writer, epoch, xlim, ylim, labels,
                       x_label, y_label, fmts, figure_name, plot_points)
         super()._plot_3d(plot_data, writer, epoch, figure_name)
+
 
 class CAItemBiddingExperiment(Experiment):
     """
     A combinatorial Experiment where items are sold simultaneously but bidder might have
     complex preferences.
     """
-    def __init__(self, experiment_config: ExperimentConfiguration, learning_config: LearningConfiguration,
-                 logging_config: LoggingConfiguration, gpu_config: GPUController):
+    def __init__(self, config: ExperimentConfig):
 
-        self.n_items = experiment_config.n_units
+        self.n_items = config.setting.n_items
         self.n_bundles = (2 ** self.n_items) - 1
-        self.n_players = experiment_config.n_players
-        self.payment_rule = experiment_config.payment_rule
+        self.n_players = config.setting.n_players
+        self.payment_rule = config.setting.payment_rule
 
-        self.exp_type = experiment_config.exp_type
-        self.exp_params = experiment_config.exp_params
+        self.exp_type = config.setting.exp_type
+        self.exp_params = config.setting.exp_params
 
-        self.u_lo = experiment_config.u_lo
-        self.u_hi = experiment_config.u_hi
+        self.u_lo = config.setting.u_lo
+        self.u_hi = config.setting.u_hi
 
-        if 'n_collections' in self.exp_params.keys():
+        if isinstance(self.exp_params, dict) and 'n_collections' in self.exp_params.keys():
             self.n_collections = self.exp_params['n_collections']
         else:
             self.n_collections = None
 
-        self.model_sharing = experiment_config.model_sharing
-        if 'one_player_w_unit_demand' in self.exp_params.keys():
+        self.model_sharing = config.learning.model_sharing
+        if isinstance(self.exp_params, dict) and 'one_player_w_unit_demand' in self.exp_params.keys():
             self.unit_demand = self.exp_params['one_player_w_unit_demand']
             if self.model_sharing and self.unit_demand:
                 print('No model sharing possible!')
                 self.model_sharing = False
-                experiment_config.model_sharing = False
+                config.learning.model_sharing = False
         else:
             self.unit_demand = False
 
@@ -238,25 +339,15 @@ class CAItemBiddingExperiment(Experiment):
         if not hasattr(self, 'positive_output_point'):
             self.positive_output_point = torch.tensor([[self.u_hi[0]] * self.n_bundles], dtype=torch.float)
 
-        known_bne = False
-
-        if experiment_config.pretrain_transform is not None:
-            self.pretrain_transform = experiment_config.pretrain_transform
-        else:
-            self.pretrain_transform = self.default_pretrain_transform
+        self.pretrain_transform = self.default_pretrain_transform
 
         self.input_length = self.n_bundles
 
         self.plot_xmin = self.plot_ymin = min(self.u_lo)
         self.plot_xmax = self.plot_ymax = max(self.u_hi) * self.n_items
 
-        super().__init__(experiment_config, learning_config, logging_config, gpu_config, known_bne)
+        super().__init__(config=config)
         self.using_bid_language = True
-
-        print('\n=== Hyperparameters ===')
-        for k in learning_config.learner_hyperparams.keys():
-            print('{}: {}'.format(k, learning_config.learner_hyperparams[k]))
-        print('=======================\n')
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         """
@@ -282,7 +373,7 @@ class CAItemBiddingExperiment(Experiment):
         else:
             raise ValueError('payment rule unknown')
 
-        self.mechanism = self.mechanism_type(cuda=self.gpu_config.cuda)
+        self.mechanism = self.mechanism_type(cuda=self.hardware.cuda)
 
     def _setup_eval_environment(self):
         """Setup the BNE envierment for later evaluation of the learned strategies"""

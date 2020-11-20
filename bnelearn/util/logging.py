@@ -1,19 +1,27 @@
 """This module contains utilities for logging of experiments"""
-
 import os
 import pickle
+import subprocess
 import time
-import warnings
 from typing import List
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
-import torch
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator, STORE_EVERYTHING_SIZE_GUIDANCE
+from torch.utils.tensorboard.summary import hparams
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
+import pkg_resources
+
+from bnelearn.bidder import Bidder
+from bnelearn import util
+from bnelearn.experiment.configurations import *
+
 
 _full_log_file_name = 'full_results'
 _aggregate_log_file_name = 'aggregate_log'
+_configurations_f_name = 'experiment_configurations.json'
+_git_commit_hash_file_name = 'git_hash'
 
 
 # based on https://stackoverflow.com/a/57411105/4755970
@@ -37,8 +45,9 @@ def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detail
                                          for file in os.listdir(os.path.join(experiment_dir, run, x.name)))]
         subruns.append('.')  # also read global logs
         for subrun in subruns:
+            ea = EventAccumulator(os.path.join(experiment_dir, run, subrun),
+                                  size_guidance=STORE_EVERYTHING_SIZE_GUIDANCE).Reload()
 
-            ea = EventAccumulator(os.path.join(experiment_dir, run, subrun)).Reload()
             tags = ea.Tags()['scalars']
 
             for tag in tags:
@@ -53,6 +62,8 @@ def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detail
                 last_epoch_tb_events['run'].append(run)
                 last_epoch_tb_events['subrun'].append(subrun)
                 last_epoch_tb_events['tag'].append(tag)
+                # a last event is always guaranteed to exist, we can ignore pylint's warning
+                # pylint: disable=undefined-loop-variable
                 last_epoch_tb_events['value'].append(event.value)
                 last_epoch_tb_events['wall_time'].append(event.wall_time)
                 last_epoch_tb_events['epoch'].append(event.step)
@@ -106,6 +117,41 @@ def print_aggregate_tensorboard_logs(experiment_dir):
     print(df.to_markdown())
 
 
+def log_git_commit_hash(experiment_dir):
+    """Saves the hash of the current git commit"""
+
+    # Will leave it here as a comment in case we'll ever need to log the full dependency tree or the environment.
+    # os.system('pipdeptree --json-tree > dependencies.json')
+    # os.system('conda env export > environment.yml')
+
+    commit_hash = str(subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip())[2:-1]
+    with open(os.path.join(experiment_dir, f'{_git_commit_hash_file_name}.txt'), "w") as text_file:
+        text_file.write(commit_hash)
+
+
+def save_experiment_config(experiment_log_dir, experiment_configuration: ExperimentConfig):
+    """
+    Serializes ExperimentConfiguration into a readable JSON file
+
+    :param experiment_log_dir: full path except for the file name
+    :param experiment_configuration: experiment configuration as given by ConfigurationManager
+    """
+    f_name = os.path.join(experiment_log_dir, _configurations_f_name)
+
+    temp_cp = experiment_configuration.setting.common_prior
+    temp_ha = experiment_configuration.learning.hidden_activations
+
+    experiment_configuration.setting.common_prior = str(experiment_configuration.setting.common_prior)
+    experiment_configuration.learning.hidden_activations = str(
+        experiment_configuration.learning.hidden_activations)
+    with open(f_name, 'w+') as outfile:
+        json.dump(experiment_configuration, outfile, cls=EnhancedJSONEncoder, indent=4)
+
+    # Doesn't look so shiny, but probably the quickest way to prevent compromising the object
+    experiment_configuration.setting.common_prior = temp_cp
+    experiment_configuration.learning.hidden_activations = temp_ha
+
+
 def process_figure(fig, epoch=None, figure_name='plot', tb_group='eval',
                    tb_writer=None, display=False,
                    output_dir=None, save_png=False, save_svg=False):
@@ -124,13 +170,57 @@ def process_figure(fig, epoch=None, figure_name='plot', tb_group='eval',
         plt.show()
 
 
+def export_stepwise_linear_bid(experiment_dir, bidders: List[Bidder], step=1e-2):
+    """
+    expoerting grid valuations and corresponding bids for usage of verifier.
+
+    Args
+    ----
+        experiment_dir: str, dir where export is going to be saved
+        bidders: List[Bidder], to be evaluated here
+        step: float, step length
+
+    Returns
+    -------
+        to disk: List[csv]
+    """
+    for bidder in bidders:
+        val = bidder.get_valuation_grid(n_points=None, step=step,
+                                        dtype=torch.float64, extended_valuation_grid=True)
+        bid = bidder.strategy.forward(val.to(torch.float32)).to(torch.float64)
+        cat = torch.cat((val, bid), axis=1)
+        file_dir = experiment_dir + '/bidder_' + str(bidder.player_position) + '_export.csv'
+        np.savetxt(file_dir, cat.detach().cpu().numpy(), fmt='%1.16f', delimiter=",")
+
+
 class CustomSummaryWriter(SummaryWriter):
     """
-    Extends SummaryWriter with a method to add multiple scalars in the way
-    that we intend. The original SummaryWriter can either add a single scalar at a time
-    or multiple scalars, but in the latter case, multiple runs are created without
-    the option to control these.
+    Extends SummaryWriter with two methods:
+
+    * a method to add multiple scalars in the way that we intend. The original
+        SummaryWriter can either add a single scalar at a time or multiple scalars,
+        but in the latter case, multiple runs are created without
+        the option to control these.
+    * overwriting the the add_hparams method to write hparams without creating
+        another tensorboard run file
     """
+
+    def add_hparams(self, hparam_dict=None, metric_dict=None):
+        """
+        Overides the parent method to prevent the creation of unwanted additional subruns while logging hyperparams,
+        as it is done by the original PyTorch method
+        """
+        torch._C._log_api_usage_once("tensorboard.logging.add_hparams")
+        if type(hparam_dict) is not dict or type(metric_dict) is not dict:
+            raise TypeError('hparam_dict and metric_dict should be dictionary.')
+        exp, ssi, sei = hparams(hparam_dict, metric_dict)
+
+        self.file_writer.add_summary(exp)
+        self.file_writer.add_summary(ssi)
+        self.file_writer.add_summary(sei)
+
+        for k, v in metric_dict.items():
+            self.add_scalar(k, v)
 
     def add_metrics_dict(self, metrics_dict: dict, run_suffices: List[str],
                          global_step=None, walltime=None,
@@ -180,3 +270,57 @@ class CustomSummaryWriter(SummaryWriter):
                     fw.add_summary(scalar(tag, scalar_value), global_step, walltime)
             else:
                 raise ValueError('Got list of invalid length.')
+
+
+def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
+    """Write the sampled BNE utilities to disk."""
+
+    file_path = pkg_resources.resource_filename(__name__, 'bne_database.csv')
+    bne_database = pd.read_csv(file_path)
+
+    bne_env = exp.bne_env if not isinstance(exp.bne_env, list) \
+        else exp.bne_env[0]
+
+    # see if we already have a sample
+    setting_database = bne_database[
+        (bne_database.experiment_class == str(type(exp))) &
+        (bne_database.payment_rule == exp.payment_rule) &
+        (bne_database.correlation == exp.correlation)
+    ]
+
+    # 1. no entry found: make new db entry
+    if len(setting_database) == 0:
+        for player_position in [agent.player_position for agent in exp.bne_env.agents]:
+            bne_database = bne_database.append(
+                {
+                    'experiment_class': str(type(exp)),
+                    'payment_rule':     exp.payment_rule,
+                    'correlation':      exp.correlation,
+                    'player_position':  player_position,
+                    'batch_size':       bne_env.batch_size,
+                    'bne_utilities':    bne_utilities_sampled[player_position].item()
+                },
+                ignore_index=True
+            )
+
+    # 2. found entry: 2.1 smaller batch size
+    elif setting_database['batch_size'].tolist()[0] > bne_env.batch_size:
+        print('Reading high precision utilities in BNE from database.')
+        return setting_database.bne_utilities.tolist()
+
+    # 2.2 overwrite database entry
+    else:
+        for player_position in [agent.player_position for agent in exp.bne_env.agents]:
+            bne_database.loc[
+                (bne_database.experiment_class == str(type(exp))) &
+                (bne_database.payment_rule == exp.payment_rule) &
+                (bne_database.correlation == exp.correlation) &
+                (bne_database.player_position == player_position)
+            ] = [[str(type(exp)), exp.payment_rule, exp.correlation, player_position,
+                  bne_env.batch_size, bne_utilities_sampled[player_position].item()]]
+
+    print('Writing high precision utilities in BNE to database.')
+    bne_database.to_csv(file_path, index=False)
+    return None
+
+

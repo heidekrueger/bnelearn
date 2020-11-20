@@ -95,35 +95,35 @@ def test_FictitiousPlayStrategy_BoS():
     # Init para for testing
     '''
     initial_beliefs = [None] * 2
-    #initial_beliefs[0] = torch.Tensor([[0.8308,0.5793],[0.4064,0.4113]]).to(device)    <- converges
-    #initial_beliefs[1] = torch.Tensor([[0.2753,0.4043],[0.1596,0.6916]]).to(device)    <- converges
+    #initial_beliefs[0] = torch.tensor([[0.8308,0.5793],[0.4064,0.4113]], device=device)    <- converges
+    #initial_beliefs[1] = torch.tensor([[0.2753,0.4043],[0.1596,0.6916]], device=device)    <- converges
 
-    #initial_beliefs[0] = torch.Tensor([[0.5892,0.4108],[0.4970,0.5030]]).to(device)    #<- converges
-    #initial_beliefs[1] = torch.Tensor([[0.4051,0.5949],[0.1875,0.8125]]).to(device)    #<- converges
+    #initial_beliefs[0] = torch.tensor([[0.5892,0.4108],[0.4970,0.5030]], device=device)    #<- converges
+    #initial_beliefs[1] = torch.tensor([[0.4051,0.5949],[0.1875,0.8125]], device=device)    #<- converges
 
-    #initial_beliefs[0] = torch.Tensor([[0.59,0.41],[0.49,0.51]]).to(device)    #<- converges
-    #initial_beliefs[1] = torch.Tensor([[0.41,0.59],[0.19,0.81]]).to(device)    #<- converges
+    #initial_beliefs[0] = torch.tensor([[0.59,0.41],[0.49,0.51]], device=device)    #<- converges
+    #initial_beliefs[1] = torch.tensor([[0.41,0.59],[0.19,0.81]], device=device)    #<- converges
 
-    #initial_beliefs[0] = torch.Tensor([[0.59,0.41],[0.49,0.51]]).to(device)    #<- converges
-    #initial_beliefs[1] = torch.Tensor([[0.59,0.41],[0.49,0.51]]).to(device)    #<- converges
+    #initial_beliefs[0] = torch.tensor([[0.59,0.41],[0.49,0.51]], device=device)    #<- converges
+    #initial_beliefs[1] = torch.tensor([[0.59,0.41],[0.49,0.51]], device=device)    #<- converges
 
-    #initial_beliefs[0] = torch.Tensor([[0.59,0.41],[0.41,0.59]]).to(device)    #<- converges
-    #initial_beliefs[1] = torch.Tensor([[0.59,0.41],[0.41,0.59]]).to(device)    #<- converges
+    #initial_beliefs[0] = torch.tensor([[0.59,0.41],[0.41,0.59]], device=device)    #<- converges
+    #initial_beliefs[1] = torch.tensor([[0.59,0.41],[0.41,0.59]], device=device)    #<- converges
 
-    #initial_beliefs[0] = torch.Tensor([[59.5,40.5],[40.5,59.5]]).to(device)    #<- converges
-    #initial_beliefs[1] = torch.Tensor([[59.5,40.5],[40.5,59.5]]).to(device)    #<- converges
+    #initial_beliefs[0] = torch.tensor([[59.5,40.5],[40.5,59.5]], device=device)    #<- converges
+    #initial_beliefs[1] = torch.tensor([[59.5,40.5],[40.5,59.5]], device=device)    #<- converges
 
-    #initial_beliefs[0] = torch.Tensor([[59,41],[49,51]]).to(device)    #<- doesn't converge
-    #initial_beliefs[1] = torch.Tensor([[41,59],[19,81]]).to(device)    #<- doens't converge
+    #initial_beliefs[0] = torch.tensor([[59,41],[49,51]], device=device)    #<- doesn't converge
+    #initial_beliefs[1] = torch.tensor([[41,59],[19,81]], device=device)    #<- doens't converge
 
-    #initial_beliefs[0] = torch.Tensor([[0.6,0.4],[0.5,0.5]]).to(device)    #<- doesn't converge
-    #initial_beliefs[1] = torch.Tensor([[0.4,0.6],[0.1875,0.8125]]).to(device)    #<- doesn't converge
+    #initial_beliefs[0] = torch.tensor([[0.6,0.4],[0.5,0.5]], device=device)    #<- doesn't converge
+    #initial_beliefs[1] = torch.tensor([[0.4,0.6],[0.1875,0.8125]], device=device)    #<- doesn't converge
 
-    #initial_beliefs[0] = torch.Tensor([[0.6,0.4],[0.5,0.5]]).to(device)    #<- doesn't converge
-    #initial_beliefs[1] = torch.Tensor([[0.4,0.6],[0.2,0.8]]).to(device)    #<- doesn't converge
+    #initial_beliefs[0] = torch.tensor([[0.6,0.4],[0.5,0.5]], device=device)    #<- doesn't converge
+    #initial_beliefs[1] = torch.tensor([[0.4,0.6],[0.2,0.8]], device=device)    #<- doesn't converge
 
-    initial_beliefs = torch.Tensor([[60,41],[41,60]]).to(device)   #<- doesn't converge
-    #initial_beliefs[1] = torch.Tensor([[60,41],[41,60]]).to(device)   #<- doesn't converge
+    #initial_beliefs = torch.tensor([[60,41],[41,60]], device=device)   #<- doesn't converge
+    #initial_beliefs[1] = torch.tensor([[60,41],[41,60]], device=device)   #<- doesn't converge
 
     # -> It converges if the init is very close to MNE play for at least one player but not exactly!
     # -> My hypotheses: it has to be close to cycle. If it is exact,
@@ -145,7 +145,7 @@ def test_FictitiousPlaySmoothStrategy_PD():
     strats, players = train(epochs, players, strats)
     # Testing convergence
     for i,playr in enumerate(players):
-        assert (math.isclose(playr.get_action(),1, abs_tol=0.1))
+        assert math.isclose(playr.get_action(),1, abs_tol=0.1)
 
 def test_FictitiousPlaySmoothStrategy_MP():
     strats, players, env = init_setup(MatchingPennies(), FictitiousPlaySmoothStrategy, None)
@@ -172,7 +172,7 @@ def test_FictitiousPlaySmoothStrategy_BoS():
     tau_update =  10
     tau = 0.99
     tau_minimum = 0.5
-    initial_beliefs = torch.Tensor([[60,40],[40,60]]).to(device)
+    initial_beliefs = torch.tensor([[60,40],[40,60]], dtype=torch.float, device=device)
 
 
     strats, players, env = init_setup(BattleOfTheSexes(), FictitiousPlaySmoothStrategy, initial_beliefs)
@@ -224,7 +224,7 @@ def test_FictitiousPlayMixedStrategy_BoS():
     tau_update =  10
     tau = 0.99
     tau_minimum = 0.5
-    initial_beliefs = torch.Tensor([[60,40],[40,60]]).to(device)
+    initial_beliefs = torch.tensor([[60,40],[40,60]], dtype=torch.float, device=device)
 
     strats, players, env = init_setup(BattleOfTheSexes(), FictitiousPlayMixedStrategy, initial_beliefs)
     strats, players = train(5000, players, strats, tau_update = tau_update, tau = tau, tau_minimum = tau_minimum)

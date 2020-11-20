@@ -1,25 +1,17 @@
 import os
 import sys
+import numpy as np
 
+import torch
+from torch.utils.tensorboard import SummaryWriter
+
+# put bnelearn imports after this.
+# pylint: disable=wrong-import-position
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
-import fire
-import torch
-
-from bnelearn.experiment.configurations import (ExperimentConfiguration, LearningConfiguration,
-                                                LoggingConfiguration, RunningConfiguration)
-from bnelearn.experiment.gpu_controller import GPUController
-from bnelearn.experiment import (GaussianSymmetricPriorSingleItemExperiment,
-                                 TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
-                                 UniformSymmetricPriorSingleItemExperiment,
-                                 LLGExperiment, LLLLGGExperiment, MultiUnitExperiment, SplitAwardExperiment)
-from bnelearn.experiment.presets import (llg, llllgg, multiunit,
-                                         single_item_asymmetric_uniform_disjunct,
-                                         single_item_asymmetric_uniform_overlapping,
-                                         single_item_gaussian_symmetric, itembidding,
-                                         single_item_uniform_symmetric, splitaward)
-from bnelearn.util.convergence_check import get_distance_of_learned_strategies
+from bnelearn.util import logging
+from bnelearn.experiment.configuration_manager import ConfigurationManager  # pylint: disable=import-error
 
 if __name__ == '__main__':
     '''
@@ -33,76 +25,95 @@ if __name__ == '__main__':
         single_item_uniform_symmetric(1,20,[2,3],'first_price')
 
     '''
-    enable_logging = True
-
-    # General run configs
-    n_runs = 1
-    n_epochs = 20000
-    n_players = []
-
-
     # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
     #     fire.Fire()
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     single_item_uniform_symmetric(2, 100, [2], 'first_price', model_sharing=True, logging=enable_logging)
-    # logging_configuration.save_tb_events_to_binary_detailed = True
-    # logging_configuration.save_tb_events_to_csv_detailed = True
 
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     single_item_gaussian_symmetric(2, 100, [2], 'second_price', logging=enable_logging, specific_gpu=0)
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class =\
-    #     llg(2,100,'nearest_zero',specific_gpu=1, logging=enable_logging)
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     llllgg(n_runs,n_epochs, util_loss_batch_size=2**12, util_loss_frequency=1000,
-    #            payment_rule='first_price',core_solver="NoCore",parallel = 1, model_sharing=True,
-    #            logging=enable_logging)
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     multiunit(n_runs=2, n_epochs=100, n_players=[2], n_units=2, payment_rule='first_price',
-    #               logging=enable_logging)
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     splitaward(1, 100, [2], logging=enable_logging)
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     single_item_asymmetric_uniform_overlapping(n_runs=1, n_epochs=500, logging=enable_logging)
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     single_item_asymmetric_uniform_disjunct(n_runs=1, n_epochs=500, logging=enable_logging)
+    # Run from a file
+    # experiment_config = logging.get_experiment_config_from_configurations_log()
+    # experiment_class = ConfigurationManager.get_class_by_experiment_type(experiment_config.experiment_class)
 
+    # Well, path is user-specific
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
+    #                                                            n_epochs=200) \
+    #     .set_setting(risk=1.1)\
+    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
+    #     .set_learning(pretrain_iters=5) \
+    #     .set_logging(eval_batch_size=2**4).get_config()
 
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     itembidding(n_runs=1, n_epochs=1, exp_type='XOS',
-    #                 exp_params={'n_collections': 2, 'one_player_w_unit_demand': False}, n_players=[3],
-    #                 n_items=2, logging=enable_logging)
-    running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-        itembidding(n_runs=10, n_epochs=2000, exp_type='XOS', n_players=[3], n_items=3,
-                    exp_params={'n_collections': 1, 'one_player_w_unit_demand': True},
-                    #exp_params={'submodular_factor': .9},
-                    logging=enable_logging)
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
+    #                                                            n_runs=1, n_epochs=5)\
+    #     .set_logging(log_root_dir=log_root_dir).get_config()
 
-
-    gpu_configuration = GPUController(specific_gpu=1)
-    learning_configuration = LearningConfiguration(
-        pretrain_iters=100,
-        batch_size=2**18,
-        learner_hyperparams = {'population_size': 64,
-                               'sigma': 1.,
-                               'scale_sigma_by_model_size': True}
-    )
-
-    # General logging configs
-    logging_configuration.util_loss_frequency = 100
-    logging_configuration.util_loss_batch_size: int = 2**12
-    logging_configuration.stopping_criterion_rel_util_loss_diff = 0.001
-    logging_configuration.save_tb_events_to_csv_detailed=True
-    logging_configuration.save_tb_events_to_binary_detailed=True
+    # All three next experiments get AssertionError: scalar should be 0D
+    # experiment_config, experiment_class = \
+    #    ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping', n_runs=1, n_epochs=200) \
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .get_config()
+    # experiment_config, experiment_class = \
+    #     ConfigurationManager(experiment_type='single_item_asymmetric_uniform_disjunct', n_runs=1, n_epochs=200) \
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=100) \
+    #     .set_setting(gamma=0.5) \
+    #     .set_logging(log_root_dir=log_root_dir, util_loss_batch_size=2 ** 7, util_loss_grid_size=2 ** 6,
+    #                  util_loss_frequency=1).get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg', n_runs=1, n_epochs=200) \
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .get_config()
+    # RuntimeError: Sizes of tensors must match
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit',n_runs=1, n_epochs=200) \
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='splitaward',n_runs=1, n_epochs=200)\
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit', n_runs=1, n_epochs=2) \
+    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
+    #     .set_setting().set_learning().set_hardware() \
+    #     .get_config()
+    # experiment_config, experiment_class = \
+    # ConfigurationManager(experiment_type='mineral_rights', n_runs=1, n_epochs=0)\
+    #     .set_learning(pretrain_iters=3)\
+    #     .set_logging(log_root_dir=log_root_dir)\
+    #     .set_hardware(specific_gpu=7)\
+    #     .get_config()
+    # experiment_config, experiment_class = \
+    #     ConfigurationManager(experiment_type='affiliated_observations', n_runs=1, n_epochs=1) \
+    #     .set_learning(pretrain_iters=1) \
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .set_hardware(specific_gpu=1) \
+    #     .get_config()
+    experiment_config, experiment_class = ConfigurationManager(
+        'caib', n_runs=10, n_epochs=2000
+    ) \
+        .set_setting(
+            n_players=2,
+            n_items=3,
+            exp_params={'n_collections': 1, 'one_player_w_unit_demand': True},
+            #exp_params={'submodular_factor': .9},\
+        ) \
+        .get_config()
 
     try:
-        for i in running_configuration.n_players:
-            experiment_configuration.n_players = i
-            experiment = experiment_class(experiment_configuration, learning_configuration,
-                                          logging_configuration, gpu_configuration)
-            experiment.run(epochs=running_configuration.n_epochs, n_runs=running_configuration.n_runs)
+        experiment = experiment_class(experiment_config)
 
-        get_distance_of_learned_strategies(experiment)
-
+        # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
+        if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
+            experiment.run()
+        else:
+            raise Exception('Unable to perform the correct serialization')
     except KeyboardInterrupt:
         print('\nKeyboardInterrupt: released memory after interruption')
         torch.cuda.empty_cache()
+
+    # 10k epoch bug
+    # log_dir = os.path.join('/home/gleb/Projects/bnelearn/experiments/test/subrun')
+    # writer1 = SummaryWriter(log_dir)
+    #
+    # for n_iter in range(25000):
+    #     writer1.add_scalar('Loss/train', np.random.random(), n_iter)
+    #
+    # writer1.close()
+    #
+    # logging.tabulate_tensorboard_logs('/home/gleb/Projects/bnelearn/experiments/', write_detailed=True)

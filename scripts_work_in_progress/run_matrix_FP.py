@@ -26,7 +26,7 @@ def main(args):
     #################################Read parameters#######################
     setting = [args[1],args[0]]
     param_tau = args[2] #[0.00001,10,0.99] #[0.,10,0.9]
-    initial_beliefs = None#args[3]# torch.Tensor([[500,500],[500,500]]).to(device) #initial_beliefs = torch.Tensor([[59.5,40.5],[40.5,59.5]]).to(device)
+    initial_beliefs = None#args[3]# torch.tensor([[500,500],[500,500]],device=device) #initial_beliefs = torch.tensor([[59.5,40.5],[40.5,59.5]],device=device)
 
     options = {"FP": FictitiousPlayStrategy,
                "FPS": FictitiousPlaySmoothStrategy,
@@ -61,7 +61,7 @@ def main(args):
 
     initial_beliefs = None
     if args[3] is not None:
-        initial_beliefs = torch.Tensor(args[3]).to(device)
+        initial_beliefs = torch.tensor(args[3], device=device)
     ##############################End Read parameters#######################
     # init strategies
     strats = [None] * game.n_players
@@ -74,7 +74,7 @@ def main(args):
         players[i] = strat_to_player(strats[i], batch_size = batch_size, player_position = i)
     ########################################Training################################################
     # Tracking
-    hist_probs = [torch.Tensor([0] * game.outcomes.shape[i]).to(device) for i in range(game.n_players)]
+    hist_probs = [torch.tensor([0] * game.outcomes.shape[i]).to(device) for i in range(game.n_players)]
 
     # Parallel updating
     print(param)

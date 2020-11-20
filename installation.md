@@ -1,5 +1,7 @@
 # Installation
 
+**THIS IS OUTDATED BUT MOST THINGS SHOULD STILL WORK**
+
 The framework conceptually consists of the following
 * A python package `bnelearn` in the `./bnelearn` subdirectory.
 * Some User-code scripts in `./scripts`

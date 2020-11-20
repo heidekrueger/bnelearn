@@ -5,6 +5,7 @@ import warnings
 import torch
 
 from .mechanism import Mechanism
+from ..util.tensor_util import batched_index_select
 
 
 def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
@@ -39,7 +40,7 @@ def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
 
 def _get_multiunit_allocation(
         bids: torch.Tensor,
-        random_tie_break: bool = True,
+        random_tie_break: bool = False,
         accept_zero_bids: bool = False,
     ) -> torch.Tensor:
     """
@@ -228,13 +229,11 @@ class MultiUnitVickreyAuction(Mechanism):
         bids: torch.Tensor
             of bids with dimensions (batch_size, n_players, n_items)
 
-        Returns
-        -------
-        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
-            allocation: tensor of dimension (n_batches x n_players x n_items),
+        Returns:
+            allocation: torch.Tensor of dimension (n_batches x n_players x n_items),
                 1 indicating item is allocated to corresponding player
                 in that batch, 0 otherwise
-            payments: tensor of dimension (n_batches x n_players),
+            payments: torch.Tensor of dimension (n_batches x n_players),
                 total payment from player to auctioneer for her
                 allocation in that batch.
         """
@@ -287,19 +286,17 @@ class FPSBSplitAwardAuction(Mechanism):
     """
 
     def _solve_allocation_problem(self, bids: torch.Tensor,
-                                  random_tie_break: bool = True):
+                                  random_tie_break: bool = False):
         """
         Computes allocation and welfare
 
-        Parameters
-        ----------
-        bids: torch.Tensor
-            of bids with dimensions (batch_size, n_players, n_bids=2), values = [0,Inf],
-            the first bid is for the 100% share and the second for the 50% share
+        Args:
+            bids: torch.Tensor
+                of bids with dimensions (batch_size, n_players, n_bids=2), values = [0,Inf],
+                the first bid is for the 100% share and the second for the 50% share
 
-        Returns
-        -------
-        allocation: torch.Tensor(batch_size, b_bundles=2), values = {0,1}
+        Returns:
+            allocation: torch.Tensor, dim (batch_size, b_bundles=2), values = {0,1}
         """
 
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
@@ -352,15 +349,13 @@ class FPSBSplitAwardAuction(Mechanism):
         """
         Computes first prices
 
-        Parameters
-        ----------
-        bids: torch.Tensor
-            of bids with dimensions (batch_size, n_bidders, n_bids=2), values = [0,Inf]
-        allocations: torch.Tensor(batch_size, b_bundles=2), values = {0,1}
+        Args:
+            bids: torch.Tensor
+                of bids with dimensions (batch_size, n_bidders, n_bids=2), values = [0,Inf]
+            allocations: torch.Tensor, dim: (batch_size, b_bundles=2), values = {0,1}
 
-        Returns
-        -------
-        payments: torch.Tensor(batch_size, n_bidders), values = [0, Inf]
+        Returns:
+            payments: torch.Tensor, dim (batch_size, n_bidders), values = [0, Inf]
         """
         return torch.sum(allocations * bids, dim=2)
 
@@ -368,15 +363,13 @@ class FPSBSplitAwardAuction(Mechanism):
         """
         Performs a specific auction
 
-        Parameters
-        ----------
-        bids: torch.Tensor
-            of bids with dimensions (batch_size, n_players, 2) [0,Inf]
+        Args:
+            bids: torch.Tensor
+                of bids with dimensions (batch_size, n_players, 2) [0,Inf]
 
-        Returns
-        -------
-        allocation: torch.Tensor(batch_size, n_bidders, 2)
-        payments: torch.Tensor(batch_size, n_bidders)
+        Returns:
+            allocation: torch.Tensor, dim (batch_size, n_bidders, 2)
+            payments: torch.Tensor, dim (batch_size, n_bidders)
         """
 
         allocation = self._solve_allocation_problem(bids)
