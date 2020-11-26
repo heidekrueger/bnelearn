@@ -839,18 +839,20 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_hyperparams': str(self.learning.optimizer_hyperparams),
                     'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
+        ignored_metrics = ['utilities', 'update_norm', 'overhead_hours']
         try:
-            self._hparams_metrics['utilities'] = self._cur_epoch_log_params['utilities']
-            self._hparams_metrics['update_norm'] = self._cur_epoch_log_params['update_norm'][0]
-            self._hparams_metrics['utility_vs_bne'] = self._cur_epoch_log_params['utility_vs_bne']
-            self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
-            self._hparams_metrics['epsilon_absolute'] = self._cur_epoch_log_params['epsilon_absolute']
-            self._hparams_metrics['L_2'] = self._cur_epoch_log_params['L_2'][0]
-            self._hparams_metrics['L_inf'] = self._cur_epoch_log_params['L_inf'][0]
-            self._hparams_metrics['util_loss_ex_ante'] = self._cur_epoch_log_params['util_loss_ex_ante'][0]
-            self._hparams_metrics['util_loss_ex_interim'] = self._cur_epoch_log_params['util_loss_ex_interim'][0]
-            self._hparams_metrics['estimated_relative_ex_ante_util_loss'] = \
-                self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'][0]
+            for i, (k, v) in enumerate(self._cur_epoch_log_params.items()):
+                if k not in ignored_metrics:
+                    if isinstance(v, list):
+                        for model_number in range(len(v)):
+                            self._hparams_metrics[k+"_"+str(model_number)] = v[model_number]
+                    elif isinstance(v, torch.Tensor):
+                        for model_number, metric in enumerate(v):
+                            self._hparams_metrics[k+"_"+str(model_number)] = metric
+                    elif isinstance(v, int) or isinstance(v, float):
+                        self._hparams_metrics[k] = v
+                    else:
+                        print("the type ", type(v), " is not supported as a metric")
         except Exception as e:
             print(e)
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
