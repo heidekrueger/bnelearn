@@ -63,30 +63,35 @@ class MatrixGamePlayer(Player):
         raise ValueError("Invalid Strategy Type for Matrix game: {}".format(type(self.strategy)))
 
 class Bidder(Player):
-    """ A player in an auction game. Has a distribution over valuations/types that is
-        common knowledge. These valuations correspond to the ´n_items´ available.
+    """A player in an auction game. Has a distribution over valuations/types
+    that is common knowledge. These valuations correspond to the ´n_items´
+    available.
 
-        ´batch_size´ corresponds to the number of individual auctions.
-        If ´descending_valuations´ is true, the valuations will be returned
-        in decreasing order.
-        `cache_actions` determines whether actions should be cached and retrieved from memory,
-            rather than recomputed as long as valuations haven't changed.
+    Attributes:
+        batch_size: corresponds to the number of individual auctions.
+        descending_valuations: if is true, the valuations will be returned
+            in decreasing order.
+        cache_actions: determines whether actions should be cached and
+            retrieved from memory, rather than recomputed as long as valuations
+            haven't changed.
+        TODO ...
 
-        # TODO Nils: clearly distinguish observation and type! (Nedded for correlation, splt-award, etc.)
     """
+    # TODO Nils: clearly distinguish observation and type! (Nedded for
+    # correlation, splt-award, etc.)
     def __init__(self,
                  value_distribution: Distribution,
-                 strategy,
-                 player_position = None,
-                 batch_size = 1,
-                 n_items = 1,
-                 cuda = True,
+                 strategy: Strategy,
+                 player_position: torch.tensor = None,
+                 batch_size: int = 1,
+                 n_items: int = 1,
+                 cuda: str = True,
                  cache_actions: bool = False,
                  descending_valuations = False,
                  risk: float = 1.0,
-                 item_interest_limit = None,
-                 constant_marginal_values = False,
-                 correlation_type = None,
+                 item_interest_limit: int = None,
+                 constant_marginal_values: bool = False,
+                 correlation_type: str = None,
                  ):
 
         super().__init__(strategy, player_position, batch_size, cuda)
@@ -148,30 +153,35 @@ class Bidder(Player):
 
     def get_valuation_grid(self, n_points=None, extended_valuation_grid=False,
                            dtype=torch.float32, step=None, dimension=None):
-        """ Returns a grid of approximately `n_points` valuations that are
-            equidistant (in each dimension) on the support of self.value_distribution.
-            If the support is unbounded, the 0.1th and 99.9th percentiles are used instead.
+        """Returns a grid of approximately `n_points` valuations that are
+        equidistant (in each dimension) on the support of
+        `self.value_distribution`.
 
-            For most distributions, the actual total size of the grid returned will be min(n^self.n_items)
-            s.t. n^self.n_items >= n_points. E.g. for n_items=2 the grid will be square, for 3 it will be a cupe, etc.
+        If the support is unbounded, the 0.1th and 99.9th percentiles are used
+        instead.
 
-            (For descending_valuations, the logic is somewhat different)
+        For most distributions, the actual total size of the grid returned will
+        be `min(n^self.n_items)` s.t. `n^self.n_items >= n_points`. E.g. for
+        `n_items=2` the grid will be square, for `3` it will be a cupe, etc.
+        (For descending_valuations, the logic is somewhat different.)
 
-            Args:
-                n_points: int, minimum number of total points in the grid
-                extended_valuation_grid: bool, switch for bounds of interval
-                step: float, step length. Only used when `n_points` is None
-                dimension: int (otional), provide if `n_items`,
-                    `strategy.input_lenght`, and `strategy.output_lenght`
-                    are not all equal.
-            returns:
-                grid_values (dim: [ceil(n_points^(1/n_items)]*n_items)
+        Args:
+            n_points: int, minimum number of total points in the grid.
+            extended_valuation_grid: bool, switch for bounds of interval.
+            step: float, step length. Only used when `n_points` is None.
+            dimension: int (otional), provide if `n_items`,
+                `strategy.input_lenght`, and `strategy.output_lenght`
+                are not all equal.
 
-            # TODO: - update this tu support different number of points per dimension
-                    - with descending_valuations, this currently draws many more points than needed
-                      then throws most of them away
+        Returns:
+            grid_values (dim: [ceil(n_points^(1/n_items)]*n_items).
+
         """
-
+        # TODO:
+        #   Update this to support different number of points per
+        #       dimension.
+        #   with descending_valuations, this currently draws many more
+        #       points than needed then throws most of them away.
         assert n_points is None or step is None, \
             'Use only one of `n_points` or `step`'
 
@@ -213,25 +223,31 @@ class Bidder(Player):
         return grid_values
 
     def draw_valuations_(self, common_component = None, weights: torch.Tensor or float = 0.0):
-        """ Sample a new batch of valuations from the Bidder's prior. Negative
-            draws will be clipped at 0.0!
+        """Sample a new batch of valuations from the Bidder's prior. Negative
+        draws will be clipped at 0.0!
 
-            When correlation info is given, valuations are drawn according to a mixture of the
-            individually drawn component and the provided common component according to the provided weights.
+        When correlation info is given, valuations are drawn according to a
+        mixture of the individually drawn component and the provided common
+        component according to the provided weights.
 
-            If ´descending_valuations´ is true, the valuations will be returned
-            in decreasing order.
+        If ´descending_valuations´ is true, the valuations will be returned
+        in decreasing order.
 
-            Args:
-                common_component (optional): torch.tensor (batch_size x n_items)
-                    Tensor of (hidden) common component, same dimension as self.valuation.
-                weights: (float, [0,1]) or tensor (batch_size x n_items) with values in [0,1]
-                    defines how much to weigh the common component. If float, weighs entire tensor. If tensor
-                    weighs component-wise.
+        Args:
+            common_component (optional): torch.tensor (batch_size x n_items)
+                Tensor of (hidden) common component, same dimension as
+                `self.valuation`.
+            weights: (float, [0,1]) or tensor (batch_size x n_items) with
+                values in [0,1] defines how much to weigh the common component.
+                If float, weighs entire tensor. If tensor weighs
+                component-wise.
 
-            # TODO Stefan: Does correlation interere with Nils' implementations of descending valuations
-            #              Or Item interest limits? --> Test!
+        Returns:
+            valuations: torch.tesnor.
+
         """
+        # TODO Stefan: Does correlation interere with Nils' implementations of
+        # descending valuations or Item interest limits? --> Test!
         if isinstance(weights, float):
             weights = torch.tensor(weights)
 
@@ -383,6 +399,7 @@ class ReverseBidder(Bidder):
         self._grid_lb_util_loss = 0
         self._grid_ub_util_loss = float(2 * self._grid_ub)
 
+    # pylint: disable=arguments-differ
     def get_valuation_grid(self, n_points, extended_valuation_grid=False):
         """ Extends `Bidder.draw_values_grid` with efficiency parameter
 
@@ -432,20 +449,32 @@ class CombinatorialBidder(Bidder):
         self.input_length = self.strategy.input_length
         self.output_length = self.strategy.output_length
 
-    def get_valuation_grid(self, **kwargs):
+    def get_valuation_grid(self, **kwargs):  # pylint: disable=arguments-differ
         return super().get_valuation_grid(
             dimension=self.output_length,
             **kwargs
         )
 
-    def get_welfare(self, allocations, valuations=None):
-        assert allocations.dim() == 2 # batch_size x items
+    def get_welfare(self, allocations, valuations: torch.tensor=None):
+        assert allocations.dim() == 2  # batch_size x items
         if valuations is None:
             valuations = self.valuations
 
         item_dimension = valuations.dim() - 1
         # 0: item A | 1: item B | 2: bundle {A, B}
-        welfare = (valuations * allocations[:, self.player_position].view(-1, 1)) \
-            .sum(dim=item_dimension)
+        # `player_position` == index of valued item for this agent
+        if self.player_position != 2:  # locals also value bundle
+            allocations = allocations[:, [self.player_position, 2]] \
+                .sum(axis=1) \
+                .view(-1, 1)
+            allocations[allocations > 1] = 1
+        else:  # global only values bundle
+            allocations = (
+                # won bundle of both
+                allocations[:, 2] \
+                # won both separately
+                + (allocations[:, [0, 1]].sum(axis=1) > 1)
+            ).view(-1, 1)
 
+        welfare = (valuations * allocations).sum(dim=item_dimension)
         return welfare

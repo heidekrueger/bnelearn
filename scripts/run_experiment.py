@@ -58,13 +58,14 @@ if __name__ == '__main__':
     #     .set_logging(log_root_dir=log_root_dir, util_loss_batch_size=2 ** 7, util_loss_grid_size=2 ** 6,
     #                  util_loss_frequency=1).get_config()
     experiment_config, experiment_class = ConfigurationManager(
-        experiment_type='llg_full', n_runs=1, n_epochs=1000) \
+        experiment_type='llg_full', n_runs=1, n_epochs=10000) \
+        .set_setting(payment_rule='vcg') \
         .set_logging(
             log_root_dir=log_root_dir,
-            util_loss_batch_size=2**10,
-            util_loss_grid_size=2**7,
-            util_loss_frequency=10) \
-        .set_hardware(specific_gpu=7) \
+            util_loss_batch_size=2**9,
+            util_loss_grid_size=2**5,
+            util_loss_frequency=100) \
+        .set_hardware(specific_gpu=2) \
         .get_config()
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg', n_runs=1, n_epochs=200) \
     #     .set_logging(log_root_dir=log_root_dir) \

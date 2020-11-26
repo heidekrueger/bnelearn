@@ -486,7 +486,9 @@ class Experiment(ABC):
                 )
 
             # formating
-            axs[plot_idx].set_xlabel(x_label)
+            axs[plot_idx].set_xlabel(
+                x_label if not isinstance(x_label, list) else x_label[plot_idx]
+            )
             if plot_idx == 0:
                 axs[plot_idx].set_ylabel(y_label)
                 if n_players < 10 and labels is not None:

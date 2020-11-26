@@ -136,7 +136,7 @@ class ConfigurationManager:
     #     return self
 
     def _init_llg_full(self):
-        self.learning.model_sharing = True
+        self.learning.model_sharing = False
         self.setting.u_lo = [0, 0, 0]
         self.setting.u_hi = [1, 1, 2]
         self.setting.n_players = 3

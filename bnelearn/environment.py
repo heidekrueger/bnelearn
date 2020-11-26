@@ -56,7 +56,7 @@ class Environment(ABC):
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
                             draw_valuations=False, aggregate_batch=True,
-                            use_env_valuations=True,
+                            use_env_valuations=True, regularize=0,
                             **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
@@ -82,7 +82,8 @@ class Environment(ABC):
             agent.valuations = env_agent.valuations
         if use_env_valuations and hasattr(env_agent, '_unkown_valuation'):
             agent._unkown_valuation = env_agent._unkown_valuation
-        return self.get_reward(agent, draw_valuations=draw_valuations, aggregate=aggregate_batch)
+        return self.get_reward(agent, draw_valuations=draw_valuations,
+                               aggregate=aggregate_batch, regularize=regularize)
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
                                        draw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
@@ -236,8 +237,9 @@ class AuctionEnvironment(Environment):
     def get_reward(
             self,
             agent: Bidder,
-            draw_valuations = False,
-            aggregate = True
+            draw_valuations: bool = False,
+            aggregate: bool = True,
+            regularize: float = 0.0
         ) -> torch.Tensor: #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment.
            Reward is calculated as average utility for each of the batch_size x env_size games
@@ -257,6 +259,7 @@ class AuctionEnvironment(Environment):
 
         # get agent_bid
         agent_bid = agent.get_action()
+        bid_magnitude = agent_bid.mean()
         action_length = agent_bid.shape[1]
 
         if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
@@ -293,6 +296,9 @@ class AuctionEnvironment(Environment):
             # average over batch against this opponent
             utility = agent.get_utility(allocation[:,player_position,:],
                                         payments[:,player_position])
+
+            # regularize
+            utility -= regularize * bid_magnitude
 
         if aggregate:
             utility = utility.mean()

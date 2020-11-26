@@ -275,34 +275,17 @@ class LLGFullExperiment(LocalGlobalExperiment):
     first item, the second only for the second and global only on both.
 
     """
-
     def __init__(self, config: ExperimentConfig):
         self.config = config
         assert self.config.setting.n_players == 3, \
             "Incorrect number of players specified."
 
         self.gamma = self.correlation = float(config.setting.gamma)
-
-        if config.setting.correlation_types == 'Bernoulli_weights':
-            self.CorrelationDevice = BernoulliWeightsCorrelationDevice
-        elif config.setting.correlation_types == 'constant_weights':
-            self.CorrelationDevice = ConstantWeightsCorrelationDevice
-        elif config.setting.correlation_types == 'independent':
-            pass
-        else:
+        if config.setting.correlation_types != 'independent' or \
+            self.gamma > 0.0:
+            # Should be similar to reduced LLG setting, but we have to consider
+            # asymmetry of local bidders.
             raise NotImplementedError('Correlation not implemented.')
-
-        if self.gamma > 0.0:
-            self.correlation_groups = [[0, 1], [2]]
-            self.correlation_coefficients = [self.gamma, 0.0]
-            self.correlation_devices = [
-                self.CorrelationDevice(
-                    common_component_dist=torch.distributions.Uniform(
-                        config.setting.u_lo[0], config.setting.u_hi[0]),
-                    batch_size=config.learning.batch_size,
-                    n_items=1,
-                    correlation=self.gamma),
-                IndependentValuationDevice()]
 
         self.input_length = 1
         self.config.setting.n_local = 2
@@ -319,7 +302,8 @@ class LLGFullExperiment(LocalGlobalExperiment):
     def _get_logdir_hierarchy(self):
         name = ['LLGFull', self.payment_rule]
         if self.gamma > 0:
-            name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
+            name += [self.config.setting.correlation_types,
+                     f"gamma_{self.gamma:.3}"]
         else:
             name += ['independent']
         if self.risk != 1.0:
@@ -342,13 +326,17 @@ class LLGFullExperiment(LocalGlobalExperiment):
             cache_actions=cache_actions
         )
 
-    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
-              xlim: list=None, ylim: list=None, labels: list=None,
-              x_label="val", y_label="bid", fmts=['o'],
-              figure_name: str='bid_function', plot_points=100,
-              ):
-        # TODO Nils
-        pass
+    def _plot(self, **kwargs):  # pylint: disable=arguments-differ
+        kwargs['x_label'] = ['item A', 'item B', 'bunlde']
+        kwargs['labels'] = ['local 1', 'local 2', 'global']
+
+        # handle dim-missmatch that agents only value 1 bundle but bid for 3
+        plot_data = list(kwargs['plot_data'])
+        if plot_data[0].shape != plot_data[1].shape:
+            plot_data[0] = plot_data[0].repeat(1, 1, self.n_items)
+            kwargs['plot_data'] = plot_data
+
+        super()._plot(**kwargs)
 
 
 class LLLLGGExperiment(LocalGlobalExperiment):
