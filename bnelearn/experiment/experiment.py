@@ -845,12 +845,12 @@ class Experiment(ABC):
                 if k not in ignored_metrics:
                     if isinstance(v, list):
                         for model_number in range(len(v)):
-                            self._hparams_metrics[k+"_"+str(model_number)] = v[model_number]
+                            self._hparams_metrics["metrics/" + k+"_"+str(model_number)] = v[model_number]
                     elif isinstance(v, torch.Tensor):
                         for model_number, metric in enumerate(v):
-                            self._hparams_metrics[k+"_"+str(model_number)] = metric
+                            self._hparams_metrics["metrics/" + k+"_"+str(model_number)] = metric
                     elif isinstance(v, int) or isinstance(v, float):
-                        self._hparams_metrics[k] = v
+                        self._hparams_metrics["metrics/" + k] = v
                     else:
                         print("the type ", type(v), " is not supported as a metric")
         except Exception as e:
