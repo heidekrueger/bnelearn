@@ -434,7 +434,7 @@ class LLGFullAuction(Mechanism):
     def _calculate_welfare(
             valuations: torch.tensor,
             allocations: torch.tensor,
-            exclude: list=None
+            exclude: list=list()
         ) -> torch.tensor:
         """Calculate total welfare of players excluding a given set.
 

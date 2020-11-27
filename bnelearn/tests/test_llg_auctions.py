@@ -104,3 +104,6 @@ def test_LLG_nearest_bid():
 
     run_llg_test(rule, 'cpu', expected_payments)
     run_llg_test(rule, 'cuda', expected_payments)
+
+def test_LLG_full():
+    raise NotImplementedError()  # TODO Nils
