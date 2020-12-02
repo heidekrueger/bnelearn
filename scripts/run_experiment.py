@@ -33,7 +33,7 @@ if __name__ == '__main__':
     # experiment_class = ConfigurationManager.get_class_by_experiment_type(experiment_config.experiment_class)
 
     # Well, path is user-specific
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'test')
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
     #                                                            n_epochs=200) \
     #     .set_setting(risk=1.1)\
@@ -59,16 +59,25 @@ if __name__ == '__main__':
     #                  util_loss_frequency=1).get_config()
     experiment_config, experiment_class = ConfigurationManager(
         experiment_type='llg_full', n_runs=1, n_epochs=10000) \
-        .set_setting(payment_rule='vcg') \
+        .set_setting(payment_rule='mrcs_favored') \
+        .set_learning(batch_size=2**7) \
         .set_logging(
             log_root_dir=log_root_dir,
+            log_metrics={},
             util_loss_batch_size=2**9,
             util_loss_grid_size=2**5,
             util_loss_frequency=100) \
         .set_hardware(specific_gpu=2) \
         .get_config()
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg', n_runs=1, n_epochs=200) \
-    #     .set_logging(log_root_dir=log_root_dir) \
+    # experiment_config, experiment_class = \
+    #     ConfigurationManager(
+    #         experiment_type='llllgg',
+    #         n_runs=1,
+    #         n_epochs=200
+    #     ) \
+    #     .set_learning(batch_size=2**7) \
+    #     .set_setting(core_solver='mpc', payment_rule='nearest_vcg') \
+    #     .set_logging(log_root_dir=log_root_dir, log_metrics={}) \
     #     .get_config()
     # RuntimeError: Sizes of tensors must match
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit',n_runs=1, n_epochs=200) \
