@@ -304,12 +304,8 @@ class Experiment(ABC):
 
     def _exit_run(self):
         """Cleans up a run after it is completed"""
-        if self.logging.enable_logging:
-            self._log_experiment_params()
-            if self.logging.save_models:
-                self._save_models(directory=self.run_log_dir)
-
-
+        if self.logging.save_models:
+            self._save_models(directory=self.run_log_dir)
 
         del self.writer  # make this explicit to force cleanup and closing of tb-logfiles
         self.writer = None

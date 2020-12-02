@@ -215,6 +215,7 @@ class CustomSummaryWriter(SummaryWriter):
             raise TypeError('hparam_dict and metric_dict should be dictionary.')
         exp, ssi, sei = hparams(hparam_dict, metric_dict)
 
+
         self.file_writer.add_summary(exp)
         self.file_writer.add_summary(ssi)
         self.file_writer.add_summary(sei)
