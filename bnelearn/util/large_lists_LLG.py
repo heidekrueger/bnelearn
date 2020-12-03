@@ -12,20 +12,21 @@ subsolutions  = [
     [7, 7],
     [8, 8],
     # 2. two bundles won (-> must be single-item bundles 0, 1)
-    # 2.1 won by different agents
+    # 2.1 agents 0, 1 win
     [9, 0],
-    [9, 3],
-    [10, 0],
-    [10, 6],
-    [11, 3],
-    [11, 6],
-    # 2.2 won by same agent
-    [12, 0],
+    [9, 4],
+    [10, 1],
+    [10, 3],
+    # 2.1.2 agents 0, 2 win
+    [11, 0],
+    [11, 7],
     [12, 1],
+    [12, 6],
+    # 2.1.3 agents 1, 2 win
     [13, 3],
-    [13, 4],
-    [14, 6],
-    [14, 7],
+    [13, 7],
+    [14, 4],
+    [14, 6]
     ]
 
 solutions_non_sparse = [

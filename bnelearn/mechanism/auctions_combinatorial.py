@@ -22,7 +22,8 @@ from time import perf_counter as timer
 
 
 class _OptNet_for_LLLLGG(nn.Module):
-    def __init__(self, device, A, beta, b, payment_vcg, precision=torch.double):
+    def __init__(self, device, A, beta, b, payment_vcg=None,
+                 precision=torch.double, max_iter=20):
         """
         TODO Stefan/Paul: Please provide minimal docstring
         Build basic model
@@ -43,6 +44,7 @@ class _OptNet_for_LLLLGG(nn.Module):
         self.device = device
         self.precision = precision
         self.payment_vcg = payment_vcg
+        self.max_iter = max_iter
 
         A = torch.as_tensor(A, dtype=precision, device=self.device)
         b = torch.as_tensor(b, dtype=precision, device=self.device)
@@ -123,7 +125,7 @@ class _OptNet_for_LLLLGG(nn.Module):
                              (self.Q, self.q, self.G, self.h, self.e, self.mu)
 
         elif solver == 'mpc':
-            mpc_solver=mpc.mpc_class(max_iter=20)
+            mpc_solver=mpc.mpc_class(max_iter=self.max_iter)
             # detach all variables to set requires_grad=False
             if self.e is not None:
                 self.e_no_grad=self.e.detach()
@@ -300,7 +302,7 @@ class LLGFullAuction(Mechanism):
         from bnelearn.util import large_lists_LLG
         super().__init__(cuda)
 
-        if rule not in ['first_price', 'vcg', 'mrcs_favored']:
+        if rule not in ['first_price', 'vcg', 'nearest_vcg', 'mrcs_favored']:
             raise ValueError('Invalid Pricing rule!')
         self.rule = rule
 
@@ -317,9 +319,11 @@ class LLGFullAuction(Mechanism):
             [[0, 1, 2],
              [0, 1, 2],
              [0, 1, 2]],
-            dtype=torch.long,
+            dtype=torch.int8,
             device=self.device
         )
+        self.n_sobsultions = self.subsolutions[-1][0] + 1
+        self.subul_dim = len(self.subsolutions) + 1
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Runs a batch of LLG Combinatorial auctions.
@@ -352,18 +356,22 @@ class LLGFullAuction(Mechanism):
         bids = bids.to(self.device)
 
         # 1. Determine allocations
-        allocations, welfare = self._solve_allocation_problem(bids)
+        allocations = self._solve_allocation_problem(bids)
 
         # 2. Determine payments
         if self.rule == 'first_price':
             payments = self._calculate_payments_first_price(bids, allocations)
 
         elif self.rule == 'vcg':
-            payments = self._calculate_payments_vcg(bids, allocations, welfare)
+            payments = self._calculate_payments_vcg(bids, allocations)
+
+        elif self.rule == 'nearest_vcg':
+            payments = self._calculate_payments_core(bids, allocations)
 
         elif self.rule == 'mrcs_favored':
-            payments = self._calculate_payments_mrcs_favored(bids, allocations,
-                                                             welfare)
+            payments = self._calculate_payments_core(
+                bids, allocations, core_selection='mrcs_favored'
+            )
 
         else:
             raise NotImplementedError()
@@ -416,14 +424,14 @@ class LLGFullAuction(Mechanism):
         n_batch, n_players, n_bundles = bids.shape
         bids_flat = bids.view(n_batch, n_players * n_bundles)
         solutions_welfare = torch.mm(bids_flat, torch.transpose(solutions, 0, 1))
-        welfare, solution = torch.max(solutions_welfare, dim=1)  # maximizes over all possible allocations
-        winning_bundles = solutions.index_select(0, solution)
+        _, solution = torch.max(solutions_welfare, dim=1)  # maximizes over all possible allocations
+        winning_bundles = solutions.index_select(0, solution).to(torch.int8)
         if dont_allocate_to_zero_bid:
             winning_bundles = winning_bundles * (bids_flat > 0)
 
         # assert winning_bundles == allocations
 
-        return winning_bundles.view_as(bids), welfare
+        return winning_bundles.view_as(bids)
 
     def _calculate_payments_first_price(
             self,
@@ -447,8 +455,7 @@ class LLGFullAuction(Mechanism):
     def _calculate_payments_vcg(
             self,
             bids: torch.Tensor,
-            allocations: torch.Tensor,
-            welfare: torch.Tensor
+            allocations: torch.Tensor
         ) -> torch.Tensor:
         """Computes VCG prices
 
@@ -470,7 +477,7 @@ class LLGFullAuction(Mechanism):
             bids_reduced[:, player_position] = 0
             optimal_welfare_wo_current = self._calculate_welfare(
                 valuations=bids_reduced,
-                allocations=self._solve_allocation_problem(bids_reduced)[0],
+                allocations=self._solve_allocation_problem(bids_reduced),
                 # exclude=[player_position] -> should be zero anyway
             )
             actual_welfare_wo_current = self._calculate_welfare(
@@ -479,23 +486,22 @@ class LLGFullAuction(Mechanism):
                 - actual_welfare_wo_current
         return vcg_payments
 
-    def _calculate_payments_mrcs_favored(
+    def _calculate_payments_core(
             self,
             bids: torch.Tensor,
             allocations: torch.Tensor,
-            welfare: torch.Tensor
+            core_selection: str='nearest_vcg'
         ) -> torch.Tensor:
         """
         """
-        n_sobsultions = len(self.subsolutions) + 1
         n_batch, n_player, n_bundle = bids.shape
 
         # Generate dense tensor of subsolutions
         subsolutions_dense = torch.sparse.FloatTensor(
             self.subsolutions.t(),
-            torch.ones(n_sobsultions - 1, device=self.device),
+            torch.ones(self.subul_dim - 1, device=self.device),
             torch.Size(
-                [n_sobsultions, n_player * n_bundle],
+                [self.n_sobsultions, n_player * n_bundle],
                 device=self.device
             )
         ).to_dense()
@@ -510,44 +516,79 @@ class LLGFullAuction(Mechanism):
         # Therefore, we adjust the coalition and set 1 for each bundle of j
         winning_and_in_coalition = torch.einsum(
             'ij,kjl->kijl',
-            subsolutions_dense.view(n_sobsultions, n_player, n_bundle) \
+            subsolutions_dense.view(self.n_sobsultions, n_player, n_bundle) \
                 .sum(dim=2),
             allocations.view(n_batch, n_player, n_bundle)
-        ).view(n_batch, n_sobsultions, n_player * n_bundle)
+        ).view(n_batch, self.n_sobsultions, n_player * n_bundle)
 
         coalition_already_getting = torch.bmm(
             bids.view(n_batch, 1, n_player * n_bundle),
             winning_and_in_coalition.permute(0, 2, 1)
-        ).reshape(n_batch, n_sobsultions)
+        ).reshape(n_batch, self.n_sobsultions)
 
         beta = coalition_willing_to_pay - coalition_already_getting
 
-        # Fixing numerical imprecision (as occured before!)
+        # Fixing numerical imprecision
         beta[beta < 1e-6] = 0
 
-        assert beta.shape == (n_batch, n_sobsultions), \
+        assert beta.shape == (n_batch, self.n_sobsultions), \
             "beta has the wrong shape"
 
         A = allocations.view(n_batch, 1, n_player * n_bundle) \
             - winning_and_in_coalition
-        A = A.view(n_batch, n_sobsultions, n_player, n_bundle).sum(dim=3)
+        A = A.view(n_batch, self.n_sobsultions, n_player, n_bundle).sum(dim=3)
 
         # Computing b
         b = torch.sum(allocations.view(n_batch, n_player, n_bundle) \
             * bids.view(n_batch, n_player, n_bundle), dim=2)
-        payments_vcg = self._calculate_payments_vcg(bids, allocations, welfare)
 
-        # TODO 1: make reduction
-        payment = self._run_batch_nearest_vcg_core_qpth_mpc(
-            A=A, beta=beta, payments_vcg=payments_vcg, b=b
-        ).squeeze()
-        return payment
+        # Calculate VCH payments
+        payments_vcg = self._calculate_payments_vcg(bids, allocations)
 
-    def _run_batch_nearest_vcg_core_qpth_mpc(self, A, beta, payments_vcg, b):
-        model = _OptNet_for_LLLLGG(self.device, A, beta, b, payments_vcg)
+        if core_selection == 'mrcs_favored':
+            # Force agent 1 to have VCG prices:
+            #     p_1 >=   p_1^{vcg}
+            #   - p_1 >= - p_1^{vcg}
+            A = torch.cat(
+                (
+                    A,
+                    torch.tensor([[0, 1, 0]], device=self.device) \
+                        .repeat(n_batch, 1, 1),
+                    torch.tensor([[0, -1, 0]], device=self.device) \
+                        .repeat(n_batch, 1, 1)
+                ),
+                axis=1
+            )
+            beta = torch.cat(
+                (
+                    beta,
+                    payments_vcg[:, 1].view(n_batch, 1),
+                    - payments_vcg[:, 1].view(n_batch, 1)
+                ),
+                axis=1
+            )
+
+        payment = self._run_batch_nearest_vcg_core_mpc(
+            A=A, beta=beta, payments_vcg=payments_vcg, b=b,
+            min_distance_to_vcg=core_selection=='nearest_vcg'
+        ).view(n_batch, n_player)
+
+        if core_selection == 'mrcs_favored':
+            assert torch.allclose(payment[:, 1].float(), payments_vcg[:, 1], atol=1e-6), \
+                "solver skewed up."
+
+        return payment.float()
+
+    def _run_batch_nearest_vcg_core_mpc(self, A, beta, payments_vcg, b,
+                                        min_distance_to_vcg=True):
+        model = _OptNet_for_LLLLGG(self.device, A, beta, b, payments_vcg,
+                                   max_iter=100)
         model._add_objective_min_payments()  # pylint: disable=protected-access
-        # mu = model('mpc')
-        # model._add_objective_min_vcg_distance(mu)  # pylint: disable=protected-access
+        if min_distance_to_vcg:
+            mu = model('mpc')
+            model._add_objective_min_vcg_distance(mu)  # pylint: disable=protected-access
+        
+        # TODO: need to add placebo quadratic term?
         return model('mpc')
 
     @staticmethod
