@@ -209,7 +209,9 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
 
     agent: Bidder = env.agents[player_position]
 
-    assert batch_size <= agent.batch_size, "invalid batch size!"
+    if batch_size > agent.batch_size:
+        warnings.warn("Requested too large batch size in utility loss.")
+        batch_size = agent.batch_size
 
     observation = agent.valuations[:batch_size, ...].detach().clone()
     action_actual = agent.get_action()[:batch_size, ...].detach().clone()

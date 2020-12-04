@@ -322,7 +322,7 @@ class LLGFullAuction(Mechanism):
             dtype=torch.int8,
             device=self.device
         )
-        self.n_sobsultions = self.subsolutions[-1][0] + 1
+        self.n_subsolutions = self.subsolutions[-1][0] + 1
         self.subul_dim = len(self.subsolutions) + 1
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -501,7 +501,7 @@ class LLGFullAuction(Mechanism):
             self.subsolutions.t(),
             torch.ones(self.subul_dim - 1, device=self.device),
             torch.Size(
-                [self.n_sobsultions, n_player * n_bundle],
+                [self.n_subsolutions, n_player * n_bundle],
                 device=self.device
             )
         ).to_dense()
@@ -516,33 +516,33 @@ class LLGFullAuction(Mechanism):
         # Therefore, we adjust the coalition and set 1 for each bundle of j
         winning_and_in_coalition = torch.einsum(
             'ij,kjl->kijl',
-            subsolutions_dense.view(self.n_sobsultions, n_player, n_bundle) \
+            subsolutions_dense.view(self.n_subsolutions, n_player, n_bundle) \
                 .sum(dim=2),
             allocations.view(n_batch, n_player, n_bundle)
-        ).view(n_batch, self.n_sobsultions, n_player * n_bundle)
+        ).view(n_batch, self.n_subsolutions, n_player * n_bundle)
 
         coalition_already_getting = torch.bmm(
             bids.view(n_batch, 1, n_player * n_bundle),
             winning_and_in_coalition.permute(0, 2, 1)
-        ).reshape(n_batch, self.n_sobsultions)
+        ).reshape(n_batch, self.n_subsolutions)
 
         beta = coalition_willing_to_pay - coalition_already_getting
 
         # Fixing numerical imprecision
         beta[beta < 1e-6] = 0
 
-        assert beta.shape == (n_batch, self.n_sobsultions), \
+        assert beta.shape == (n_batch, self.n_subsolutions), \
             "beta has the wrong shape"
 
         A = allocations.view(n_batch, 1, n_player * n_bundle) \
             - winning_and_in_coalition
-        A = A.view(n_batch, self.n_sobsultions, n_player, n_bundle).sum(dim=3)
+        A = A.view(n_batch, self.n_subsolutions, n_player, n_bundle).sum(dim=3)
 
         # Computing b
         b = torch.sum(allocations.view(n_batch, n_player, n_bundle) \
             * bids.view(n_batch, n_player, n_bundle), dim=2)
 
-        # Calculate VCH payments
+        # Calculate VCG payments
         payments_vcg = self._calculate_payments_vcg(bids, allocations)
 
         if core_selection == 'mrcs_favored':
@@ -587,7 +587,6 @@ class LLGFullAuction(Mechanism):
         if min_distance_to_vcg:
             mu = model('mpc')
             model._add_objective_min_vcg_distance(mu)  # pylint: disable=protected-access
-        
         # TODO: need to add placebo quadratic term?
         return model('mpc')
 
