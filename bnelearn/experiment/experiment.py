@@ -248,7 +248,7 @@ class Experiment(ABC):
             for i, bne_env in enumerate(self.bne_env):
                 # dim: [points, bidders, items]
                 self.v_opt[i] = torch.stack(
-                    [bidder.get_valuation_grid(self.plot_points)
+                    [bidder.get_valuation_grid(n_points=self.plot_points)
                      for bidder in [bne_env.agents[j[0]] for j in self._model2bidder]],
                     dim=1
                 )

@@ -446,8 +446,12 @@ class CombinatorialBidder(Bidder):
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.input_length = self.strategy.input_length
-        self.output_length = self.strategy.output_length
+        if hasattr(self.strategy, 'input_length'):  # `ClosureStrategy` doesn't have `input_length`
+            self.input_length = self.strategy.input_length
+            self.output_length = self.strategy.output_length
+        else:
+            self.input_length = kwargs['n_items']
+            self.output_length = kwargs['n_items']
 
     def get_valuation_grid(self, **kwargs):  # pylint: disable=arguments-differ
         return super().get_valuation_grid(
@@ -455,7 +459,7 @@ class CombinatorialBidder(Bidder):
             **kwargs
         )
 
-    def get_welfare(self, allocations, valuations: torch.tensor=None):
+    def get_welfare(self, allocations, valuations: torch.Tensor=None) -> torch.Tensor:
         assert allocations.dim() == 2  # batch_size x items
         if valuations is None:
             valuations = self.valuations

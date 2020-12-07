@@ -60,14 +60,16 @@ if __name__ == '__main__':
     experiment_config, experiment_class = ConfigurationManager(
         experiment_type='llg_full', n_runs=1, n_epochs=10000) \
         .set_setting(payment_rule='mrcs_favored') \
-        .set_learning(batch_size=2**7) \
+        .set_learning(batch_size=2**8) \
         .set_logging(
+            eval_batch_size=2**5,
             log_root_dir=log_root_dir,
-            log_metrics={},
-            util_loss_batch_size=2**9,
+            util_loss_batch_size=2**4,
             util_loss_grid_size=2**5,
-            util_loss_frequency=100) \
-        .set_hardware(specific_gpu=2) \
+            util_loss_frequency=1000,
+            plot_frequency=10,
+            stopping_criterion_frequency=100000) \
+        .set_hardware(specific_gpu=3) \
         .get_config()
     # experiment_config, experiment_class = \
     #     ConfigurationManager(

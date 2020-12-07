@@ -13,6 +13,7 @@ import os
 from abc import ABC
 from functools import partial
 from typing import Iterable, List
+import math
 import warnings
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
@@ -294,10 +295,94 @@ class LLGFullExperiment(LocalGlobalExperiment):
 
     def _setup_mechanism(self):
         self.mechanism = LLGFullAuction(rule=self.payment_rule)
-        self.known_bne = False
 
     def _check_and_set_known_bne(self):
-        return False
+        return self.payment_rule in ['vcg', 'mrcs_favored']
+
+    def _optimal_bid(self, valuation, player_position):  # pylint: disable=method-hidden
+        """Equilibrium bid functions."""
+        if not isinstance(valuation, torch.Tensor):
+            valuation = torch.tensor(valuation)
+
+        assert self.risk == 1.0, 'BNE known for risk-neutral only (or in VCG)'
+
+        if self.payment_rule in ['vcg', 'mrcs_favored']:
+            if player_position == 0:
+                return torch.cat([
+                    valuation,  # item A
+                    0 * valuation,  # item B
+                    valuation], axis=1)  # bundle {A, B}
+            if player_position == 2:
+                return torch.cat([
+                    0 * valuation,  # TODO ?
+                    0 * valuation,
+                    valuation], axis=1)
+
+        ### Favored bidder 1:
+        if self.config.setting.correlation_types in ['independent'] and player_position == 1:
+            if self.payment_rule == 'nearest_vcg':
+                return torch.cat([
+                    0 * valuation,
+                    valuation,
+                    valuation], axis=1)
+            if self.payment_rule == 'mrcs_favored':
+                # Beck & Ott Appendix A.1 messed up. Here we take real part of
+                # complex solution (sqrt of negative values), see
+                # https://www.wolframalpha.com/input/?i=0+%3D+12*v-+15*z+-+1+%2B+%289*z+-+1+-+3*v%29*sqrt%281+-+6*z%2B+6*v%29+solve+for+z
+                v = torch.as_tensor(valuation, device=valuation.device,
+                                    dtype=torch.cfloat)
+                sqrt = torch.sqrt(
+                    - 254016 * torch.pow(v, 5) - 45045 * torch.pow(v, 4) \
+                    + 47892 * torch.pow(v, 3) + 118676 * torch.pow(v, 2) \
+                    - 74560 * v + 11520
+                )
+                outer = torch.pow(
+                    + 23328 * torch.pow(v, 3) - 47871 * torch.pow(v, 2) \
+                    + 81 * np.sqrt(3) * sqrt + 6534 * v + 2884,
+                    1./3.
+                )
+                z = torch.real(outer / (81* 2**(2./3.)) \
+                    - (-1296* torch.pow(v, 2) - 2196 * v + 956) \
+                    / (162 * 2**(1./3.) * outer) + (1./81.) * (45 * v - 2))
+
+                b_A = torch.zeros_like(valuation)
+                mask = 2 - 2 * math.sqrt(6.) / 3. < valuation
+                b_A[mask] = z[mask] \
+                    - (2 - torch.sqrt(1 - 6 * z[mask] + 6 * valuation[mask])) \
+                    / 3.
+                b_AB = 0.5 * valuation.detach().clone()
+                b_AB[mask] = z[mask]
+                bids = torch.cat([b_A, torch.zeros_like(valuation), b_AB], axis=1)
+                return bids
+
+            warnings.warn('optimal bid not implemented for this payment rule')
+        else:
+            warnings.warn('optimal bid not implemented for this correlation type')
+
+        self.known_bne = False
+
+    def _setup_eval_environment(self):
+        assert self.known_bne
+        assert hasattr(self, '_optimal_bid')
+
+        bne_strategies = [
+            ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
+            for i in range(self.n_players)]
+
+        self.known_bne = True
+        self.bne_env = AuctionEnvironment(
+            mechanism=self.mechanism,
+            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
+                                          batch_size=self.config.logging.eval_batch_size)
+                    for i in range(self.n_players)],
+            n_players=self.n_players,
+            batch_size=self.config.logging.eval_batch_size,
+            strategy_to_player_closure=self._strat_to_bidder
+        )
+
+        self.bne_utilities_new_sample = torch.tensor(
+            [self.bne_env.get_reward(a, draw_valuations=True) for a in self.bne_env.agents])
+        self.bne_utilities = self.bne_utilities_new_sample
 
     def _get_logdir_hierarchy(self):
         name = ['LLGFull', self.payment_rule]

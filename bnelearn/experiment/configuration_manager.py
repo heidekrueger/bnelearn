@@ -143,7 +143,7 @@ class ConfigurationManager:
         self.setting.payment_rule = 'first_price'
         self.setting.correlation_groups = [[0, 1], [2]]
         self.setting.gamma = 0.0
-        self.logging.log_metrics = {'opt': False,
+        self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
                                     'efficiency': False,
                                     'revenue': False}
