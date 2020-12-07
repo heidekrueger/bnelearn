@@ -291,6 +291,8 @@ class LLLLGGExperiment(LocalGlobalExperiment):
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts=['o'],
               figure_name: str = 'bid_function', plot_points=100):
-        super()._plot(plot_data, writer, epoch, xlim, ylim, labels,
-                      x_label, y_label, fmts, figure_name, plot_points)
-        super()._plot_3d(plot_data, writer, epoch, figure_name)
+        super()._plot(plot_data=plot_data, writer=writer, epoch=epoch, xlim=xlim, ylim=ylim,
+                      labels=labels, x_label=x_label, y_label=y_label, fmts=fmts,
+                      figure_name=figure_name, plot_points=plot_points)
+        super()._plot_3d(plot_data=plot_data, writer=writer,
+                         epoch=epoch, figure_name=figure_name)
