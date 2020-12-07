@@ -163,10 +163,10 @@ def test_LLG_full():
     assert torch.equal(payments_vcg_computed, llgfull_payments_vcg.to(device))
 
     # Nearest VCG
-    # nearest_vcg_mechanism = LLGFullAuction(rule='nearest_vcg', cuda=device)
-    # _, payments_llgfull_computed = nearest_vcg_mechanism.run(llgfull_bids.to(device))
-    # assert torch.allclose(payments_llgfull_computed, llgfull_payments_nearest_vcg.to(device),
-    #                       atol=0.0001)
+    nearest_vcg_mechanism = LLGFullAuction(rule='nearest_vcg', cuda=device)
+    _, payments_llgfull_computed = nearest_vcg_mechanism.run(llgfull_bids.to(device))
+    assert torch.allclose(payments_llgfull_computed, llgfull_payments_nearest_vcg.to(device),
+                          atol=0.0001)
 
     # Favors bidder 1: she pays VCG prices
     mrcs_favored_mechanism = LLGFullAuction(rule='mrcs_favored', cuda=device)
@@ -174,4 +174,4 @@ def test_LLG_full():
     assert torch.allclose(payments_favored_computed, llgfull_payments_mrcs_favored.to(device),
                           atol=0.001)
     assert torch.allclose(payments_vcg_computed[:, 1], payments_favored_computed[:, 1],
-                          atol=0.001), 'agent 1 should pay VCG prices'
+                          atol=0.0001), 'agent 1 should pay VCG prices'

@@ -320,7 +320,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
 
         ### Favored bidder 1:
         if self.config.setting.correlation_types in ['independent'] and player_position == 1:
-            if self.payment_rule == 'nearest_vcg':
+            if self.payment_rule == 'vcg':
                 return torch.cat([
                     0 * valuation,
                     valuation,

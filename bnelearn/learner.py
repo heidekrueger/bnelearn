@@ -163,6 +163,7 @@ class ESPGLearner(GradientBasedLearner):
                     + 'one of "mean_reward", "current_reward"')
 
         # self.regularize = 0.05
+        self.regularize = 0.
 
     def _set_gradients(self):
         """Calculates ES-pseudogradients and applies them to the model parameter
@@ -189,13 +190,13 @@ class ESPGLearner(GradientBasedLearner):
         # both of these as a row-matrix. i.e.
         # rewards: population_size x 1
         # epsilons: population_size x parameter_length
-        #self.regularize *= 0.99
+        self.regularize *= 0.999  # ~37% left after 1K iters
         rewards, epsilons = (
             torch.cat(tensors).view(self.population_size, -1)
             for tensors in zip(*(
                 (
                     self.environment.get_strategy_reward(
-                        model, **self.strat_to_player_kwargs, #regularize=self.regularize
+                        model, **self.strat_to_player_kwargs, regularize=self.regularize
                     ).detach().view(1),
                     epsilon
                 )
@@ -207,7 +208,7 @@ class ESPGLearner(GradientBasedLearner):
         # these choices come from.
         baseline = \
             self.environment.get_strategy_reward(
-                self.model, #regularize=self.regularize,
+                self.model, regularize=self.regularize,
                 **self.strat_to_player_kwargs
             ).detach().view(1) \
             if self.baseline == 'current_reward' \

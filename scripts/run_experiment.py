@@ -57,6 +57,8 @@ if __name__ == '__main__':
     #     .set_setting(gamma=0.5) \
     #     .set_logging(log_root_dir=log_root_dir, util_loss_batch_size=2 ** 7, util_loss_grid_size=2 ** 6,
     #                  util_loss_frequency=1).get_config()
+
+    # TODO error in L2 calc for setting (see VCG)
     experiment_config, experiment_class = ConfigurationManager(
         experiment_type='llg_full', n_runs=1, n_epochs=10000) \
         .set_setting(payment_rule='mrcs_favored') \
@@ -69,7 +71,7 @@ if __name__ == '__main__':
             util_loss_frequency=1000,
             plot_frequency=10,
             stopping_criterion_frequency=100000) \
-        .set_hardware(specific_gpu=3) \
+        .set_hardware(specific_gpu=5) \
         .get_config()
     # experiment_config, experiment_class = \
     #     ConfigurationManager(
