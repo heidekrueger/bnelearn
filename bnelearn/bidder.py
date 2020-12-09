@@ -450,8 +450,8 @@ class CombinatorialBidder(Bidder):
             self.input_length = self.strategy.input_length
             self.output_length = self.strategy.output_length
         else:
-            self.input_length = kwargs['n_items']
-            self.output_length = kwargs['n_items']
+            self.input_length = self.n_items
+            self.output_length = self.n_items
 
     def get_valuation_grid(self, **kwargs):  # pylint: disable=arguments-differ
         return super().get_valuation_grid(
@@ -469,15 +469,14 @@ class CombinatorialBidder(Bidder):
         # `player_position` == index of valued item for this agent
         if self.player_position != 2:  # locals also value bundle
             allocations = allocations[:, [self.player_position, 2]] \
-                .sum(axis=1) \
+                .sum(axis=item_dimension) \
                 .view(-1, 1)
-            allocations[allocations > 1] = 1
         else:  # global only values bundle
-            allocations = (
+            allocations = torch.logical_or(
                 # won bundle of both
-                allocations[:, 2] \
+                allocations[:, 2] == 1,
                 # won both separately
-                + (allocations[:, [0, 1]].sum(axis=1) > 1)
+                allocations[:, [0, 1]].sum(axis=item_dimension) > 1
             ).view(-1, 1)
 
         welfare = (valuations * allocations).sum(dim=item_dimension)

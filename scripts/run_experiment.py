@@ -62,9 +62,9 @@ if __name__ == '__main__':
     experiment_config, experiment_class = ConfigurationManager(
         experiment_type='llg_full', n_runs=1, n_epochs=10000) \
         .set_setting(payment_rule='mrcs_favored') \
-        .set_learning(batch_size=2**8) \
+        .set_learning(batch_size=2**10) \
         .set_logging(
-            eval_batch_size=2**5,
+            eval_batch_size=2**10,
             log_root_dir=log_root_dir,
             util_loss_batch_size=2**4,
             util_loss_grid_size=2**5,

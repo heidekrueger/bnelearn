@@ -190,7 +190,7 @@ class ESPGLearner(GradientBasedLearner):
         # both of these as a row-matrix. i.e.
         # rewards: population_size x 1
         # epsilons: population_size x parameter_length
-        self.regularize *= 0.999  # ~37% left after 1K iters
+        self.regularize *= 0.9995
         rewards, epsilons = (
             torch.cat(tensors).view(self.population_size, -1)
             for tensors in zip(*(

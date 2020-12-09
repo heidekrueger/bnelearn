@@ -25,7 +25,6 @@ class _OptNet_for_LLLLGG(nn.Module):
     def __init__(self, device, A, beta, b, payment_vcg=None,
                  precision=torch.double, max_iter=20):
         """
-        TODO Stefan/Paul: Please provide minimal docstring
         Build basic model
             s.t.
                 pA >= beta
@@ -38,6 +37,10 @@ class _OptNet_for_LLLLGG(nn.Module):
 
         See LLLLGGAuction._calculate_payments_nearest_vcg_core for details on variables.
         """
+        # TODO Stefan/Paul: Please provide minimal docstring
+        # I think there should be a clearer interface between solving and using
+        # it for this specifc problem, e.g., what's the general form of the 
+        # problem Anne's solver can tackle?
         self.n_batch, self.n_coalitions, self.n_player = A.shape  # pylint: disable=unused-variable
 
         super().__init__()
@@ -306,24 +309,13 @@ class LLGFullAuction(Mechanism):
             raise ValueError('Invalid Pricing rule!')
         self.rule = rule
 
-        self.solutions_non_sparse = torch.tensor(
-            large_lists_LLG.solutions_non_sparse,
-            dtype=torch.float,
-            device=self.device
-        )
         self.subsolutions = torch.tensor(
             large_lists_LLG.subsolutions,
             device=self.device
         )
-        self.player_bundles = torch.tensor(
-            [[0, 1, 2],
-             [0, 1, 2],
-             [0, 1, 2]],
-            dtype=torch.int8,
-            device=self.device
-        )
         self.n_subsolutions = self.subsolutions[-1][0] + 1
         self.subul_dim = len(self.subsolutions) + 1
+        self.max_iter = 20
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Runs a batch of LLG Combinatorial auctions.
@@ -397,41 +389,29 @@ class LLGFullAuction(Mechanism):
                 values = {0, 1}.
 
         """
-        # allocations = torch.zeros_like(bids, dtype=torch.long)
-        # max_individually = bids[:, :, :2].max(axis=1)
-        # max_bundle = bids[:, :, 2].max(axis=1)
-        # individually = \
-        #     (max_individually.values.sum(axis=1) > max_bundle.values)
+        allocations = torch.zeros_like(bids, dtype=torch.int8)
 
-        # # assign individual items
-        # allocations_individual = max_individually.indices[individually, :]
-        # # item A
-        # allocations[individually, allocations_individual[:, 0], 0] = 1
-        # # item B
-        # allocations[individually, allocations_individual[:, 1], 1] = 1
+        max_individually = bids[:, :, :2].max(axis=1)
+        max_bundle = bids[:, :, 2].max(axis=1)
+        individually = \
+            max_individually.values.sum(axis=1) > max_bundle.values
 
-        # # assign bundle
-        # individually = torch.logical_not(individually)
-        # allocations_bundle = max_bundle.indices[individually]
-        # allocations[individually, allocations_bundle, 2] = 1
+        # assign individual items
+        allocations_individual = max_individually.indices[individually, :]
+        # item A
+        allocations[individually, allocations_individual[:, 0], 0] = 1
+        # item B
+        allocations[individually, allocations_individual[:, 1], 1] = 1
 
-        # if dont_allocate_to_zero_bid:
-        #     allocations *= bids > 0
+        # assign bundle
+        individually = torch.logical_not(individually)
+        allocations_bundle = max_bundle.indices[individually]
+        allocations[individually, allocations_bundle, 2] = 1
 
-        # TODO optimized
-        solutions = self.solutions_non_sparse
-
-        n_batch, n_players, n_bundles = bids.shape
-        bids_flat = bids.view(n_batch, n_players * n_bundles)
-        solutions_welfare = torch.mm(bids_flat, torch.transpose(solutions, 0, 1))
-        _, solution = torch.max(solutions_welfare, dim=1)  # maximizes over all possible allocations
-        winning_bundles = solutions.index_select(0, solution).to(torch.int8)
         if dont_allocate_to_zero_bid:
-            winning_bundles = winning_bundles * (bids_flat > 0)
+            allocations *= bids > 0
 
-        # assert winning_bundles == allocations
-
-        return winning_bundles.view_as(bids)
+        return allocations.view_as(bids)
 
     def _calculate_payments_first_price(
             self,
@@ -470,7 +450,7 @@ class LLGFullAuction(Mechanism):
                 values = [0, Inf].
 
         """
-        n_batch, n_players, n_bundles = bids.shape
+        n_batch, n_players, _ = bids.shape
         vcg_payments = torch.zeros(n_batch, n_players, device=self.device)
         for player_position in range(n_players):
             bids_reduced = bids.clone()
@@ -536,57 +516,43 @@ class LLGFullAuction(Mechanism):
 
         A = allocations.view(n_batch, 1, n_player * n_bundle) \
             - winning_and_in_coalition
-        A = A.view(n_batch, self.n_subsolutions, n_player, n_bundle).sum(dim=3)
+        A = A.view(n_batch, self.n_subsolutions, n_player, n_bundle) \
+            .bool().any(axis=3)
 
         # Computing b
         b = torch.sum(allocations.view(n_batch, n_player, n_bundle) \
             * bids.view(n_batch, n_player, n_bundle), dim=2)
 
         # Calculate VCG payments
-        payments_vcg = self._calculate_payments_vcg(bids, allocations)
+        payments_vcg = self._calculate_payments_vcg(bids, allocations).clone()
 
         if core_selection == 'mrcs_favored':
-            # Force agent 1 to have VCG prices:
-            #     p_1 >=   p_1^{vcg}
-            #   - p_1 >= - p_1^{vcg}
-            # TODO Nils: would it be easier to exclude p1 from optimization?
-            A = torch.cat(
-                (
-                    A,
-                    torch.tensor([[0, 1, 0]], device=self.device) \
-                        .repeat(n_batch, 1, 1),
-                    torch.tensor([[0, -1, 0]], device=self.device) \
-                        .repeat(n_batch, 1, 1)
-                ),
-                axis=1
-            )
-            beta = torch.cat(
-                (
-                    beta,
-                    payments_vcg[:, 1].view(n_batch, 1),
-                    - payments_vcg[:, 1].view(n_batch, 1)
-                ),
-                axis=1
-            )
+            # Force agent 1 to have VCG prices: plug her prices into constraints
+            beta -= torch.einsum('ij,i->ij', A[:, :, 1], payments_vcg[:, 1])
+            A = A[:, :, [0, 2]]
+            b = b[:, [0, 2]]
 
         payment = self._run_batch_nearest_vcg_core_mpc(
             A=A, beta=beta, payments_vcg=payments_vcg, b=b,
             min_distance_to_vcg=core_selection=='nearest_vcg'
-        ).view(n_batch, n_player)
+        )
 
         if core_selection == 'mrcs_favored':
-            # TODO: actually happens every ~1000 iters
-            # assert torch.allclose(payment[:, 1].float(), payments_vcg[:, 1],
-            #                       atol=1e-6), \
-            #     "solver skewed up."
-            payment[:, 1] = payments_vcg[:, 1]
+            payment = payment.view(n_batch, n_player - 1)
+            # Combine all agents' prices
+            payment = torch.cat(
+                [payment[:, [0]], payments_vcg[:, [1]], payment[:, [1]]],
+                axis=1
+            )
+        else:
+            payment = payment.view(n_batch, n_player)
 
         return payment.float()
 
     def _run_batch_nearest_vcg_core_mpc(self, A, beta, payments_vcg, b,
                                         min_distance_to_vcg=True):
         model = _OptNet_for_LLLLGG(self.device, A, beta, b, payments_vcg,
-                                   max_iter=100)
+                                   max_iter=self.max_iter)
         model._add_objective_min_payments()  # pylint: disable=protected-access
         if min_distance_to_vcg:
             mu = model('mpc')
@@ -611,11 +577,12 @@ class LLGFullAuction(Mechanism):
             welfare: torch.Tensor, dims (batch_size), values = [0, Inf].
 
         """
+        batch_dim, player_dim, item_dim = 0, 1, 2
         # welfare per batch and per player (reduced all items)
-        welfare = (valuations * allocations).sum(axis=2)
+        welfare = (valuations * allocations).sum(axis=item_dim)
         # exclude players and sum over remaining
         welfare[:, exclude] = 0
-        return welfare.sum(axis=1)
+        return welfare.sum(axis=player_dim)
 
 
 class LLLLGGAuction(Mechanism):

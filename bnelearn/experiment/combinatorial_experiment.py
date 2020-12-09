@@ -294,7 +294,8 @@ class LLGFullExperiment(LocalGlobalExperiment):
         super().__init__(config=config)
 
     def _setup_mechanism(self):
-        self.mechanism = LLGFullAuction(rule=self.payment_rule)
+        self.mechanism = LLGFullAuction(rule=self.payment_rule,
+                                        cuda=self.hardware.device)
 
     def _check_and_set_known_bne(self):
         return self.payment_rule in ['vcg', 'mrcs_favored']
@@ -302,15 +303,15 @@ class LLGFullExperiment(LocalGlobalExperiment):
     def _optimal_bid(self, valuation, player_position):  # pylint: disable=method-hidden
         """Equilibrium bid functions."""
         if not isinstance(valuation, torch.Tensor):
-            valuation = torch.tensor(valuation)
+            valuation = torch.as_tensor(valuation, device=self.config.hardware.device)
 
         assert self.risk == 1.0, 'BNE known for risk-neutral only (or in VCG)'
 
         if self.payment_rule in ['vcg', 'mrcs_favored']:
-            if player_position == 0:
+            if player_position == 1:
                 return torch.cat([
-                    valuation,  # item A
-                    0 * valuation,  # item B
+                    0 * valuation,  # item A
+                    valuation,  # item B
                     valuation], axis=1)  # bundle {A, B}
             if player_position == 2:
                 return torch.cat([
@@ -319,14 +320,14 @@ class LLGFullExperiment(LocalGlobalExperiment):
                     valuation], axis=1)
 
         ### Favored bidder 1:
-        if self.config.setting.correlation_types in ['independent'] and player_position == 1:
+        if self.config.setting.correlation_types in ['independent'] and player_position == 0:
             if self.payment_rule == 'vcg':
                 return torch.cat([
-                    0 * valuation,
                     valuation,
+                    0 * valuation,
                     valuation], axis=1)
             if self.payment_rule == 'mrcs_favored':
-                # Beck & Ott Appendix A.1 messed up. Here we take real part of
+                # Beck & Ott provide no solution: Here we take real part of
                 # complex solution (sqrt of negative values), see
                 # https://www.wolframalpha.com/input/?i=0+%3D+12*v-+15*z+-+1+%2B+%289*z+-+1+-+3*v%29*sqrt%281+-+6*z%2B+6*v%29+solve+for+z
                 v = torch.as_tensor(valuation, device=valuation.device,
@@ -397,8 +398,8 @@ class LLGFullExperiment(LocalGlobalExperiment):
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0,
                          cache_actions=False):
-        correlation_type = 'additive' if hasattr(self, 'correlation_groups') \
-            else None
+        correlation_type = 'additive' if (hasattr(self, 'correlation_groups') \
+            and self.config.setting.correlation_types != 'independent') else None
         return CombinatorialBidder.uniform(
             self.u_lo[player_position],
             self.u_hi[player_position],
@@ -412,7 +413,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
         )
 
     def _plot(self, **kwargs):  # pylint: disable=arguments-differ
-        kwargs['x_label'] = ['item A', 'item B', 'bunlde']
+        kwargs['x_label'] = ['item A', 'item B', 'bundle']
         kwargs['labels'] = ['local 1', 'local 2', 'global']
 
         # handle dim-missmatch that agents only value 1 bundle but bid for 3
