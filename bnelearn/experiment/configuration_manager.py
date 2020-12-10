@@ -377,12 +377,16 @@ class ConfigurationManager:
                     save_figure_data_to_disk: bool = 'None', stopping_criterion_rel_util_loss_diff: float = 'None',
                     stopping_criterion_frequency: int = 'None', stopping_criterion_duration: int = 'None',
                     stopping_criterion_batch_size: int = 'None', stopping_criterion_grid_size: int = 'None',
-                    export_step_wise_linear_bid_function_size: bool = 'None',
+                    cache_eval_actions: bool = 'None', export_step_wise_linear_bid_function_size: bool = 'None',
                     experiment_dir: str = 'None', experiment_name: str = 'None'):
         """Sets only the parameters of logging which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.logging, arg):
                 setattr(self.logging, arg, v)
+
+        if eval_batch_size < 2**16 and cache_eval_actions:
+            warnings.warn('Estimates in eval_env have strong path dependence.')
+
         return self
 
     # pylint: disable=too-many-arguments, unused-argument

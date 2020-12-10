@@ -692,6 +692,23 @@ class Experiment(ABC):
 
         return utility_vs_bne, epsilon_relative, epsilon_absolute
 
+    def relevant_actions(self):
+        r"""Get indecies of actions that matter.
+
+        In some games, and in their BNE, only some of the agents' actions
+        matter.
+
+        Returns:
+            relevant_actions: (torch.Tensor) of shape (n_agents, n_actions)
+                with elements in $\{0, 1\}$ for marking relevancy for BNE.
+
+        """
+        return torch.ones(
+            shape=(len(self.models), self.n_items),
+            device=self.config.hardware.device,
+            dytpe=torch.bool
+        )
+
     def _calculate_metrics_action_space_norms(self):
         """
         Calculate "action space distance" of model and bne-strategy. If
@@ -715,14 +732,16 @@ class Experiment(ABC):
             L_2[bne_idx] = [
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, 2,
-                    componentwise=self.logging.log_componentwise_norm
+                    componentwise=self.logging.log_componentwise_norm,
+                    component_selection=self.relevant_actions()[self._model2bidder[i][0], :]
                 )
                 for i, model in enumerate(self.models)
             ]
             L_inf[bne_idx] = [
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, float('inf'),
-                    componentwise=self.logging.log_componentwise_norm
+                    componentwise=self.logging.log_componentwise_norm,
+                    component_selection=self.relevant_actions()[self._model2bidder[i][0], :]
                 )
                 for i, model in enumerate(self.models)
             ]

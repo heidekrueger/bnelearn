@@ -362,6 +362,16 @@ class LLGFullExperiment(LocalGlobalExperiment):
 
         self.known_bne = False
 
+    def relevant_actions(self):
+        if self.config.setting.correlation_types in ['independent'] and \
+            self.payment_rule in ['vcg', 'mrcs_favored']:
+            return torch.tensor(
+                [[1, 0, 1], [0, 1, 1], [0, 0, 1]],
+                device=self.config.hardware.device,
+                dtype=torch.bool
+            )
+        return super().relevant_actions()
+
     def _setup_eval_environment(self):
         assert self.known_bne
         assert hasattr(self, '_optimal_bid')
@@ -380,10 +390,15 @@ class LLGFullExperiment(LocalGlobalExperiment):
             batch_size=self.config.logging.eval_batch_size,
             strategy_to_player_closure=self._strat_to_bidder
         )
-
-        self.bne_utilities_new_sample = torch.tensor(
+        self.bne_utilities = torch.tensor(
             [self.bne_env.get_reward(a, draw_valuations=True) for a in self.bne_env.agents])
-        self.bne_utilities = self.bne_utilities_new_sample
+
+        # Compare estimated util to that of Beck & Ott table 2
+        if self.payment_rule == 'mrcs_favored':
+            max_diff_to_estimate = torch.max(
+                torch.abs(self.bne_utilities - torch.tensor([0.154, 0.093, 0.418]))
+            )
+            print(f'Max difference to estimate is {round(max_diff_to_estimate, 4)}.')
 
     def _get_logdir_hierarchy(self):
         name = ['LLGFull', self.payment_rule]

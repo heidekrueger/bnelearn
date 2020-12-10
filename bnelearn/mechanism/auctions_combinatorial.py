@@ -43,6 +43,8 @@ class _OptNet_for_LLLLGG(nn.Module):
         # problem Anne's solver can tackle?
         self.n_batch, self.n_coalitions, self.n_player = A.shape  # pylint: disable=unused-variable
 
+        # TODO Nils: would it make sense to have an optional consistency check
+        # whether or not the dimensions match?
         super().__init__()
         self.device = device
         self.precision = precision
@@ -497,7 +499,7 @@ class LLGFullAuction(Mechanism):
         winning_and_in_coalition = torch.einsum(
             'ij,kjl->kijl',
             subsolutions_dense.view(self.n_subsolutions, n_player, n_bundle) \
-                .sum(dim=2),
+                .bool().any(axis=2).float(),
             allocations.view(n_batch, n_player, n_bundle)
         ).view(n_batch, self.n_subsolutions, n_player * n_bundle)
 
@@ -531,8 +533,10 @@ class LLGFullAuction(Mechanism):
             beta -= torch.einsum('ij,i->ij', A[:, :, 1], payments_vcg[:, 1])
             A = A[:, :, [0, 2]]
             b = b[:, [0, 2]]
+            payments_vcg_1 = payments_vcg[:, [1]]
+            payments_vcg = None  # not needed for mrcs_favored
 
-        payment = self._run_batch_nearest_vcg_core_mpc(
+        payment = self._run_batch_core_solver(
             A=A, beta=beta, payments_vcg=payments_vcg, b=b,
             min_distance_to_vcg=core_selection=='nearest_vcg'
         )
@@ -541,7 +545,7 @@ class LLGFullAuction(Mechanism):
             payment = payment.view(n_batch, n_player - 1)
             # Combine all agents' prices
             payment = torch.cat(
-                [payment[:, [0]], payments_vcg[:, [1]], payment[:, [1]]],
+                [payment[:, [0]], payments_vcg_1, payment[:, [1]]],
                 axis=1
             )
         else:
@@ -549,8 +553,8 @@ class LLGFullAuction(Mechanism):
 
         return payment.float()
 
-    def _run_batch_nearest_vcg_core_mpc(self, A, beta, payments_vcg, b,
-                                        min_distance_to_vcg=True):
+    def _run_batch_core_solver(self, A, beta, payments_vcg, b,
+                               min_distance_to_vcg=True):
         model = _OptNet_for_LLLLGG(self.device, A, beta, b, payments_vcg,
                                    max_iter=self.max_iter)
         model._add_objective_min_payments()  # pylint: disable=protected-access

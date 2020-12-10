@@ -127,13 +127,13 @@ llgfull_allocations = torch.tensor(
     dtype=torch.int8)
 
 llgfull_payments_vcg = torch.tensor(
-    [[0., 1., 0.],
-     [0., 1., 0.],
-     [0., 0., 4.],
-     [0., 0., 4.],
-     [0., 0., 0.],
-     [0., 0., 0.],
-     [0., 0., 1.2]]
+    [[0.0, 1.0, 0.0],
+     [0.0, 1.0, 0.0],
+     [0.0, 0.0, 4.0],
+     [0.0, 0.0, 4.0],
+     [0.0, 0.0, 0.0],
+     [0.0, 0.0, 0.0],
+     [0.0, 0.0, 1.2]]
 )
 
 llgfull_payments_nearest_vcg = torch.tensor(
