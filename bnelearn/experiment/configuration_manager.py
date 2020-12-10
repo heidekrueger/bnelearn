@@ -384,7 +384,7 @@ class ConfigurationManager:
             if hasattr(self.logging, arg):
                 setattr(self.logging, arg, v)
 
-        if eval_batch_size < 2**16 and cache_eval_actions:
+        if isinstance(eval_batch_size, int) and eval_batch_size < 2**16 and cache_eval_actions:
             warnings.warn('Estimates in eval_env have strong path dependence.')
 
         return self
