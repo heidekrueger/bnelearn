@@ -395,9 +395,9 @@ class LLGFullExperiment(LocalGlobalExperiment):
 
         # Compare estimated util to that of Beck & Ott table 2
         if self.payment_rule == 'mrcs_favored':
-            max_diff_to_estimate = torch.max(
+            max_diff_to_estimate = float(max(
                 torch.abs(self.bne_utilities - torch.tensor([0.154, 0.093, 0.418]))
-            )
+            ))
             print(f'Max difference to estimate is {round(max_diff_to_estimate, 4)}.')
 
     def _get_logdir_hierarchy(self):
