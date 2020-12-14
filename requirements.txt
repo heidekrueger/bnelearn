@@ -14,6 +14,8 @@ pytest-xdist #parallel tests
 pylint
 pylint-gitlab #pip
 scipy # for numeric integration
+Sphinx
+sphinx-rtd-theme # pip
 tqdm #for progress bars
 fire #conda -c conda-forge
 tabulate # required for pandas pretty-printing
