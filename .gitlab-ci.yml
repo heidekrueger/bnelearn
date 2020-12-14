@@ -79,5 +79,5 @@ deploy_docs:
   - cp -r docs/* ~/docs-bnelearn
   - cp -r bnelearn ~/docs-bnelearn
   - cd ~/docs-bnelearn
-  - sphinx-apidoc -f -o . .
+  - sphinx-apidoc -f -o . bnelearn
   - make html
