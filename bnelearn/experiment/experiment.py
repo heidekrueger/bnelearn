@@ -24,7 +24,7 @@ import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
 from bnelearn.experiment.configurations import (ExperimentConfig)
-from bnelearn.learner import ESPGLearner, Learner
+from bnelearn.learner import ESPGLearner, PGLearner, Learner
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import NeuralNetStrategy
 
@@ -157,7 +157,7 @@ class Experiment(ABC):
     def _setup_learners(self):
 
         self.learners = [
-            ESPGLearner(model=model,
+            PGLearner(model=model,
                         environment=self.env,
                         hyperparams=self.learning.learner_hyperparams,
                         optimizer_type=self.learning.optimizer,

@@ -84,6 +84,10 @@ class VickreyAuction(Mechanism):
 class FirstPriceSealedBidAuction(Mechanism):
     """First Price Sealed Bid auction"""
 
+    def __init__(self, **kwargs):
+        self.smoothing = 10
+        super().__init__(**kwargs)
+
     # TODO: If multiple players submit the highest bid, the implementation chooses the first rather than at random
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -109,7 +113,7 @@ class FirstPriceSealedBidAuction(Mechanism):
                         allocation in that batch.
         """
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
-        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+        # assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
@@ -139,7 +143,17 @@ class FirstPriceSealedBidAuction(Mechanism):
         # Don't allocate items that have a winnign bid of zero.
         allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
-        return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
+        # allocate return variables
+        payments_smooth = bids.detach().clone()
+        allocations_smooth = torch.zeros(batch_size, n_players, n_items, device=self.device)
+
+        self.smoothing *= 1.0001
+        print('self.smoothing', self.smoothing)
+        allo_smooth_agent_0 = torch.nn.Sigmoid()(self.smoothing * (bids[:, 0, :] - bids[:, 1, :]))
+        allocations_smooth[:, 0, :] = allo_smooth_agent_0
+        allocations_smooth[:, 1, :] = 1 - allo_smooth_agent_0
+
+        return (allocations_smooth, payments_smooth)  # payments: batches x players, allocation: batch x players x items
 
 
 class ThirdPriceSealedBidAuction(Mechanism):

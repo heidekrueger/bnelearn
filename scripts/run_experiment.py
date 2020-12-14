@@ -33,17 +33,18 @@ if __name__ == '__main__':
     # experiment_class = ConfigurationManager.get_class_by_experiment_type(experiment_config.experiment_class)
 
     # Well, path is user-specific
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
-    #                                                            n_epochs=200) \
-    #     .set_setting(risk=1.1)\
-    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
-    #     .set_learning(pretrain_iters=5) \
-    #     .set_logging(eval_batch_size=2**4).get_config()
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'test_smooth')
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
+                                                               n_epochs=10000) \
+        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
+        .set_learning(pretrain_iters=5, optimizer_hyperparams={'lr': 1e-3}) \
+        .set_logging(eval_batch_size=2**4) \
+        .set_hardware(specific_gpu=3) \
+        .get_config()
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
-                                                               n_runs=1, n_epochs=5)\
-        .set_logging(log_root_dir=log_root_dir).get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
+    #                                                            n_runs=1, n_epochs=5)\
+    #     .set_logging(log_root_dir=log_root_dir).get_config()
 
     # All three next experiments get AssertionError: scalar should be 0D
     # experiment_config, experiment_class = \
