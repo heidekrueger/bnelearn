@@ -123,7 +123,7 @@ class Environment(ABC):
             exclude = set()
 
         for agent in (a for a in self.agents if a.player_position not in exclude):
-            yield(agent.player_position, agent.get_action())
+            yield (agent.player_position, agent.get_action())
 
     def prepare_iteration(self):
         """Prepares the interim-stage of a Bayesian game,
@@ -304,6 +304,59 @@ class AuctionEnvironment(Environment):
             utility = utility.mean()
 
         return utility
+
+    def get_allocation(
+            self,
+            agent,
+            draw_valuations: bool = False,
+            aggregate: bool = True,
+        ) -> torch.Tensor:
+        """Returns allocation of a single player against the environment.
+        """
+
+        if not isinstance(agent, Bidder):
+            raise ValueError("Agent must be of type Bidder")
+
+        assert agent.batch_size == self.batch_size, \
+            "Agent batch_size does not match the environment!"
+
+        player_position = agent.player_position if agent.player_position else 0
+
+        # draw valuations
+        if draw_valuations:
+            self.draw_valuations_()
+
+        # get agent_bid
+        agent_bid = agent.get_action()
+        action_length = agent_bid.shape[1]
+
+        if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
+            allocation, _ = self.mechanism.play(
+                agent_bid.view(agent.batch_size, 1, action_length)
+            )
+
+        else: # at least 2 environment agent --> build bid_profile, then play
+            # get bid profile
+            bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
+                                      dtype=agent_bid.dtype, device=self.mechanism.device)
+            bid_profile[:, player_position, :] = agent_bid
+
+            for opponent_pos, opponent_bid in self._generate_agent_actions(exclude=set([player_position])):
+                bid_profile[:, opponent_pos, :] = opponent_bid
+
+            allocation, _ = self.mechanism.play(bid_profile)
+
+        allocation = allocation[:, player_position, :]
+
+        if aggregate:
+            # Returns flat tensor with int entries `i` for a allocation of `i`th item
+            allocation = torch.einsum(
+                'bi,i->bi', allocation,
+                torch.arange(1, action_length + 1, device=allocation.device)
+            ).view(1, -1)
+            allocation = allocation[allocation > 0].to(torch.int8)
+
+        return allocation
 
     def prepare_iteration(self):
         self.draw_valuations_()

@@ -825,11 +825,11 @@ class Experiment(ABC):
 
         try:
             self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
-        except: # pylint: disable=bare-except
+        except AttributeError:
             try:
                 self._hparams_metrics['util_loss_ex_interim'] = \
                     self._cur_epoch_log_params['util_loss_ex_interim']
-            except: # pylint: disable=bare-except
+            except AttributeError:
                 pass
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
 

@@ -387,7 +387,7 @@ class LLGFullAuction(Mechanism):
                 bids or not.
 
         Returns:
-            allocation: torch.Tensor, dims (batch_size, b_bundles),
+            allocation: tensor of dimension (n_batches x n_players x 3)
                 values = {0, 1}.
 
         """

@@ -372,6 +372,17 @@ class LLGFullExperiment(LocalGlobalExperiment):
             )
         return super().relevant_actions()
 
+    def _evaluate_and_log_epoch(self, epoch: int) -> float:
+        # TODO keep track of time as in super()
+        for name, agent in zip(['local 1', 'local 2', 'global'], self.env.agents):
+            self.writer.add_histogram(
+                tag="allocations/" + name,
+                values=self.env.get_allocation(agent),
+                bins=2*self.n_items-1,
+                global_step=epoch
+            )
+        return super()._evaluate_and_log_epoch(epoch)
+
     def _setup_eval_environment(self):
         assert self.known_bne
         assert hasattr(self, '_optimal_bid')
@@ -398,7 +409,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
             max_diff_to_estimate = float(max(
                 torch.abs(self.bne_utilities - torch.tensor([0.154, 0.093, 0.418]))
             ))
-            print(f'Max difference to estimate is {round(max_diff_to_estimate, 4)}.')
+            print(f'Max difference to BNE estimate is {round(max_diff_to_estimate, 4)}.')
 
     def _get_logdir_hierarchy(self):
         name = ['LLGFull', self.payment_rule]
