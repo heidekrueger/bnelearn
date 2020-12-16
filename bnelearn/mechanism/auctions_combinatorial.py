@@ -534,24 +534,58 @@ class LLGFullAuction(Mechanism):
             A = A[:, :, [0, 2]]
             b = b[:, [0, 2]]
             payments_vcg_1 = payments_vcg[:, [1]]
-            payments_vcg = None  # not needed for mrcs_favored
 
-        payment = self._run_batch_core_solver(
-            A=A, beta=beta, payments_vcg=payments_vcg, b=b,
-            min_distance_to_vcg=core_selection=='nearest_vcg'
-        )
+            # Simpler way
+            payment = torch.zeros(n_batch, n_player, device=self.device)
 
-        if core_selection == 'mrcs_favored':
-            payment = payment.view(n_batch, n_player - 1)
+            tight = A.sum(axis=2)
+            non_zero_mask = tight.sum(axis=1) > 0
+            c1 = A[non_zero_mask, :, 0] == 1
+            c3 = A[non_zero_mask, :, 1] == 1
+            beta_temp = beta[non_zero_mask, ...].clone()
+            beta_temp[torch.logical_or(~c1, c3), ...] = 0
+            payment[non_zero_mask, 0] = torch.max(beta_temp, axis=1).values
+            beta_temp = beta[non_zero_mask, ...].clone()
+            beta_temp[torch.logical_or(c1, ~c3), ...] = 0
+            payment[non_zero_mask, 1] = torch.max(beta_temp, axis=1).values
+
+            diag_batch_mask = torch.any(tight==2, axis=1)
+            try:
+                p_alter = torch.max(beta[diag_batch_mask], axis=1).values / 2
+                diag_tight_mask = torch.logical_and(
+                    p_alter > payment[diag_batch_mask, 0],
+                    p_alter > payment[diag_batch_mask, 1]
+                )
+                diag_batch_mask[diag_batch_mask] = diag_tight_mask
+                payment[diag_batch_mask, 0] = p_alter
+                payment[diag_batch_mask, 1] = p_alter
+            except RuntimeError: # happens when there isn't a single instance with True
+                pass
+
             # Combine all agents' prices
             payment = torch.cat(
                 [payment[:, [0]], payments_vcg_1, payment[:, [1]]],
                 axis=1
             )
-        else:
-            payment = payment.view(n_batch, n_player)
 
-        return payment.float()
+            # payment_old = self._run_batch_core_solver(
+            #     A=A, beta=beta, payments_vcg=payments_vcg, b=b,
+            #     min_distance_to_vcg=core_selection=='nearest_vcg'
+            # ).view(n_batch, n_player-1)
+            # payment_old = torch.cat(
+            #     [payment_old[:, [0]], payments_vcg_1, payment_old[:, [1]]],
+            #     axis=1
+            # ).view(n_batch, n_player)
+            # print('error:', torch.mean(torch.abs(payment - payment_old)))
+            return payment
+
+        else:
+            payment = self._run_batch_core_solver(
+                A=A, beta=beta, payments_vcg=payments_vcg, b=b,
+                min_distance_to_vcg=core_selection=='nearest_vcg'
+            )
+            payment = payment.view(n_batch, n_player)
+            return payment.float()
 
     def _run_batch_core_solver(self, A, beta, payments_vcg, b,
                                min_distance_to_vcg=True):
