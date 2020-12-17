@@ -704,9 +704,9 @@ class Experiment(ABC):
 
         """
         return torch.ones(
-            shape=(len(self.models), self.n_items),
+            size=(len(self.models), self.n_items),
             device=self.config.hardware.device,
-            dytpe=torch.bool
+            dtype=torch.bool
         )
 
     def _calculate_metrics_action_space_norms(self):
