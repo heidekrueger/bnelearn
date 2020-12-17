@@ -1,3 +1,3 @@
-## Experiments Directory
+# Experiments directory
 
-This directory is used for logging temporary experiment results and is ignored by git.
+This is the default directory used for logging experiment results. Its contents are ignored by git.

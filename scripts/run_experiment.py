@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
-# from bnelearn.util import logging
+from bnelearn.util import logging
 from bnelearn.experiment.configuration_manager import ConfigurationManager  # pylint: disable=import-error
 
 if __name__ == '__main__':
@@ -41,8 +41,9 @@ if __name__ == '__main__':
     #     .set_learning(pretrain_iters=5) \
     #     .set_logging(eval_batch_size=2**4).get_config()
 
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',n_runs=1, n_epochs=5) \
-    #     .set_logging(log_root_dir=log_root_dir).get_config()
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
+                                                               n_runs=1, n_epochs=5)\
+        .set_logging(log_root_dir=log_root_dir).get_config()
 
     # All three next experiments get AssertionError: scalar should be 0D
     # experiment_config, experiment_class = \
@@ -58,22 +59,21 @@ if __name__ == '__main__':
     #     .set_logging(log_root_dir=log_root_dir, util_loss_batch_size=2 ** 7, util_loss_grid_size=2 ** 6,
     #                  util_loss_frequency=1).get_config()
 
-    # TODO error in L2 calc for setting (see VCG)
-    experiment_config, experiment_class = ConfigurationManager(
-        experiment_type='llg_full', n_runs=1, n_epochs=10000) \
-        .set_setting(payment_rule='mrcs_favored') \
-        .set_learning(batch_size=2**18) \
-        .set_logging(
-            eval_batch_size=2**18,
-            log_root_dir=log_root_dir,
-            util_loss_batch_size=2**10,
-            util_loss_grid_size=2**10,
-            util_loss_frequency=1000,
-            plot_frequency=10,
-            cache_eval_actions=False,
-            stopping_criterion_frequency=100000) \
-        .set_hardware(specific_gpu=3) \
-        .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(
+    #     experiment_type='llg_full', n_runs=1, n_epochs=10000) \
+    #     .set_setting(payment_rule='mrcs_favored') \
+    #     .set_learning(batch_size=2**18) \
+    #     .set_logging(
+    #         eval_batch_size=2**18,
+    #         log_root_dir=log_root_dir,
+    #         util_loss_batch_size=2**10,
+    #         util_loss_grid_size=2**10,
+    #         util_loss_frequency=1000,
+    #         plot_frequency=10,
+    #         cache_eval_actions=False,
+    #         stopping_criterion_frequency=100000) \
+    #     .set_hardware(specific_gpu=3) \
+    #     .get_config()
     # experiment_config, experiment_class = \
     #     ConfigurationManager(
     #         experiment_type='llllgg',
@@ -122,12 +122,11 @@ if __name__ == '__main__':
 
     # 10k epoch bug
     # log_dir = os.path.join('/home/gleb/Projects/bnelearn/experiments/test/subrun')
-    # writer = SummaryWriter(log_dir)
+    # writer1 = SummaryWriter(log_dir)
     #
-    # for n_iter in range(20000):
-    #     writer.add_scalar('Loss/train', np.random.random(), n_iter)
-    #     # writer.add_scalar('Loss/test', np.random.random(), n_iter)
+    # for n_iter in range(25000):
+    #     writer1.add_scalar('Loss/train', np.random.random(), n_iter)
     #
-    # writer.close()
+    # writer1.close()
     #
     # logging.tabulate_tensorboard_logs('/home/gleb/Projects/bnelearn/experiments/', write_detailed=True)

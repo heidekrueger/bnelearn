@@ -1,6 +1,7 @@
 stages:
   - test
   - lint
+  - deploy_docs
 
 test:
   stage: test
@@ -66,3 +67,17 @@ lint:
   #artifacts:
   #  paths:
   #    - pylint.txt
+
+deploy_docs:
+  only:
+    refs:
+      - master
+  stage: deploy_docs
+  script:
+  - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
+  - source activate bnelearn
+  - cp -r docs/* ~/docs-bnelearn
+  - cp -r bnelearn ~/docs-bnelearn
+  - cd ~/docs-bnelearn
+  - sphinx-apidoc -f -o . bnelearn
+  - make html

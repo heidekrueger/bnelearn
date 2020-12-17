@@ -32,8 +32,8 @@ from bnelearn.correlation_device import (
     BernoulliWeightsCorrelationDevice,
     ConstantWeightsCorrelationDevice
 )
-from bnelearn.util.logging import access_bne_utility_database
 
+import bnelearn.util.logging as logging_utils
 
 class LocalGlobalExperiment(Experiment, ABC):
     """
@@ -248,7 +248,7 @@ class LLGExperiment(LocalGlobalExperiment):
         self.bne_utilities_new_sample = torch.tensor(
             [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
 
-        bne_utilities_database = access_bne_utility_database(self, self.bne_utilities_new_sample)
+        bne_utilities_database = logging_utils.access_bne_utility_database(self, self.bne_utilities_new_sample)
         if bne_utilities_database:
             self.bne_utilities = bne_utilities_database
         else:
@@ -272,8 +272,11 @@ class LLGExperiment(LocalGlobalExperiment):
 class LLGFullExperiment(LocalGlobalExperiment):
     """A combinatorial experiment with 2 local and 1 global bidder and 2 items.
 
-    Each bidders bids on both bundles. Local bidder 1 has only a value for the
-    first item, the second only for the second and global only on both.
+    Each bidders bids on all bundles. Local bidder 1 has only a value for the
+    first item, the second only for the second and global only on both. This
+    experiment is therfore more general than the `LLGExperiment` and includes
+    the specifc payment rule from Beck & Ott, where the 2nd local bidder is
+    favored (pays VCG prices).
 
     """
     def __init__(self, config: ExperimentConfig):
@@ -301,7 +304,11 @@ class LLGFullExperiment(LocalGlobalExperiment):
         return self.payment_rule in ['vcg', 'mrcs_favored']
 
     def _optimal_bid(self, valuation, player_position):  # pylint: disable=method-hidden
-        """Equilibrium bid functions."""
+        """Equilibrium bid functions.
+
+        Payment rule `mrcs_favored` is from Beck & Ott (minimum revenue core
+        selecting with one player favored).
+        """
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.as_tensor(valuation, device=self.config.hardware.device)
 

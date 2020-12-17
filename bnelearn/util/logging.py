@@ -8,7 +8,7 @@ from typing import List
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator, STORE_EVERYTHING_SIZE_GUIDANCE
 from torch.utils.tensorboard.summary import hparams
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
 import pkg_resources
@@ -45,8 +45,9 @@ def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detail
                                          for file in os.listdir(os.path.join(experiment_dir, run, x.name)))]
         subruns.append('.')  # also read global logs
         for subrun in subruns:
+            ea = EventAccumulator(os.path.join(experiment_dir, run, subrun),
+                                  size_guidance=STORE_EVERYTHING_SIZE_GUIDANCE).Reload()
 
-            ea = EventAccumulator(os.path.join(experiment_dir, run, subrun)).Reload()
             tags = ea.Tags()['scalars']
 
             for tag in tags:
