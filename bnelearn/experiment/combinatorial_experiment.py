@@ -310,13 +310,13 @@ class LLGFullExperiment(LocalGlobalExperiment):
         if self.payment_rule in ['vcg', 'mrcs_favored']:
             if player_position == 1:
                 return torch.cat([
-                    0 * valuation,  # item A
+                    torch.zeros_like(valuation),  # item A
                     valuation,  # item B
                     valuation], axis=1)  # bundle {A, B}
             if player_position == 2:
                 return torch.cat([
-                    0 * valuation,  # TODO ?
-                    0 * valuation,
+                    torch.zeros_like(valuation),  # TODO ?
+                    torch.zeros_like(valuation),
                     valuation], axis=1)
 
         ### Favored bidder 1:
@@ -324,7 +324,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
             if self.payment_rule == 'vcg':
                 return torch.cat([
                     valuation,
-                    0 * valuation,
+                    torch.zeros_like(valuation),
                     valuation], axis=1)
             if self.payment_rule == 'mrcs_favored':
                 # Beck & Ott provide no solution: Here we take real part of
@@ -366,7 +366,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
         if self.config.setting.correlation_types in ['independent'] and \
             self.payment_rule in ['vcg', 'mrcs_favored']:
             return torch.tensor(
-                [[1, 0, 1], [0, 1, 1], [0, 0, 1]],
+                [[1, 0, 0], [0, 1, 0], [0, 0, 1]], # TODO rather: [[1, 0, 1], [0, 1, 1], [0, 0, 1]]
                 device=self.config.hardware.device,
                 dtype=torch.bool
             )
