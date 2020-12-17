@@ -276,7 +276,7 @@ class Experiment(ABC):
                 os.mkdir(os.path.join(output_dir, 'models'))
 
             print('Started run. Logging to {}.'.format(output_dir))
-            self.fig = plt.figure()
+            self.fig = plt.figure()  # pylint: disable=attribute-defined-outside-init
             self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
             tic = timer()
@@ -320,6 +320,7 @@ class Experiment(ABC):
         ])
 
         if self.logging.enable_logging:
+            # pylint: disable=attribute-defined-outside-init
             self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
             print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),
