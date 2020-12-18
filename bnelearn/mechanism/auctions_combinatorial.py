@@ -268,15 +268,17 @@ class LLGAuction(Mechanism):
 
         return (allocations.unsqueeze(-1), payments)  # payments: batches x players, allocation: batch x players x items
 
-    def get_efficiency(self, env):
+    def get_efficiency(self, env, draw_valuations: bool = False) -> float:
         """Returns the percentage of efficiently allocated outcomes over a
         batch.
 
         Args:
             env (:obj:`Environment`).
+            draw_valuations (:bool:) whether or not to redraw the valuations of
+                the agents.
 
         Returns:
-            efficiency (float): precentage of efficiently allocated outcomes.
+            efficiency (:float:) precentage of efficiently allocated outcomes.
 
         """
         bid_profile = torch.zeros(env.batch_size, env.n_players, 1,

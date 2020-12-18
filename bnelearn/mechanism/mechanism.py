@@ -52,3 +52,38 @@ class Mechanism(Game, ABC):
         _, payments = self.play(bid_profile)
 
         return payments.sum(axis=1).float().mean()
+
+    def get_efficiency(self, env, draw_valuations: bool = False) -> float:
+        """Returns the percentage of efficiently allocated outcomes over a
+        batch.
+
+        Args:
+            env (:obj:`Environment`).
+            draw_valuations (bool): whether or not to redraw the valuations of
+                the agents.
+
+        Returns:
+            efficiency (float): precentage of efficiently allocated outcomes.
+
+        """
+        if draw_valuations:
+            env.draw_valuations_()
+
+        action_length = env.agents[0].n_items
+
+        bid_profile = torch.zeros(env.batch_size, env.n_players, action_length,
+                                  device=self.device)
+        for pos, bid in env._generate_agent_actions():  # pylint: disable=protected-access
+            bid_profile[:, pos, :] = bid
+        actual_allocations, _ = self.play(bid_profile)
+
+        valuation_profile = torch.zeros(env.batch_size, env.n_players, action_length,
+                                        device=self.device)
+        for agent in env.agents:
+            valuation_profile[:, agent.player_position, :] = agent.valuations
+        fair_allocations, _ = self.play(valuation_profile)
+
+        # Count no. of batches where all items are equally distributed over all agents
+        equal_allocations = actual_allocations == fair_allocations
+        efficiency = torch.all(torch.all(equal_allocations, axis=2), axis=1)
+        return efficiency.float().mean()

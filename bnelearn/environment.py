@@ -397,10 +397,19 @@ class AuctionEnvironment(Environment):
             for i in group:
                 self.agents[i].draw_valuations_(common_component, weights)
 
-    def draw_conditionals(self, player_position: int, conditional_observation: torch.Tensor, batch_size: int = None):
+    def draw_conditionals(
+            self,
+            player_position: int,
+            conditional_observation: torch.Tensor,
+            batch_size: int = None
+        ) -> dict:
         """
         Draws valuations/observations from all agents conditioned on the observation `cond`
         of the agent at `player_position` from the correlation_devices.
+
+        Returns
+            conditionals_dict (dict) with `player_position` as keys and the
+                corresponding conditoned valuation `tensors` as dict-values.
         """
         batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
