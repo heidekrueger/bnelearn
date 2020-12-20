@@ -38,15 +38,15 @@ if __name__ == '__main__':
 
 
     ### SINGLE ITEM EXPERIMENTS ###
-    experiment_config, experiment_class = ConfigurationManager(
-        experiment_type='single_item_uniform_symmetric',
-        n_runs=1, n_epochs=200
-    ) \
-        .set_setting(risk=1.1)\
-        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
-        .set_learning(pretrain_iters=5) \
-        .set_logging(eval_batch_size=2**4) \
-        .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(
+    #     experiment_type='single_item_uniform_symmetric',
+    #     n_runs=1, n_epochs=200
+    # ) \
+    #     .set_setting(risk=1.1)\
+    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
+    #     .set_learning(pretrain_iters=5) \
+    #     .set_logging(eval_batch_size=2**4) \
+    #     .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(
     #    experiment_type='single_item_gaussian_symmetric',
@@ -125,13 +125,15 @@ if __name__ == '__main__':
 
 
     ### INTERDEPENDENT EXPERIMENTS ###
-    # experiment_config, experiment_class = ConfigurationManager(
-    #     experiment_type='mineral_rights', n_runs=1, n_epochs=100
-    # ) \
-    #     .set_learning(pretrain_iters=3)\
-    #     .set_logging(log_root_dir=log_root_dir)\
-    #     .set_hardware(specific_gpu=7)\
-    #     .get_config()
+    experiment_config, experiment_class = ConfigurationManager(
+        experiment_type='mineral_rights', n_runs=1, n_epochs=1000
+    ) \
+        .set_learning(pretrain_iters=3) \
+        .set_logging(
+            log_root_dir=log_root_dir,
+            util_loss_frequency=10) \
+        .set_hardware(specific_gpu=7) \
+        .get_config()
     # experiment_config, experiment_class = ConfigurationManager(
     #     experiment_type='affiliated_observations', n_runs=1, n_epochs=100
     # ) \

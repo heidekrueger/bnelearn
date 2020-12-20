@@ -97,8 +97,9 @@ class ConfigurationManager:
         self.setting.u_hi = 1
         self.setting.payment_rule = 'second_price'
         self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
                                     'efficiency': True,
-                                    'util_loss': True}
+                                    'revenue': True}
 
     def _init_affiliated_observations(self):
         self.running.n_runs = 1
@@ -111,8 +112,9 @@ class ConfigurationManager:
         self.setting.u_hi = 1
         self.setting.payment_rule = 'first_price'
         self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
                                     'efficiency': True,
-                                    'util_loss': True}
+                                    'revenue': True}
 
     def _init_llg(self):
         self.learning.model_sharing = True

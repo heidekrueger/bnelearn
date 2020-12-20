@@ -41,13 +41,26 @@ class Mechanism(Game, ABC):
         """Alias for play for auction mechanisms"""
         raise NotImplementedError()
 
-    def get_revenue(self, env):
+    def get_revenue(self, env, draw_valuations: bool = False) -> float:
+        """Returns the average seller revenue over a batch.
+
+        Args:
+            env (:obj:`Environment`).
+            draw_valuations (bool): whether or not to redraw the valuations of
+                the agents.
+
+        Returns:
+            revenue (float): average of seller revenue over a batch of games.
+
         """
-        Returns the average seller revenue over a batch.
-        """
-        bid_profile = torch.zeros(env.batch_size, env.n_players,
-                                  env.agents[0].n_items, device=self.device)
-        for pos, bid in env._generate_agent_actions(): # pylint: disable=protected-access
+        if draw_valuations:
+            env.draw_valuations_()
+
+        action_length = env.agents[0].n_items
+
+        bid_profile = torch.zeros(env.batch_size, env.n_players, action_length,
+                                  device=self.device)
+        for pos, bid in env._generate_agent_actions():  # pylint: disable=protected-access
             bid_profile[:, pos, :] = bid
         _, payments = self.play(bid_profile)
 
@@ -86,4 +99,5 @@ class Mechanism(Game, ABC):
         # Count no. of batches where all items are equally distributed over all agents
         equal_allocations = actual_allocations == fair_allocations
         efficiency = torch.all(torch.all(equal_allocations, axis=2), axis=1)
+
         return efficiency.float().mean()
