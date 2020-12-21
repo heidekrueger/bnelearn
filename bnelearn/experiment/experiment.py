@@ -245,6 +245,12 @@ class Experiment(ABC):
             self.v_opt = [None] * len(self.bne_env)
             self.b_opt = [None] * len(self.bne_env)
 
+            # Switch needed for high dimensional settings, where we can't
+            # exactly match the requested grid (see e.g. multi-unit simplex)
+            grid_size_differs = False
+
+            # Draw valuations and corresponding equilibrium bids in all the
+            # availabe BNE
             for i, bne_env in enumerate(self.bne_env):
                 # dim: [points, bidders, items]
                 self.v_opt[i] = torch.stack(
@@ -258,8 +264,11 @@ class Experiment(ABC):
                     dim=1
                 )
                 if self.v_opt[i].shape[0] != self.plot_points:
-                    print('´plot_points´ changed due to get_valuation_grid')
-                    self.plot_points = self.v_opt[i].shape[0]
+                    grid_size_differs = True
+
+            if grid_size_differs:
+                print('´plot_points´ changed due to get_valuation_grid')
+                self.plot_points = self.v_opt[0].shape[0]
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
