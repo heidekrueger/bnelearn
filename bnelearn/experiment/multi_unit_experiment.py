@@ -23,9 +23,9 @@ from bnelearn.mechanism import (
 from bnelearn.strategy import ClosureStrategy
 
 
-########################################################################################################################
-###                                                 BNE STRATEGIES                                                   ###
-########################################################################################################################
+###############################################################################
+###                             BNE STRATEGIES                              ###
+###############################################################################
 
 def _multiunit_bne(experiment_config, payment_rule):
     """
@@ -34,25 +34,29 @@ def _multiunit_bne(experiment_config, payment_rule):
     """
 
     if payment_rule in ('vcg', 'vickrey'):
-        def truthful(valuation, player_position=None):
-            return torch.clone(valuation)
-
+        def truthful(valuation, player_position=None):  # pylint: disable=unused-argument
+            return valuation
         return truthful
 
-    elif payment_rule in ('first_price', 'discriminatory'):
+    if (experiment_config.correlation_types is not None or
+            experiment_config.risk != 1):
+        return None
+
+    if payment_rule in ('first_price', 'discriminatory'):
         if experiment_config.n_units == 2 and experiment_config.n_players == 2:
             if not experiment_config.constant_marginal_values:
                 print('BNE is only approximated roughly!')
                 return _optimal_bid_multidiscriminatory2x2
             else:
                 # TODO get valuation_cdf from experiment_config
-                raise NotImplementedError
                 # return _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf)
+                return None
 
-    elif payment_rule == 'uniform':
+    if payment_rule == 'uniform':
         if experiment_config.n_units == 2 and experiment_config.n_players == 2:
             return _optimal_bid_multiuniform2x2()
-        elif (experiment_config.n_units == 3 and experiment_config.n_players == 2 and experiment_config.item_interest_limit == 2):
+        if (experiment_config.n_units == 3 and experiment_config.n_players == 2
+                and experiment_config.item_interest_limit == 2):
             return _optimal_bid_multiuniform3x2limit2
 
     return None
@@ -259,7 +263,7 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
 
     return _optimal_bid
 
-########################################################################################################################
+###############################################################################
 
 
 class MultiUnitExperiment(Experiment, ABC):
@@ -372,7 +376,8 @@ class MultiUnitExperiment(Experiment, ABC):
         print('BNE envs have been set up.')
 
     def _get_logdir_hierarchy(self):
-        name = ['MultiUnit', self.payment_rule, str(self.n_players) + 'players_' + str(self.n_units) + 'units']
+        name = ['multi_unit', self.payment_rule, str(self.n_players) \
+                + 'players_' + str(self.n_units) + 'units']
         return os.path.join(*name)
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
@@ -422,7 +427,8 @@ class SplitAwardExperiment(MultiUnitExperiment):
         if self.payment_rule == 'first_price':
             self.mechanism = FPSBSplitAwardAuction(cuda=self.hardware.cuda)
         else:
-            raise NotImplementedError('for the split-award auction only the ' + 'first-price payment rule is supported')
+            raise NotImplementedError('for the split-award auction only the ' \
+                + 'first-price payment rule is supported')
 
     def _check_and_set_known_bne(self):
         """check for available BNE strategy"""

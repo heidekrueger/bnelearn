@@ -177,6 +177,10 @@ class ConfigurationManager:
         self.setting.risk = 1.0
         self.setting.constant_marginal_values = False
         self.logging.plot_points = 1000
+        self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
+                                    'efficiency': True,
+                                    'revenue': True}
 
     def _init_splitaward(self):
         self.setting.n_units = 2
