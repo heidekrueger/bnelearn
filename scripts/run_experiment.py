@@ -37,13 +37,13 @@ if __name__ == '__main__':
 
 
     ### SINGLE ITEM EXPERIMENTS ###
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
-    #                                                            n_epochs=200) \
-    #     .set_setting(risk=1.1)\
-    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
-    #     .set_learning(pretrain_iters=5) \
-    #     .set_logging(eval_batch_size=2**4) \
-    #     .get_config()
+
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
+                                                               n_epochs=200) \
+        .set_setting(risk=1.1)\
+        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
+        .set_learning(pretrain_iters=5) \
+        .set_logging(eval_batch_size=2**4).get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
     #                                                            n_runs=2, n_epochs=2)\
@@ -63,10 +63,10 @@ if __name__ == '__main__':
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .get_config()
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=3) \
-        .set_setting(gamma=0.5) \
-        .set_logging(log_root_dir=log_root_dir, util_loss_batch_size=2 ** 7, util_loss_grid_size=2 ** 6,
-                     util_loss_frequency=1).get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=3) \
+    #     .set_setting(gamma=0.5) \
+    #     .set_logging(log_root_dir=log_root_dir,  util_loss_batch_size=2 ** 7, util_loss_grid_size=2 ** 6,
+    #                  util_loss_frequency=1).get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg', n_runs=1, n_epochs=200) \
     #     .set_logging(log_root_dir=log_root_dir) \

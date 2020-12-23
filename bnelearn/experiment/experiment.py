@@ -4,6 +4,7 @@ can often be shared by specific experiments.
 """
 
 import os
+from sys import platform
 import time
 from abc import ABC, abstractmethod
 from time import perf_counter as timer
@@ -304,6 +305,9 @@ class Experiment(ABC):
 
     def _exit_run(self):
         """Cleans up a run after it is completed"""
+        if self.logging.enable_logging:
+            self._log_experiment_params()
+
         if self.logging.save_models:
             self._save_models(directory=self.run_log_dir)
 
