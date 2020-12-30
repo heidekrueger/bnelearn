@@ -172,8 +172,8 @@ class ConfigurationManager:
         self.setting.payment_rule = 'vcg'
         self.setting.n_units = 2
         self.learning.model_sharing = True
-        self.setting.u_lo = [0, 0]
-        self.setting.u_hi = [1, 1]
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1]
         self.setting.risk = 1.0
         self.setting.constant_marginal_values = False
         self.logging.plot_points = 1000

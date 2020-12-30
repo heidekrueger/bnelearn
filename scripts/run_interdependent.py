@@ -19,36 +19,43 @@ if __name__ == '__main__':
     """Runs predefined experiments with interdependencies."""
 
     # User parameters
-    specific_gpu = 7
+    specific_gpu = 4
     n_runs = 1
-    n_epochs = 1000
-    eval_batch_size = 2**22
-    model_sharing = False
-    pretrain_iters = None
+    n_epochs = 2000
 
-    def run(experiment_config, experiment_class): # pylint: disable=redefined-outer-name
-        """Run a experiment class from config"""
-        experiment = experiment_class(experiment_config)
-        if experiment.known_bne:
-            experiment.logging.log_metrics = {
-                'opt': True,
-                'l2': True,
-                'util_loss': True
-            }
-        experiment.logging.log_metrics['efficiency'] = True
-        experiment.logging.log_metrics['revenue'] = True
+    model_sharing = True
+    pretrain_iters = 500
 
-        experiment.logging.util_loss_batch_size = 2**12
-        experiment.logging.util_loss_grid_size = 2**10
-        experiment.logging.util_loss_frequency = n_epochs
-        experiment.logging.best_response = True
+    eval_batch_size = 2**12
+    util_loss_frequency = 2000
+    util_loss_batch_size = 2**8
+    util_loss_grid_size = 2**8
+    stopping_criterion_frequency = 100000  # don't use
 
-        try:
-            experiment.run()
 
-        except Exception: # pylint: disable=broad-except
-            traceback.print_exc()
-            torch.cuda.empty_cache()
+    # def run(experiment_config, experiment_class): # pylint: disable=redefined-outer-name
+    #     """Run a experiment class from config"""
+    #     experiment = experiment_class(experiment_config)
+    #     if experiment.known_bne:
+    #         experiment.logging.log_metrics = {
+    #             'opt': True,
+    #             'l2': True,
+    #             'util_loss': True
+    #         }
+    #     experiment.logging.log_metrics['efficiency'] = True
+    #     experiment.logging.log_metrics['revenue'] = True
+
+    #     experiment.logging.util_loss_batch_size = 2**12
+    #     experiment.logging.util_loss_grid_size = 2**10
+    #     experiment.logging.util_loss_frequency = n_epochs
+    #     experiment.logging.best_response = True
+
+    #     try:
+    #         experiment.run()
+
+    #     except Exception: # pylint: disable=broad-except
+    #         traceback.print_exc()
+    #         torch.cuda.empty_cache()
 
 
     ### Run all settings with interdependencies ###############################
@@ -110,33 +117,33 @@ if __name__ == '__main__':
 
 
     ### Run LLG nearest-vcg for different risks / correlations ################
-    log_root_dir = os.path.join(
-        os.path.expanduser('~'), 'bnelearn', 'experiments', 'interdependence',
-        'risk-vs-correlation-with-rne'
-    )
-    risks = list(i/10 for i in range(1, 11))
-    gammas = list(i/10 for i in range(0, 11))
-    payment_rule = 'nearest_vcg'
-    corr_models = ['Bernoulli_weights', 'constant_weights'] #['Bernoulli_weights', 'constant_weights']
-    for corr_model in corr_models:
-        for risk in risks:
-            for gamma in gammas:
-                experiment_config, experiment_class = \
-                    ConfigurationManager(experiment_type='llg') \
-                        .with_correlation(gamma=gamma) \
-                        .get_config(
-                            log_root_dir=log_root_dir,
-                            n_runs=n_runs,
-                            n_epochs=n_epochs,
-                            correlation_types=corr_model,
-                            payment_rule=payment_rule,
-                            specific_gpu=specific_gpu,
-                            eval_batch_size=eval_batch_size,
-                            model_sharing=model_sharing,
-                            pretrain_iters=pretrain_iters,
-                            risk=risk
-                        )
-                run(experiment_config, experiment_class)
+    # log_root_dir = os.path.join(
+    #     os.path.expanduser('~'), 'bnelearn', 'experiments', 'interdependence',
+    #     'risk-vs-correlation-with-rne'
+    # )
+    # risks = list(i/10 for i in range(1, 11))
+    # gammas = list(i/10 for i in range(0, 11))
+    # payment_rule = 'nearest_vcg'
+    # corr_models = ['Bernoulli_weights', 'constant_weights'] #['Bernoulli_weights', 'constant_weights']
+    # for corr_model in corr_models:
+    #     for risk in risks:
+    #         for gamma in gammas:
+    #             experiment_config, experiment_class = \
+    #                 ConfigurationManager(experiment_type='llg') \
+    #                     .with_correlation(gamma=gamma) \
+    #                     .get_config(
+    #                         log_root_dir=log_root_dir,
+    #                         n_runs=n_runs,
+    #                         n_epochs=n_epochs,
+    #                         correlation_types=corr_model,
+    #                         payment_rule=payment_rule,
+    #                         specific_gpu=specific_gpu,
+    #                         eval_batch_size=eval_batch_size,
+    #                         model_sharing=model_sharing,
+    #                         pretrain_iters=pretrain_iters,
+    #                         risk=risk
+    #                     )
+    #             run(experiment_config, experiment_class)
 
 
     ### Run LLG setting for different correlation strengths ###################
@@ -158,3 +165,41 @@ if __name__ == '__main__':
     #                 model_sharing=model_sharing,
     #             )
     #     run(experiment_config, experiment_class)
+
+
+    ### Run multi-unit settings ###############################################
+    log_root_dir = os.path.join(
+        os.path.expanduser('~'), 'bnelearn', 'experiments', 'test_statics'
+    )
+    n_players_list = [4, 8]
+    n_units_list = [2, 4, 8]
+    payment_rules = ['uniform']  # ['first_price', 'vcg', 'uniform']
+    risks = list(i/10 for i in range(1, 11))
+    for n_players in n_players_list:
+        for n_units in n_units_list:
+            for payment_rule in payment_rules:
+                for risk in risks:
+                    experiment_config, experiment_class = \
+                        ConfigurationManager(
+                            experiment_type='multiunit',
+                            n_runs=n_runs,
+                            n_epochs=n_epochs) \
+                            .set_setting(
+                                payment_rule=payment_rule,
+                                n_players=n_players,
+                                n_units=n_units,
+                                risk=risk) \
+                            .set_learning(
+                                pretrain_iters=pretrain_iters,) \
+                            .set_logging(
+                                log_root_dir=log_root_dir,
+                                util_loss_frequency=util_loss_frequency,
+                                util_loss_batch_size=util_loss_batch_size,
+                                util_loss_grid_size=util_loss_grid_size,
+                                eval_batch_size=eval_batch_size,
+                                stopping_criterion_frequency= \
+                                    stopping_criterion_frequency) \
+                            .set_hardware(specific_gpu=specific_gpu) \
+                            .get_config()
+                    experiment = experiment_class(experiment_config)
+                    experiment.run()

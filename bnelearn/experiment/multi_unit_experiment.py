@@ -27,24 +27,27 @@ from bnelearn.strategy import ClosureStrategy
 ###                             BNE STRATEGIES                              ###
 ###############################################################################
 
-def _multiunit_bne(experiment_config, payment_rule):
+def _multiunit_bne(setting, payment_rule):
     """
     Method that returns the known BNE strategy for the standard multi-unit auctions
     (split-award is NOT one of the) as callable if available and None otherwise.
     """
+
+    if  float(setting.risk) != 1:
+        return None  # Only know BNE for risk neutral bidders
 
     if payment_rule in ('vcg', 'vickrey'):
         def truthful(valuation, player_position=None):  # pylint: disable=unused-argument
             return valuation
         return truthful
 
-    if (experiment_config.correlation_types is not None or
-            experiment_config.risk != 1):
+    if (setting.correlation_types is not None or
+            setting.risk != 1):
         return None
 
     if payment_rule in ('first_price', 'discriminatory'):
-        if experiment_config.n_units == 2 and experiment_config.n_players == 2:
-            if not experiment_config.constant_marginal_values:
+        if setting.n_units == 2 and setting.n_players == 2:
+            if not setting.constant_marginal_values:
                 print('BNE is only approximated roughly!')
                 return _optimal_bid_multidiscriminatory2x2
             else:
@@ -53,10 +56,10 @@ def _multiunit_bne(experiment_config, payment_rule):
                 return None
 
     if payment_rule == 'uniform':
-        if experiment_config.n_units == 2 and experiment_config.n_players == 2:
+        if setting.n_units == 2 and setting.n_players == 2:
             return _optimal_bid_multiuniform2x2()
-        if (experiment_config.n_units == 3 and experiment_config.n_players == 2
-                and experiment_config.item_interest_limit == 2):
+        if (setting.n_units == 3 and setting.n_players == 2
+                and setting.item_interest_limit == 2):
             return _optimal_bid_multiuniform3x2limit2
 
     return None
@@ -277,9 +280,13 @@ class MultiUnitExperiment(Experiment, ABC):
         self.n_units = self.n_items = self.config.setting.n_units
         self.n_players = self.config.setting.n_players
         self.payment_rule = self.config.setting.payment_rule
+        self.risk = float(self.config.setting.risk)
 
-        self.u_lo = self.config.setting.u_lo
-        self.u_hi = self.config.setting.u_hi
+        if len(self.config.setting.u_lo) == 1:
+            self.u_lo = self.config.setting.u_lo * self.n_players
+
+        if len(self.config.setting.u_hi) == 1:
+            self.u_hi = self.config.setting.u_hi * self.n_players
 
         self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
@@ -290,7 +297,8 @@ class MultiUnitExperiment(Experiment, ABC):
             self._bidder2model = list(range(self.n_players))
 
         if not hasattr(self, 'positive_output_point'):
-            self.positive_output_point = torch.tensor([[self.u_hi] * self.n_units], dtype=torch.float)
+            self.positive_output_point = torch.tensor(
+                [self.u_hi[0]] * self.n_items, dtype=torch.float)
 
         self.constant_marginal_values = self.config.setting.constant_marginal_values
         self.item_interest_limit = self.config.setting.item_interest_limit
@@ -307,7 +315,6 @@ class MultiUnitExperiment(Experiment, ABC):
 
         super().__init__(config=config)
 
-
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         """
         Standard strat_to_bidder method.
@@ -316,6 +323,7 @@ class MultiUnitExperiment(Experiment, ABC):
             lower=self.u_lo[player_position], upper=self.u_hi[player_position],
             strategy=strategy,
             n_items=self.n_units,
+            risk=self.risk,
             item_interest_limit=self.item_interest_limit,
             descending_valuations=True,
             constant_marginal_values=self.constant_marginal_values,
@@ -376,8 +384,8 @@ class MultiUnitExperiment(Experiment, ABC):
         print('BNE envs have been set up.')
 
     def _get_logdir_hierarchy(self):
-        name = ['multi_unit', self.payment_rule, str(self.n_players) \
-                + 'players_' + str(self.n_units) + 'units']
+        name = ['multi_unit', self.payment_rule, str(self.risk) + 'risk', 
+                str(self.n_players) + 'players_' + str(self.n_units) + 'units']
         return os.path.join(*name)
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
