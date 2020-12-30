@@ -185,8 +185,8 @@ class ConfigurationManager:
     def _init_splitaward(self):
         self.setting.n_units = 2
         self.learning.model_sharing = True
-        self.setting.u_lo = [1, 1]
-        self.setting.u_hi = [1.4, 1.4]
+        self.setting.u_lo = [1]
+        self.setting.u_hi = [1.4]
         self.setting.constant_marginal_values = False
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True

@@ -64,10 +64,11 @@ def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: fl
     if componentwise:
         component_norm = [norm_actions(s_actions[..., d], actions[..., d], p)
                           for d in range(actions.shape[-1])]
+        # select that component with the smallest norm
         if component_selection is None:
             return min(component_norm)
         else:
-            return min(component_norm[..., component_selection])
+            return min([n for n, s in zip(component_norm, component_selection) if s])
     else:
         if component_selection is None:
             return norm_actions(s_actions, actions, p)
