@@ -303,10 +303,10 @@ class Experiment(ABC):
             elapsed = 0
         self.overhead += elapsed
 
-    def _exit_run(self):
+    def _exit_run(self, global_step=None):
         """Cleans up a run after it is completed"""
         if self.logging.enable_logging:
-            self._log_experiment_params()
+            self._log_experiment_params(global_step=global_step)
 
         if self.logging.save_models:
             self._save_models(directory=self.run_log_dir)
@@ -352,11 +352,17 @@ class Experiment(ABC):
 
         for run_id, seed in enumerate(self.running.seeds):
             print(f'\nRunning experiment {run_id} (using seed {seed})')
-
+            e = None
             try:
+                t = time.strftime('%T ')
+                if platform == 'win32':
+                    t = t.replace(':', '.')
+
                 self.run_log_dir = os.path.join(
                     self.experiment_log_dir,
-                    f'{run_id:02d} ' + time.strftime('%T ') + str(seed))
+                    f'{run_id:02d} ' + t + str(seed)
+                    )
+
                 torch.random.manual_seed(seed)
                 torch.cuda.manual_seed_all(seed)
                 np.random.seed(seed)
@@ -407,7 +413,7 @@ class Experiment(ABC):
                         step=self.logging.export_step_wise_linear_bid_function_size)
 
             finally:
-                self._exit_run()
+                self._exit_run(global_step=e)
 
         # Once all runs are done, convert tb event files to csv
         if self.logging.enable_logging and (
@@ -825,7 +831,18 @@ class Experiment(ABC):
 
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 
-    def _log_experiment_params(self):
+    def _log_experiment_params(self, global_step=None):
+        """Logging of paramters after learning finished.
+
+        Arguments:
+            global_step, int: number of completed iterations/epochs. Will usually
+                be equal to `self.running.n_epochs`, except when a stopping
+                criterion is met earlier.
+
+        Returns:
+            Writes to `self.writer`.
+
+        """
         # TODO: write out all experiment params (complete dict) #See issue #113
         # TODO: Stefan: this currently called _per run_. is this desired behavior?
         for i, model in enumerate(self.models):
@@ -843,7 +860,7 @@ class Experiment(ABC):
         try:
             for i, (k, v) in enumerate(self._cur_epoch_log_params.items()):
                 if k not in ignored_metrics:
-                    if isinstance(v, list):
+                    if isinstance(v, list):  # TODO: isn't this the same behavior as in the second case for tensor?
                         for model_number in range(len(v)):
                             self._hparams_metrics["metrics/" + k+"_"+str(model_number)] = v[model_number]
                     elif isinstance(v, torch.Tensor):
@@ -853,9 +870,10 @@ class Experiment(ABC):
                         self._hparams_metrics["metrics/" + k] = v
                     else:
                         print("the type ", type(v), " is not supported as a metric")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             print(e)
-        self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
+        self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics,
+                                global_step=global_step)
 
     # def _log_hyperparams(self, epoch=0):
     #     """Everything that should be logged on every learning_rate update"""

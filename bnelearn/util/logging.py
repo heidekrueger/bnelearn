@@ -205,7 +205,7 @@ class CustomSummaryWriter(SummaryWriter):
         another tensorboard run file
     """
 
-    def add_hparams(self, hparam_dict=None, metric_dict=None):
+    def add_hparams(self, hparam_dict=None, metric_dict=None, global_step=None):
         """
         Overides the parent method to prevent the creation of unwanted additional subruns while logging hyperparams,
         as it is done by the original PyTorch method
@@ -221,7 +221,7 @@ class CustomSummaryWriter(SummaryWriter):
         self.file_writer.add_summary(sei)
 
         for k, v in metric_dict.items():
-            self.add_scalar(k, v)
+            self.add_scalar(k, v, global_step=global_step)
 
     def add_metrics_dict(self, metrics_dict: dict, run_suffices: List[str],
                          global_step=None, walltime=None,
