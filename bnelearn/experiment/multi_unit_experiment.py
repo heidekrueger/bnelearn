@@ -44,7 +44,7 @@ def _multiunit_bne(setting, payment_rule):
             return valuation
         return truthful
 
-    if (setting.correlation_types is not None or
+    if (setting.correlation_types not in [None, 'independent'] or
             setting.risk != 1):
         return None
 
@@ -292,11 +292,11 @@ class MultiUnitExperiment(Experiment, ABC):
             self.u_hi = self.config.setting.u_hi * self.n_players
 
         # Correlated setting?
-        self.gamma = self.correlation = float(config.setting.gamma)
         if config.setting.correlation_types == 'additive':
             self.CorrelationDevice = MultiUnitDevie
+            self.gamma = self.correlation = float(config.setting.gamma)
         elif config.setting.correlation_types in ['independent', None]:
-            pass
+            self.gamma = self.correlation = 0.
         else:
             raise NotImplementedError('Correlation not implemented.')
 
