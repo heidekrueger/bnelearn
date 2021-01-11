@@ -637,7 +637,7 @@ class MineralRightsExperiment(SingleItemExperiment):
 
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, 'interdependent', self.valuation_prior,
-                'symmetric', self.risk_profile, str(self.n_players) + 'p']
+                'symmetric', str(self.risk) + 'risk', str(self.n_players) + 'players']
         return os.path.join(*name)
 
 
@@ -747,5 +747,5 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
 
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, 'interdependent', self.valuation_prior,
-                'symmetric', self.risk_profile, str(self.n_players) + 'p']
+                'symmetric', str(self.risk) + 'risk', str(self.n_players) + 'players']
         return os.path.join(*name)

@@ -39,8 +39,24 @@ def logs_to_df(
         with_stddev: bool = False,
         with_setting_parameters: bool = True,
     ):
-    """Creates and returns a Pandas DataFrame from all logs in `path`."""
+    """Creates and returns a Pandas DataFrame from all logs in `path`.
 
+    This function is universially usable.
+
+    Arguments:
+        path: str or dict, which path to crawl for csv logs.
+        metrics: list of which metrics we want to load in the df.
+        precision: int of how many decimals we request.
+        with_stddev: bool.
+        with_setting_parameters: bool, some hyperparams can be read in from
+            the path itself. Turning this switch on pareses these values to
+            individuall columns.
+
+    Returns:
+        aggregate_df pandas Dataframe with one run corresponding to one row,
+            columns correspond to the logged metrics (from the last iter).
+
+    """
     if isinstance(path, str):
         experiments = [os.path.join(dp, f) for dp, dn, filenames
                        in os.walk(path) for f in filenames
@@ -86,7 +102,9 @@ def logs_to_df(
                 if t in row['Auction game']:
                     return t
             return None
-        aggregate_df['Corr Type'] = aggregate_df.apply(map_type, axis=1)
+        cor = aggregate_df.apply(map_type, axis=1)
+        if cor.shape[0] > 0:
+            aggregate_df['Corr Type'] = cor
 
         def map_strength(row):
             if row['Corr Type'] == 'independent':
@@ -95,18 +113,62 @@ def logs_to_df(
                 start = row['Auction game'].find('gamma_') + 6
                 end = row['Auction game'].find('/', start)
                 return row['Auction game'][start:end]
-            return None
-        aggregate_df['Corr Strength'] = pd.to_numeric(
-            aggregate_df.apply(map_strength, axis=1))
+            return 0.0
+        stre = aggregate_df.apply(map_strength, axis=1)
+        if stre.shape[0] > 0:
+            aggregate_df['Corr Strength'] = pd.to_numeric(stre)
 
         def map_risk(row):
-            if 'risk_' in row['Auction game']:
-                start = row['Auction game'].find('risk_') + 5
-                end = row['Auction game'].find('/', start)
+            if 'risk' in row['Auction game']:
+                end = row['Auction game'].find('risk')
+                start = end - 1
+                while row['Auction game'][start] != '/':
+                    start -= 1
+                start += 1
                 return row['Auction game'][start:end]
             return 1.0
-        aggregate_df['Risk'] = pd.to_numeric(
-            aggregate_df.apply(map_risk, axis=1))
+        ris = aggregate_df.apply(map_risk, axis=1)
+        if ris.shape[0] > 0:
+            aggregate_df['Risk'] = pd.to_numeric(ris)
+
+        # multi-unit mapppings
+        def map_pricing(row):
+            if 'first_price' in row['Auction game']:
+                return 'first_price'
+            if 'vcg' in row['Auction game']:
+                return 'vcg'
+            if 'uniform' in row['Auction game']:
+                return 'uniform'
+            return None
+        pri = aggregate_df.apply(map_pricing, axis=1)
+        if pri.shape[0] > 0:
+            aggregate_df['Pricing'] = pri
+
+        def map_units(row):
+            if 'units' in row['Auction game']:
+                end = row['Auction game'].find('units')
+                start = end - 1
+                while row['Auction game'][start] != '_':
+                    start -= 1
+                start += 1
+                return row['Auction game'][start:end]
+            return None
+        uni = aggregate_df.apply(map_units, axis=1)
+        if uni.shape[0] > 0:
+            aggregate_df['Units'] = pd.to_numeric(uni)
+
+        def map_players(row):
+            if 'players' in row['Auction game']:
+                end = row['Auction game'].find('players')
+                start = end - 1
+                while row['Auction game'][start] != '/':
+                    start -= 1
+                start += 1
+                return row['Auction game'][start:end]
+            return None
+        pla = aggregate_df.apply(map_players, axis=1)
+        if pla.shape[0] > 0:
+            aggregate_df['Players'] = pd.to_numeric(pla)
 
     # write to file
     aggregate_df.to_csv('experiments/summary.csv', index=False)
@@ -298,76 +360,87 @@ if __name__ == '__main__':
 
 
     ### Risk vs correlation experiment ----------------------------------------
-    path = '/home/kohring/bnelearn/experiments/interdependence/' + \
-        'risk-vs-correlation-with-rne'
-    metrics = ['$u$', '$\mathcal{R}$'] # either one of the metricies
-    xaxis = 'Risk' # either one in ['Corr Strength', 'Risk']
+    # path = '/home/kohring/bnelearn/experiments/interdependence/' + \
+    #     'risk-vs-correlation-with-rne'
+    # metrics = ['$u$', '$\mathcal{R}$'] # either one of the metricies
+    # xaxis = 'Risk' # either one in ['Corr Strength', 'Risk']
 
+    # df = logs_to_df(path=path)
+    # with plt.style.context('grayscale'):
+    #     _, axs = plt.subplots(len(metrics), 1, sharex=True, figsize=(5, 1*len(metrics)+2))
+    #     # plt.plot([0, 1], [0.01, 0.01], label='1%', color='lightgrey',
+    #     #          linestyle='dotted')
+    #     for ax, metric in zip(axs, metrics):
+    #         for corr_type in ['constant', 'Bernoulli']:
+    #             df_sub = df[df['Corr Type'] == corr_type]
+    #             corrs = sorted(pd.unique(df_sub['Corr Strength']))[:-1]
+    #             corrs.insert(0, 0)
+    #             risks = sorted(pd.unique(df_sub['Risk']))
+    #             data = np.zeros((len(corrs), len(risks)))
+    #             for i, corr in enumerate(corrs):
+    #                 for j, risk in enumerate(risks):
+    #                     if corr == 0:
+    #                         data[i, j] = float(
+    #                             df[df['Corr Strength'] == corr] \
+    #                                 [df['Risk'] == risk][metric][0]
+    #                         )
+    #                     else:
+    #                         data[i, j] = float(
+    #                             df_sub[df_sub['Corr Strength'] == corr] \
+    #                                 [df_sub['Risk'] == risk][metric]
+    #                         )
+    #             if xaxis == 'Corr Strength':
+    #                 x = corrs
+    #                 axis = 1
+    #             else:
+    #                 x = risks
+    #                 axis = 0
+    #             # plt.errorbar(x, data.mean(axis=axis),
+    #             #              yerr=data.std(axis=axis),
+    #             #              label=corr_type + ' weights', marker='o')
+    #             ax.plot(x, data.mean(axis=axis), label=corr_type + ' weights')
+
+    #         # fig, ax = plt.subplots()
+    #         # plt.imshow(data, cmap='gray', interpolation='nearest')
+    #         # plt.xlabel('risk parameter $\\rho$')
+    #         # ax.set_xticklabels(corrs)
+    #         # ax.set_xticks(np.arange(len(corrs)))
+    #         # plt.ylabel('correlation strength $\gamma$')
+    #         # ax.set_yticks(np.arange(len(risks)))
+    #         # ax.set_yticklabels(risks)
+    #         # plt.colorbar()
+
+    #         if metric == '$u$':
+    #             ax.set_ylim([0.2, 0.5])
+    #         elif metric == '$\mathcal{E}$':
+    #             ax.set_ylim([0.8, 1.0])
+    #         elif metric == '$\hat{\mathcal{L}}$':
+    #             ax.set_ylim([0.005, 0.015])
+    #         elif metric == '$\mathcal{R}$':
+    #             ax.set_ylim([0.5, 0.7])
+
+    #         # if xaxis == 'Corr Strength':
+    #         #     ax.xlim([0, 1])
+    #         #     ax.xlabel('correlation strength $\gamma$')
+    #         # else:
+    #         #     ax.xlim([0.1, 1.0])
+    #         ax.set_ylabel(metric)
+    #         ax.set_xlim([0.1, 1])
+
+    #     plt.xlabel('risk parameter $\\rho$')
+
+    #     axs[0].legend()
+    #     plt.tight_layout()
+    #     plt.savefig('experiments/interdependence/risk-vs-correlation/' + \
+    #         '{}.eps'.format(metrics))
+
+    ### Multi-unit experiments ------------------------------------------------
+    path = '/home/kohring/bnelearn/experiments/test_statics_inter'
     df = logs_to_df(path=path)
-    with plt.style.context('grayscale'):
-        _, axs = plt.subplots(len(metrics), 1, sharex=True, figsize=(5, 1*len(metrics)+2))
-        # plt.plot([0, 1], [0.01, 0.01], label='1%', color='lightgrey',
-        #          linestyle='dotted')
-        for ax, metric in zip(axs, metrics):
-            for corr_type in ['constant', 'Bernoulli']:
-                df_sub = df[df['Corr Type'] == corr_type]
-                corrs = sorted(pd.unique(df_sub['Corr Strength']))[:-1]
-                corrs.insert(0, 0)
-                risks = sorted(pd.unique(df_sub['Risk']))
-                data = np.zeros((len(corrs), len(risks)))
-                for i, corr in enumerate(corrs):
-                    for j, risk in enumerate(risks):
-                        if corr == 0:
-                            data[i, j] = float(
-                                df[df['Corr Strength'] == corr] \
-                                    [df['Risk'] == risk][metric][0]
-                            )
-                        else:
-                            data[i, j] = float(
-                                df_sub[df_sub['Corr Strength'] == corr] \
-                                    [df_sub['Risk'] == risk][metric]
-                            )
-                if xaxis == 'Corr Strength':
-                    x = corrs
-                    axis = 1
-                else:
-                    x = risks
-                    axis = 0
-                # plt.errorbar(x, data.mean(axis=axis),
-                #              yerr=data.std(axis=axis),
-                #              label=corr_type + ' weights', marker='o')
-                ax.plot(x, data.mean(axis=axis), label=corr_type + ' weights')
 
-            # fig, ax = plt.subplots()
-            # plt.imshow(data, cmap='gray', interpolation='nearest')
-            # plt.xlabel('risk parameter $\\rho$')
-            # ax.set_xticklabels(corrs)
-            # ax.set_xticks(np.arange(len(corrs)))
-            # plt.ylabel('correlation strength $\gamma$')
-            # ax.set_yticks(np.arange(len(risks)))
-            # ax.set_yticklabels(risks)
-            # plt.colorbar()
-
-            if metric == '$u$':
-                ax.set_ylim([0.2, 0.5])
-            elif metric == '$\mathcal{E}$':
-                ax.set_ylim([0.8, 1.0])
-            elif metric == '$\hat{\mathcal{L}}$':
-                ax.set_ylim([0.005, 0.015])
-            elif metric == '$\mathcal{R}$':
-                ax.set_ylim([0.5, 0.7])
-
-            # if xaxis == 'Corr Strength':
-            #     ax.xlim([0, 1])
-            #     ax.xlabel('correlation strength $\gamma$')
-            # else:
-            #     ax.xlim([0.1, 1.0])
-            ax.set_ylabel(metric)
-            ax.set_xlim([0.1, 1])
-
-        plt.xlabel('risk parameter $\\rho$')
-
-        axs[0].legend()
-        plt.tight_layout()
-        plt.savefig('experiments/interdependence/risk-vs-correlation/' + \
-            '{}.eps'.format(metrics))
+    # TODO:
+    #   1) make similar eval as for correlated settings:
+    #      a) E.g. fix a setting and see how it changes for risk
+    #      b) 
+    #   2) Anythiing special about the larger settings?
+    #   3) Try some new setting with correlation?

@@ -17,10 +17,13 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import  Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.mechanism import (
-    MultiUnitVickreyAuction, MultiUnitUniformPriceAuction, MultiUnitDiscriminatoryAuction,
-    FPSBSplitAwardAuction
+    MultiUnitVickreyAuction, MultiUnitUniformPriceAuction,
+    MultiUnitDiscriminatoryAuction, FPSBSplitAwardAuction
 )
 from bnelearn.strategy import ClosureStrategy
+from bnelearn.correlation_device import (
+    IndependentValuationDevice, MultiUnitDevie
+)
 
 
 ###############################################################################
@@ -288,6 +291,29 @@ class MultiUnitExperiment(Experiment, ABC):
         if len(self.config.setting.u_hi) == 1:
             self.u_hi = self.config.setting.u_hi * self.n_players
 
+        # Correlated setting?
+        self.gamma = self.correlation = float(config.setting.gamma)
+        if config.setting.correlation_types == 'additive':
+            self.CorrelationDevice = MultiUnitDevie
+        elif config.setting.correlation_types in ['independent', None]:
+            pass
+        else:
+            raise NotImplementedError('Correlation not implemented.')
+
+        if self.gamma > 0.0:
+            self.correlation_groups = [list(range(self.n_players))]
+            self.correlation_coefficients = [self.gamma]
+            self.correlation_devices = [
+                self.CorrelationDevice(
+                    common_component_dist=torch.distributions.Uniform(
+                        config.setting.u_lo[0], config.setting.u_hi[0]),
+                    batch_size=config.learning.batch_size,
+                    n_common_components=self.n_items,
+                    correlation=self.gamma),
+                ]
+            # Can't sample cond values here
+            self.config.logging.log_metrics['util_loss'] = False
+
         self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
             self.n_models = 1
@@ -319,6 +345,7 @@ class MultiUnitExperiment(Experiment, ABC):
         """
         Standard strat_to_bidder method.
         """
+        correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
         return Bidder.uniform(
             lower=self.u_lo[player_position], upper=self.u_hi[player_position],
             strategy=strategy,
@@ -329,7 +356,8 @@ class MultiUnitExperiment(Experiment, ABC):
             constant_marginal_values=self.constant_marginal_values,
             player_position=player_position,
             batch_size=batch_size,
-            cache_actions=cache_actions
+            cache_actions=cache_actions,
+            correlation_type=correlation_type
         )
 
     def _setup_mechanism(self):
@@ -347,8 +375,10 @@ class MultiUnitExperiment(Experiment, ABC):
 
     def _check_and_set_known_bne(self):
         """check for available BNE strategy"""
-        self._optimal_bid = _multiunit_bne(self.config.setting, self.config.setting.payment_rule)
-        return self._optimal_bid is not None
+        if self.correlation in [0.0, None] and self.config.setting.correlation_types in ['independent', None]:
+            self._optimal_bid = _multiunit_bne(self.config.setting, self.config.setting.payment_rule)
+            return self._optimal_bid is not None
+        return False
 
     def _setup_eval_environment(self):
         """Setup the BNE envierment for later evaluation of the learned strategies"""
@@ -384,8 +414,10 @@ class MultiUnitExperiment(Experiment, ABC):
         print('BNE envs have been set up.')
 
     def _get_logdir_hierarchy(self):
-        name = ['multi_unit', self.payment_rule, str(self.risk) + 'risk', 
+        name = ['multi_unit', self.payment_rule, str(self.risk) + 'risk',
                 str(self.n_players) + 'players_' + str(self.n_units) + 'units']
+        if self.gamma > 0:
+            name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
         return os.path.join(*name)
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,

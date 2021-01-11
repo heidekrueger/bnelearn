@@ -176,6 +176,8 @@ class ConfigurationManager:
         self.setting.u_hi = [1]
         self.setting.risk = 1.0
         self.setting.constant_marginal_values = False
+        self.setting.gamma = 0.0
+        self.setting.correlation_types = 'independent'
         self.logging.plot_points = 1000
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,

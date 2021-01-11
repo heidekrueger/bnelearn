@@ -108,7 +108,7 @@ class Bidder(Player):
         self._valuations = torch.zeros(batch_size, n_items, device=self.device)
         if self._cache_actions:
             self.actions = torch.zeros(batch_size, n_items, device=self.device)
-        self.draw_valuations_()
+        self.draw_valuations_()  # TODO: This is dangerous as it doesn't use correlation
 
         # Compute lower and upper bounds for grid computation
         self._grid_lb = self.value_distribution.support.lower_bound \
@@ -259,7 +259,6 @@ class Bidder(Player):
         ### 1. For perfect correlation, no need to calculate individual component
         if torch.all(weights == 1.0):
             self.valuations = common_component.to(self.device).relu()
-            return self.valuations
 
         ### 2. Otherwise determine individual component
 
@@ -267,36 +266,36 @@ class Bidder(Player):
         # This will save time for memory allocation and/or copying between devices
         # As sampling from general torch.distribution is only available on CPU.
         # (might mean adding more boilerplate code here if specific distributions are desired
-
-        # uniform
-        if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
-            self.valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
-        # Gaussian
-        elif isinstance(self.value_distribution, torch.distributions.normal.Normal):
-            self.valuations.normal_(mean = self.value_distribution.loc, std = self.value_distribution.scale)
         else:
-            # This is slow! (sampling on cpu then copying to GPU)
-            # add additional internal in-place samplers above as needed!
-            self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device)
-
-        ### 3. Determine mixture of individual and common component
-        if torch.any(weights > 0):
-            if self.correlation_type == 'additive':
-                weights = weights.to(self.device)
-                self.valuations = weights * common_component.to(self.device) + (1-weights) * self.valuations
-            elif self.correlation_type == 'multiplicative':
-                self.valuations = 2 * common_component.to(self.device) * self.valuations
-                self._unkown_valuation = common_component.to(self.device)
-            elif self.correlation_type == 'affiliated':
-                self.valuations = (
-                    common_component.to(self.device)[:, self.player_position]
-                    + common_component.to(self.device)[:, 2]
-                ).view(self.batch_size, -1)
-                self._unkown_valuation = 0.5 * \
-                    (common_component.to(self.device) * torch.tensor([1, 1, 2], device=self.device)) \
-                        .sum(axis=1, keepdim=True)
+            # uniform
+            if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
+                self.valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
+            # Gaussian
+            elif isinstance(self.value_distribution, torch.distributions.normal.Normal):
+                self.valuations.normal_(mean = self.value_distribution.loc, std = self.value_distribution.scale)
             else:
-                raise NotImplementedError('correlation type unknown')
+                # This is slow! (sampling on cpu then copying to GPU)
+                # add additional internal in-place samplers above as needed!
+                self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device)
+
+            ### 3. Determine mixture of individual and common component
+            if torch.any(weights > 0):
+                if self.correlation_type == 'additive':
+                    weights = weights.to(self.device)
+                    self.valuations = weights * common_component.to(self.device) + (1-weights) * self.valuations
+                elif self.correlation_type == 'multiplicative':
+                    self.valuations = 2 * common_component.to(self.device) * self.valuations
+                    self._unkown_valuation = common_component.to(self.device)
+                elif self.correlation_type == 'affiliated':
+                    self.valuations = (
+                        common_component.to(self.device)[:, self.player_position]
+                        + common_component.to(self.device)[:, 2]
+                    ).view(self.batch_size, -1)
+                    self._unkown_valuation = 0.5 * \
+                        (common_component.to(self.device) * torch.tensor([1, 1, 2], device=self.device)) \
+                            .sum(axis=1, keepdim=True)
+                else:
+                    raise NotImplementedError('correlation type unknown')
 
         ### 4. Finishing up
         self.valuations.relu_() #ensure nonnegativity for unbounded-support distributions

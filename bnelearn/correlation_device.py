@@ -103,7 +103,7 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
     """
     Implements correlation between two or more bidders, where their valuations
     depend additively on an individual component z_i and a common component s.
-    In this scheme, a Bernoulli (0 or 1) weight determines that eitherv_i =
+    In this scheme, a Bernoulli (0 or 1) weight determines that either v_i =
     z_i or v_i = s, with weights/probabilities being set such that correlation
     gamma is achieved between bidders.
     """
@@ -277,8 +277,8 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
 
 class MineralRightsCorrelationDevice(CorrelationDevice):
     """
-    Draw valuations according to the constant weights model in Ausubel &
-    Baranov.
+    Draw valuations according to the single item mineral rights model in
+    Krishna.
     """
     def __init__(self, common_component_dist: Distribution,
                  batch_size: int, n_items: int, correlation: float):
@@ -340,8 +340,8 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
 
 class AffiliatedObservationsDevice(CorrelationDevice):
     """
-    Draw valuations according to the constant weights model in Ausubel &
-    Baranov.
+    Draw valuations according to the single item affiliated observations model
+    in Krishna.
     """
     def __init__(self, common_component_dist: Distribution, batch_size: int,
                  n_common_components: int, correlation: float):
@@ -362,7 +362,7 @@ class AffiliatedObservationsDevice(CorrelationDevice):
         # This method should work for an arbirtray number of agents
 
         opponent_positions = [a.player_position for a in agents if
-                             a.player_position != player_position]
+                              a.player_position != player_position]
         batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
         conditionals_dict = dict()
@@ -417,3 +417,25 @@ class AffiliatedObservationsDevice(CorrelationDevice):
             .repeat(batch_size_0, 1).view(batch_size_0, batch_size_1)
 
         return (u_bounds - l_bounds) * uniform + l_bounds
+
+class MultiUnitDevie(CorrelationDevice):
+    """
+    Draw valuations according to the single item affiliated observations model
+    in Krishna.
+    """
+    def __init__(self, common_component_dist: Distribution, batch_size: int,
+                 n_common_components: int, correlation: float):
+        super().__init__(common_component_dist, batch_size,
+                         n_common_components, "multi_unit_model",
+                         correlation)
+
+    def get_weights(self):
+        return torch.tensor(self.corr)
+
+    def draw_conditionals(
+            self, agents: List[Bidder],
+            player_position: int,
+            conditional_observation: torch.Tensor,
+            batch_size: int=None
+        ) -> Dict[int, torch.Tensor]:
+        raise NotImplementedError
