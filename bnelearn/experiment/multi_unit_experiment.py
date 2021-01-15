@@ -298,7 +298,7 @@ class MultiUnitExperiment(Experiment, ABC):
             self.gamma = self.correlation = float(config.setting.gamma)
         elif config.setting.correlation_types in ['independent', None]:
             self.gamma = self.correlation = 0.
-            if float(config.setting.gamma) > 0:
+            if config.setting.gamma is not None and float(config.setting.gamma) > 0:
                 warnings.warn('No correlation selected.')
         else:
             raise NotImplementedError('Correlation not implemented.')
