@@ -6,6 +6,7 @@ as it shares most its properties.
 
 import os
 from abc import ABC
+import warnings
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -297,6 +298,8 @@ class MultiUnitExperiment(Experiment, ABC):
             self.gamma = self.correlation = float(config.setting.gamma)
         elif config.setting.correlation_types in ['independent', None]:
             self.gamma = self.correlation = 0.
+            if float(config.setting.gamma) > 0:
+                warnings.warn('No correlation selected.')
         else:
             raise NotImplementedError('Correlation not implemented.')
 
