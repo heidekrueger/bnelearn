@@ -289,6 +289,8 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     )
     grid_size = action_alternative.shape[0] # grid is not always the requested size
 
+    print('Calculating utility loss...')
+
     # calc adpative (own) batch size `mini_batch_size` based on memory estimate
     mini_batch_size = batch_size
     while True:
@@ -378,6 +380,8 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                 raise e
 
             mini_batch_size = int(mini_batch_size / 2)
+            print("\033[A                             \033[A")  # clear console
+
 
     """3. COMPARE UTILITY"""
     # we don't accept a negative loss when the gird is not precise enough: set to 0

@@ -19,17 +19,18 @@ if __name__ == '__main__':
     """Runs predefined experiments with interdependencies."""
 
     # User parameters
-    specific_gpu = 4
-    n_runs = 1
+    specific_gpu = 2
+    n_runs = 10
     n_epochs = 2000
 
     model_sharing = True
     pretrain_iters = 500
 
-    eval_batch_size = 2**12
+    batch_size = 2**17
+    eval_batch_size = 2**22
     util_loss_frequency = 2000
-    util_loss_batch_size = 2**8
-    util_loss_grid_size = 2**8
+    util_loss_batch_size = 2**10
+    util_loss_grid_size = 2**10
     stopping_criterion_frequency = 100000  # don't use
 
 
@@ -169,16 +170,18 @@ if __name__ == '__main__':
 
     ### Run multi-unit settings ###############################################
     log_root_dir = os.path.join(
-        os.path.expanduser('~'), 'bnelearn', 'experiments', 'test_statics'
+        os.path.expanduser('~'), 'bnelearn', 'experiments',
+        'multi_unit', '4x4'
     )
-    n_players_list = [4, 8]
-    n_units_list = [2, 4, 8]
-    payment_rules = ['uniform']  # ['first_price', 'vcg', 'uniform']
-    risks = list(i/10 for i in range(1, 11))
-    for n_players in n_players_list:
-        for n_units in n_units_list:
-            for payment_rule in payment_rules:
-                for risk in risks:
+    n_players_list = [4]
+    n_units_list = [4]
+    payment_rules = ['first_price', 'vcg', 'uniform']
+    risks = [1.]  # list(i/10 for i in range(1, 11))
+    gammas = [0.0]  # list(i/10 for i in range(0, 11))
+    for n_players, n_units in zip(n_players_list, n_units_list):
+        for payment_rule in payment_rules:
+            for risk in risks:
+                for gamma in gammas:
                     experiment_config, experiment_class = \
                         ConfigurationManager(
                             experiment_type='multiunit',
@@ -188,9 +191,13 @@ if __name__ == '__main__':
                                 payment_rule=payment_rule,
                                 n_players=n_players,
                                 n_units=n_units,
-                                risk=risk) \
+                                risk=risk,
+                                #gamma=gamma,
+                                #correlation_types='additive'
+                                ) \
                             .set_learning(
-                                pretrain_iters=pretrain_iters,) \
+                                batch_size=batch_size,
+                                pretrain_iters=pretrain_iters) \
                             .set_logging(
                                 log_root_dir=log_root_dir,
                                 util_loss_frequency=util_loss_frequency,
