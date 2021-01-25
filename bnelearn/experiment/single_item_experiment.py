@@ -12,7 +12,7 @@ from scipy import optimize
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.experiment import Experiment
+from .experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction

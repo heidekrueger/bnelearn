@@ -19,13 +19,13 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
 
-from bnelearn.mechanism.auctions_combinatorial import (
+from bnelearn.mechanism import (
     LLGAuction, LLGFullAuction, LLLLGGAuction
 )
 from bnelearn.bidder import Bidder, CombinatorialBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
-from bnelearn.experiment import Experiment
+from .experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
 from bnelearn.correlation_device import (
     IndependentValuationDevice,

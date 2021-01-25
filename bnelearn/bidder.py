@@ -82,7 +82,7 @@ class Bidder(Player):
     def __init__(self,
                  value_distribution: Distribution,
                  strategy: Strategy,
-                 player_position: torch.tensor = None,
+                 player_position: torch.Tensor = None,
                  batch_size: int = 1,
                  n_items: int = 1,
                  cuda: str = True,
@@ -175,7 +175,6 @@ class Bidder(Player):
 
         Returns:
             grid_values (dim: [ceil(n_points^(1/n_items)]*n_items).
-
         """
         # TODO:
         #   Update this to support different number of points per
@@ -244,7 +243,6 @@ class Bidder(Player):
 
         Returns:
             valuations: torch.tesnor.
-
         """
         # TODO Stefan: Does correlation interere with Nils' implementations of
         # descending valuations or Item interest limits? --> Test!
@@ -355,7 +353,6 @@ class Bidder(Player):
         Can handle multiple batch dimensions, e.g. for valuations a shape of
         (..., batch_size, n_items). These batch dimensions are kept in returned
         welfare.
-
         """
         assert allocations.dim() == 2 # batch_size x items
         if valuations is None:

@@ -15,7 +15,7 @@ from scipy import integrate, interpolate
 
 from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.experiment import  Experiment
+from .experiment import  Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.mechanism import (
     MultiUnitVickreyAuction, MultiUnitUniformPriceAuction,
