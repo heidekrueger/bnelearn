@@ -23,7 +23,7 @@ from bnelearn.mechanism import (
 )
 from bnelearn.strategy import ClosureStrategy
 from bnelearn.correlation_device import (
-    IndependentValuationDevice, MultiUnitDevie
+    IndependentValuationDevice, MultiUnitDevice
 )
 
 
@@ -294,7 +294,7 @@ class MultiUnitExperiment(Experiment, ABC):
 
         # Correlated setting?
         if config.setting.correlation_types == 'additive':
-            self.CorrelationDevice = MultiUnitDevie
+            self.CorrelationDevice = MultiUnitDevice
             self.gamma = self.correlation = float(config.setting.gamma)
         elif config.setting.correlation_types in ['independent', None]:
             self.gamma = self.correlation = 0.

@@ -71,12 +71,13 @@ class Mechanism(Game, ABC):
         batch.
 
         Args:
-            env (:obj:`Environment`).
-            draw_valuations (bool): whether or not to redraw the valuations of
+            env (:obj:`Environment`): We need access to the env for possible
+                correlations between the agents.
+            draw_valuations (bool): Whether or not to redraw the valuations of
                 the agents.
 
         Returns:
-            efficiency (float): precentage of efficiently allocated outcomes.
+            efficiency (float): Precentage of efficiently allocated outcomes.
 
         """
         if draw_valuations:

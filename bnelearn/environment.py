@@ -56,8 +56,7 @@ class Environment(ABC):
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
                             draw_valuations=False, aggregate_batch=True,
-                            use_env_valuations=True, regularize=0,
-                            **strat_to_player_kwargs) -> torch.Tensor:
+                            regularize=0, **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
 
@@ -67,20 +66,21 @@ class Environment(ABC):
             draw_valuation: whether to redraw valuations (default false)
             aggregate_batch: whether to aggregate rewards into a single scalar (True),
                 or return batch_size many rewards (one for each sample). Default True
-            use_env_valuations: if True, strategy will be evaluated using the valuations
-                of self.agents[player_position] (default True)
             strat_to_player_kwargs: further arguments needed for agent creation
 
         """
         if not self._strategy_to_player:
             raise NotImplementedError('This environment has no strategy_to_player closure!')
+        # TODO: wouln't be a clone be easier? This always creates a whole
+        # bidder object and draws valuations. Alternative: clone bidder and then
+        # overwrite its stratrgy
         agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
         # TODO: this should rally be in AuctionEnv subclass
         env_agent = self.agents[player_position]
-        if use_env_valuations and hasattr(env_agent, 'valuations'):
+        if hasattr(env_agent, 'valuations'):
             agent.valuations = env_agent.valuations
-        if use_env_valuations and hasattr(env_agent, '_unkown_valuation'):
+        if hasattr(env_agent, '_unkown_valuation'):
             agent._unkown_valuation = env_agent._unkown_valuation
         return self.get_reward(agent, draw_valuations=draw_valuations,
                                aggregate=aggregate_batch, regularize=regularize)

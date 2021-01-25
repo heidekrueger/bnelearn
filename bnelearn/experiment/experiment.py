@@ -100,6 +100,7 @@ class Experiment(ABC):
         if self.logging.util_loss_grid_size is not None:
             self.util_loss_grid_size = self.logging.util_loss_grid_size
         self.n_parameters = None
+        self._cur_epoch_log_params = {}
 
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
@@ -834,14 +835,6 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_hyperparams': str(self.learning.optimizer_hyperparams),
                     'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
-        try:
-            self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
-        except AttributeError:
-            try:
-                self._hparams_metrics['util_loss_ex_interim'] = \
-                    self._cur_epoch_log_params['util_loss_ex_interim']
-            except AttributeError:
-                pass
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
 
     def _log_hyperparams(self, epoch=0):

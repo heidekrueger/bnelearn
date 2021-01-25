@@ -418,7 +418,7 @@ class AffiliatedObservationsDevice(CorrelationDevice):
 
         return (u_bounds - l_bounds) * uniform + l_bounds
 
-class MultiUnitDevie(CorrelationDevice):
+class MultiUnitDevice(CorrelationDevice):
     """
     Draw valuations according to the single item affiliated observations model
     in Krishna.
