@@ -399,7 +399,7 @@ class ConfigurationManager:
                 setattr(self.logging, arg, v)
 
         if isinstance(eval_batch_size, int) and eval_batch_size < 2**16 and cache_eval_actions:
-            warnings.warn('Estimates in eval_env have strong path dependence.')
+            warnings.warn('Using fixed valuations for evaluation. This may introduce bias!')
 
         return self
 
