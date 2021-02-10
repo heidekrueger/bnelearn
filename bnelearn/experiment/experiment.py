@@ -511,7 +511,7 @@ class Experiment(ABC):
             lims = (xlim, ylim)
             set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
-            # pylint: disable=eval-used
+
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
                 a, b = None, None
                 if lim is not None:  # use parameters ´xlim´ etc.
@@ -520,12 +520,12 @@ class Experiment(ABC):
                     else:
                         a, b = lim[0], lim[1]
                 elif hasattr(self, str_lim[0]):  # use attributes ´self.plot_xmin´ etc.
-                    if isinstance(eval('self.' + str(str_lim[0])), list): # pylint: disable=eval-used
-                        a = eval('self.' + str(str_lim[plot_idx]))[0] # pylint: disable=eval-used
-                        b = eval('self.' + str(str_lim[plot_idx]))[1] # pylint: disable=eval-used
+                    if isinstance(eval('self.' + str(str_lim[0])), list):
+                        a = eval('self.' + str(str_lim[plot_idx]))[0]
+                        b = eval('self.' + str(str_lim[plot_idx]))[1]
                     else:
-                        a = eval('self.' + str(str_lim[0])) # pylint: disable=eval-used
-                        b = eval('self.' + str(str_lim[1])) # pylint: disable=eval-used
+                        a = eval('self.' + str(str_lim[0]))
+                        b = eval('self.' + str(str_lim[1]))
                 if a is not None:
                     set_lim(a, b)  # call matplotlib function
 

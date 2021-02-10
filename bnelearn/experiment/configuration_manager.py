@@ -266,7 +266,7 @@ class ConfigurationManager:
             self.setting.correlation_types = 'independent'
         elif self.setting.gamma > 0.0:
             if self.setting.correlation_types not in ['Bernoulli_weights', 'constant_weights']:
-                raise NotImplementedError()
+                raise NotImplementedError(f'`{self.setting.correlation_types}` corrrelation model unknown.')
         elif self.setting.gamma > 1.0:
             raise Exception('Wrong gamma')
 
@@ -402,7 +402,7 @@ class ConfigurationManager:
                 setattr(self.logging, arg, v)
 
         if isinstance(eval_batch_size, int) and eval_batch_size < 2**16 and cache_eval_actions:
-            warnings.warn('Estimates in eval_env have strong path dependence.')
+            warnings.warn('Using fixed valuations for evaluation. This may introduce bias!')
 
         return self
 

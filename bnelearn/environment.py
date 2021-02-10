@@ -6,7 +6,7 @@ implements reward allocation to agents.
 """
 
 from abc import ABC, abstractmethod
-from typing import Callable, Set, List, Iterable
+from typing import Callable, Set, List, Iterable, Tuple
 
 import torch
 
@@ -67,6 +67,8 @@ class Environment(ABC):
             aggregate_batch: whether to aggregate rewards into a single scalar (True),
                 or return batch_size many rewards (one for each sample). Default True
             strat_to_player_kwargs: further arguments needed for agent creation
+
+            # TODO NILS: document regularization.
 
         """
         if not self._strategy_to_player:
@@ -179,7 +181,7 @@ class MatrixGameEnvironment(Environment):
             action_profile[:, position] = action.view(self.batch_size)
 
         allocation, payments = self.game.play(action_profile.view(self.batch_size, self.n_players, -1))
-        utilities =  agent.get_utility(allocation[:,player_position,:], payments[:,player_position], action_profile)
+        utilities = agent.get_utility(allocation[:,player_position,:], payments[:,player_position])
 
         return utilities.mean()
 
@@ -239,9 +241,10 @@ class AuctionEnvironment(Environment):
             agent: Bidder,
             draw_valuations: bool = False,
             aggregate: bool = True,
-            regularize: float = 0.0
-        ) -> torch.Tensor: #pylint: disable=arguments-differ
-        """Returns reward of a single player against the environment.
+            regularize: float = 0.0,
+            return_allocation: bool = False
+        ) -> torch.Tensor or Tuple[torch.Tensor, torch.Tensor]: #pylint: disable=arguments-differ
+        """Returns reward of a single player against the environment, and optionally additionally the allocation of that player.
            Reward is calculated as average utility for each of the batch_size x env_size games
         """
 
@@ -259,7 +262,6 @@ class AuctionEnvironment(Environment):
 
         # get agent_bid
         agent_bid = agent.get_action()
-        bid_magnitude = agent_bid.mean()
         action_length = agent_bid.shape[1]
 
         if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
@@ -291,19 +293,28 @@ class AuctionEnvironment(Environment):
                 bid_profile[:, opponent_pos, :] = opponent_bid
                 counter = counter + 1
 
-            allocation, payments = self.mechanism.play(bid_profile)
+            allocations, payments = self.mechanism.play(bid_profile)
+
+            allocation = allocations[:, player_position, :]
 
             # average over batch against this opponent
-            utility = agent.get_utility(allocation[:,player_position,:],
-                                        payments[:,player_position], bid_profile)
+            utility = agent.get_utility(allocation, payments[:,player_position], bid_profile)
 
             # regularize
-            utility -= regularize * bid_magnitude
+            utility -= regularize * agent_bid.mean()
 
         if aggregate:
             utility = utility.mean()
 
-        return utility
+            if return_allocation:
+                # Returns flat tensor with int entries `i` for a allocation of `i`th item
+                allocation = torch.einsum(
+                    'bi,i->bi', allocation,
+                    torch.arange(1, action_length + 1, device=allocation.device)
+                ).view(1, -1)
+                allocation = allocation[allocation > 0].to(torch.int8)
+
+        return utility if not return_allocation else (utility, allocation)
 
     def get_allocation(
             self,
@@ -313,50 +324,9 @@ class AuctionEnvironment(Environment):
         ) -> torch.Tensor:
         """Returns allocation of a single player against the environment.
         """
-
-        if not isinstance(agent, Bidder):
-            raise ValueError("Agent must be of type Bidder")
-
-        assert agent.batch_size == self.batch_size, \
-            "Agent batch_size does not match the environment!"
-
-        player_position = agent.player_position if agent.player_position else 0
-
-        # draw valuations
-        if draw_valuations:
-            self.draw_valuations_()
-
-        # get agent_bid
-        agent_bid = agent.get_action()
-        action_length = agent_bid.shape[1]
-
-        if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
-            allocation, _ = self.mechanism.play(
-                agent_bid.view(agent.batch_size, 1, action_length)
-            )
-
-        else: # at least 2 environment agent --> build bid_profile, then play
-            # get bid profile
-            bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
-                                      dtype=agent_bid.dtype, device=self.mechanism.device)
-            bid_profile[:, player_position, :] = agent_bid
-
-            for opponent_pos, opponent_bid in self._generate_agent_actions(exclude=set([player_position])):
-                bid_profile[:, opponent_pos, :] = opponent_bid
-
-            allocation, _ = self.mechanism.play(bid_profile)
-
-        allocation = allocation[:, player_position, :]
-
-        if aggregate:
-            # Returns flat tensor with int entries `i` for a allocation of `i`th item
-            allocation = torch.einsum(
-                'bi,i->bi', allocation,
-                torch.arange(1, action_length + 1, device=allocation.device)
-            ).view(1, -1)
-            allocation = allocation[allocation > 0].to(torch.int8)
-
-        return allocation
+        return self.get_reward(
+            agent, draw_valuations, aggregate, return_allocation=True
+            )[1]
 
     def prepare_iteration(self):
         self.draw_valuations_()

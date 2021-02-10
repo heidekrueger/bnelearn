@@ -19,13 +19,13 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
 
-from bnelearn.mechanism.auctions_combinatorial import (
+from bnelearn.mechanism import (
     LLGAuction, LLGFullAuction, LLLLGGAuction
 )
 from bnelearn.bidder import Bidder, CombinatorialBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
-from bnelearn.experiment import Experiment
+from .experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
 from bnelearn.correlation_device import (
     IndependentValuationDevice,
@@ -114,7 +114,11 @@ class LLGExperiment(LocalGlobalExperiment):
         assert self.config.setting.n_players == 3, "Incorrect number of players specified."
 
         self.gamma = self.correlation = float(config.setting.gamma)
-        self.regret = float(config.setting.regret)
+
+        if hasattr(config.setting, 'regret'):
+            self.regret = float(config.setting.regret)
+        else:
+            self.regret = 0  # default quasi-linear utility
 
         if config.setting.correlation_types == 'Bernoulli_weights':
             self.CorrelationDevice = BernoulliWeightsCorrelationDevice
