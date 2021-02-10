@@ -690,7 +690,7 @@ class Experiment(ABC):
                     strategy=model,
                     player_position=m2b(m),
                     draw_valuations=redraw_bne_vals,
-                    use_env_valuations=not redraw_bne_vals
+                    # use_env_valuations=not redraw_bne_vals  # TODO: isn't this duplicate with the prev param?
                 ) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(

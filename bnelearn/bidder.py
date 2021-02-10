@@ -333,7 +333,7 @@ class Bidder(Player):
 
             # TODO: Only implemented for LLG
             if valuations.shape[1] > 1:
-                raise NotImplementedError()
+                raise NotImplementedError('Regret not implemented for this setting.')
 
             if self.player_position != 2:  # local
                 highest_opponent_bids = bids[:, 2, :].view_as(payoff)
