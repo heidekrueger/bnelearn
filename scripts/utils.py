@@ -32,7 +32,7 @@ ALIASES = {
 
 def logs_to_df(
         path: str or dict,
-        metrics: list = ['eval/epsilon_relative', 'eval/util_loss_ex_interim',
+        metrics: list = ['eval/L_2', 'eval/epsilon_relative', 'eval/util_loss_ex_interim',
                          'eval/estimated_relative_ex_ante_util_loss',
                          'eval/efficiency', 'eval/revenue', 'eval/utilities'],
         precision: int = 4,
@@ -135,10 +135,16 @@ def logs_to_df(
         def map_pricing(row):
             if 'first_price' in row['Auction game']:
                 return 'first_price'
-            if 'vcg' in row['Auction game']:
-                return 'vcg'
             if 'uniform' in row['Auction game']:
                 return 'uniform'
+            if 'nearest_vcg' in row['Auction game']:
+                return 'nearest_vcg'
+            if 'vcg' in row['Auction game']:
+                return 'vcg'
+            if 'nearest_bid' in row['Auction game']:
+                return 'nearest_bid'
+            if 'nearest_zero' in row['Auction game']:
+                return 'nearest_zero'
             return None
         pri = aggregate_df.apply(map_pricing, axis=1)
         if pri.shape[0] > 0:
@@ -170,6 +176,16 @@ def logs_to_df(
         if pla.shape[0] > 0:
             aggregate_df['Players'] = pd.to_numeric(pla)
 
+        def map_regret(row):
+            if 'regret_' in row['Auction game']:
+                start = row['Auction game'].find('regret_') + 7
+                end = row['Auction game'].find('/', start)
+                return row['Auction game'][start:end]
+            return 0.0
+        reg = aggregate_df.apply(map_regret, axis=1)
+        if reg.shape[0] > 0:
+            aggregate_df['Regret'] = pd.to_numeric(reg)
+
     # write to file
     aggregate_df.to_csv('experiments/summary.csv', index=False)
 
@@ -182,7 +198,7 @@ def csv_to_tex(
         caption: str = 'caption',
         metrics: list = ['eval/L_2', 'eval/epsilon_relative',
                          'eval/estimated_relative_ex_ante_util_loss'],
-        precision: int = 2,
+        precision: int = 3,
     ):
     """Creates a tex file with the csv at `path` as a LaTeX table."""
 
@@ -317,17 +333,25 @@ if __name__ == '__main__':
 
     ### All experiments -------------------------------------------------------
     # exps = {
-    #     'Affiliated values':  '/home/kohring/bnelearn/experiments/single_item/first_price/interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
-    #     'Cor. values':        '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
-    #     'Cor. values 10p':    '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/10p/2020-09-26 Sat 19.54/aggregate_log.csv',
-    #     'LLG Bernoulli NZ':   '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/aggregate_log.csv',
-    #     'LLG Bernoulli VCG':  '/home/kohring/bnelearn/experiments/LLG/vcg/Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/aggregate_log.csv',
-    #     'LLG Bernoulli NVCG': '/home/kohring/bnelearn/experiments/LLG/nearest_vcg/Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/aggregate_log.csv',
-    #     'LLG Bernoulli NB':   '/home/kohring/bnelearn/experiments/LLG/nearest_bid/Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/aggregate_log.csv',
-    #     'LLG constant NZ':    '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/gamma_0.5/2020-09-30 Wed 22.13/aggregate_log.csv',
-    #     'LLG constant VCG':   '/home/kohring/bnelearn/experiments/LLG/vcg/constant_weights/gamma_0.5/2020-09-30 Wed 22.13/aggregate_log.csv',
-    #     'LLG constant NVCG':  '/home/kohring/bnelearn/experiments/LLG/nearest_vcg/constant_weights/gamma_0.5/2020-09-30 Wed 22.13/aggregate_log.csv',
-    #     'LLG constant NB':    '/home/kohring/bnelearn/experiments/LLG/nearest_bid/constant_weights/gamma_0.5/2020-09-30 Wed 22.13/aggregate_log.csv',
+    #     'Affiliated values':    '/home/kohring/bnelearn/experiments/single_item/first_price/interdependent/uniform/symmetric/risk_neutral/2p/2020-09-18 Fri 20.53/aggregate_log.csv',
+    #     'Cor. values':          '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/3p/2020-09-18 Fri 20.53/aggregate_log.csv',
+    #     'Cor. values 10p':      '/home/kohring/bnelearn/experiments/single_item/second_price/interdependent/uniform/symmetric/risk_neutral/10p/2020-09-26 Sat 19.54/aggregate_log.csv',
+    #     'LLG Bernoulli NZ':     '/home/kohring/bnelearn/experiments/LLG/nearest_zero/Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/aggregate_log.csv',
+    #     'LLG Bernoulli VCG':    '/home/kohring/bnelearn/experiments/LLG/vcg/Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/aggregate_log.csv',
+    #     'LLG Bernoulli NVCG':   '/home/kohring/bnelearn/experiments/LLG/nearest_vcg/Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/aggregate_log.csv',
+    #     'LLG Bernoulli NB':     '/home/kohring/bnelearn/experiments/LLG/nearest_bid/Bernoulli_weights/gamma_0.5/2020-10-02 Fri 20.59/aggregate_log.csv',
+    #     'LLG constant NZ':      '/home/kohring/bnelearn/experiments/LLG/nearest_zero/constant_weights/gamma_0.5/2020-09-30 Wed 22.13/aggregate_log.csv',
+    #     'LLG constant VCG':     '/home/kohring/bnelearn/experiments/LLG/vcg/constant_weights/gamma_0.5/2020-09-30 Wed 22.13/aggregate_log.csv',
+    #     'LLG constant NVCG':    '/home/kohring/bnelearn/experiments/LLG/nearest_vcg/constant_weights/gamma_0.5/2020-09-30 Wed 22.13/aggregate_log.csv',
+    #     'LLG constant NB':      '/home/kohring/bnelearn/experiments/LLG/nearest_bid/constant_weights/gamma_0.5/2020-09-30 Wed 22.13/aggregate_log.csv',
+    #     'FPSB $m=n=2$':         '/home/kohring/bnelearn/experiments/multi_unit/2x2/multi_unit/first_price/1.0risk/2players_2units/2021-01-18 Mon 14.12/aggregate_log.csv',
+	# 	'Uniform $m=n=2$':      '/home/kohring/bnelearn/experiments/multi_unit/2x2/multi_unit/uniform/1.0risk/2players_2units/2021-01-19 Tue 12.45/aggregate_log.csv',
+	# 	'VCG $m=n=2$':          '/home/kohring/bnelearn/experiments/multi_unit/2x2/multi_unit/vcg/1.0risk/2players_2units/2021-01-18 Mon 19.23/aggregate_log.csv',
+	# 	'FPSB $m=n=4$':         '/home/kohring/bnelearn/experiments/multi_unit/4x4/multi_unit/first_price/1.0risk/4players_4units/2021-01-18 Mon 14.15/aggregate_log.csv',
+	# 	'Uniform $m=n=4$':      '/home/kohring/bnelearn/experiments/multi_unit/4x4/multi_unit/uniform/1.0risk/4players_4units/2021-01-19 Tue 01.33/aggregate_log.csv',
+	# 	'VCG $m=n=4$':          '/home/kohring/bnelearn/experiments/multi_unit/4x4/multi_unit/vcg/1.0risk/4players_4units/2021-01-18 Mon 18.07/aggregate_log.csv',
+    #     'LLG Bernoulli FPSB':   '/home/kohring/bnelearn/experiments/LLG/first_price/Bernoulli_weights/gamma_0.5/2021-02-04 Thu 12.08/aggregate_log.csv',
+    #     'LLG constant FPSB':    '/home/kohring/bnelearn/experiments/LLG/first_price/constant_weights/gamma_0.5/2021-02-04 Thu 17.17/aggregate_log.csv',
     # }
 
     # csv_to_tex(
@@ -435,12 +459,5 @@ if __name__ == '__main__':
     #         '{}.eps'.format(metrics))
 
     ### Multi-unit experiments ------------------------------------------------
-    path = '/home/kohring/bnelearn/experiments/test_statics_inter'
-    df = logs_to_df(path=path)
-
-    # TODO:
-    #   1) make similar eval as for correlated settings:
-    #      a) E.g. fix a setting and see how it changes for risk
-    #      b) 
-    #   2) Anythiing special about the larger settings?
-    #   3) Try some new setting with correlation?
+    path = '/home/kohring/bnelearn/experiments/LLG'
+    df = logs_to_df(path=path, precision=4, with_stddev=True)

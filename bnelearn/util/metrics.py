@@ -168,7 +168,7 @@ def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: B
     a_i = allocation[:,player_position,:] # batch x n_items
     p_i = payments[:,player_position] # batch
 
-    actual_utility = bidder.get_utility(a_i, p_i)
+    actual_utility = bidder.get_utility(a_i, p_i, bid_profile)
 
     return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
 

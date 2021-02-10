@@ -114,6 +114,7 @@ class LLGExperiment(LocalGlobalExperiment):
         assert self.config.setting.n_players == 3, "Incorrect number of players specified."
 
         self.gamma = self.correlation = float(config.setting.gamma)
+        self.regret = float(config.setting.regret)
 
         if config.setting.correlation_types == 'Bernoulli_weights':
             self.CorrelationDevice = BernoulliWeightsCorrelationDevice
@@ -266,7 +267,16 @@ class LLGExperiment(LocalGlobalExperiment):
             name += ['independent']
         if self.risk != 1.0:
             name += ['risk_{}'.format(self.risk)]
+        if self.regret != 0.0:
+            name += ['regret_{}'.format(self.regret)]
         return os.path.join(*name)
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+        correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
+        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
+                              player_position=player_position, batch_size=batch_size,
+                              n_items=self.input_length, correlation_type=correlation_type,
+                              risk=self.risk, cache_actions=cache_actions, regret=self.regret)
 
 
 class LLGFullExperiment(LocalGlobalExperiment):

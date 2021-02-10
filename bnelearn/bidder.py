@@ -92,6 +92,7 @@ class Bidder(Player):
                  item_interest_limit: int = None,
                  constant_marginal_values: bool = False,
                  correlation_type: str = None,
+                 regret: float = 0.0,
                  ):
 
         super().__init__(strategy, player_position, batch_size, cuda)
@@ -109,6 +110,10 @@ class Bidder(Player):
         if self._cache_actions:
             self.actions = torch.zeros(batch_size, n_items, device=self.device)
         self.draw_valuations_()  # TODO: This is dangerous as it doesn't use correlation
+        
+        self.welfare_reference = None
+        self.payments_reference = None
+        self.regret = regret
 
         # Compute lower and upper bounds for grid computation
         self._grid_lb = self.value_distribution.support.lower_bound \
@@ -314,7 +319,7 @@ class Bidder(Player):
         self._valuations_changed = True # torch in-place operations do not trigger check in setter-method!
         return self.valuations
 
-    def get_utility(self, allocations, payments): #pylint: disable=arguments-differ
+    def get_utility(self, allocations, payments, bids): #pylint: disable=arguments-differ
         """
         For a batch of allocations and payments return the player's utilities at
         current valuations.
@@ -323,6 +328,30 @@ class Bidder(Player):
             valuations = self._unkown_valuation # case: signal != valuation
         else:
             valuations = self.valuations
+
+        if self.regret > 0:
+            welfare = self.get_welfare(allocations, valuations)
+            payoff = welfare - payments
+            
+            # TODO: Only implemented for LLG
+            if valuations.shape[1] > 1:
+                raise NotImplementedError()
+
+            if self.player_position != 2:  # local
+                highest_opponent_bids = bids[:, 2, :].view_as(payoff)
+            else:  # global
+                highest_opponent_bids = bids[:, [0, 1], :].sum(axis=1).view_as(payoff)
+
+            # winner's regret
+            alpha = self.regret
+            win_mask = torch.any(allocations.bool(), axis=1)
+            payoff[win_mask] -= alpha * (bids[:, self.player_position, 0][win_mask] - highest_opponent_bids[win_mask])
+
+            # loser's regret
+            beta = self.regret
+            payoff[~win_mask] -= beta * (valuations[~win_mask, 0] - highest_opponent_bids[~win_mask])
+
+            return payoff
 
         return self.get_counterfactual_utility(allocations, payments, valuations)
 

@@ -51,7 +51,7 @@ def test_static_mechanism():
     # subset for single player
     allocations = allocations[:,0,:]
     payments = payments[:,0]
-    utilities = bidder.get_utility(allocations=allocations, payments=payments)
+    utilities = bidder.get_utility(allocations=allocations, payments=payments, bids=bids)
 
     assert torch.isclose(utilities.mean(), torch.tensor(5., device=device), atol=1e-2), \
         "StaticMechanism returned unexpected rewards."
@@ -61,7 +61,7 @@ def test_static_mechanism():
     # subset for single player
     allocations = allocations[:,0,:]
     payments = payments[:,0]
-    utilities = bidder.get_utility(allocations=allocations, payments=payments)
+    utilities = bidder.get_utility(allocations=allocations, payments=payments, bids=bids)
     assert torch.isclose(utilities.mean(), torch.tensor(3.75, device=device), atol=3e-2), \
         "StaticMechanism returned unexpected rewards."
 

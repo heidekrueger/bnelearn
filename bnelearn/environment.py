@@ -74,7 +74,7 @@ class Environment(ABC):
         # TODO: wouln't be a clone be easier? This always creates a whole
         # bidder object and draws valuations. Alternative: clone bidder and then
         # overwrite its stratrgy
-        agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
+        agent = self._strategy_to_player(strategy=strategy, batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
         # TODO: this should rally be in AuctionEnv subclass
         env_agent = self.agents[player_position]
@@ -179,7 +179,7 @@ class MatrixGameEnvironment(Environment):
             action_profile[:, position] = action.view(self.batch_size)
 
         allocation, payments = self.game.play(action_profile.view(self.batch_size, self.n_players, -1))
-        utilities =  agent.get_utility(allocation[:,player_position,:], payments[:,player_position])
+        utilities =  agent.get_utility(allocation[:,player_position,:], payments[:,player_position], action_profile)
 
         return utilities.mean()
 
@@ -266,7 +266,7 @@ class AuctionEnvironment(Environment):
             allocation, payments = self.mechanism.play(
                 agent_bid.view(agent.batch_size, 1, action_length)
             )
-            utility = agent.get_utility(allocation[:,0,:], payments[:,0])
+            utility = agent.get_utility(allocation[:,0,:], payments[:,0], agent_bid.view(agent.batch_size, 1, action_length))
         else: # at least 2 environment agent --> build bid_profile, then play
             # get bid profile
             bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
@@ -295,7 +295,7 @@ class AuctionEnvironment(Environment):
 
             # average over batch against this opponent
             utility = agent.get_utility(allocation[:,player_position,:],
-                                        payments[:,player_position])
+                                        payments[:,player_position], bid_profile)
 
             # regularize
             utility -= regularize * bid_magnitude

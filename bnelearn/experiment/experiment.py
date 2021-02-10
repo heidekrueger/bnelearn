@@ -186,7 +186,7 @@ class Experiment(ABC):
             ).to(self.hardware.device)
 
         self.bidders = [
-            self._strat_to_bidder(self.models[m_id], batch_size=self.learning.batch_size, player_position=i)
+            self._strat_to_bidder(strategy=self.models[m_id], batch_size=self.learning.batch_size, player_position=i)
             for i, m_id in enumerate(self._bidder2model)]
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
@@ -687,7 +687,7 @@ class Experiment(ABC):
             # length: n_models
             utility_vs_bne[bne_idx] = torch.tensor([
                 bne_env.get_strategy_reward(
-                    model,
+                    strategy=model,
                     player_position=m2b(m),
                     draw_valuations=redraw_bne_vals,
                     use_env_valuations=not redraw_bne_vals
