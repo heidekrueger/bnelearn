@@ -90,12 +90,10 @@ class LocalGlobalExperiment(Experiment, ABC):
             return super()._get_model_names()
 
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
-        correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
+    def _strat_to_bidder(self, strategy, player_position=0):
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
-                              player_position=player_position, batch_size=batch_size,
-                              n_items = self.n_items, correlation_type=correlation_type,
-                              cache_actions=cache_actions)
+                              player_position=player_position,
+                              n_items = self.n_items)
 
 
 class LLGExperiment(LocalGlobalExperiment):
@@ -221,8 +219,7 @@ class LLGExperiment(LocalGlobalExperiment):
         self.known_bne = True
         bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
-            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                          batch_size=self.config.logging.eval_batch_size)
+            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i)
                     for i in range(self.n_players)],
             n_players=self.n_players,
             batch_size=self.config.logging.eval_batch_size,

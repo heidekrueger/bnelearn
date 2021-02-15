@@ -151,7 +151,7 @@ class Experiment(ABC):
                 for bidders in self._model2bidder]
 
     @abstractmethod
-    def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
+    def _strat_to_bidder(self, strategy, player_position=None):
         pass
 
     def _setup_learners(self):
@@ -184,7 +184,7 @@ class Experiment(ABC):
             ).to(self.hardware.device)
 
         self.bidders = [
-            self._strat_to_bidder(self.models[m_id], batch_size=self.learning.batch_size, player_position=i)
+            self._strat_to_bidder(self.models[m_id], player_position=i)
             for i, m_id in enumerate(self._bidder2model)]
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in

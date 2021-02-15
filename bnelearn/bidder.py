@@ -11,7 +11,7 @@ import math
 import torch
 from torch.distributions import Distribution
 from bnelearn.strategy import Strategy, MatrixGameStrategy, FictitiousPlayStrategy, FictitiousNeuralPlayStrategy
-
+from bnelearn.util.bidder_utils import get_welfare
 
 class Player(ABC):
     """
@@ -20,15 +20,14 @@ class Player(ABC):
         - utility function over outcomes
     """
 
-    def __init__(self, strategy, player_position=None, batch_size=1, cuda=True):
+    def __init__(self, strategy, player_position=None, cuda=True):
         self.cuda = cuda and torch.cuda.is_available()
         self.device = 'cuda' if self.cuda else 'cpu'
         self.player_position :int = player_position # None in dynamic environments!
         self.strategy = strategy
-        self.batch_size = batch_size
 
     @abstractmethod
-    def get_action(self):
+    def get_action(self,valuations = None):
         """Chooses an action according to the player's strategy."""
         raise NotImplementedError
 
@@ -44,8 +43,8 @@ class Player(ABC):
 class MatrixGamePlayer(Player):
     """ A player playing a matrix game"""
     def __init__(self, strategy, player_position=None, batch_size=1, cuda=True):
-        super().__init__(strategy, player_position=player_position,
-                         batch_size=batch_size, cuda=cuda)
+        self.batch_size = batch_size
+        super().__init__(strategy, player_position=player_position, cuda=cuda)
 
 
     def get_utility(self, *outcome): #pylint: disable=arguments-differ
@@ -54,7 +53,7 @@ class MatrixGamePlayer(Player):
         _, payments = outcome
         return -payments
 
-    def get_action(self):
+    def get_action(self, valuations = None):
         if (isinstance(self.strategy, MatrixGameStrategy) or isinstance(self.strategy, FictitiousNeuralPlayStrategy)):
             return self.strategy.play(batch_size=self.batch_size)
         if isinstance(self.strategy, FictitiousPlayStrategy):
@@ -69,7 +68,6 @@ class Bidder(Player):
         ´batch_size´ corresponds to the number of individual auctions.
         If ´descending_valuations´ is true, the valuations will be returned
         in decreasing order.
-        `cache_actions` determines whether actions should be cached and retrieved from memory,
             rather than recomputed as long as valuations haven't changed.
 
         # TODO Nils: clearly distinguish observation and type! (Nedded for correlation, splt-award, etc.)
@@ -78,32 +76,22 @@ class Bidder(Player):
                  value_distribution: Distribution,
                  strategy,
                  player_position = None,
-                 batch_size = 1,
                  n_items = 1,
                  cuda = True,
-                 cache_actions: bool = False,
                  descending_valuations = False,
                  risk: float = 1.0,
                  item_interest_limit = None,
                  constant_marginal_values = False,
-                 correlation_type = None,
                  ):
 
-        super().__init__(strategy, player_position, batch_size, cuda)
+        super().__init__(strategy, player_position, cuda)
 
         self.value_distribution = value_distribution
         self.n_items = n_items
         self.descending_valuations = descending_valuations
         self.item_interest_limit = item_interest_limit
         self.constant_marginal_values = constant_marginal_values
-        self.correlation_type = correlation_type
         self.risk = risk
-        self._cache_actions = cache_actions
-        self._valuations_changed = False # true if new valuation drawn since actions calculated
-        self._valuations = torch.zeros(batch_size, n_items, device=self.device)
-        if self._cache_actions:
-            self.actions = torch.zeros(batch_size, n_items, device=self.device)
-        self.draw_valuations_()
 
         # Compute lower and upper bounds for grid computation
         self._grid_lb = self.value_distribution.support.lower_bound \
@@ -130,26 +118,7 @@ class Bidder(Player):
     # ### Members ####################
     # def prepare_iteration(self):
     #     self.draw_valuations_()
-
-    @property
-    def valuations(self):
-        return self._valuations
-
-    @valuations.setter
-    def valuations(self, new_value: torch.Tensor):
-        """When manually setting valuations, make sure that the _valuations_changed flag is set correctly."""
-        if new_value.shape != self._valuations.shape:
-            warnings.warn("New valuations have different shape than specified in Bidder object!")
-        if (new_value.dtype, new_value.device) != (self._valuations.dtype, self._valuations.device):
-            warnings.warn(
-                "New valuations have different dtype and/or device than bidder. Converting to {},{}".format(
-                    self._valuations.device, self._valuations.dtype)
-                )
-
-        if not new_value.equal(self._valuations):
-            self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
-            self._valuations_changed = True
-
+    
     def get_valuation_grid(self, n_points=None, extended_valuation_grid=False, dtype=torch.float32, step=None):
         """ Returns a grid of approximately `n_points` valuations that are
             equidistant (in each dimension) on the support of self.value_distribution.
@@ -209,106 +178,28 @@ class Bidder(Player):
         # assert grid_values.shape[0] >= n_points, "grid_size is lower than expected!"
         return grid_values
 
-    def draw_valuations_(self, common_component = None, weights: torch.Tensor or float = 0.0):
-        """ Sample a new batch of valuations from the Bidder's prior. Negative
-            draws will be clipped at 0.0!
-
-            When correlation info is given, valuations are drawn according to a mixture of the
-            individually drawn component and the provided common component according to the provided weights.
-
-            If ´descending_valuations´ is true, the valuations will be returned
-            in decreasing order.
-
-            Args:
-                common_component (optional): torch.tensor (batch_size x n_items)
-                    Tensor of (hidden) common component, same dimension as self.valuation.
-                weights: (float, [0,1]) or tensor (batch_size x n_items) with values in [0,1]
-                    defines how much to weigh the common component. If float, weighs entire tensor. If tensor
-                    weighs component-wise.
-
-            # TODO Stefan: Does correlation interere with Nils' implementations of descending valuations
-            #              Or Item interest limits? --> Test!
+    def postprocess_valuations(self,valuations): 
         """
-        if isinstance(weights, float):
-            weights = torch.tensor(weights)
-
-        assert weights.shape in {torch.Size([]), torch.Size([self.batch_size, self.n_items])}, \
-            "Weights have invalid shape!"
-
-        # Note: do NOT force-move weights and common_component to self.device until required!
-
-        ### 1. For perfect correlation, no need to calculate individual component
-        if torch.all(weights == 1.0):
-            self.valuations = common_component.to(self.device).relu()
-            return self.valuations
-
-        ### 2. Otherwise determine individual component
-
-        # If in place sampling is available for our distribution, use it!
-        # This will save time for memory allocation and/or copying between devices
-        # As sampling from general torch.distribution is only available on CPU.
-        # (might mean adding more boilerplate code here if specific distributions are desired
-
-        # uniform
-        if isinstance(self.value_distribution, torch.distributions.uniform.Uniform):
-            self.valuations.uniform_(self.value_distribution.low, self.value_distribution.high)
-        # Gaussian
-        elif isinstance(self.value_distribution, torch.distributions.normal.Normal):
-            self.valuations.normal_(mean = self.value_distribution.loc, std = self.value_distribution.scale)
-        else:
-            # This is slow! (sampling on cpu then copying to GPU)
-            # add additional internal in-place samplers above as needed!
-            self.valuations = self.value_distribution.rsample(self.valuations.size()).to(self.device)
-
-        ### 3. Determine mixture of individual and common component
-        if torch.any(weights > 0):
-            if self.correlation_type == 'additive':
-                weights = weights.to(self.device)
-                self.valuations = weights * common_component.to(self.device) + (1-weights) * self.valuations
-            elif self.correlation_type == 'multiplicative':
-                self.valuations = 2 * common_component.to(self.device) * self.valuations
-                self._unkown_valuation = common_component.to(self.device)
-            elif self.correlation_type == 'affiliated':
-                self.valuations = (
-                    common_component.to(self.device)[:, self.player_position]
-                    + common_component.to(self.device)[:, 2]
-                ).view(self.batch_size, -1)
-                self._unkown_valuation = 0.5 * \
-                    (common_component.to(self.device) * torch.tensor([1, 1, 2], device=self.device)) \
-                        .sum(axis=1, keepdim=True)
-            else:
-                raise NotImplementedError('correlation type unknown')
-
-        ### 4. Finishing up
-        self.valuations.relu_() #ensure nonnegativity for unbounded-support distributions
+        ensures non_negativity
+        sorts if bidder.descending_valuations
+            valuations ([torch.Tensor])
+        """
+        valuations.relu_() #ensure nonnegativity for unbounded-support distributions
 
         if isinstance(self.item_interest_limit, int):
-            self.valuations[:,self.item_interest_limit:] = 0
+            valuations[:,self.item_interest_limit:] = 0
 
         if self.constant_marginal_values:
-            self.valuations.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
-                                        self.valuations[:,0:1].repeat(1, self.n_items-1))
+            valuations.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
+                                        valuations[:,0:1].repeat(1, self.n_items-1))
 
         if self.descending_valuations:
             # for uniform vals and 2 items <=> F1(v)=v**2, F2(v)=2v-v**2
-            self.valuations, _ = self.valuations.sort(dim=1, descending=True)
+            valuations, _ = valuations.sort(dim=1, descending=True)
 
-        self._valuations_changed = True # torch in-place operations do not trigger check in setter-method!
-        return self.valuations
+        return valuations
 
-    def get_utility(self, allocations, payments): #pylint: disable=arguments-differ
-        """
-        For a batch of allocations and payments return the player's utilities at
-        current valuations.
-        """
-        if hasattr(self, '_unkown_valuation'):
-            valuations = self._unkown_valuation # case: signal != valuation
-        else:
-            valuations = self.valuations
-
-        return self.get_counterfactual_utility(allocations, payments, valuations)
-
-    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
+    def get_utility(self, allocations, payments, counterfactual_valuations):
         """
         For a batch of allocations, payments and counterfactual valuations return the
         player's utilities.
@@ -317,7 +208,7 @@ class Bidder(Player):
         (..., batch_size, n_items). These batch dimensions are kept in returned
         payoff.
         """
-        welfare = self.get_welfare(allocations, counterfactual_valuations)
+        welfare = get_welfare(allocations, counterfactual_valuations)
         payoff = welfare - payments
 
         if self.risk == 1.0:
@@ -328,30 +219,9 @@ class Bidder(Player):
             #return payoff.relu()**self.risk - (-payoff).relu()**self.risk
             return payoff.relu().pow_(self.risk).sub_(payoff.neg_().relu_().pow_(self.risk))
 
-    def get_welfare(self, allocations, valuations=None):
-        """
-        For a batch of allocations and payments return the player's welfare.
-        If valuations are not specified, welfare is calculated for `self.valuations`.
-
-        Can handle multiple batch dimensions, e.g. for valuations a shape of
-        (..., batch_size, n_items). These batch dimensions are kept in returned
-        welfare.
-        """
-
-        assert allocations.dim() == 2 # batch_size x items
-        if valuations is None:
-            valuations = self.valuations
-
-        item_dimension = valuations.dim() - 1
-        welfare = (valuations * allocations).sum(dim=item_dimension)
-
-        return welfare
-
-    def get_action(self):
-        """Calculate action from current valuations, or retrieve from cache"""
-        if self._cache_actions and not self._valuations_changed:
-            return self.actions
-        inputs = self.valuations.view(self.batch_size, -1)
+    def get_action(self, valuations):
+        """Calculate action from given valuations"""
+        inputs = valuations.view(len(valuations), -1)
         # for cases when n_items != input_length (e.g. Split-Award Auctions, combinatorial auctions with bid languages)
         # TODO: generalize this, see #82. https://gitlab.lrz.de/heidekrueger/bnelearn/issues/82
         if hasattr(self.strategy, 'input_length') and self.strategy.input_length != self.n_items:
@@ -360,12 +230,8 @@ class Bidder(Player):
             inputs = inputs[:,:dim]
 
         actions = self.strategy.play(inputs)
-        self._valuations_changed = False
-
-        if self._cache_actions:
-            self.actions = actions
-
         return actions
+
 
 
 class ReverseBidder(Bidder):
@@ -377,10 +243,8 @@ class ReverseBidder(Bidder):
                  value_distribution: Distribution,
                  strategy,
                  player_position = None,
-                 batch_size = 1,
                  n_units = 1,
                  cuda = True,
-                 cache_actions: bool = False,
                  descending_valuations = False,
                  risk: float = 1.0,
                  item_interest_limit = None,
@@ -393,10 +257,8 @@ class ReverseBidder(Bidder):
             value_distribution,
             strategy,
             player_position,
-            batch_size,
             n_units,
             cuda,
-            cache_actions,
             descending_valuations,
             risk,
             item_interest_limit,
@@ -438,18 +300,32 @@ class ReverseBidder(Bidder):
 
         return grid_values
 
-    def draw_valuations_(self, common_component = None, weights: torch.Tensor or float = 0.0):
-        """ Extends `Bidder.draw_valuations_` with efiiciency parameter
+    def postprocess_valuations(self,valuations): 
         """
-        _ = super().draw_valuations_(common_component, weights)
-
-        assert self.valuations.shape[1] == 2, \
+        ensures non_negativity
+        sort if bidder.descending_valuations
+            valuations ([torch.Tensor])
+        """
+        
+        assert valuations.shape[1] == 2, \
             'linear valuations are only defined for two items.'
-        self.valuations[:, 1] = self.efficiency_parameter * self.valuations[:, 0]
+        valuations.relu_() #ensure nonnegativity for unbounded-support distributions
 
-        return self.valuations
+        if isinstance(self.item_interest_limit, int):
+            valuations[:,self.item_interest_limit:] = 0
 
-    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
+        if self.constant_marginal_values:
+            valuations.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
+                                        valuations[:,0:1].repeat(1, self.n_items-1))
+
+        if self.descending_valuations:
+            # for uniform vals and 2 items <=> F1(v)=v**2, F2(v)=2v-v**2
+            valuations, _ = valuations.sort(dim=1, descending=True)
+
+        valuations[:, 1] = self.efficiency_parameter * valuations[:, 0]
+
+        return valuations
+    def get_utility(self, allocations, payments, counterfactual_valuations):
         """For reverse bidders, returns are inverted.
         """
-        return - super().get_counterfactual_utility(allocations, payments, counterfactual_valuations)
+        return - super().get_utility(allocations, payments, counterfactual_valuations)

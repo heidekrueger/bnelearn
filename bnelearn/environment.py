@@ -195,7 +195,7 @@ class AuctionEnvironment(Environment):
         ... (TODO: document)
         correlation_structure
 
-        strategy_to_bidder_closure: A closure (strategy, batch_size) -> Bidder to
+        strategy_to_bidder_closure: A closure (strategy) -> Bidder to
             transform strategies into a Bidder compatible with the environment
     """
 

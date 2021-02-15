@@ -304,7 +304,7 @@ class MultiUnitExperiment(Experiment, ABC):
         super().__init__(config=config)
 
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+    def _strat_to_bidder(self, strategy, player_position=0):
         """
         Standard strat_to_bidder method.
         """
@@ -316,8 +316,6 @@ class MultiUnitExperiment(Experiment, ABC):
             descending_valuations=True,
             constant_marginal_values=self.constant_marginal_values,
             player_position=player_position,
-            batch_size=batch_size,
-            cache_actions=cache_actions
         )
 
     def _setup_mechanism(self):
@@ -357,8 +355,7 @@ class MultiUnitExperiment(Experiment, ABC):
             self.bne_env[i] = AuctionEnvironment(
                 mechanism=self.mechanism,
                 agents=[
-                    self._strat_to_bidder(bne_strategy, self.logging.eval_batch_size, j,
-                                          cache_actions=self.config.logging.cache_eval_actions)
+                    self._strat_to_bidder(bne_strategy, j)
                     for j, bne_strategy in enumerate(bne_strategies)
                 ],
                 n_players=self.n_players,
@@ -445,7 +442,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
     #         output_tensor = temp
     #     return output_tensor
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
+    def _strat_to_bidder(self, strategy, player_position=None):
         """Standard strat_to_bidder method, but with ReverseBidder"""
         return ReverseBidder.uniform(
             lower=self.u_lo[0], upper=self.u_hi[0],
@@ -456,8 +453,6 @@ class SplitAwardExperiment(MultiUnitExperiment):
             constant_marginal_values=self.constant_marginal_values,
             player_position=player_position,
             efficiency_parameter=self.efficiency_parameter,
-            batch_size=batch_size,
-            cache_actions=cache_actions
         )
 
     def _get_logdir_hierarchy(self):
