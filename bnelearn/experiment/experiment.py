@@ -195,19 +195,6 @@ class Experiment(ABC):
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
                              self.models]
 
-        if self.learning.pretrain_iters > 0:
-            print('Pretraining...')
-
-            if hasattr(self, 'pretrain_transform'):
-                pretrain_transform = self.pretrain_transform  # pylint: disable=no-member
-            else:
-                pretrain_transform = None
-
-            for i, model in enumerate(self.models):
-                model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
-                               self.learning.pretrain_iters, pretrain_transform)
-
-    def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding
            `_optimal_bid` function.
         """
@@ -231,6 +218,20 @@ class Experiment(ABC):
                                       antithetic=self.learning.antithetic,
                                       inplace_sampling=  self.learning.inplace_sampling,
                                       scramble=self.learning.scramble)
+
+        if self.learning.pretrain_iters > 0:
+            print('Pretraining...')
+            if hasattr(self, 'pretrain_transform'):
+                pretrain_transform = self.pretrain_transform  # pylint: disable=no-member
+            else:
+                pretrain_transform = None
+                
+            output = self.env.state_device.draw_state(self.bidders,self.learning.batch_size)["valuations"]
+
+            for i, model in enumerate(self.models):
+                model.pretrain(output[:,self._model2bidder[i][0],:],
+                            self.learning.pretrain_iters, pretrain_transform)
+
 
     def _init_new_run(self):
         """Setup everything that is specific to an individual run, including everything nondeterministic"""

@@ -590,7 +590,7 @@ class MineralRightsExperiment(SingleItemExperiment):
             agents = [
                 self._strat_to_bidder(
                     bne_strategy,
-                    player_position = i)                )
+                    player_position = i)
                 for i in range(self.n_players)
             ]
             for a in agents:
@@ -698,7 +698,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         agents = [
             self._strat_to_bidder(
                 bne_strategy,
-                player_position = i)            )
+                player_position = i)
             for i in range(self.n_players)
         ]
         for a in agents:
