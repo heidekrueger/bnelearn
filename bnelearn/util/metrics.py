@@ -91,76 +91,76 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.tensor, bid_prof
 
     return bid_profile #bid_eval_size*batch, 1,n_items
 
-def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidder,
-                      grid: torch.Tensor, half_precision = False, player_position: int = None):
-    """
-    # TODO: do we really need this or can we delete it in general?
-    # If we decide to keep it, check implementation in detail! (Removing many many todos in the body)
+# def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidder,
+#                       grid: torch.Tensor, half_precision = False, player_position: int = None):
+#     """
+#     # TODO: do we really need this or can we delete it in general?
+#     # If we decide to keep it, check implementation in detail! (Removing many many todos in the body)
 
-    Estimates a bidder's ex post util_loss in the current bid_profile vs a potential grid,
-        i.e. the potential benefit of having deviated from the current strategy, as:
-        util_loss = max(0, BR(v_i, b_-i) - u_i(b_i, b_-i))
-    Input:
-        mechanism
-        bid_profile: (batch_size x n_player x n_items)
-        bidder: a Bidder (used to retrieve valuations and utilities)
-        grid:
-            option 1: 1d tensor with length grid_size
-                todo for n_items > 1, all grid_size**n_items combination will be used. Should be
-                replaced by e.g. torch.meshgrid
-            option 2: tensor with shape (grid_size, n_items)
-        player_position (optional): specific position in which the player will be evaluated
-            (defaults to player_position of bidder)
-        half_precision: (optional, bool) Whether to use half precision tensors. default: false
-    Output:
-        util_loss (batch_size)
+#     Estimates a bidder's ex post util_loss in the current bid_profile vs a potential grid,
+#         i.e. the potential benefit of having deviated from the current strategy, as:
+#         util_loss = max(0, BR(v_i, b_-i) - u_i(b_i, b_-i))
+#     Input:
+#         mechanism
+#         bid_profile: (batch_size x n_player x n_items)
+#         bidder: a Bidder (used to retrieve valuations and utilities)
+#         grid:
+#             option 1: 1d tensor with length grid_size
+#                 todo for n_items > 1, all grid_size**n_items combination will be used. Should be
+#                 replaced by e.g. torch.meshgrid
+#             option 2: tensor with shape (grid_size, n_items)
+#         player_position (optional): specific position in which the player will be evaluated
+#             (defaults to player_position of bidder)
+#         half_precision: (optional, bool) Whether to use half precision tensors. default: false
+#     Output:
+#         util_loss (batch_size)
 
-    Useful: To get the memory used by a tensor (in MB): (tensor.element_size() * tensor.nelement())/(1024*1024)
-    """
+#     Useful: To get the memory used by a tensor (in MB): (tensor.element_size() * tensor.nelement())/(1024*1024)
+#     """
 
-    player_position = bidder.player_position
-    agent_valuation = bidder.valuations # batch_size x n_items
+#     player_position = bidder.player_position
+#     agent_valuation = bidder.valuations # batch_size x n_items
 
-    ## Use smaller dtypes to save memory
-    if half_precision:
-        bid_profile = bid_profile.half()
-        agent_valuation = agent_valuation.half()
-        grid = grid.half()
+#     ## Use smaller dtypes to save memory
+#     if half_precision:
+#         bid_profile = bid_profile.half()
+#         agent_valuation = agent_valuation.half()
+#         grid = grid.half()
 
-    #Generalize these dimensions
-    batch_size, n_players, n_items = bid_profile.shape # pylint: disable=unused-variable
-    grid_size = grid.shape[0] #update this
-    # Create multidimensional bid tensor if required
-    if n_items == 1:
-        grid = grid.view(grid_size, 1).to(bid_profile.device)
-    elif n_items >= 2:
-        if len(grid.shape) == 1:
-            grid = torch.combinations(grid, r=n_items, with_replacement=True).to(bid_profile.device) #grid_size**n_items x n_items
-            # Stefan: this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
-    grid_size, _ = grid.shape # this _new_ grid size refers to all combinations, whereas the previous one was 1D only
+#     #Generalize these dimensions
+#     batch_size, n_players, n_items = bid_profile.shape # pylint: disable=unused-variable
+#     grid_size = grid.shape[0] #update this
+#     # Create multidimensional bid tensor if required
+#     if n_items == 1:
+#         grid = grid.view(grid_size, 1).to(bid_profile.device)
+#     elif n_items >= 2:
+#         if len(grid.shape) == 1:
+#             grid = torch.combinations(grid, r=n_items, with_replacement=True).to(bid_profile.device) #grid_size**n_items x n_items
+#             # Stefan: this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
+#     grid_size, _ = grid.shape # this _new_ grid size refers to all combinations, whereas the previous one was 1D only
 
 
-    ### Evaluate alternative bids on grid
-    grid_bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile) # (grid_size*batch_size) x n_players x n_items
-    ## Calculate allocation and payments for alternative bids given opponents bids
-    allocation, payments = mechanism.play(grid_bid_profile)
+#     ### Evaluate alternative bids on grid
+#     grid_bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile) # (grid_size*batch_size) x n_players x n_items
+#     ## Calculate allocation and payments for alternative bids given opponents bids
+#     allocation, payments = mechanism.play(grid_bid_profile)
 
-    # we only need the specific player's allocation and can get rid of the rest.
-    a_i = allocation[:,player_position,:]
-    p_i = payments[:,player_position] # 1D tensor of length (grid * batch)
+#     # we only need the specific player's allocation and can get rid of the rest.
+#     a_i = allocation[:,player_position,:]
+#     p_i = payments[:,player_position] # 1D tensor of length (grid * batch)
 
-    counterfactual_valuations = bidder.valuations.repeat(grid_size, 1) # grid*batch x n_items
-    utility_grid = bidder.get_counterfactual_utility(a_i, p_i, counterfactual_valuations).view(grid_size, batch_size)
-    best_response_utility, best_response = utility_grid.max(0)
+#     counterfactual_valuations = bidder.valuations.repeat(grid_size, 1) # grid*batch x n_items
+#     utility_grid = bidder.get_counterfactual_utility(a_i, p_i, counterfactual_valuations).view(grid_size, batch_size)
+#     best_response_utility, best_response = utility_grid.max(0)
 
-    ## Evaluate actual bids
-    allocation, payments = mechanism.play(bid_profile)
-    a_i = allocation[:,player_position,:] # batch x n_items
-    p_i = payments[:,player_position] # batch
+#     ## Evaluate actual bids
+#     allocation, payments = mechanism.play(bid_profile)
+#     a_i = allocation[:,player_position,:] # batch x n_items
+#     p_i = payments[:,player_position] # batch
 
-    actual_utility = bidder.get_utility(a_i, p_i)
+#     actual_utility = bidder.get_utility(a_i, p_i)
 
-    return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
+#     return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
 
 
 def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
@@ -207,10 +207,9 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
 
     agent: Bidder = env.agents[player_position]
 
-    assert batch_size <= agent.batch_size, "invalid batch size!"
-
-    observation = agent.valuations[:batch_size, ...].detach().clone()
-    action_actual = agent.get_action()[:batch_size, ...].detach().clone()
+    output = env.state_device.draw_state(agents =env.agents,batch_size= batch_size)
+    observation = output["valuations"][:,player_position,:]
+    action_actual = agent.get_action(observation)
     # TODO Nils: Generally, we don't need `clone()` but in some rare instances we do.
     #            Side effects? Relation to `cache_actions`? ...
     n_items = observation.shape[-1]
@@ -224,7 +223,6 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     conditionals = env.draw_conditionals(
         player_position, observation, opponent_batch_size
     )
-
     # conditioning type on signal - not needed when they're equal
     if hasattr(agent, '_unkown_valuation'):
         agent_type = conditionals[agent.player_position]
@@ -260,9 +258,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         .view(agent_batch_size * opponent_batch_size, n_items)
     payment_actual = payment_actual[:, player_position] \
         .view(agent_batch_size * opponent_batch_size)
-    utility_actual = agent.get_counterfactual_utility(
-        allocation_actual, payment_actual, agent_type
-    ).view(agent_batch_size, opponent_batch_size)
+    utility_actual = agent.get_utility(allocation_actual, payment_actual, agent_type).view(agent_batch_size, opponent_batch_size)
 
     # expectation over opponent batches
     utility_actual = torch.mean(utility_actual, axis=1) #dim: batch_size
@@ -294,12 +290,11 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                     player_position, observation[b:b+mini_batch_size, :], opponent_batch_size
                 )
 
-                if hasattr(agent, '_unkown_valuation'):
-                    agent_type = conditionals[agent.player_position]
+                if output["_unkown_valuation"] is not None:
+                    agent_type = conditionals[:,agent.player_position,:]
                 else:
                     agent_type = observation[b:b+mini_batch_size, :] \
                         .repeat_interleave(opponent_batch_size, 0)
-
                 # alternative bid profile and alternative utility
                 #   1st dim: different agent valuations (-> actions should be different for given vals)
                 #   2nd dim: different agent actions
@@ -329,14 +324,13 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                     .view(mini_batch_size * grid_size * opponent_batch_size, n_items)
                 payment_alternative = payment_alternative[:, player_position] \
                     .view(mini_batch_size * grid_size * opponent_batch_size)
-                utility_alternative_batch = agent.get_counterfactual_utility(
+                utility_alternative_batch = agent.get_utility(
                     allocation_alternative, payment_alternative,
                     agent_type \
                         .view(mini_batch_size, opponent_batch_size, n_items) \
                         .repeat(1, grid_size, 1) \
                         .view(mini_batch_size * grid_size * opponent_batch_size, n_items)
                 ).view(mini_batch_size, grid_size, opponent_batch_size)
-
                 # expectation over opponent_batch
                 utility_alternative_batch = torch.mean(utility_alternative_batch, axis=2)
 
