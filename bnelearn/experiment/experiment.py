@@ -195,11 +195,14 @@ class Experiment(ABC):
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
                              self.models]
 
+    def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding
            `_optimal_bid` function.
         """
         print("No BNE was found for this experiment.")
         return False
+
+
 
     def _setup_eval_environment(self):
         """Overwritten by subclasses with known BNE.
@@ -779,7 +782,7 @@ class Experiment(ABC):
             valuations = valuations[:,indices,:]
             plot_output = (valuations, util_losses)
             self._plot(plot_data=plot_output, writer=self.writer,
-                       ylim=[0, max(self._max_util_loss).cpu()],
+                       ylim=[0, max(self._max_util_loss).cpu().detach()],
                        figure_name='util_loss_landscape', y_label='ex-interim loss',
                        epoch=epoch, plot_points=self.plot_points)
 
@@ -810,7 +813,7 @@ class Experiment(ABC):
 
         for i, model in enumerate(self.models):
             self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)  # ToDO To hyperparams
-            self.writer.add_graph(model, self.env.agents[i].valuations)
+            self.writer.add_graph(model, self.env.state_device.draw_state(self.env.agents, self.learning.batch_size)["valuations"][:,i,:])
 
     def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to

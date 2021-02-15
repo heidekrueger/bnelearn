@@ -182,6 +182,7 @@ class AuctionEnvironment(Environment):
 
         self.mechanism = mechanism
         self.n_items = self.agents[0].n_items
+        self.device = self.agents[0].device
 
         if not correlation_groups:
             self.correlation_groups = [list(range(n_players))] # all agents in one independent group

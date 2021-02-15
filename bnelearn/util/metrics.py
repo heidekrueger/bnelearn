@@ -245,7 +245,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                     .view(agent_batch_size * opponent_batch_size, n_items)
         else:
             action_profile_actual[:, a.player_position, :] = \
-                a.strategy.play(conditionals[a.player_position]) \
+                a.strategy.play(conditionals[:,a.player_position,:]) \
                     .detach().requires_grad_(False)
 
     allocation_actual, payment_actual = mechanism.play(action_profile_actual)
@@ -313,7 +313,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                                 .view(mini_batch_size * grid_size * opponent_batch_size, n_items)
                     else:
                         action_profile_alternative[:, a.player_position, :] = \
-                            a.strategy.play(conditionals[a.player_position]) \
+                            a.strategy.play(conditionals[:,a.player_position,:]) \
                                 .detach().requires_grad_(False) \
                                 .view(mini_batch_size, opponent_batch_size, n_items) \
                                 .repeat(1, grid_size, 1) \

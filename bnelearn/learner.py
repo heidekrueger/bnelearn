@@ -189,8 +189,6 @@ class ESPGLearner(GradientBasedLearner):
             Note that for large sigma, this grad becomes smaller tha
         """
 
-        ### 1. if required redraw valuations / perform random moves (determined by env)
-        self.environment.prepare_iteration()
         ### 2. Create a population of perturbations of the original model
         population = (self._perturb_model(self.model) for _ in range(self.population_size))
         ### 3. let each candidate against the environment and get their utils ###
@@ -202,7 +200,7 @@ class ESPGLearner(GradientBasedLearner):
             torch.cat(tensors).view(self.population_size, -1)
             for tensors in zip(*(
                 (
-                    self.environment.get_strategy_reward(
+                    self.environment.get_strategy_reward(self.batch_size,
                         model, **self.strat_to_player_kwargs).detach().view(1),
                     epsilon
                 )
@@ -213,7 +211,7 @@ class ESPGLearner(GradientBasedLearner):
         # See ES_Analysis notebook in repository for more information about where
         # these choices come from.
         baseline = \
-            self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach().view(1) \
+            self.environment.get_strategy_reward(self.batch_size,self.model, **self.strat_to_player_kwargs).detach().view(1) \
                 if self.baseline == 'current_reward' \
             else rewards.mean(dim=0) if self.baseline == 'mean_reward' \
             else self.baseline # a float
@@ -258,6 +256,18 @@ class ESPGLearner(GradientBasedLearner):
         vector_to_parameters(params_flat + noise, perturbed.parameters())
 
         return perturbed, noise
+
+
+    def update_strategy_and_evaluate_utility(self, closure = None):
+        """updates model and returns utility after the update."""
+
+        self.update_strategy(closure)
+        return self.environment.get_strategy_reward(
+            self.batch_size,
+            self.model,
+            **self.strat_to_player_kwargs
+        ).detach()
+
 
 
 class PGLearner(GradientBasedLearner):
