@@ -233,12 +233,10 @@ class LLGAuction(Mechanism):
             if self.rule in ['vcg', 'nearest_vcg']:
                 # vcg prices are needed for vcg, nearest_vcg
                 local_vcg_prices = torch.zeros_like(local_winner_prices)
-                for l in range(n_players - 1):
-                    local_vcg_prices[:, l] = (
-                        b_global.squeeze() \
-                        - b_locals[:, :l].sum(axis=1) \
-                        - b_locals[:, l+1:].sum(axis=1)
-                    ).relu()
+
+                local_vcg_prices += (
+                    b_global - b_locals.sum(axis=1, keepdim=True) + b_locals
+                ).relu()
 
                 if self.rule == 'vcg':
                     local_winner_prices = local_vcg_prices
@@ -283,7 +281,7 @@ class LLGAuction(Mechanism):
             else:
                 raise ValueError("invalid bid rule")
 
-            payments[:, :-1] = locals_win * local_winner_prices
+            payments[:, :-1] = locals_win * local_winner_prices  # TODO: do we even need this * op?
 
         return (allocations.unsqueeze(-1), payments)  # payments: batches x players, allocation: batch x players x items
 
