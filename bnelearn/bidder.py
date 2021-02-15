@@ -81,7 +81,7 @@ class Bidder(Player):
                  descending_valuations = False,
                  risk: float = 1.0,
                  item_interest_limit = None,
-                 constant_marginal_values = False,
+                 constant_marginal_values = False
                  ):
 
         super().__init__(strategy, player_position, cuda)
