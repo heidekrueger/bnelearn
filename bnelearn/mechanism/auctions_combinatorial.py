@@ -248,28 +248,32 @@ class LLGAuction(Mechanism):
                     local_winner_prices = local_vcg_prices + delta  # batch_size x 2
 
             elif self.rule in ['proxy', 'nearest_zero'] and n_players == 3:
+                b1, b2 = b_locals[:, [0]], b_locals[:, [1]]
+
                 # three cases when local bidders win:
                 #  1. "both_strong": each local > half of global --> both play same
                 #  2. / 3. one player 'weak': weak local player pays her bid, other pays enough to match global
-                both_strong = ((bg <= 2 * b1) & (bg <= 2 * b2)).float()  # batch_size x 1
-                first_weak = (2 * b1 < bg).float()
+                both_strong = ((b_global <= 2 * b1) & (b_global <= 2 * b2)).float()  # batch_size x 1
+                first_weak = (2 * b1 < b_global).float()
                 # (second_weak implied otherwise)
-                local_prices_case_both_strong = 0.5 * torch.cat(2 * [bg], dim=player_dim)
-                local_prices_case_first_weak = torch.cat([b1, bg - b1], dim=player_dim)
-                local_prices_case_second_weak = torch.cat([bg - b2, b2], dim=player_dim)
+                local_prices_case_both_strong = 0.5 * torch.cat(2 * [b_global], dim=player_dim)
+                local_prices_case_first_weak = torch.cat([b1, b_global - b1], dim=player_dim)
+                local_prices_case_second_weak = torch.cat([b_global - b2, b2], dim=player_dim)
 
                 local_winner_prices = both_strong * local_prices_case_both_strong + \
                                       first_weak * local_prices_case_first_weak + \
                                       (1 - both_strong - first_weak) * local_prices_case_second_weak
 
             elif self.rule == 'nearest_bid' and n_players == 3:
-                case_1_outbids = (bg < b1 - b2).float()  # batch_size x 1
-                case_2_outbids = (bg < b2 - b1).float()  # batch_size x 1
+                b1, b2 = b_locals[:, [0]], b_locals[:, [1]]
 
-                local_prices_case_1 = torch.cat([bg, torch.zeros_like(bg)], dim=player_dim)
-                local_prices_case_2 = torch.cat([torch.zeros_like(bg), bg], dim=player_dim)
+                case_1_outbids = (b_global < b1 - b2).float()  # batch_size x 1
+                case_2_outbids = (b_global < b2 - b1).float()  # batch_size x 1
 
-                delta = 0.5 * (b1 + b2 - bg)
+                local_prices_case_1 = torch.cat([b_global, torch.zeros_like(b_global)], dim=player_dim)
+                local_prices_case_2 = torch.cat([torch.zeros_like(b_global), b_global], dim=player_dim)
+
+                delta = 0.5 * (b1 + b2 - b_global)
                 local_prices_else = bids[:, [0, 1]] - delta
 
                 local_winner_prices = case_1_outbids * local_prices_case_1 + \
