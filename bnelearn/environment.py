@@ -14,6 +14,7 @@ from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism
 from bnelearn.strategy import Strategy
 from bnelearn.correlation_device import CorrelationDevice, IndependentValuationDevice
+from bnelearn.state_device import state_device
 
 class Environment(ABC):
     """Environment
@@ -26,109 +27,21 @@ class Environment(ABC):
     def __init__(self,
                  agents: Iterable,
                  n_players = 2,
-                 batch_size = 1,
                  strategy_to_player_closure: Callable or None = None,
                  **kwargs #pylint: disable=unused-argument
                  ):
         assert isinstance(agents, Iterable), "iterable of agents must be supplied"
 
         self._strategy_to_player = strategy_to_player_closure
-        self.batch_size = batch_size
         self.n_players = n_players
 
         # transform agents into players, if specified as Strategies:
         agents = [
-            self._strategy_to_player(agent, batch_size, player_position) if isinstance(agent, Strategy) else agent
+            self._strategy_to_player(agent, player_position) if isinstance(agent, Strategy) else agent
             for player_position, agent in enumerate(agents)
         ]
         self.agents: Iterable[Player] = agents
         self.__len__ = self.agents.__len__
-
-        # test whether all provided agents implement correct batch_size
-        for i, agent in enumerate(self.agents):
-            if agent.batch_size != self.batch_size:
-                raise ValueError("Agent {}'s batch size does not match that of the environment!".format(i))
-
-    @abstractmethod
-    def get_reward(self, agent: Player, **kwargs) -> torch.Tensor:
-        """Return reward for a player playing a certain strategy"""
-        pass #pylint: disable=unnecessary-pass
-
-    def get_strategy_reward(self, strategy: Strategy, player_position: int,
-                            draw_valuations=False, aggregate_batch=True,
-                            use_env_valuations=True,
-                            **strat_to_player_kwargs) -> torch.Tensor:
-        """
-        Returns reward of a given strategy in given environment agent position.
-
-        Args:
-            strategy: the strategy to be evaluated
-            player_position: the player position at which the agent will be evaluated
-            draw_valuation: whether to redraw valuations (default false)
-            aggregate_batch: whether to aggregate rewards into a single scalar (True),
-                or return batch_size many rewards (one for each sample). Default True
-            use_env_valuations: if True, strategy will be evaluated using the valuations
-                of self.agents[player_position] (default True)
-            strat_to_player_kwargs: further arguments needed for agent creation
-
-        """
-        if not self._strategy_to_player:
-            raise NotImplementedError('This environment has no strategy_to_player closure!')
-        agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
-                                         player_position=player_position, **strat_to_player_kwargs)
-        # TODO: this should rally be in AuctionEnv subclass
-        env_agent = self.agents[player_position]
-        if use_env_valuations and hasattr(env_agent, 'valuations'):
-            agent.valuations = env_agent.valuations
-        if use_env_valuations and hasattr(env_agent, '_unkown_valuation'):
-            agent._unkown_valuation = env_agent._unkown_valuation
-        return self.get_reward(agent, draw_valuations=draw_valuations, aggregate=aggregate_batch)
-
-    def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
-                                       draw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
-        """
-        Returns reward of a given strategy in given environment agent position.
-        """
-
-        if not self._strategy_to_player:
-            raise NotImplementedError('This environment has no strategy_to_player closure!')
-        agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
-                                         player_position=player_position, **strat_to_player_kwargs)
-
-        # NOTE: Order matters! if draw_valuations, then action must be calculated AFTER reward
-        reward = self.get_reward(agent, draw_valuations = draw_valuations, aggregate = False)
-        action = agent.get_action()
-
-        return action, reward
-
-    def _generate_agent_actions(
-            self,
-            exclude: Set[int] or None = None
-        ):
-        """
-        Generator function yielding batches of bids for each environment agent
-        that is not excluded.
-
-        args:
-            exclude:
-                A set of player positions to exclude.
-                Used e.g. to generate action profile of all but currently learning player.
-
-        yields:
-            tuple(player_position, action) for each relevant bidder
-        """
-
-        if exclude is None:
-            exclude = set()
-
-        for agent in (a for a in self.agents if a.player_position not in exclude):
-            yield(agent.player_position, agent.get_action())
-
-    def prepare_iteration(self):
-        """Prepares the interim-stage of a Bayesian game,
-            (e.g. in an Auction, draw bidders' valuations)
-        """
-        pass #pylint: disable=unnecessary-pass
 
     def is_empty(self):
         """True if no agents in the environment"""
@@ -142,6 +55,8 @@ class MatrixGameEnvironment(Environment):
         - not necessarily symmetric, i.e. each player has a fixed position
         - agents strategies do not take any input, the actions only depend
            on the game itself (no Bayesian Game)
+
+    not adapted to the new refactoring !!!
     """
 
     def __init__(self,
@@ -151,36 +66,75 @@ class MatrixGameEnvironment(Environment):
                  batch_size=1,
                  strategy_to_player_closure=None,
                  **kwargs):
+        self.batch_size = batch_size
 
-        super().__init__(agents, n_players=n_players, batch_size=batch_size,
+        super().__init__(agents, n_players=n_players,
                          strategy_to_player_closure=strategy_to_player_closure)
         self.game = game
 
     def get_reward(self, agent, **kwargs) -> torch.tensor: #pylint: disable=arguments-differ
         """Simulates one batch of the environment and returns the average reward for `agent` as a scalar tensor.
         """
+        pass
 
-        if isinstance(agent, Strategy):
-            agent: MatrixGamePlayer = self._strategy_to_player(
-                agent,
-                batch_size=self.batch_size,
-                **kwargs
-                )
-        player_position = agent.player_position
+        # if isinstance(agent, Strategy):
+        #     agent: MatrixGamePlayer = self._strategy_to_player(
+        #         agent,
+        #         batch_size=self.batch_size,
+        #         **kwargs
+        #         )
+        # player_position = agent.player_position
 
-        action_profile = torch.zeros(self.batch_size, self.game.n_players,
-                                     dtype=torch.long, device=agent.device)
+        # action_profile = torch.zeros(self.batch_size, self.game.n_players,
+        #                              dtype=torch.long, device=agent.device)
 
-        action_profile[:, player_position] = agent.get_action().view(self.batch_size)
+        # action_profile[:, player_position] = agent.get_action().view(self.batch_size)
 
-        for opponent_action in self._generate_agent_actions(exclude = set([player_position])):
-            position, action = opponent_action
-            action_profile[:, position] = action.view(self.batch_size)
+        # for opponent_action in self._generate_agent_actions(exclude = set([player_position])):
+        #     position, action = opponent_action
+        #     action_profile[:, position] = action.view(self.batch_size)
 
-        allocation, payments = self.game.play(action_profile.view(self.batch_size, self.n_players, -1))
-        utilities =  agent.get_utility(allocation[:,player_position,:], payments[:,player_position])
+        # allocation, payments = self.game.play(action_profile.view(self.batch_size, self.n_players, -1))
+        # utilities =  agent.get_utility(allocation[:,player_position,:], payments[:,player_position])
 
-        return utilities.mean()
+        # return utilities.mean()
+    
+    def get_strategy_reward(self, strategy: Strategy, player_position: int,**strat_to_player_kwargs) -> torch.Tensor:
+        """
+        Returns reward of a given strategy in given environment agent position.
+
+        Args:
+            strategy: the strategy to be evaluated
+            player_position: the player position at which the agent will be evaluated
+            strat_to_player_kwargs: further arguments needed for agent creation
+
+        """
+        pass
+        # if not self._strategy_to_player:
+        #     raise NotImplementedError('This environment has no strategy_to_player closure!')
+        # agent = self._strategy_to_player(strategy,player_position=player_position, **strat_to_player_kwargs)
+        # # TODO: this should rally be in AuctionEnv subclass
+        # env_agent = self.agents[player_position]
+        # return self.get_reward(agent, draw_valuations=draw_valuations, aggregate=aggregate_batch)
+
+       
+    def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
+                                       draw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
+        """
+        Returns reward of a given strategy in given environment agent position.
+        """
+        pass
+
+        # if not self._strategy_to_player:
+        #     raise NotImplementedError('This environment has no strategy_to_player closure!')
+        # agent = self._strategy_to_player(strategy,player_position=player_position, **strat_to_player_kwargs)
+
+        # # NOTE: Order matters! if draw_valuations, then action must be calculated AFTER reward
+        # reward = self.get_reward(agent, aggregate = False)
+        # action = agent.get_action()
+
+        # return action, reward
+
 
 
 class AuctionEnvironment(Environment):
@@ -203,28 +157,35 @@ class AuctionEnvironment(Environment):
             self,
             mechanism: Mechanism,
             agents: Iterable[Bidder],
-            batch_size = 100,
             n_players = None,
             strategy_to_player_closure: Callable[[Strategy], Bidder] = None,
             correlation_groups: List[List[int]] = None,
-            correlation_devices: List[CorrelationDevice] = None
+            correlation_devices: List[CorrelationDevice] = None,
+            rule : str= "pseudorandom",
+            antithetic : bool = False,
+            inplace_sampling : bool = False,
+            scramble : bool = True
         ):
 
         if not n_players:
             n_players = len(agents)
+        self.rule = rule
+        self.antithetic = antithetic
+        self.inplace_sampling = inplace_sampling
+        self.scramble = scramble
 
         super().__init__(
             agents = agents,
             n_players = n_players,
-            batch_size = batch_size,
             strategy_to_player_closure = strategy_to_player_closure
         )
 
         self.mechanism = mechanism
+        self.n_items = self.agents[0].n_items
 
         if not correlation_groups:
             self.correlation_groups = [list(range(n_players))] # all agents in one independent group
-            self.correlation_devices = [IndependentValuationDevice()]
+            self.correlation_devices = [IndependentValuationDevice(n_items= self.n_items,correlation_group=self.correlation_groups[0], rule = self.rule,antithetic = self.antithetic, inplace_sampling=self.inplace_sampling, device = self.device, scramble = self.scramble)]
         else:
             assert len(correlation_groups) == len(correlation_devices)
             self.correlation_groups = correlation_groups
@@ -232,143 +193,79 @@ class AuctionEnvironment(Environment):
 
         assert sorted([a for g in self.correlation_groups for a in g]) == list(range(n_players)), \
             "Each agent should be in exactly one correlation group!"
+        self.state_device = state_device(self.correlation_devices)
 
-    def get_reward(
+    def get_bid_profile(self, agents : Iterable[Bidder],valuations): 
+        """ gets bid_profile from valuations
+
+        Args:
+            valuations (torch.Tensor)
+            agents (Iterable[Bidder])
+
+        Returns:
+            [torch.Tensor]
+        """
+        bids = torch.zeros_like(valuations, device= valuations.device)
+        for i in range(len(self.agents)):
+            bids[:,i,:] = agents[i].get_action(valuations[:,i,:])
+        return bids
+    def get_reward_and_action(
             self,
             agent: Bidder,
-            draw_valuations = False,
-            aggregate = True
-        ) -> torch.Tensor: #pylint: disable=arguments-differ
-        """Returns reward of a single player against the environment.
-           Reward is calculated as average utility for each of the batch_size x env_size games
+            batch_size:int
+        ):
+        """
+        returns utility, utility.mean() and bid_profile of player
         """
 
         if not isinstance(agent, Bidder):
             raise ValueError("Agent must be of type Bidder")
+        player_position = agent.player_position
 
-        assert agent.batch_size == self.batch_size, \
-            "Agent batch_size does not match the environment!"
+        output = self.state_device.draw_state(agents =self.agents,batch_size= batch_size)
+        unknown_valuations = output["_unkown_valuation"]
+        valuations = output["valuations"]
+        if unknown_valuations is None: 
+            unknown_valuations = valuations
 
-        player_position = agent.player_position if agent.player_position else 0
+        bid_profile = self.get_bid_profile(self.agents,valuations)
+        allocation, payments = self.mechanism.play(bid_profile)
+        utility = agent.get_utility(allocation[:,player_position,:],
+                                    payments[:,player_position], unknown_valuations[:,player_position,:])
 
-        # draw valuations
-        if draw_valuations:
-            self.draw_valuations_()
 
-        # get agent_bid
-        agent_bid = agent.get_action()
-        action_length = agent_bid.shape[1]
+        return utility, utility.mean(), bid_profile[:,player_position,:]
 
-        if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
-            allocation, payments = self.mechanism.play(
-                agent_bid.view(agent.batch_size, 1, action_length)
-            )
-            utility = agent.get_utility(allocation[:,0,:], payments[:,0])
-        else: # at least 2 environment agent --> build bid_profile, then play
-            # get bid profile
-            bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
-                                      dtype=agent_bid.dtype, device=self.mechanism.device)
-            bid_profile[:, player_position, :] = agent_bid
-
-            # Get actions for all players in the environment except the one at player_position
-            # which is overwritten by the active agent instead.
-
-            # the counter thing is an ugly af hack: if environment is dynamic,
-            # all player positions will be none. so simply start at 1 for
-            # the first opponent and count up
-
-            # ugly af hack: if environment is dynamic, all player positions will be
-            # none. simply start at 1 for the first opponent and count up
-            # TODO: clean this up 🤷 ¯\_(ツ)_/¯
-            counter = 1
-            for opponent_pos, opponent_bid in self._generate_agent_actions(exclude=set([player_position])):
-                # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
-                if opponent_pos is None:
-                    opponent_pos = counter
-                bid_profile[:, opponent_pos, :] = opponent_bid
-                counter = counter + 1
-
-            allocation, payments = self.mechanism.play(bid_profile)
-
-            # average over batch against this opponent
-            utility = agent.get_utility(allocation[:,player_position,:],
-                                        payments[:,player_position])
-
-        if aggregate:
-            utility = utility.mean()
-
-        return utility
-
-    def prepare_iteration(self):
-        self.draw_valuations_()
-
-    def draw_valuations_(self, exclude: Set[int] or None = None):
+    def get_strategy_reward(
+            self,
+            batch_size:int,
+            strategy:Strategy,
+            **strat_to_player_kwargs):
         """
-        Draws new valuations for each agent in the environment except the
-        excluded set.
-
-        args:
-            exclude: (deprecated - setting this variable will return an error)
-                A set of player positions to exclude.
-                Used e.g. to generate action profile of all but currently
-                learning player.
-
-        returns/yields:
-            nothing
-
-        side effects:
-            updates agent valuation states
+        get reward for agent at position player_position with the specified strategy 
         """
+        if not self._strategy_to_player:
+            raise NotImplementedError('This environment has no strategy_to_player closure!')
+        agent = self._strategy_to_player(strategy, **strat_to_player_kwargs)
+        # TODO: this should rally be in AuctionEnv subclass
+        copy_agents = self.agents
+        copy_agents[strat_to_player_kwargs["player_position"]] = agent
 
-        # TODO: remove exclude block if it turns out to be used nowhere.
-        if exclude is None:
-            exclude = set()
+        output = self.state_device.draw_state(agents =copy_agents,batch_size= batch_size)
+        unknown_valuations = output["_unkown_valuation"]
+        valuations = output["valuations"]
+        if unknown_valuations is None : 
+            unknown_valuations = valuations
 
-        if exclude:
-            raise ValueError('With the introduction of Correlation Devices, excluding agents is no logner supported!')
-
-        # for agent in (a for a in self.agents if a.player_position not in exclude):
-        #     agent.batch_size = self.batch_size
-        #     if isinstance(agent, Bidder):
-        #         agent.draw_valuations_()
-
-        # For each group of correlated agents, draw their correlated valuations
-        for group, device in zip(self.correlation_groups, self.correlation_devices):
-            common_component, weights = device.get_component_and_weights()
-            for i in group:
-                self.agents[i].draw_valuations_(common_component, weights)
+        bid_profile = self.get_bid_profile(copy_agents,valuations)
+        allocation, payments = self.mechanism.play(bid_profile)
+        utility = agent.get_utility(allocation[:,strat_to_player_kwargs["player_position"],:],
+                                    payments[:,strat_to_player_kwargs["player_position"]], unknown_valuations[:,strat_to_player_kwargs["player_position"],:])
+        return utility.mean()
 
     def draw_conditionals(self, player_position: int, conditional_observation: torch.Tensor, batch_size: int = None):
         """
         Draws valuations/observations from all agents conditioned on the observation `cond`
         of the agent at `player_position` from the correlation_devices.
         """
-        batch_size_0 = conditional_observation.shape[0]
-        batch_size_1 = batch_size if batch_size is not None else batch_size_0
-
-        group_idx = [player_position in group for group in self.correlation_groups].index(True)
-        cond_device = self.correlation_devices[group_idx]
-        conditionals_dict = dict()
-
-        for group, device in zip(self.correlation_groups, self.correlation_devices):
-
-            # draw conditional valuations from all agents in same correlation
-            if cond_device == device:
-                conditionals_dict.update(
-                    device.draw_conditionals(
-                        agents = [a for a in self.agents if a.player_position in group],
-                        player_position = player_position,
-                        conditional_observation = conditional_observation,
-                        batch_size = batch_size_1
-                    )
-                )
-
-            # draw independent valuations from all agents in other correlations
-            else:
-                common_component, weights = device.get_component_and_weights()
-                for player_position in group:
-                    agent = [a for a in self.agents if a.player_position == player_position][0]
-                    conditionals_dict[player_position] = agent.draw_valuations_(common_component, weights) \
-                            [:batch_size_1, :].repeat(batch_size_0, 1)
-
-        return conditionals_dict
+        return self.state_device.draw_conditional(self.agents,player_position, conditional_observation, batch_size)

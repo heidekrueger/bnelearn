@@ -84,8 +84,20 @@ class LocalGlobalExperiment(Experiment, ABC):
 
     def _get_model_names(self):
         if self.model_sharing:
+            if self.learning.integration_method == 'Monte Carlo' : 
+                description = "Antithetic_" if self.learning.antithetic else ""
+                description = description+ self.learning.rule + "_"
+                if self.learning.rule == "sobol" and self.learning.scramble : 
+                    description = description + "_randomized_"
+            else :  
+                description = self.learning.integration_method + '_'
+            antithetic_mutations = "Antithetic_" if self.learning.antithetic_mutations else ""
+            description = description + antithetic_mutations +  self.learning.rule_mutations + '_mutations'
+            if self.learning.rule_mutations == "sobol" and self.learning.scramble_mutations : 
+                    description = description + "_randomized"
+
             global_name = 'global' if self.n_players - self.n_local == 1 else 'globals'
-            return ['locals', global_name]
+            return ['locals_'+description, global_name+'_'+description]
         else:
             return super()._get_model_names()
 
@@ -122,14 +134,14 @@ class LLGExperiment(LocalGlobalExperiment):
             self.correlation_coefficients = [self.gamma, 0.0]
             self.correlation_devices = [
                 self.CorrelationDevice(
-                    common_component_dist=torch.distributions.Uniform(config.setting.u_lo[0],
-                                                                      config.setting.u_hi[0]),
-                    batch_size=config.learning.batch_size,
+                    correlation_group=self.correlation_groups[0],
+                    common_component_dist=torch.distributions.Uniform(self.config.setting.u_lo[0],
+                                                                      self.config.setting.u_hi[0]),               
                     n_items=1,
                     correlation=self.gamma),
-                IndependentValuationDevice()]
-
-
+                IndependentValuationDevice(correlation_group = self.correlation_groups[1],n_items=self.n_items,
+                    device = self.hardware.device, rule = self.learning.rule,antithetic=self.learning.antithetic,
+                    inplace_sampling=self.learning.inplace_sampling,scramble=self.learning.scramble)]
         self.input_length = 1
         #self.config.setting.n_players = 3
         self.config.setting.n_local = 2
@@ -209,12 +221,13 @@ class LLGExperiment(LocalGlobalExperiment):
         if self.correlation_groups:
             bne_env_corr_devices = [
                 self.CorrelationDevice(
+                    correlation_group=self.correlation_groups[0],
                     common_component_dist=torch.distributions.Uniform(self.config.setting.u_lo[0],
-                                                                      self.config.setting.u_hi[0]),
-                    batch_size=self.config.logging.eval_batch_size,
-                    n_items=1,
+                                                                      self.config.setting.u_hi[0]),                    n_items=1,
                     correlation=self.gamma),
-                IndependentValuationDevice()]
+                IndependentValuationDevice(correlation_group = self.correlation_groups[1],n_items=self.n_items,
+                    device = self.hardware.device, rule = self.learning.rule,antithetic=self.learning.antithetic,
+                    inplace_sampling=self.learning.inplace_sampling,scramble=self.learning.scramble)]
 
         self.known_bne = True
         bne_env = AuctionEnvironment(
@@ -222,16 +235,22 @@ class LLGExperiment(LocalGlobalExperiment):
             agents=[self._strat_to_bidder(bne_strategies[i], player_position=i)
                     for i in range(self.n_players)],
             n_players=self.n_players,
-            batch_size=self.config.logging.eval_batch_size,
+            # batch_size=self.config.logging.eval_batch_size,
             strategy_to_player_closure=self._strat_to_bidder,
             correlation_groups=self.correlation_groups,
-            correlation_devices=bne_env_corr_devices
+            correlation_devices=bne_env_corr_devices,
+            rule = self.learning.rule,
+            antithetic=self.learning.antithetic,
+            inplace_sampling=self.learning.inplace_sampling,
+            scramble=self.learning.scramble
         )
 
         self.bne_env = bne_env
-        self.bne_utilities_new_sample = torch.tensor(
-            [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
-
+        uti = []
+        for k in range(len(bne_env.agents)):
+             _,reward,_ = bne_env.get_reward_and_action(bne_env.agents[k], batch_size = self.config.logging.eval_batch_size)
+             uti.append(reward)
+        self.bne_utilities_new_sample = torch.tensor(uti)
         bne_utilities_database = logging_utils.access_bne_utility_database(self, self.bne_utilities_new_sample)
         if bne_utilities_database:
             self.bne_utilities = bne_utilities_database

@@ -82,6 +82,7 @@ class LearningConfig:
     antithetic : bool = False
     inplace_sampling : bool = False
     scramble : bool = True
+    integration_method : str = "Monte Carlo"
 
 
 @dataclass

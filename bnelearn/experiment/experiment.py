@@ -223,11 +223,14 @@ class Experiment(ABC):
         print(f'Learning env correlation {self.correlation_groups}: {self.correlation_devices}.')
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
-                                      batch_size=self.learning.batch_size,
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder,
                                       correlation_groups=self.correlation_groups,
-                                      correlation_devices=self.correlation_devices)
+                                      correlation_devices=self.correlation_devices,
+                                      rule = self.learning.rule,
+                                      antithetic=self.learning.antithetic,
+                                      inplace_sampling=  self.learning.inplace_sampling,
+                                      scramble=self.learning.scramble)
 
     def _init_new_run(self):
         """Setup everything that is specific to an individual run, including everything nondeterministic"""
@@ -616,14 +619,10 @@ class Experiment(ABC):
         if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
 
-            unique_bidders = [self.env.agents[i[0]] for i in self._model2bidder]
-            v = torch.stack(
-                [b.valuations[:self.plot_points, ...] for b in unique_bidders],
-                dim=1
-            )
-            b = torch.stack([b.get_action()[:self.plot_points, ...]
-                             for b in unique_bidders], dim=1)
-
+            unique_bidders_indices = [i[0]for i in self._model2bidder]
+            valuations = self.env.state_device.draw_state(self.env.agents,self.plot_points)["valuations"]
+            v = valuations[:,unique_bidders_indices,:]
+            b = self.env.get_bid_profile(self.env.agents,valuations)[:,unique_bidders_indices,:]
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
             if self.known_bne and self.logging.log_metrics['opt']:
@@ -633,7 +632,6 @@ class Experiment(ABC):
                     labels += ['BNE{}_{}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
                                for j in range(len(self.models))]
                     fmts += ['b--'] * len(self.models)
-
             self._plot(plot_data=(v, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
@@ -664,14 +662,12 @@ class Experiment(ABC):
             # generally redraw bne_vals, except when this is expensive!
             # length: n_models
             # TODO Stefan: this seems to be false in most settings, even when not desired.
-            redraw_bne_vals = not self.logging.cache_eval_actions
             # length: n_models
             utility_vs_bne[bne_idx] = torch.tensor([
                 bne_env.get_strategy_reward(
-                    model,
-                    player_position=m2b(m),
-                    draw_valuations=redraw_bne_vals,
-                    use_env_valuations=not redraw_bne_vals
+                    batch_size = self.logging.eval_batch_size,
+                    strategy = model,
+                    player_position=m2b(m)
                 ) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(
@@ -698,6 +694,8 @@ class Experiment(ABC):
         L_2 = [None] * len(self.bne_env)
         L_inf = [None] * len(self.bne_env)
         for bne_idx, bne_env in enumerate(self.bne_env):
+            valuations = bne_env.state_device.draw_state(bne_env.agents,self.config.logging.eval_batch_size)["valuations"]
+            bid_profile = bne_env.get_bid_profile(bne_env.agents,valuations)
             # shorthand for model to agent
 
             # we are only using m2a locally within this loop, so we can safely ignore the following pylint warning:
@@ -707,14 +705,14 @@ class Experiment(ABC):
 
             L_2[bne_idx] = [
                 metrics.norm_strategy_and_actions(
-                    model, m2a(i).get_action(), m2a(i).valuations, 2,
+                    model, bid_profile[:,m2a(i),:], valuations[:,m2a(i),:], 2,
                     componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
             ]
             L_inf[bne_idx] = [
                 metrics.norm_strategy_and_actions(
-                    model, m2a(i).get_action(), m2a(i).valuations, float('inf'),
+                    model, bid_profile[:,m2a(i),:], valuations[:,m2a(i),:], float('inf'),
                     componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
@@ -738,13 +736,8 @@ class Experiment(ABC):
         if grid_size is None:
             grid_size = self.logging.util_loss_grid_size
 
-        assert batch_size <= env.batch_size, "Util_loss for larger than actual batch size not implemented."
-        bid_profile = torch.zeros(batch_size, env.n_players, env.agents[0].n_items,
-                                  dtype=env.agents[0].valuations.dtype, device=env.mechanism.device)
-
-        # Only supports regret_batch_size <= batch_size
-        for agent in env.agents:
-            bid_profile[:, agent.player_position, :] = agent.get_action()[:batch_size, ...]
+        valuations = self.env.state_device.draw_state(self.env.agents, batch_size)['valuations']
+        # bid_profile = self.env.get_bid_profile(self.env.agents, valuations)
 
         torch.cuda.empty_cache()
         util_loss = [
@@ -781,8 +774,8 @@ class Experiment(ABC):
             # TODO Nils: differentiate models in plot
             # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
             util_losses = torch.stack([util_loss[r] for r in range(len(util_loss))], dim=1)[:, :, None]
-            valuations = torch.stack([self.bidders[player_positions[0]].valuations[:batch_size, ...]
-                                      for player_positions in self._model2bidder], dim=1)
+            indices = [player_positions[0] for player_positions in self._model2bidder]
+            valuations = valuations[:,indices,:]
             plot_output = (valuations, util_losses)
             self._plot(plot_data=plot_output, writer=self.writer,
                        ylim=[0, max(self._max_util_loss).cpu()],
