@@ -270,6 +270,11 @@ class ConfigurationManager:
         elif self.setting.gamma > 1.0:
             raise Exception('Wrong gamma')
 
+        while len(self.setting.u_lo) < self.setting.n_players:
+            self.setting.u_lo.insert(0, self.setting.u_lo[0])
+            self.setting.u_hi.insert(0, self.setting.u_hi[0])
+        self.setting.u_hi[-1] = self.setting.n_players - 1
+
     def _post_init_llllgg(self):
         pass
 

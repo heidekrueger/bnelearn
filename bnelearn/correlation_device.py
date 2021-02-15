@@ -129,9 +129,9 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
             batch_size: int=None
         ) -> Dict[int, torch.Tensor]:
 
-        assert len(agents) == 2, \
-            "conditional draws currently only supported for 2 agents in " + \
-            "the correlation group!"
+        # assert len(agents) == 2, \
+        #     "conditional draws currently only supported for 2 agents in " + \
+            # "the correlation group!"
 
         # TODO: possibly unify LLG correlation devices in parent
         batch_size_0 = conditional_observation.shape[0]
@@ -143,13 +143,16 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
             .repeat(1,batch_size_1) \
             .view(batch_size_0 * batch_size_1, 1)
 
-        # draw conditional observation of other local bidder
-        local_opponent = 1 if player_position == 0 else 0
-        u = torch.empty((batch_size_1, 1),
-                        device=conditional_observation.device).uniform_(0, 1)
-        conditionals_dict[local_opponent] = self.local_cond_sample(
-            conditional_observation)(u[:, 0]) \
-            .view(batch_size_0 * batch_size_1, 1)
+        # draw conditional observation of other local bidders
+        for agent in agents:
+            if agent.player_position != player_position:
+                u = torch.empty(
+                    (batch_size_1, 1),
+                    device=conditional_observation.device
+                ).uniform_(0, 1)
+                conditionals_dict[agent.player_position] = \
+                    self.local_cond_sample(conditional_observation) \
+                        (u[:, 0]).view(batch_size_0 * batch_size_1, 1)
 
         return conditionals_dict
 
@@ -208,9 +211,9 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
             batch_size: int=None
         ) -> Dict[int, torch.Tensor]:
 
-        assert len(agents) == 2, \
-            "conditional draws currently only supported for 2 agents in " + \
-            "the correlation group!"
+        # assert len(agents) == 2, \
+        #     "conditional draws currently only supported for 2 agents in " + \
+            # "the correlation group!"
 
         batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
@@ -221,11 +224,13 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
             .repeat(1, batch_size_1)\
             .view(batch_size_0 * batch_size_1, 1)
 
-        # draw conditional observation of other local bidder
-        local_opponent = 1 if player_position == 0 else 0
-        conditionals_dict[local_opponent] = self.draw_conditional_v2(
-            conditional_observation, batch_size_1) \
-            .view(batch_size_0 * batch_size_1, 1)
+        # draw conditional observation of other local bidders
+        for agent in agents:
+            if agent.player_position != player_position:
+                conditionals_dict[agent.player_position] = \
+                    self.draw_conditional_v2(
+                        conditional_observation, batch_size_1) \
+                        .view(batch_size_0 * batch_size_1, 1)
 
         return conditionals_dict
 
@@ -417,6 +422,7 @@ class AffiliatedObservationsDevice(CorrelationDevice):
             .repeat(batch_size_0, 1).view(batch_size_0, batch_size_1)
 
         return (u_bounds - l_bounds) * uniform + l_bounds
+
 
 class MultiUnitDevice(CorrelationDevice):
     """

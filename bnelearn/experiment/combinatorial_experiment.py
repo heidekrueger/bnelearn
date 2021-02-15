@@ -111,7 +111,8 @@ class LLGExperiment(LocalGlobalExperiment):
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
-        assert self.config.setting.n_players == 3, "Incorrect number of players specified."
+        # assert self.config.setting.n_players == 3, "Incorrect number of players specified."
+        self.n_local = self.config.setting.n_players - 1
 
         self.gamma = self.correlation = float(config.setting.gamma)
 
@@ -130,8 +131,9 @@ class LLGExperiment(LocalGlobalExperiment):
             raise NotImplementedError('Correlation not implemented.')
 
         if self.gamma > 0.0:
-            self.correlation_groups = [[0, 1], [2]]
-            self.correlation_coefficients = [self.gamma, 0.0]
+            self.correlation_groups = [list(range(self.n_local)), [self.n_local]]
+            self.correlation_coefficients = [self.gamma] * (self.n_local + 1)
+            self.correlation_coefficients[-1] = 0  # global bidder is independent
             self.correlation_devices = [
                 self.CorrelationDevice(
                     common_component_dist=torch.distributions.Uniform(config.setting.u_lo[0],
@@ -142,8 +144,8 @@ class LLGExperiment(LocalGlobalExperiment):
                 IndependentValuationDevice()]
 
         self.input_length = 1
-        #self.config.setting.n_players = 3
-        self.config.setting.n_local = 2
+        self.config.setting.n_players = self.config.setting.n_players
+        self.config.setting.n_local = self.n_local
         self.config.setting.n_items = 1
         super().__init__(config=config)
 
@@ -160,11 +162,11 @@ class LLGExperiment(LocalGlobalExperiment):
 
         ### Global bidder: all core-selecting rules are strategy proof for global player
         if self.payment_rule in ['vcg', 'proxy', 'nearest_zero', 'nearest_bid',
-                                 'nearest_vcg'] and player_position == 2:
+                                 'nearest_vcg'] and player_position == self.n_players - 1:
             return valuation
 
         ### Local bidders: vcg => truthfull bidding
-        if self.payment_rule in ['vcg'] and player_position in [0, 1]:
+        if self.payment_rule in ['vcg'] and player_position in list(range(self.n_players - 1)):
             return valuation
 
         assert self.risk == 1.0, 'BNE known for risk-neutral only (or in VCG)'
@@ -203,6 +205,8 @@ class LLGExperiment(LocalGlobalExperiment):
         #  (i.e. uniformity, bounds, etc)
         if self.config.setting.payment_rule == 'vcg':
             return True
+        elif self.config.setting.n_players != 3:
+            return False
         elif self.risk != 1.0:
             return False
         elif self.config.setting.payment_rule in \
@@ -264,7 +268,7 @@ class LLGExperiment(LocalGlobalExperiment):
         print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
 
     def _get_logdir_hierarchy(self):
-        name = ['LLG', self.payment_rule]
+        name = [self.n_local * 'L' + 'G', self.payment_rule]
         if self.gamma > 0:
             name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
         else:
