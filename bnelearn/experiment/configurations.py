@@ -74,6 +74,14 @@ class LearningConfig:
     pretrain_iters: int
     batch_size: int
     hidden_activations: List[nn.Module] = None
+    rule_mutations : str = "pseudorandom"
+    antithetic_mutations : bool = False
+    inplace_sampling_mutations : bool = False
+    scramble_mutations : bool = True
+    rule : str = "pseudorandom"
+    antithetic : bool = False
+    inplace_sampling : bool = False
+    scramble : bool = True
 
 
 @dataclass

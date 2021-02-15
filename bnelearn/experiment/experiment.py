@@ -162,6 +162,11 @@ class Experiment(ABC):
                         hyperparams=self.learning.learner_hyperparams,
                         optimizer_type=self.learning.optimizer,
                         optimizer_hyperparams=self.learning.optimizer_hyperparams,
+                        batch_size = self.learning.batch_size,
+                        rule  = self.learning.rule_mutations,
+                        antithetic = self.learning.antithetic_mutations,
+                        inplace_sampling = self.learning.inplace_sampling_mutations, 
+                        scramble= self.learning.scramble_mutations,
                         strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]})
             for m_id, model in enumerate(self.models)]
 

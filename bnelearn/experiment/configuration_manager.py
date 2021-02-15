@@ -337,7 +337,11 @@ class ConfigurationManager:
                      optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
-                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
+                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
+                     rule_mutations : str = "pseudorandom",antithetic_mutations : bool = False,
+                     inplace_sampling_mutations : bool = False, scramble_mutations : bool = True, 
+                     rule : str = "pseudorandom", antithetic : bool = False, inplace_sampling : bool = False,
+                     scramble : bool = True):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.learning, arg):

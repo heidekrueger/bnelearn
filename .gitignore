@@ -33,6 +33,7 @@ pylint.txt
 /notebooks/Untitle*.ipynb
 /temp/*
 /scripts/temp
+/notebooks/test.ipynb
 
 # dont check in figures created from R -- only keep the source code
 /R/figures/*.eps

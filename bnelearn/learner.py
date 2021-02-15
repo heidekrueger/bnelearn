@@ -10,6 +10,8 @@ import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from bnelearn.environment import Environment
 from bnelearn.strategy import Strategy, NeuralNetStrategy
+from bnelearn.sample import generate_sampler
+
 
 
 
@@ -126,7 +128,13 @@ class ESPGLearner(GradientBasedLearner):
     def __init__(self,
                  model: torch.nn.Module, environment: Environment, hyperparams: dict,
                  optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 strat_to_player_kwargs: dict = None):
+                 batch_size : int, rule:str ="pseudorandom", antithetic:bool = False, inplace_sampling:bool= False,
+                 scramble : bool = True, strat_to_player_kwargs: dict = None):
+        self.batch_size = batch_size
+        self.rule = rule
+        self.antithetic = antithetic
+        self.inplace_sampling = inplace_sampling
+        self.scramble = scramble
         # Create and validate optimizer
         super().__init__(model, environment,
                          optimizer_type, optimizer_hyperparams,
@@ -161,6 +169,8 @@ class ESPGLearner(GradientBasedLearner):
                     and not self.baseline_method in ['current_reward', 'mean_reward']:
                 raise ValueError('Invalid baseline provided. Should be float or '\
                     + 'one of "mean_reward", "current_reward"')
+
+        self.perturbation_device = generate_sampler(torch.distributions.Normal(0,self.sigma), dim2= len(parameters_to_vector(self.model.parameters())), rule = self.rule, device= self.environment.device, antithetic=self.antithetic,inplace_sampling=self.inplace_sampling, scramble=self.scramble).create_sampler()
 
     def _set_gradients(self):
         """Calculates ES-pseudogradients and applies them to the model parameter
@@ -243,7 +253,7 @@ class ESPGLearner(GradientBasedLearner):
         perturbed = deepcopy(model)
 
         params_flat = parameters_to_vector(model.parameters())
-        noise = torch.zeros_like(params_flat).normal_(mean=0.0, std=self.sigma)
+        noise = self.perturbation_device.sample(1).flatten()
         # copy perturbed params into copy
         vector_to_parameters(params_flat + noise, perturbed.parameters())
 
