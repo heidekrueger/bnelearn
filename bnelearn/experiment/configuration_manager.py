@@ -341,7 +341,8 @@ class ConfigurationManager:
                      rule_mutations : str = "pseudorandom",antithetic_mutations : bool = False,
                      inplace_sampling_mutations : bool = False, scramble_mutations : bool = True, 
                      rule : str = "pseudorandom", antithetic : bool = False, inplace_sampling : bool = False,
-                     scramble : bool = True, integration_method  : str = "Monte Carlo", degree : int = 60):
+                     scramble : bool = True, integration_method  : str = "Monte Carlo", degree : int = 60,
+                     n_int : int = 10):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.learning, arg):

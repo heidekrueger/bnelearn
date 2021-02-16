@@ -22,7 +22,7 @@ from torch.utils.tensorboard import SummaryWriter
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder
-from bnelearn.environment import AuctionEnvironment, Environment, AuctionEnvironment_Gaussian_Quad
+from bnelearn.environment import AuctionEnvironment, Environment, AuctionEnvironment_Gaussian_Quad, AuctionEnvironment_Classical_Vegas
 from bnelearn.experiment.configurations import (ExperimentConfig)
 from bnelearn.learner import ESPGLearner, Learner
 from bnelearn.mechanism import Mechanism
@@ -223,6 +223,19 @@ class Experiment(ABC):
                                       inplace_sampling=  self.learning.inplace_sampling,
                                       scramble=self.learning.scramble,
                                       degree = self.learning.degree)
+        elif self.learning.integration_method == "Classical Vegas" : 
+             self.env = AuctionEnvironment_Classical_Vegas(self.mechanism,
+                                      agents=self.bidders,
+                                      n_players=self.n_players,
+                                      strategy_to_player_closure=self._strat_to_bidder,
+                                      correlation_groups=self.correlation_groups,
+                                      correlation_devices=self.correlation_devices,
+                                      rule = self.learning.rule,
+                                      antithetic=self.learning.antithetic,
+                                      inplace_sampling=  self.learning.inplace_sampling,
+                                      scramble=self.learning.scramble,
+                                      n_int = self.learning.n_int)
+            
         else :
             self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,

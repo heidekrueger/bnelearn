@@ -84,6 +84,7 @@ class LearningConfig:
     scramble : bool = True
     integration_method : str = "Monte Carlo"
     degree : int = 60 #for gaussian quadrature
+    n_int : int = 10 #for classical vegas
 
 
 @dataclass
