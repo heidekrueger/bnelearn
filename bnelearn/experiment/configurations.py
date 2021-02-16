@@ -83,6 +83,7 @@ class LearningConfig:
     inplace_sampling : bool = False
     scramble : bool = True
     integration_method : str = "Monte Carlo"
+    degree : int = 60 #for gaussian quadrature
 
 
 @dataclass

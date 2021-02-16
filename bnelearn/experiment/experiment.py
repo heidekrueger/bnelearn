@@ -22,7 +22,7 @@ from torch.utils.tensorboard import SummaryWriter
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder
-from bnelearn.environment import AuctionEnvironment, Environment
+from bnelearn.environment import AuctionEnvironment, Environment, AuctionEnvironment_Gaussian_Quad
 from bnelearn.experiment.configurations import (ExperimentConfig)
 from bnelearn.learner import ESPGLearner, Learner
 from bnelearn.mechanism import Mechanism
@@ -211,7 +211,20 @@ class Experiment(ABC):
 
     def _setup_learning_environment(self):
         print(f'Learning env correlation {self.correlation_groups}: {self.correlation_devices}.')
-        self.env = AuctionEnvironment(self.mechanism,
+        if self.learning.integration_method == 'Gaussian Quadrature' : 
+            self.env = AuctionEnvironment_Gaussian_Quad(self.mechanism,
+                                      agents=self.bidders,
+                                      n_players=self.n_players,
+                                      strategy_to_player_closure=self._strat_to_bidder,
+                                      correlation_groups=self.correlation_groups,
+                                      correlation_devices=self.correlation_devices,
+                                      rule = self.learning.rule,
+                                      antithetic=self.learning.antithetic,
+                                      inplace_sampling=  self.learning.inplace_sampling,
+                                      scramble=self.learning.scramble,
+                                      degree = self.learning.degree)
+        else :
+            self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
                                       n_players=self.n_players,
                                       strategy_to_player_closure=self._strat_to_bidder,
@@ -705,7 +718,7 @@ class Experiment(ABC):
             # we are only using m2a locally within this loop, so we can safely ignore the following pylint warning:
             # pylint: disable=cell-var-from-loop
 
-            m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
+            m2a = lambda m: self._model2bidder[m][0]
 
             L_2[bne_idx] = [
                 metrics.norm_strategy_and_actions(

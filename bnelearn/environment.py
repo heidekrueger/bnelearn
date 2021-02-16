@@ -8,7 +8,9 @@ implements reward allocation to agents.
 from abc import ABC, abstractmethod
 from typing import Callable, Set, List, Iterable
 
+import numpy as np
 import torch
+import chaospy
 
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism
@@ -195,6 +197,85 @@ class AuctionEnvironment(Environment):
         assert sorted([a for g in self.correlation_groups for a in g]) == list(range(n_players)), \
             "Each agent should be in exactly one correlation group!"
         self.state_device = state_device(self.correlation_devices)
+        self.domain = self.get_domain()
+        
+        self.integral_bounds = self.get_integral_bounds()
+        self.dtype= self.agents[0].get_valuation_grid(1).dtype
+
+
+
+
+    def get_domain(self):
+        """[summary]
+
+        Returns:
+            [type]: [description]
+        """
+        
+        integral_bounds = []
+        for agent in self.agents: 
+            for j in range(agent.n_items):
+                test = False
+                if isinstance(agent._grid_lb,torch.Tensor) :
+                    try:                      
+                        low = agent._grid_lb.item()
+                    except Exception:
+                        if len(agent._grid_lb) > 1 :
+                            low = agent._grid_lb.numpy()
+                            test = True
+                else : 
+                    low = agent._grid_lb
+
+                if isinstance(agent._grid_ub,torch.Tensor) :
+                    try : 
+                        high = agent._grid_ub.item()
+                    except Exception: 
+                        if len(agent._grid_ub) > 1 :
+                            high = agent._grid_ub.numpy()
+                else : 
+                    high = agent._grid_ub
+                if test : 
+                    for j in range(len(np.vstack([low,high]).T)):
+                        integral_bounds.append(np.vstack([low,high]).T[j].tolist())
+                else : 
+                    integral_bounds.append([low,high])
+
+        return np.array(integral_bounds).T
+
+    def get_integral_bounds(self):
+        """[summary]
+
+        Returns:
+            [type]: [description]
+        """
+        integral_bounds = []
+        for agent in self.agents: 
+            for _ in range(agent.n_items):
+                test = False
+                if isinstance(agent._grid_lb,torch.Tensor) :
+                    try:                      
+                        low = agent._grid_lb.item()
+                    except Exception:
+                        if len(agent._grid_lb) > 1 :
+                            low = agent._grid_lb.numpy()
+                            test = True
+                else : 
+                    low = agent._grid_lb
+
+                if isinstance(agent._grid_ub,torch.Tensor) :
+                    try : 
+                        high = agent._grid_ub.item()
+                    except Exception: 
+                        if len(agent._grid_ub) > 1 :
+                            high = agent._grid_ub.numpy()
+                else: 
+                    high = agent._grid_ub
+                if test: 
+                    for j in range(len(np.vstack([low,high]).T)):
+                        integral_bounds.append(np.vstack([low,high]).T[j].tolist())
+                else: 
+                    integral_bounds.append([low,high])
+        return integral_bounds
 
     def get_bid_profile(self, agents : Iterable[Bidder],valuations): 
         """ gets bid_profile from valuations
@@ -270,3 +351,82 @@ class AuctionEnvironment(Environment):
         of the agent at `player_position` from the correlation_devices.
         """
         return self.state_device.draw_conditional(self.agents,player_position, conditional_observation, batch_size)
+
+class AuctionEnvironment_Gaussian_Quad(AuctionEnvironment):
+    """
+    An environment of agents to play against and evaluate strategies.
+
+    In particular this means:
+        - an iterable of sets of -i players that a strategy of a single player can be tested against
+        - accept strategy as argument, then play batch_size rounds and return the reward
+
+    Args:
+        ... (TODO: document)
+        correlation_structure
+
+        strategy_to_bidder_closure: A closure (strategy, batch_size) -> Bidder to
+            transform strategies into a Bidder compatible with the environment
+    """
+
+    def __init__(
+            self,
+            mechanism: Mechanism,
+            agents: Iterable[Bidder],
+            n_players = None,
+            strategy_to_player_closure: Callable[[Strategy], Bidder] = None,
+            correlation_groups: List[List[int]] = None,
+            correlation_devices: List[CorrelationDevice] = None,
+            rule : str= "pseudorandom",
+            antithetic : bool = False,
+            inplace_sampling : bool = False,
+            scramble : bool = True,
+            degree : int = 60
+        ):
+        self.degree = degree
+        super(AuctionEnvironment_Gaussian_Quad,self).__init__(mechanism = mechanism,
+            agents=agents,
+            n_players = n_players,
+            strategy_to_player_closure =  strategy_to_player_closure,
+            correlation_groups = correlation_groups,
+            correlation_devices = correlation_devices,
+            rule = rule,
+            antithetic = antithetic,
+            inplace_sampling = inplace_sampling,
+            scramble = scramble)
+
+        zeros, weights = chaospy.quad_gauss_legendre(self.degree, domain=self.domain)
+        self.zeros = zeros
+        self.weights = weights
+
+    def get_strategy_reward(
+        self,
+        batch_size:int,
+        strategy:Strategy,
+        **strat_to_player_kwargs):
+
+        if not self._strategy_to_player:
+            raise NotImplementedError('This environment has no strategy_to_player closure!')
+        agent = self._strategy_to_player(strategy, **strat_to_player_kwargs)
+        player_position = strat_to_player_kwargs["player_position"]
+        # TODO: this should rally be in AuctionEnv subclass
+        copy_agents = self.agents
+        copy_agents[strat_to_player_kwargs["player_position"]] = agent
+
+        def f(X):
+            """[summary]
+
+            Args:
+                X ([type]): [description]
+
+            Returns:
+                [type]: [description]
+            """
+            batch= len(self.weights)
+            valuations = torch.tensor(np.array(X), dtype = self.dtype, device = self.device).reshape(batch,self.n_players,self.agents[0].n_items)
+            bids = self.get_bid_profile(copy_agents,valuations)
+            allocation, payments = self.mechanism.play(bids)
+            utility = self.agents[player_position].get_utility(allocation[:,player_position,:], payments[:,player_position],valuations[:,player_position,:])
+            return utility.detach()
+        result = (torch.from_numpy(self.weights).to(self.device))*(f(self.zeros.T).flatten())
+
+        return result.sum() / self.domain[1].prod()

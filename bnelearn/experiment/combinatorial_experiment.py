@@ -17,7 +17,7 @@ import warnings
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
-
+import math
 from bnelearn.mechanism.auctions_combinatorial import LLGAuction, LLLLGGAuction
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
@@ -83,6 +83,7 @@ class LocalGlobalExperiment(Experiment, ABC):
         self.plot_ymax = self.plot_xmax * 1.05
 
     def _get_model_names(self):
+        log2batch = int(math.log(self.learning.batch_size,2))
         if self.model_sharing:
             if self.learning.integration_method == 'Monte Carlo' : 
                 description = "Antithetic_" if self.learning.antithetic else ""
@@ -95,6 +96,7 @@ class LocalGlobalExperiment(Experiment, ABC):
             description = description + antithetic_mutations +  self.learning.rule_mutations + '_mutations'
             if self.learning.rule_mutations == "sobol" and self.learning.scramble_mutations : 
                     description = description + "_randomized"
+            description = description + "_batch_size_2**"+str(log2batch)
 
             global_name = 'global' if self.n_players - self.n_local == 1 else 'globals'
             return ['locals_'+description, global_name+'_'+description]

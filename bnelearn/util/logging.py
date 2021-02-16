@@ -304,7 +304,7 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
             )
 
     # 2. found entry: 2.1 smaller batch size
-    elif setting_database['batch_size'].tolist()[0] > bne_env.batch_size:
+    elif setting_database['batch_size'].tolist()[0] > exp.config.logging.eval_batch_size:
         print('Reading high precision utilities in BNE from database.')
         return setting_database.bne_utilities.tolist()
 
