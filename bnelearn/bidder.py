@@ -110,7 +110,7 @@ class Bidder(Player):
         if self._cache_actions:
             self.actions = torch.zeros(batch_size, n_items, device=self.device)
         self.draw_valuations_()  # TODO: This is dangerous as it doesn't use correlation
-        
+
         self.welfare_reference = None
         self.payments_reference = None
         self.regret = regret
@@ -328,30 +328,62 @@ class Bidder(Player):
             valuations = self.valuations
 
         if self.regret > 0:
-            welfare = self.get_welfare(allocations, valuations)
-            payoff = welfare - payments
+            welfare = self.get_welfare(allocations[:, self.player_position, :], valuations)
+            payoff = welfare - payments[:, self.player_position]
 
             # TODO: Only implemented for LLG
             if valuations.shape[1] > 1:
                 raise NotImplementedError('Regret not implemented for this setting.')
 
-            if self.player_position != 2:  # local
-                highest_opponent_bids = bids[:, 2, :].view_as(payoff)
+            alpha = beta = self.regret
+            win_mask = torch.any(allocations[:, self.player_position, :].bool(), axis=1)
+            if self.player_position < bids.shape[1] - 1:  # local
+                highest_opponent_bids = bids[:, -1, 0]
+
+                # winner's regret
+                #   how much have the locals overbidden the global
+                #   -> distribute that regret among them according to their relative
+                #   payment attribution
+                #   should be zero in core-selecting payment rule
+                total_payments = payments[:, :-1].sum(axis=1)[win_mask]
+                relative_payment = (
+                    payments[:, self.player_position][win_mask] / total_payments
+                )
+                relative_payment[relative_payment != relative_payment] = 0  # set nan to 0
+
+                payoff[win_mask] -= alpha * (
+                    total_payments - highest_opponent_bids[win_mask]
+                ) * relative_payment
+
+                # loser's regret
+                #   when the sum of the bids of the opponents of my coalition and
+                #   my own valuation exceeds the global bid, the local has that
+                #   difference as regret
+                coalition_bids = bids[~win_mask, :-1, 0].sum(axis=1) - bids[~win_mask, self.player_position, 0]
+                payoff[~win_mask] -= beta * (
+                    valuations[~win_mask, 0] + coalition_bids - highest_opponent_bids[~win_mask]
+                ).relu()
+
             else:  # global
-                highest_opponent_bids = bids[:, [0, 1], :].sum(axis=1).view_as(payoff)
+                highest_opponent_bids = bids[:, :-1, 0].sum(axis=1)
 
-            # winner's regret
-            alpha = self.regret
-            win_mask = torch.any(allocations.bool(), axis=1)
-            payoff[win_mask] -= alpha * (bids[:, self.player_position, 0][win_mask] - highest_opponent_bids[win_mask])
+                # winner's regret
+                payoff[win_mask] -= alpha * (
+                    payments[:, :-1].sum(axis=1)[win_mask] - highest_opponent_bids[win_mask]
+                )
 
-            # loser's regret
-            beta = self.regret
-            payoff[~win_mask] -= beta * (valuations[~win_mask, 0] - highest_opponent_bids[~win_mask])
+                # loser's regret
+                payoff[~win_mask] -= beta * (
+                    valuations[~win_mask, 0] - highest_opponent_bids[~win_mask]
+                ).relu()
 
             return payoff
 
-        return self.get_counterfactual_utility(allocations, payments, valuations)
+        return self.get_counterfactual_utility(
+            allocations[:, self.player_position, :],
+            payments[:, self.player_position],
+            valuations
+        )
 
     def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
         """

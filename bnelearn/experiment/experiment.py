@@ -745,7 +745,7 @@ class Experiment(ABC):
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, 2,
                     componentwise=self.logging.log_componentwise_norm,
-                    component_selection=self.relevant_actions()[self._model2bidder[i][0], :]
+                    component_selection=self.relevant_actions()[i, :]
                 )
                 for i, model in enumerate(self.models)
             ]
@@ -753,7 +753,7 @@ class Experiment(ABC):
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, float('inf'),
                     componentwise=self.logging.log_componentwise_norm,
-                    component_selection=self.relevant_actions()[self._model2bidder[i][0], :]
+                    component_selection=self.relevant_actions()[i, :]
                 )
                 for i, model in enumerate(self.models)
             ]

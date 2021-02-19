@@ -209,6 +209,8 @@ class LLGExperiment(LocalGlobalExperiment):
             return False
         elif self.risk != 1.0:
             return False
+        elif self.regret != 0.0:
+            return False
         elif self.config.setting.payment_rule in \
             ['nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
             if self.config.setting.correlation_types in ['Bernoulli_weights', 'independent'] or \

@@ -299,7 +299,7 @@ class LLGAuction(Mechanism):
                 the maximale possible welfare. Averaged over batch.
 
         """
-        batch_size = 2 ** 12
+        batch_size = min(env.agents[0].valuations.shape[0], 2 ** 12)
 
         if draw_valuations:
             env.draw_valuations_()
