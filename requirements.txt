@@ -19,6 +19,7 @@ sphinx-rtd-theme # pip
 tqdm #for progress bars
 fire #conda -c conda-forge
 tabulate # required for pandas pretty-printing
-
+vegas
+chaospy
 # non-python requirements (for package development only)
 # jq # installable via apt-get; used to automatically clean up ipynb files on commit via git filters.
