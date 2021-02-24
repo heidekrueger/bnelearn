@@ -317,7 +317,7 @@ class Bidder(Player):
         self._valuations_changed = True # torch in-place operations do not trigger check in setter-method!
         return self.valuations
 
-    def get_utility(self, allocations, payments, bids): #pylint: disable=arguments-differ
+    def get_utility(self, env, allocations, payments, bids): #pylint: disable=arguments-differ
         """
         For a batch of allocations and payments return the player's utilities at
         current valuations.
@@ -353,13 +353,25 @@ class Bidder(Player):
 
                 payoff[win_mask] -= alpha * (
                     total_payments - highest_opponent_bids[win_mask]
-                ) * relative_payment
+                ).relu() * relative_payment
 
                 # loser's regret
                 #   when the sum of the bids of the opponents of my coalition and
                 #   my own valuation exceeds the global bid, the local has that
                 #   difference as regret
+
+                # option a: use own value and other local's bid
                 coalition_bids = bids[~win_mask, :-1, 0].sum(axis=1) - bids[~win_mask, self.player_position, 0]
+
+                # option b: use all local's valuations and distribute attribution
+                # coaltion_value = torch.zeros_like(highest_opponent_bids[~win_mask])
+                # for a in env.agents[:-1]:
+                #     coaltion_value += a.valuations[~win_mask, 0]
+                # relative_value = (
+                #     valuations[~win_mask, 0] / coaltion_value
+                # )
+                # relative_value[relative_value != relative_value] = 0  # set nan to 0
+
                 payoff[~win_mask] -= beta * (
                     valuations[~win_mask, 0] + coalition_bids - highest_opponent_bids[~win_mask]
                 ).relu()
@@ -369,8 +381,8 @@ class Bidder(Player):
 
                 # winner's regret
                 payoff[win_mask] -= alpha * (
-                    payments[:, :-1].sum(axis=1)[win_mask] - highest_opponent_bids[win_mask]
-                )
+                    payments[win_mask, -1] - highest_opponent_bids[win_mask]
+                ).relu()
 
                 # loser's regret
                 payoff[~win_mask] -= beta * (
