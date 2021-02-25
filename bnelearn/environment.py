@@ -181,7 +181,7 @@ class MatrixGameEnvironment(Environment):
             action_profile[:, position] = action.view(self.batch_size)
 
         allocation, payments = self.game.play(action_profile.view(self.batch_size, self.n_players, -1))
-        utilities = agent.get_utility(self, allocation[:,player_position,:], payments[:,player_position])
+        utilities = agent.get_utility(allocation[:,player_position,:], payments[:,player_position])
 
         return utilities.mean()
 
@@ -268,7 +268,7 @@ class AuctionEnvironment(Environment):
             allocation, payments = self.mechanism.play(
                 agent_bid.view(agent.batch_size, 1, action_length)
             )
-            utility = agent.get_utility(self, allocation, payments, agent_bid.view(agent.batch_size, 1, action_length))
+            utility = agent.get_utility(allocation, payments, agent_bid.view(agent.batch_size, 1, action_length))
         else: # at least 2 environment agent --> build bid_profile, then play
             # get bid profile
             bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
@@ -298,7 +298,7 @@ class AuctionEnvironment(Environment):
             allocation = allocations[:, player_position, :]
 
             # average over batch against this opponent
-            utility = agent.get_utility(self, allocations, payments, bid_profile)
+            utility = agent.get_utility(allocations, payments, bid_profile)
 
             # regularize
             utility -= regularize * agent_bid.mean()

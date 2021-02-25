@@ -317,7 +317,7 @@ class Bidder(Player):
         self._valuations_changed = True # torch in-place operations do not trigger check in setter-method!
         return self.valuations
 
-    def get_utility(self, env, allocations, payments, bids): #pylint: disable=arguments-differ
+    def get_utility(self, allocations, payments, bids): #pylint: disable=arguments-differ
         """
         For a batch of allocations and payments return the player's utilities at
         current valuations.
