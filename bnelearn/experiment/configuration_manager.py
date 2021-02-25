@@ -334,10 +334,10 @@ class ConfigurationManager:
 
     # pylint: disable=too-many-arguments, unused-argument
     def set_learning(self, model_sharing: bool = 'None', learner_hyperparams: dict = 'None',
-                     optimizer_type: str = 'None',
-                     optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
-                     pretrain_iters: int = 'None',
-                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
+                     optimizer_type: str = 'None', optimizer_hyperparams: dict = 'None',
+                     hidden_nodes: List[int] = 'None', pretrain_iters: int = 'None',
+                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
+                     mixed_strategy: bool = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.learning, arg):
@@ -410,7 +410,8 @@ class ConfigurationManager:
                                   hidden_nodes=[10, 10],
                                   pretrain_iters=500,
                                   batch_size=2 ** 18,
-                                  hidden_activations=[nn.SELU(), nn.SELU()])
+                                  hidden_activations=[nn.SELU(), nn.SELU()],
+                                  mixed_strategy=False)
         logging = LoggingConfig(enable_logging=True,
                                 log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),
                                 plot_frequency=100,

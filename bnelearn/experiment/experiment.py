@@ -131,6 +131,8 @@ class Experiment(ABC):
         else:
             self.logging.log_metrics['opt'] = False
 
+        self.mixed_strategy = self.learning.mixed_strategy
+
     @abstractmethod
     def _setup_mechanism(self):
         pass
@@ -180,7 +182,8 @@ class Experiment(ABC):
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
                 ensure_positive_output=self.positive_output_point,
-                output_length=self.n_items
+                output_length=self.n_items,
+                mixed_strategy=self.mixed_strategy,
             ).to(self.hardware.device)
 
         self.bidders = [

@@ -304,7 +304,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
                  ensure_positive_output: torch.Tensor or None = None,
                  output_length: int = 1, # currently last argument for backwards-compatibility
                  dropout: float = 0.0,
-                 stochastic: bool = True
+                 mixed_strategy: bool = False,
                  ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
@@ -317,11 +317,14 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.hidden_nodes = copy(hidden_nodes)
         self.activations = copy(hidden_activations) # do not write to list outside!
         self.dropout = dropout
-        self.stochastic = stochastic
+        self.mixed_strategy = mixed_strategy
 
         self.layers = nn.ModuleDict()
 
         class RandLayer(nn.Module):
+            """
+            Custom layer for normally distributed predictions (non-negatvie).
+            """
             def forward(self, x):
                 if x.dim() == 1:
                     x = x.view(-1, 1)
@@ -355,9 +358,9 @@ class NeuralNetStrategy(Strategy, nn.Module):
         # create output layer
         self.layers['fc_out'] = nn.Linear(
             hidden_nodes[-1],
-            2 * self.output_length if self.stochastic else self.output_length
+            2 * self.output_length if self.mixed_strategy else self.output_length
         )
-        if self.stochastic:
+        if self.mixed_strategy:
             self.layers['stochastic'] = RandLayer()
             self.activations.append(self.layers['stochastic'])
         self.layers['activation_out'] = nn.ReLU()
@@ -383,10 +386,12 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         # standard initialization
         strategy = cls(
-            input_length=params["input_length"],
             hidden_nodes=params["hidden_nodes"],
             hidden_activations=params["hidden_activations"],
-            output_length=params["output_length"]
+            input_length=params["input_length"],
+            output_length=params["output_length"],
+            dropout=params["dropout"],
+            stochastic=params["stochastic"]
         )
 
         # override model weights with saved ones
@@ -417,15 +422,21 @@ class NeuralNetStrategy(Strategy, nn.Module):
             self.zero_grad()
             diff = (self.forward(input_tensor) - desired_output)
             loss = (diff * diff).sum()
-            print(loss.item())
             loss.backward()
             optimizer.step()
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
-        activations = self.activations[:-2] if self.stochastic else self.activations[:-1]
-        self.__init__(self.input_length, self.hidden_nodes,
-                      activations, ensure_positive_output, self.output_length)
+        activations = self.activations[:-2] if self.mixed_strategy else self.activations[:-1]
+        self.__init__(
+            input_length=self.input_length,
+            hidden_nodes= self.hidden_nodes,
+            hidden_activations=activations,
+            ensure_positive_output=ensure_positive_output,
+            output_length=self.output_length,
+            dropout=self.dropout,
+            mixed_strategy=self.mixed_strategy,
+        )
 
     def forward(self, x):
         for layer in self.layers.values():
