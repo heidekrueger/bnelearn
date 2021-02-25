@@ -303,7 +303,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
                  hidden_activations: Iterable[nn.Module],
                  ensure_positive_output: torch.Tensor or None = None,
                  output_length: int = 1, # currently last argument for backwards-compatibility
-                 dropout: float = 0.0
+                 dropout: float = 0.0,
+                 stochastic: bool = True
                  ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
@@ -316,8 +317,23 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.hidden_nodes = copy(hidden_nodes)
         self.activations = copy(hidden_activations) # do not write to list outside!
         self.dropout = dropout
+        self.stochastic = stochastic
 
         self.layers = nn.ModuleDict()
+
+        class RandLayer(nn.Module):
+            def forward(self, x):
+                if x.dim() == 1:
+                    x = x.view(-1, 1)
+                m = x.shape[-1] // 2
+                out = torch.clone(x)
+                out[:, :m] = torch.mul(
+                    x[:, :m],
+                    torch.randn_like(x[:, :m], requires_grad=True)
+                )
+                out2 = out.sum(axis=1, keepdim=True)
+                out3 = torch.relu(out2)
+                return out3
 
         if len(hidden_nodes) > 0:
             ## create hdiden layers
@@ -337,7 +353,13 @@ class NeuralNetStrategy(Strategy, nn.Module):
             hidden_nodes = [input_length] #don't write to self.hidden nodes, just ensure correct creation
 
         # create output layer
-        self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
+        self.layers['fc_out'] = nn.Linear(
+            hidden_nodes[-1],
+            2 * self.output_length if self.stochastic else self.output_length
+        )
+        if self.stochastic:
+            self.layers['stochastic'] = RandLayer()
+            self.activations.append(self.layers['stochastic'])
         self.layers['activation_out'] = nn.ReLU()
         self.activations.append(self.layers['activation_out'])
 
@@ -395,13 +417,15 @@ class NeuralNetStrategy(Strategy, nn.Module):
             self.zero_grad()
             diff = (self.forward(input_tensor) - desired_output)
             loss = (diff * diff).sum()
+            print(loss.item())
             loss.backward()
             optimizer.step()
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
+        activations = self.activations[:-2] if self.stochastic else self.activations[:-1]
         self.__init__(self.input_length, self.hidden_nodes,
-                      self.activations[:-1], ensure_positive_output, self.output_length)
+                      activations, ensure_positive_output, self.output_length)
 
     def forward(self, x):
         for layer in self.layers.values():
