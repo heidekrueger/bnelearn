@@ -8,35 +8,26 @@ from bnelearn.sample import generate_sampler
 
 class CorrelationDevice(ABC):
     """
-    Implements logic to draw from joint prior distributions that are not
-    independent in each bidder.
-
-    Most of the work is done in the `draw_conditional` method. There, one agent
-    is passed with its `player_position`. Her observation then is the condition
-    for all further samples. Thus, any random samples are from a distribution
-    conditioned on that observation.
-
-    The method `get_weights` is sometimes used when the correlation is defined
-    as a weighted sum.
+    to be done
     """
 
     def __init__(self, correlation_group: List[int], common_component_dist: Distribution or None,
                  n_items: int, correlation_model: str,
                  correlation: float, rule :str = "pseudorandom", antithetic : bool =False,
                  inplace_sampling: bool = False, scramble : bool = True, device = "cuda"):
-        """[summary]
+        """
 
         Args:
-            agents (Iterable[Bidder]): [description]
-            correlation_group (List[int]): [description]
-            common_component_dist (DistributionorNone): [description]
-            n_items (int): [description]
-            correlation_model (str): [description]
-            correlation (float): [description]
-            rule (str, optional): [description]. Defaults to "pseudorandom".
-            antithetic (bool, optional): [description]. Defaults to False.
-            inplace_sampling (bool, optional): [description]. Defaults to False.
-            device (str, optional): [description]. Defaults to "cuda".
+            agents (Iterable[Bidder])
+            correlation_group (List[int])
+            common_component_dist (DistributionorNone)
+            n_items (int)
+            correlation_model (str)
+            correlation (float)
+            rule (str, optional): Defaults to "pseudorandom".
+            antithetic (bool, optional): Defaults to False.
+            inplace_sampling (bool, optional): Defaults to False.
+            device (str, optional): Defaults to "cuda".
         """
 
         assert 0.0 <= correlation <= 1.0, "Invalid correlation!"
@@ -56,29 +47,16 @@ class CorrelationDevice(ABC):
             self.common_component_dist_sampler = None
 
     def draw_common_component(self, batch_size):
-        """[summary]
-
-        Args:
-            batch_size ([type]): [description]
-
-        Returns:
-            [type]: [description]
+        """
+        sampling from the common component
         """
         if self.dist is None:
             return None
         return self.common_component_dist_sampler.sample(batch_size)
 
     def draw_state(self,agents:Iterable[Bidder],batch_size:int):
-        """[summary]
+        """
 
-        Args:
-            batch_size ([type]): [description]
-
-        Raises:
-            NotImplementedError: [description]
-
-        Returns:
-            [type]: [description]
         """
         raise NotImplementedError
 
@@ -123,10 +101,8 @@ class CorrelationDevice(ABC):
 
 
 class IndependentValuationDevice(CorrelationDevice):
-    """[summary]
-
-    Args:
-        CorrelationDevice ([type]): [description]
+    """
+    not finished
     """
     def __init__(self, correlation_group: List[int], n_items : int, 
                  rule :str = "pseudorandom", antithetic : bool =False,
@@ -135,10 +111,7 @@ class IndependentValuationDevice(CorrelationDevice):
 
 
     def draw_state(self, agents:Iterable[Bidder],batch_size) :
-        """[summary]
-
-        Args:
-            batch_size ([type]): [description]
+        """
         """
         low = []
         high = []
@@ -173,6 +146,7 @@ class IndependentValuationDevice(CorrelationDevice):
 
 class BernoulliWeightsCorrelationDevice(CorrelationDevice):
     """
+    !! not tested/used
     Implements correlation between two or more bidders, where their valuations
     depend additively on an individual component z_i and a common component s.
     In this scheme, a Bernoulli (0 or 1) weight determines that eitherv_i =
@@ -196,10 +170,7 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
 
 
     def draw_state(self, agents:Iterable[Bidder], batch_size) :
-        """[summary]
-
-        Args:
-            batch_size ([type]): [description]
+        """
         """
         common_component = self.draw_common_component(batch_size)
         state_dic = {}
@@ -293,10 +264,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
 
 
     def draw_state(self, agents:Iterable[Bidder],batch_size) :
-        """[summary]
-
-        Args:
-            batch_size ([type]): [description]
+        """
         """
         common_component = self.draw_common_component(batch_size)
         state_dic = {}

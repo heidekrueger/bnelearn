@@ -224,6 +224,7 @@ class ESPGLearner(GradientBasedLearner):
         else:
             gradient_vector = ((rewards - baseline)*epsilons).mean(dim=0) / denominator
 
+        gradient_vector[gradient_vector == float("inf")] = 0
         # put gradient vector into same format as model parameters
         gradient_params = deepcopy(list(self.params()))
         vector_to_parameters(gradient_vector, gradient_params)

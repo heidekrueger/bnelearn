@@ -22,7 +22,7 @@ from torch.utils.tensorboard import SummaryWriter
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder
-from bnelearn.environment import AuctionEnvironment, Environment, AuctionEnvironment_Gaussian_Quad, AuctionEnvironment_Classical_Vegas
+from bnelearn.environment import *
 from bnelearn.experiment.configurations import (ExperimentConfig)
 from bnelearn.learner import ESPGLearner, Learner
 from bnelearn.mechanism import Mechanism
@@ -235,7 +235,31 @@ class Experiment(ABC):
                                       inplace_sampling=  self.learning.inplace_sampling,
                                       scramble=self.learning.scramble,
                                       n_int = self.learning.n_int)
-            
+        elif self.learning.integration_method == "Neural Importance Sampling" :
+            self.env = AuctionEnvironment_NIS(self.mechanism,
+                                      agents=self.bidders,
+                                      n_players=self.n_players,
+                                      strategy_to_player_closure=self._strat_to_bidder,
+                                      correlation_groups=self.correlation_groups,
+                                      correlation_devices=self.correlation_devices,
+                                      rule = self.learning.rule,
+                                      antithetic=self.learning.antithetic,
+                                      inplace_sampling=  self.learning.inplace_sampling,
+                                      scramble=self.learning.scramble
+            )
+
+        elif self.learning.integration_method == "Bayesian Quadrature" : 
+            self.env = AuctionEnvironment_Bayesian_Quad(self.mechanism,
+                                      agents=self.bidders,
+                                      n_players=self.n_players,
+                                      strategy_to_player_closure=self._strat_to_bidder,
+                                      correlation_groups=self.correlation_groups,
+                                      correlation_devices=self.correlation_devices,
+                                      rule = self.learning.rule,
+                                      antithetic=self.learning.antithetic,
+                                      inplace_sampling=  self.learning.inplace_sampling,
+                                      scramble=self.learning.scramble
+            )
         else :
             self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
@@ -766,7 +790,12 @@ class Experiment(ABC):
         if grid_size is None:
             grid_size = self.logging.util_loss_grid_size
 
-        valuations = self.env.state_device.draw_state(self.env.agents, batch_size)['valuations']
+        env = AuctionEnvironment(mechanism = env.mechanism, agents = env.agents, n_players=env.n_players,
+        strategy_to_player_closure=env._strategy_to_player, correlation_groups=None, correlation_devices=None,
+        rule = "pseudorandom", antithetic=False, inplace_sampling=False, scramble=False )
+
+
+        valuations = env.state_device.draw_state(env.agents, batch_size)['valuations']
         # bid_profile = self.env.get_bid_profile(self.env.agents, valuations)
 
         torch.cuda.empty_cache()

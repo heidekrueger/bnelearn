@@ -12,6 +12,8 @@ import numpy as np
 import torch
 import chaospy
 import vegas
+from zunis.integration import Integrator
+from emukit.examples.vanilla_bayesian_quadrature_with_rbf.vanilla_bq_loop_with_rbf import create_vanilla_bq_loop_with_rbf_kernel
 
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism
@@ -149,11 +151,13 @@ class AuctionEnvironment(Environment):
         - accept strategy as argument, then play batch_size rounds and return the reward
 
     Args:
-        ... (TODO: document)
-        correlation_structure
-
+        ... 
         strategy_to_bidder_closure: A closure (strategy) -> Bidder to
             transform strategies into a Bidder compatible with the environment
+        rule : str among [pseudorandon, halton, sobol, latin_hypercube]
+        inplace_sampling: use torch.Tensor.uniform_ whenever possible instead of torch.distributions.Uniform(0,1).rsample(torch.Size)
+        scramble : True : randomized sobol sequence, False : deterministic sobol sequence
+        
     """
 
     def __init__(
@@ -204,13 +208,10 @@ class AuctionEnvironment(Environment):
         self.dtype= self.agents[0].get_valuation_grid(1).dtype
 
 
-
-
     def get_domain(self):
-        """[summary]
-
-        Returns:
-            [type]: [description]
+        """
+        returns integration domain for the utility calculations 
+        for example for LLG returns np.array([[0,0,0],[1,1,2]])
         """
         
         integral_bounds = []
@@ -244,10 +245,9 @@ class AuctionEnvironment(Environment):
         return np.array(integral_bounds).T
 
     def get_integral_bounds(self):
-        """[summary]
-
-        Returns:
-            [type]: [description]
+        """
+        returns integration bound for the utility calculations 
+        for example for LLG returns np.array([[0,1],[0,1],[0,2]])
         """
         integral_bounds = []
         for agent in self.agents: 
@@ -286,12 +286,13 @@ class AuctionEnvironment(Environment):
             agents (Iterable[Bidder])
 
         Returns:
-            [torch.Tensor]
+            [torch.Tensor] : bid profile
         """
         bids = torch.zeros_like(valuations, device= valuations.device)
         for i in range(len(self.agents)):
             bids[:,i,:] = agents[i].get_action(valuations[:,i,:])
         return bids
+
     def get_reward_and_action(
             self,
             agent: Bidder,
@@ -333,15 +334,15 @@ class AuctionEnvironment(Environment):
         # TODO: this should rally be in AuctionEnv subclass
         copy_agents = self.agents
         copy_agents[strat_to_player_kwargs["player_position"]] = agent
-
         output = self.state_device.draw_state(agents =copy_agents,batch_size= batch_size)
         unknown_valuations = output["_unkown_valuation"]
         valuations = output["valuations"]
-        if unknown_valuations is None : 
+        if unknown_valuations is None: 
             unknown_valuations = valuations
-
         bid_profile = self.get_bid_profile(copy_agents,valuations)
+        
         allocation, payments = self.mechanism.play(bid_profile)
+
         utility = agent.get_utility(allocation[:,strat_to_player_kwargs["player_position"],:],
                                     payments[:,strat_to_player_kwargs["player_position"]], unknown_valuations[:,strat_to_player_kwargs["player_position"],:])
         return utility.mean()
@@ -362,11 +363,17 @@ class AuctionEnvironment_Gaussian_Quad(AuctionEnvironment):
         - accept strategy as argument, then play batch_size rounds and return the reward
 
     Args:
-        ... (TODO: document)
-        correlation_structure
-
-        strategy_to_bidder_closure: A closure (strategy, batch_size) -> Bidder to
+        ... 
+        strategy_to_bidder_closure: A closure (strategy) -> Bidder to
             transform strategies into a Bidder compatible with the environment
+        rule : not used
+        inplace_sampling: not used
+        scramble : True : not used
+        degree : int : max degree of the orthogonal polynomials used for the integration, Default 60 for LLG
+        The utilities are calculated using the Gaussian Quadrature Method. Only to be used in low dimensional 
+        settings.
+        Gaussian Quadrature methods allow exact estimation of the integral of a polynomial of degree 2N-1 
+        using only N points. The integrand is approximated using a family of orthogonal polynomials.
     """
 
     def __init__(
@@ -409,18 +416,12 @@ class AuctionEnvironment_Gaussian_Quad(AuctionEnvironment):
             raise NotImplementedError('This environment has no strategy_to_player closure!')
         agent = self._strategy_to_player(strategy, **strat_to_player_kwargs)
         player_position = strat_to_player_kwargs["player_position"]
-        # TODO: this should rally be in AuctionEnv subclass
         copy_agents = self.agents
         copy_agents[strat_to_player_kwargs["player_position"]] = agent
 
         def f(X):
-            """[summary]
-
-            Args:
-                X ([type]): [description]
-
-            Returns:
-                [type]: [description]
+            """
+            help function to calculate the expected value
             """
             batch= len(self.weights)
             valuations = torch.tensor(np.array(X), dtype = self.dtype, device = self.device).reshape(batch,self.n_players,self.agents[0].n_items)
@@ -432,6 +433,177 @@ class AuctionEnvironment_Gaussian_Quad(AuctionEnvironment):
 
         return result.sum() / self.domain[1].prod()
 
+
+class AuctionEnvironment_Bayesian_Quad(AuctionEnvironment):
+    """
+    An environment of agents to play against and evaluate strategies.
+
+    In particular this means:
+        - an iterable of sets of -i players that a strategy of a single player can be tested against
+        - accept strategy as argument, then play batch_size rounds and return the reward
+
+    Args:
+        ... 
+        strategy_to_bidder_closure: A closure (strategy) -> Bidder to
+            transform strategies into a Bidder compatible with the environment
+        rule : not used
+        inplace_sampling: not used
+        scramble : True : not used
+        stopping condition: number of observations (in addition to batch_size) to condition on to get the posterior distribution of the 
+        expected utility for a given strategy, observations are chosen to decrease the variance of the integral
+        should be a small int because the method is slow
+        The Bayesian Quadrature method treats the numerical integration problem as a Bayesian Inference problem. 
+        A Gaussian Process Prior is placed on the integrand u. The integrand is evaluated on a small number of samples O of the integration
+        domain. After conditioning on the observations, we get a posterior distribution over the integrand 
+        that is used to derive a posterior distribution of the integral
+    """
+    def __init__(
+            self,
+            mechanism: Mechanism,
+            agents: Iterable[Bidder],
+            n_players = None,
+            strategy_to_player_closure: Callable[[Strategy], Bidder] = None,
+            correlation_groups: List[List[int]] = None,
+            correlation_devices: List[CorrelationDevice] = None,
+            rule : str= "pseudorandom",
+            antithetic : bool = False,
+            inplace_sampling : bool = False,
+            scramble : bool = True,
+            stopping_condition : int = 2
+        ):
+        self.stopping_condition = stopping_condition
+        super(AuctionEnvironment_Bayesian_Quad,self).__init__(mechanism = mechanism,
+            agents=agents,
+            n_players = n_players,
+            strategy_to_player_closure =  strategy_to_player_closure,
+            correlation_groups = correlation_groups,
+            correlation_devices = correlation_devices,
+            rule = rule,
+            antithetic = antithetic,
+            inplace_sampling = inplace_sampling,
+            scramble = scramble)
+
+
+    def get_strategy_reward(
+        self,
+        batch_size:int,
+        strategy:Strategy,
+        **strat_to_player_kwargs):
+
+        if not self._strategy_to_player:
+            raise NotImplementedError('This environment has no strategy_to_player closure!')
+        agent = self._strategy_to_player(strategy, **strat_to_player_kwargs)
+        player_position = strat_to_player_kwargs["player_position"]
+        copy_agents = self.agents
+        copy_agents[strat_to_player_kwargs["player_position"]] = agent
+        X_init = self.state_device.draw_state(copy_agents, batch_size=batch_size)["valuations"].reshape(batch_size,self.n_players*self.agents[0].n_items).detach().cpu().numpy()
+
+        def f(X):
+            """
+            help function to calculate the integral, emukit_loop.run_loop only accept a function in this format, output should be numpy array
+            """
+            if X.shape == (self.n_players * self.agents[0].n_items,):
+                batch = 1
+            else : 
+                batch = len(X)
+
+            valuations = torch.tensor(np.array(X), dtype = self.dtype, device = self.device).reshape(batch,self.n_players,self.agents[0].n_items)
+            bids = self.get_bid_profile(copy_agents,valuations)
+            allocation, payments = self.mechanism.play(bids)
+            utility = self.agents[player_position].get_utility(allocation[:,player_position,:], payments[:,player_position],valuations[:,player_position,:])
+            return utility.detach().cpu().numpy().reshape(batch,1)
+
+        emukit_loop = create_vanilla_bq_loop_with_rbf_kernel(X=X_init, Y=f(X_init),integral_bounds=self.integral_bounds,measure=None)
+        emukit_loop.run_loop(user_function=f, stopping_condition=self.stopping_condition)
+        integral_mean, _= emukit_loop.model.integrate()
+        integral_mean = integral_mean / self.domain[1].prod()
+        return torch.tensor(integral_mean,dtype = self.dtype, device = self.device)
+
+class AuctionEnvironment_NIS(AuctionEnvironment):
+    """
+    An environment of agents to play against and evaluate strategies.
+
+    In particular this means:
+        - an iterable of sets of -i players that a strategy of a single player can be tested against
+        - accept strategy as argument, then play batch_size rounds and return the reward
+
+    Args:
+        ... 
+        strategy_to_bidder_closure: A closure (strategy) -> Bidder to
+            transform strategies into a Bidder compatible with the environment
+        rule : not used
+        inplace_sampling: not used
+        scramble : True : not used
+        n_iter : int, general number of iterations
+        The Importance sampling technique is a classical variance reduction technique for MC methods 
+        that aims at directing the sampling  effort at the most important regions of the integration domain. 
+        The NIS algorithm uses normalizing flows to automatically find a suitable sampling distribution.
+    
+    """
+
+    def __init__(
+            self,
+            mechanism: Mechanism,
+            agents: Iterable[Bidder],
+            n_players = None,
+            strategy_to_player_closure: Callable[[Strategy], Bidder] = None,
+            correlation_groups: List[List[int]] = None,
+            correlation_devices: List[CorrelationDevice] = None,
+            rule : str= "pseudorandom",
+            antithetic : bool = False,
+            inplace_sampling : bool = False,
+            scramble : bool = True,
+            n_iter : int = 2
+                    ):
+        self.n_iter = n_iter
+
+        super(AuctionEnvironment_NIS,self).__init__(mechanism = mechanism,
+            agents=agents,
+            n_players = n_players,
+            strategy_to_player_closure =  strategy_to_player_closure,
+            correlation_groups = correlation_groups,
+            correlation_devices = correlation_devices,
+            rule = rule,
+            antithetic = antithetic,
+            inplace_sampling = inplace_sampling,
+            scramble = scramble)
+        self.n_items = self.agents[0].n_items
+        self.factor = torch.from_numpy(self.domain[1]).reshape(self.n_players,self.n_items).to(self.device)
+    def get_strategy_reward(
+        self,
+        batch_size:int,
+        strategy:Strategy,
+        **strat_to_player_kwargs):
+
+        if not self._strategy_to_player:
+            raise NotImplementedError('This environment has no strategy_to_player closure!')
+        agent = self._strategy_to_player(strategy, **strat_to_player_kwargs)
+        player_position = strat_to_player_kwargs["player_position"]
+        # TODO: this should rally be in AuctionEnv subclass
+        copy_agents = self.agents
+        copy_agents[strat_to_player_kwargs["player_position"]] = agent
+
+        def f(X):
+            """
+            help function used for the integration
+            """
+
+            valuations = self.factor * X.reshape(batch_size,self.n_players,self.agents[0].n_items)
+            valuations  = valuations.type(torch.FloatTensor).to(self.device)
+            
+            bids = self.get_bid_profile(copy_agents, valuations)
+            allocation, payments = self.mechanism.play(bids)
+            utility = self.agents[player_position].get_utility(allocation[:,player_position,:], payments[:,player_position],valuations[:,player_position,:])
+            return utility.detach()
+
+        dim = self.n_players * self.n_items
+
+        integrator = Integrator(d=dim,f=f,device=self.device, n_iter= self.n_iter , n_points= batch_size)
+        result, uncertainty, _ = integrator.integrate()
+
+        return torch.tensor(result,dtype = self.dtype, device=self.device)
+
+
 class AuctionEnvironment_Classical_Vegas(AuctionEnvironment):
     """
     An environment of agents to play against and evaluate strategies.
@@ -441,11 +613,14 @@ class AuctionEnvironment_Classical_Vegas(AuctionEnvironment):
         - accept strategy as argument, then play batch_size rounds and return the reward
 
     Args:
-        ... (TODO: document)
-        correlation_structure
-
-        strategy_to_bidder_closure: A closure (strategy, batch_size) -> Bidder to
+        ... 
+        strategy_to_bidder_closure: A closure (strategy) -> Bidder to
             transform strategies into a Bidder compatible with the environment
+        rule : not used
+        inplace_sampling: not used
+        scramble : True : not used
+        n_int : int, general number of iterations
+        The Vegas algorithm is an adaptive Monte Carlo algorithm widely used in High Energy physics.
     """
 
     def __init__(
@@ -489,16 +664,13 @@ class AuctionEnvironment_Classical_Vegas(AuctionEnvironment):
             raise NotImplementedError('This environment has no strategy_to_player closure!')
         agent = self._strategy_to_player(strategy, **strat_to_player_kwargs)
         player_position = strat_to_player_kwargs["player_position"]
-        # TODO: this should rally be in AuctionEnv subclass
         copy_agents = self.agents
         copy_agents[strat_to_player_kwargs["player_position"]] = agent
 
         @vegas.batchintegrand
         def f(X):
-            """[summary]
-
-            Args:
-                X ([type]): [description]
+            """
+            help function to calculate the expected utility
             """
             if X.shape == (self.n_players * self.agents[0].n_items,):
                 batch = 1

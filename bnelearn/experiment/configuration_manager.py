@@ -113,7 +113,7 @@ class ConfigurationManager:
         self.setting.u_hi = [1, 1, 2]
         self.setting.n_players = 3
         self.setting.payment_rule = 'nearest_zero'
-        self.setting.correlation_groups = [[0, 1], [2]]
+        self.setting.correlation_groups =None
         self.setting.gamma = 0.0
 
     #     self.setting.correlation_types = 'independent'

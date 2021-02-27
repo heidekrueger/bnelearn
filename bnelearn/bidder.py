@@ -10,6 +10,7 @@ import warnings
 import math
 import torch
 from torch.distributions import Distribution
+from torch.nn.utils import parameters_to_vector
 from bnelearn.strategy import Strategy, MatrixGameStrategy, FictitiousPlayStrategy, FictitiousNeuralPlayStrategy
 from bnelearn.util.bidder_utils import get_welfare
 
@@ -228,11 +229,8 @@ class Bidder(Player):
             warnings.warn("Strategy expects shorter input_length than n_items. Truncating valuations...")
             dim = self.strategy.input_length
             inputs = inputs[:,:dim]
-
         actions = self.strategy.play(inputs)
         return actions
-
-
 
 class ReverseBidder(Bidder):
     """

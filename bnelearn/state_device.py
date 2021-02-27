@@ -15,13 +15,7 @@ class state_device :
         self.n_players = n_players
 
     def draw_state(self, agents:Iterable[Bidder], batch_size):
-        """[summary]
-
-        Args:
-            batch_size ([type]): [description]
-
-        Returns:
-            [type]: [description]
+        """
         """
         output = {}
         valuations = [None] * self.n_players
@@ -42,16 +36,7 @@ class state_device :
         return output
 
     def draw_conditional(self, agents:Iterable[Bidder],player_position: int, conditional_observation: torch.Tensor, batch_size: int):
-        """[summary]
-
-        Args:
-            agents (Iterable[Bidder]): [description]
-            player_position (int): [description]
-            conditional_observation (torch.Tensor): [description]
-            batch_size (int): [description]
-
-        Returns:
-            [type]: [description]
+        """
         """
         batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0

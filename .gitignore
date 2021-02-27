@@ -52,6 +52,7 @@ pylint.txt
 # PyCharm
 /.idea/*
 /scripts_work_in_progress/benchmarking_iheb.py
+/scripts_work_in_progress/stay.py
 # Running script
 #bnelearn/experiment/run_experiment.py
 

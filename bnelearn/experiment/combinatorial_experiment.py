@@ -228,8 +228,8 @@ class LLGExperiment(LocalGlobalExperiment):
                                                                       self.config.setting.u_hi[0]),                    n_items=1,
                     correlation=self.gamma),
                 IndependentValuationDevice(correlation_group = self.correlation_groups[1],n_items=self.n_items,
-                    device = self.hardware.device, rule = self.learning.rule,antithetic=self.learning.antithetic,
-                    inplace_sampling=self.learning.inplace_sampling,scramble=self.learning.scramble)]
+                    device = self.hardware.device, rule = "pseudorandom",antithetic= False,
+                    inplace_sampling=False,scramble=False)]
 
         self.known_bne = True
         bne_env = AuctionEnvironment(
@@ -241,10 +241,10 @@ class LLGExperiment(LocalGlobalExperiment):
             strategy_to_player_closure=self._strat_to_bidder,
             correlation_groups=self.correlation_groups,
             correlation_devices=bne_env_corr_devices,
-            rule = self.learning.rule,
-            antithetic=self.learning.antithetic,
-            inplace_sampling=self.learning.inplace_sampling,
-            scramble=self.learning.scramble
+            rule = "pseudorandom",
+            antithetic=False,
+            inplace_sampling=False,
+            scramble=False
         )
 
         self.bne_env = bne_env

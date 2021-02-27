@@ -206,6 +206,9 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     device = mechanism.device
 
     agent: Bidder = env.agents[player_position]
+    env = AuctionEnvironment(mechanism = env.mechanism, agents = env.agents, n_players=env.n_players,
+    strategy_to_player_closure=env._strategy_to_player, correlation_groups=None, correlation_devices=None,
+    rule = "pseudorandom", antithetic=False, inplace_sampling=False, scramble=False )
 
     output = env.state_device.draw_state(agents =env.agents,batch_size= batch_size)
     observation = output["valuations"][:,player_position,:]
