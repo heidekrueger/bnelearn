@@ -1187,7 +1187,6 @@ class LLLLGGAuction(Mechanism):
         return allocation.to(self.device), payments.to(self.device)
 
 
-# TODO Nils @ Stefan: is this CA class in use or can it be discarded as a prototype?
 class CombinatorialAuction(Mechanism):
     """A combinatorial auction, implemented via (possibly parallel) calls to the gurobi solver.
 

@@ -286,7 +286,7 @@ class Experiment(ABC):
                 os.mkdir(os.path.join(output_dir, 'models'))
 
             print('Started run. Logging to {}.'.format(output_dir))
-            self.fig = plt.figure()  # pylint: disable=attribute-defined-outside-init
+            self.fig = plt.figure()
             self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
             tic = timer()
@@ -313,8 +313,6 @@ class Experiment(ABC):
         if self.hardware.cuda:
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
-        # if torch.cuda.memory_allocated() > 0:
-        #    warnings.warn("There's a memory leak")
 
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
@@ -690,7 +688,7 @@ class Experiment(ABC):
                     strategy=model,
                     player_position=m2b(m),
                     draw_valuations=redraw_bne_vals,
-                    # use_env_valuations=not redraw_bne_vals  # TODO: isn't this duplicate with the prev param?
+                    use_env_valuations= not redraw_bne_vals
                 ) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(
