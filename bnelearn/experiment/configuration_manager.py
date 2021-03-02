@@ -270,6 +270,8 @@ class ConfigurationManager:
         elif self.setting.gamma > 1.0:
             raise Exception('Wrong gamma')
 
+        # Extend the distribution boundaries to all bidders if the request 
+        # number exceeds the default
         while len(self.setting.u_lo) < self.setting.n_players:
             self.setting.u_lo.insert(0, self.setting.u_lo[0])
             self.setting.u_hi.insert(0, self.setting.u_hi[0])

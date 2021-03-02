@@ -128,10 +128,9 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
             conditional_observation: torch.Tensor,
             batch_size: int=None
         ) -> Dict[int, torch.Tensor]:
-
-        # assert len(agents) == 2, \
-        #     "conditional draws currently only supported for 2 agents in " + \
-            # "the correlation group!"
+        """
+        Conditional draws supported for arbitrary number of agents.
+        """
 
         # TODO: possibly unify LLG correlation devices in parent
         batch_size_0 = conditional_observation.shape[0]
@@ -210,10 +209,9 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
             conditional_observation: torch.Tensor,
             batch_size: int=None
         ) -> Dict[int, torch.Tensor]:
-
-        # assert len(agents) == 2, \
-        #     "conditional draws currently only supported for 2 agents in " + \
-            # "the correlation group!"
+        """
+        Conditional draws supported for arbitrary number of agents.
+        """
 
         batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0

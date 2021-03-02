@@ -198,7 +198,6 @@ class LLGAuction(Mechanism):
         batch_dim, player_dim, item_dim = 0, 1, 2  # pylint: disable=unused-variable
         batch_size, n_players, n_items = bids.shape
 
-        # assert n_players == 3, "invalid n_players in LLG setting"
         assert n_items == 1, "invalid bid_dimensionality in LLG setting"  # dummy item is desired bundle for each player
 
         # move bids to gpu/cpu if necessary, get rid of unused item_dim
@@ -286,18 +285,8 @@ class LLGAuction(Mechanism):
         return (allocations.unsqueeze(-1), payments)  # payments: batches x players, allocation: batch x players x items
 
     def get_efficiency(self, env, draw_valuations: bool = False) -> float:
-        """Returns the percentage of efficiently allocated outcomes over a
-        batch.
-
-        Args:
-            env (:obj:`Environment`).
-            draw_valuations (:bool:) whether or not to redraw the valuations of
-                the agents.
-
-        Returns:
-            efficiency (:float:) Percentage that the actual welfare reaches of
-                the maximale possible welfare. Averaged over batch.
-
+        """LLG auction specific efficiency that uses fact of single-minded
+        bidders. 
         """
         batch_size = min(env.agents[0].valuations.shape[0], 2 ** 12)
 
@@ -429,9 +418,9 @@ class LLGFullAuction(Mechanism):
         allocations = torch.zeros_like(bids, dtype=torch.int8)
 
         max_individually = bids[:, :, :2].max(axis=1)
-        max_bundle = bids[:, :, 2].max(axis=1)
+        max_bundle = bids[:, :, 2].max(dim=1)
         individually = \
-            max_individually.values.sum(axis=1) > max_bundle.values
+            max_individually.values.sum(dim=1) > max_bundle.values
 
         # assign individual items
         allocations_individual = max_individually.indices[individually, :]

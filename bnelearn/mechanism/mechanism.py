@@ -67,17 +67,17 @@ class Mechanism(Game, ABC):
         return payments.sum(axis=1).float().mean()
 
     def get_efficiency(self, env, draw_valuations: bool = False) -> float:
-        """Returns the percentage of efficiently allocated outcomes over a
-        batch.
+        """Average percentage that the actual welfare reaches of the maximal
+        possible welfare over a batch.
 
         Args:
-            env (:obj:`Environment`): We need access to the env for possible
-                correlations between the agents.
-            draw_valuations (bool): Whether or not to redraw the valuations of
+            env (:obj:`Environment`).
+            draw_valuations (:bool:) whether or not to redraw the valuations of
                 the agents.
 
         Returns:
-            efficiency (float): Precentage of efficiently allocated outcomes.
+            efficiency (:float:) Percentage that the actual welfare reaches of
+                the maximale possible welfare. Averaged over batch.
 
         """
         batch_size = 2 ** 12
@@ -90,7 +90,7 @@ class Mechanism(Game, ABC):
         bid_profile = torch.zeros(batch_size, env.n_players, action_length,
                                   device=self.device)
         for pos, bid in env._generate_agent_actions():  # pylint: disable=protected-access
-            bid_profile[:, pos, :] = bid
+            bid_profile[:, pos, :] = bid[:batch_size, ...]
         actual_allocations, _ = self.play(bid_profile)
         actual_welfare = torch.zeros(batch_size, device=self.device)
         for a in env.agents:

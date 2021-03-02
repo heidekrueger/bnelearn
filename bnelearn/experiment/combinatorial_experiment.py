@@ -107,11 +107,12 @@ class LLGExperiment(LocalGlobalExperiment):
     A combinatorial experiment with 2 local and 1 global bidder and 2 items; but each bidders bids on 1 bundle only.
     Local bidder 1 bids only on the first item, the second only on the second and global only on both.
     Ausubel and Baranov (2018) provide closed form solutions for the 3 core selecting rules.
+
+    Supports arbitrary number of local bidders, not just two.
     """
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
-        # assert self.config.setting.n_players == 3, "Incorrect number of players specified."
         self.n_local = self.config.setting.n_players - 1
 
         self.gamma = self.correlation = float(config.setting.gamma)
@@ -203,24 +204,30 @@ class LLGExperiment(LocalGlobalExperiment):
     def _check_and_set_known_bne(self):
         # TODO: This is not exhaustive, other criteria must be fulfilled for the bne to be known!
         #  (i.e. uniformity, bounds, etc)
+        known_bne = None
         if self.config.setting.payment_rule == 'vcg':
             return True
         elif self.config.setting.n_players != 3:
-            return False
+            known_bne = False
         elif self.risk != 1.0:
-            return False
+            known_bne = False
         elif self.regret != 0.0:
-            return False
+            known_bne = False
         elif self.config.setting.payment_rule in \
             ['nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
             if self.config.setting.correlation_types in ['Bernoulli_weights', 'independent'] or \
                 (self.config.setting.correlation_types == 'constant_weights' and self.gamma in [0, 1]):
                 return True
             else:
-                self.logging.log_metrics['l2'] = False
-                self.logging.log_metrics['opt'] = False
-                return False
-        return super()._check_and_set_known_bne()
+                known_bne = False
+
+        if known_bne is None:
+            known_bne = super()._check_and_set_known_bne()
+        if not known_bne:
+            self.logging.log_metrics['l2'] = False
+            self.logging.log_metrics['opt'] = False
+
+        return known_bne
 
     def _setup_eval_environment(self):
 
@@ -291,6 +298,8 @@ class LLGExperiment(LocalGlobalExperiment):
 
 class LLGFullExperiment(LocalGlobalExperiment):
     """A combinatorial experiment with 2 local and 1 global bidder and 2 items.
+
+    Essentially, this is a general CA with 3 bidders and 2 items.
 
     Each bidders bids on all bundles. Local bidder 1 has only a value for the
     first item, the second only for the second and global only on both. This

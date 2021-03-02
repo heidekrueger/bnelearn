@@ -56,8 +56,8 @@ class Environment(ABC):
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
                             draw_valuations=False, aggregate_batch=True,
-                            use_env_valuations = True,
-                            regularize=0, **strat_to_player_kwargs) -> torch.Tensor:
+                            use_env_valuations=True, regularize: float=0,
+                            **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
 
@@ -71,8 +71,9 @@ class Environment(ABC):
                 of self.agents[player_position] (default True), if false will use those of
                 temporarily created bidder object
             strat_to_player_kwargs: further arguments needed for agent creation
-
-            # TODO NILS: document regularization.
+            regularize: paramter that penalizes high action values (e.g. if we
+                get the same utility with different actions, we prefer the loweer
+                one). Default value of zero corresponds to no regularization.
 
         """
         if not self._strategy_to_player:
