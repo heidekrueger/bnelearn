@@ -156,6 +156,11 @@ class Experiment(ABC):
 
     def _setup_learners(self):
 
+        # TODO
+        # if self.learning.learner == 'ESPGLearner':
+        #     ...
+        # elif ...
+        #   ...
         self.learners = [
             ESPGLearner(model=model,
                         environment=self.env,
