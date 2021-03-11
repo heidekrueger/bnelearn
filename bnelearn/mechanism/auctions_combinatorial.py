@@ -286,7 +286,7 @@ class LLGAuction(Mechanism):
 
     def get_efficiency(self, env, draw_valuations: bool = False) -> float:
         """LLG auction specific efficiency that uses fact of single-minded
-        bidders. 
+        bidders.
         """
         batch_size = min(env.agents[0].valuations.shape[0], 2 ** 12)
 
@@ -308,11 +308,11 @@ class LLGAuction(Mechanism):
         local_valuations = torch.zeros_like(actual_welfare)
         for a in env.agents[:-1]:
             local_valuations += a.valuations[:batch_size, ...].squeeze()
-        maxmimum_welfare = torch.max(
+        maximum_welfare = torch.max(
             env.agents[-1].valuations[:batch_size, ...].squeeze(), local_valuations
         ).view_as(actual_welfare)
 
-        efficiency = (actual_welfare / maxmimum_welfare).mean()
+        efficiency = (actual_welfare / maximum_welfare).mean()
         return efficiency
 
 

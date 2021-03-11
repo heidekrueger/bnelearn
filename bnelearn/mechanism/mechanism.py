@@ -80,7 +80,7 @@ class Mechanism(Game, ABC):
                 the maximale possible welfare. Averaged over batch.
 
         """
-        batch_size = 2 ** 12
+        batch_size = min(env.agents[0].valuations.shape[0], 2 ** 12)
 
         if draw_valuations:
             env.draw_valuations_()
@@ -103,13 +103,13 @@ class Mechanism(Game, ABC):
                                         device=self.device)
         for agent in env.agents:
             valuation_profile[:, agent.player_position, :] = agent.valuations
-        maxmimum_allocations, _ = self.play(valuation_profile)
-        maxmimum_welfare = torch.zeros(batch_size, device=self.device)
+        maximum_allocations, _ = self.play(valuation_profile)
+        maximum_welfare = torch.zeros(batch_size, device=self.device)
         for a in env.agents:
-            maxmimum_welfare += a.get_welfare(
-                maxmimum_allocations[:batch_size, a.player_position],
+            maximum_welfare += a.get_welfare(
+                maximum_allocations[:batch_size, a.player_position],
                 a.valuations[:batch_size, ...]
             )
 
-        efficiency = (actual_welfare / maxmimum_welfare).mean().float()
+        efficiency = (actual_welfare / maximum_welfare).mean().float()
         return efficiency
