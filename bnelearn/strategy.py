@@ -296,6 +296,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
         dropout (optional): float
             If not, applies AlphaDropout (https://pytorch.org/docs/stable/nn.html#torch.nn.AlphaDropout)
             to `dropout` share of nodes in each hidden layer during training.
+        mixed_strategy (otional): str
+            Which distribution to use when the strategy should be mixed.
 
     """
     def __init__(self, input_length: int,
@@ -304,7 +306,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
                  ensure_positive_output: torch.Tensor or None = None,
                  output_length: int = 1, # currently last argument for backwards-compatibility
                  dropout: float = 0.0,
-                 mixed_strategy: bool = False,
+                 mixed_strategy: str = None,
                  ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
@@ -321,7 +323,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         self.layers = nn.ModuleDict()
 
-        class RandLayer(nn.Module):
+        class GaussLayer(nn.Module):
             """
             Custom layer for normally distributed predictions (non-negatvie).
             """
@@ -329,14 +331,19 @@ class NeuralNetStrategy(Strategy, nn.Module):
                 if x.dim() == 1:
                     x = x.view(-1, 1)
                 m = x.shape[-1] // 2
-                out = torch.clone(x)
-                out[:, :m] = torch.mul(
-                    x[:, :m],
-                    torch.randn_like(x[:, :m], requires_grad=True)
-                )
-                out2 = out.sum(axis=1, keepdim=True)
-                out3 = torch.relu(out2)
-                return out3
+                normal = torch.distributions.normal.Normal(x[:, :m], x[:, m:])
+                return normal.rsample()
+
+        class UniformLayer(nn.Module):
+            """
+            Custom layer for predictions following a beta distribution.
+            """
+            def forward(self, x):
+                if x.dim() == 1:
+                    x = x.view(-1, 1)
+                m = x.shape[-1] // 2
+                uniform = torch.distributions.uniform.Uniform(x[:, :m], x[:, m:])
+                return uniform.rsample()
 
         if len(hidden_nodes) > 0:
             ## create hdiden layers
@@ -360,8 +367,11 @@ class NeuralNetStrategy(Strategy, nn.Module):
             hidden_nodes[-1],
             2 * self.output_length if self.mixed_strategy else self.output_length
         )
-        if self.mixed_strategy:
-            self.layers['stochastic'] = RandLayer()
+        if self.mixed_strategy == 'normal':
+            self.layers['stochastic'] = GaussLayer()
+            self.activations.append(self.layers['stochastic'])
+        elif self.mixed_strategy == 'uniform':
+            self.layers['stochastic'] = UniformLayer()
             self.activations.append(self.layers['stochastic'])
         self.layers['activation_out'] = nn.ReLU()
         self.activations.append(self.layers['activation_out'])
@@ -391,7 +401,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
             input_length=params["input_length"],
             output_length=params["output_length"],
             dropout=params["dropout"],
-            stochastic=params["stochastic"]
+            mixed_strategy=params["stochastic"]
         )
 
         # override model weights with saved ones

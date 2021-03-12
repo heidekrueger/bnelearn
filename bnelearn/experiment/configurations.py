@@ -73,7 +73,7 @@ class LearningConfig:
     hidden_nodes: List[int]
     pretrain_iters: int
     batch_size: int
-    mixed_strategy: bool
+    mixed_strategy: str
     hidden_activations: List[nn.Module] = None
 
 

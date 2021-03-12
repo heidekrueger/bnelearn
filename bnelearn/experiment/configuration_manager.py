@@ -337,7 +337,7 @@ class ConfigurationManager:
                      optimizer_type: str = 'None', optimizer_hyperparams: dict = 'None',
                      hidden_nodes: List[int] = 'None', pretrain_iters: int = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
-                     mixed_strategy: bool = 'None'):
+                     mixed_strategy: str = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.learning, arg):
@@ -411,7 +411,7 @@ class ConfigurationManager:
                                   pretrain_iters=500,
                                   batch_size=2 ** 18,
                                   hidden_activations=[nn.SELU(), nn.SELU()],
-                                  mixed_strategy=False)
+                                  mixed_strategy=None)
         logging = LoggingConfig(enable_logging=True,
                                 log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),
                                 plot_frequency=100,
