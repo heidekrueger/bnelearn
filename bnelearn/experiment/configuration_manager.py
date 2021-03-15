@@ -14,7 +14,7 @@ from bnelearn.experiment.configurations import (SettingConfig,
                                                 LoggingConfig,
                                                 RunningConfig, ExperimentConfig, HardwareConfig,
                                                 EnhancedJSONEncoder)
-
+from bnelearn.experiment.matrix_experiment import JordanExperiment
 from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
                                                           LLLLGGExperiment)
 from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
@@ -23,7 +23,8 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
-                                                        AffiliatedObservationsExperiment)
+                                                        AffiliatedObservationsExperiment,
+                                                        CycleExperiment)
 
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
@@ -162,6 +163,21 @@ class ConfigurationManager:
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
 
+    def _init_cycle(self):
+        self.learning.model_sharing = False
+        self.setting.n_players = 2
+        self.setting.u_lo = 0
+        self.setting.u_hi = 2
+        self.learning.optimizer = torch.optim.SGD
+        self.learning.optimizer_hyperparams = {'lr': 1e-1}
+        self.setting.bayesian = True
+
+    def _init_jordan(self):
+        self.setting.n_players = 3
+        self.learning.model_sharing = False
+        # self.logging.plotting = False  # TODO
+        self.learning.optimizer_hyperparams = {'lr': 1e-1}
+
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
         # Learning
@@ -240,6 +256,12 @@ class ConfigurationManager:
         pass
 
     def _post_init_splitaward(self):
+        pass    
+
+    def _post_init_cycle(self):
+        pass
+
+    def _post_init_jordan(self):
         pass
 
     experiment_types = {
@@ -266,7 +288,12 @@ class ConfigurationManager:
         'multiunit':
             (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
-            (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)}
+            (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
+        'cycle':
+            (CycleExperiment, _init_cycle, _post_init_cycle),
+        'jordan':
+            (JordanExperiment, _init_jordan, _post_init_jordan)
+    }
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type
@@ -322,7 +349,6 @@ class ConfigurationManager:
             efficiency_parameters: TODO @Nils
             core_solver: Specifies which solver should be used to calculate core prices.
                 Should be one of 'NoCore', 'mpc', 'gurobi', 'cvxpy' (Relevant settings: LLLLGG)
-
         Returns:
             ``self`` with updated parameters.
 
@@ -333,12 +359,17 @@ class ConfigurationManager:
         return self
 
     # pylint: disable=too-many-arguments, unused-argument
-    def set_learning(self, model_sharing: bool = 'None', learner_hyperparams: dict = 'None',
-                     optimizer_type: str = 'None',
+    def set_learning(self, model_sharing: bool = 'None', learner_type: str = 'None',
+                     learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
-                     pretrain_iters: int = 'None',
-                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
-        """Sets only the parameters of learning which were passed, returns self"""
+                     pretrain_iters: int = 'None', batch_size: int = 'None',
+                     hidden_activations: List[nn.Module] = 'None', use_bias: bool = 'None',
+                     non_negative_actions: bool = 'None'):
+        """Sets only the parameters of learning which were passed, returns self
+
+        Args:
+            non_negative_actions: bool, switch for non-negative actions.
+        """
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.learning, arg):
                 setattr(self.learning, arg, v)
@@ -402,6 +433,7 @@ class ConfigurationManager:
                                 payment_rule='first_price',
                                 risk=1.0)
         learning = LearningConfig(model_sharing=True,
+                                  learner_type='ESPGLearner',
                                   learner_hyperparams={'population_size': 64,
                                                        'sigma': 1.,
                                                        'scale_sigma_by_model_size': True},
@@ -410,6 +442,8 @@ class ConfigurationManager:
                                   hidden_nodes=[10, 10],
                                   pretrain_iters=500,
                                   batch_size=2 ** 18,
+                                  non_negative_actions=True,
+                                  use_bias=True,
                                   hidden_activations=[nn.SELU(), nn.SELU()])
         logging = LoggingConfig(enable_logging=True,
                                 log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),

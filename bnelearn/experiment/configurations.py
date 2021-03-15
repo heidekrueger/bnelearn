@@ -63,16 +63,23 @@ class SettingConfig:
     core_solver: str = None
     # parallel: int = 1 in hardware config now
 
+    # Whether the game is Bayesian or complete information:
+    # Degenerate one-point Prior = complete information
+    bayesian: bool = True
+
 
 @dataclass
 class LearningConfig:
     model_sharing: bool
+    learner_type: str
     learner_hyperparams: dict
     optimizer_type: str
     optimizer_hyperparams: dict
     hidden_nodes: List[int]
     pretrain_iters: int
     batch_size: int
+    non_negative_actions: bool
+    use_bias: bool
     hidden_activations: List[nn.Module] = None
 
 

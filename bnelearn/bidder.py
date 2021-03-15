@@ -46,7 +46,8 @@ class MatrixGamePlayer(Player):
     def __init__(self, strategy, player_position=None, batch_size=1, cuda=True):
         super().__init__(strategy, player_position=player_position,
                          batch_size=batch_size, cuda=cuda)
-
+        # dummy valuation for compatibility
+        self.valuations = torch.empty((1,), device=self.device)
 
     def get_utility(self, *outcome): #pylint: disable=arguments-differ
         """ get player's utility for a batch of outcomes"""
@@ -61,6 +62,10 @@ class MatrixGamePlayer(Player):
             return self.strategy.play(self.player_position)
 
         raise ValueError("Invalid Strategy Type for Matrix game: {}".format(type(self.strategy)))
+
+    def draw_valuations_(self, common_component, weights):
+        # dummy for compatibility
+        pass
 
 class Bidder(Player):
     """ A player in an auction game. Has a distribution over valuations/types that is
@@ -453,3 +458,10 @@ class ReverseBidder(Bidder):
         """For reverse bidders, returns are inverted.
         """
         return - super().get_counterfactual_utility(allocations, payments, counterfactual_valuations)
+
+
+class CycleBidder(Bidder):
+    """A dummy player for cyclic games."""
+
+    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
+        return -payments

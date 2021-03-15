@@ -10,13 +10,13 @@ import numpy as np
 from scipy import integrate, interpolate
 from scipy import optimize
 
-from bnelearn.bidder import Bidder
+from bnelearn.bidder import Bidder, CycleBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
-from bnelearn.strategy import ClosureStrategy
+from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, CycleAuction
+from bnelearn.strategy import ClosureStrategy, NeuralNetStrategy
 from bnelearn.correlation_device import (
     MineralRightsCorrelationDevice, AffiliatedObservationsDevice)
 
@@ -173,6 +173,8 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3(
 def _optimal_bid_single_item_3p_mineral_rights(valuation: torch.Tensor, player_position: int = 0) -> torch.Tensor:
     return (2 * valuation) / (2 + valuation)
 
+def _zero_bid(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
+    return 0*valuation
 
 def _optimal_bid_single_item_2p_affiliated_observations(valuation: torch.Tensor, player_position: int = 0) -> torch.Tensor:
     return (2/3) * valuation
@@ -301,9 +303,9 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.bne_env = AuctionEnvironment(
             self.mechanism,
             agents=[self._strat_to_bidder(bne_strategy,
-                                            player_position=i,
-                                            batch_size=self.logging.eval_batch_size,
-                                            cache_actions=self.logging.cache_eval_actions)
+                                          player_position=i,
+                                          batch_size=self.logging.eval_batch_size,
+                                          cache_actions=self.logging.cache_eval_actions)
                     for i in range(self.n_players)],
             batch_size=self.logging.eval_batch_size,
             n_players=self.n_players,
@@ -748,4 +750,120 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, 'interdependent', self.valuation_prior,
                 'symmetric', self.risk_profile, str(self.n_players) + 'p']
+        return os.path.join(*name)
+
+
+class CycleExperiment(SingleItemExperiment):
+    """
+    Conter example experiment in which gradient dynamics cycle around the BNE
+    and thus do not converge.
+    """
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+
+        if self.config.setting.bayesian:
+            self.bayesian = True
+            self.u_lo = self.config.setting.u_lo
+            self.u_hi = self.config.setting.u_hi
+        else:
+            self.bayesian = False
+            self.u_lo = self.u_hi = 1
+
+        assert self.config.setting.u_lo is not None, """Prior boundaries not specified!"""
+        assert self.config.setting.u_hi is not None, """Prior boundaries not specified!"""
+
+        self.n_players = config.setting.n_players
+        self.valuation_prior = 'uniform'
+        self.common_prior = torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
+        self.plot_xmin = self.u_lo
+        self.plot_xmax = self.u_hi
+        self.plot_ymin = - self.u_hi * 1.05
+        self.plot_ymax = self.u_hi * 1.05
+
+        self.model_sharing = self.config.learning.model_sharing
+        if self.model_sharing:
+            self.n_models = 1
+            self._bidder2model = [0] * self.n_players
+        else:
+            self.n_models = self.n_players
+            self._bidder2model = list(range(self.n_players))
+
+        super().__init__(config=config)
+
+    def _setup_mechanism(self):
+        self.mechanism = CycleAuction(cuda=self.hardware.cuda)
+
+    def _check_and_set_known_bne(self):
+        self._optimal_bid = _zero_bid
+        return True
+
+    def _get_analytical_bne_utility(self):
+        return torch.tensor(0, device=self.hardware.device)
+
+    def _setup_eval_environment(self):
+        """Determines whether a bne exists and sets up eval environment."""
+
+        assert hasattr(self, '_optimal_bid')
+
+        bne_strategy = ClosureStrategy(self._optimal_bid)
+
+        # define bne agents once then use them in all runs
+        self.bne_env = AuctionEnvironment(
+            self.mechanism,
+            agents=[self._strat_to_bidder(bne_strategy,
+                                          player_position=i,
+                                          batch_size=self.logging.eval_batch_size,
+                                          cache_actions=self.logging.cache_eval_actions)
+                    for i in range(self.n_players)],
+            batch_size=self.logging.eval_batch_size,
+            n_players=self.n_players,
+            strategy_to_player_closure=self._strat_to_bidder
+        )
+
+        bne_utility_analytical = self._get_analytical_bne_utility()
+        self.bne_utility = bne_utility_analytical
+        self.bne_utilities = [self.bne_utility] * self.n_models
+
+    def _setup_bidders(self):
+        """
+        1. Create and save the models and bidders
+        2. Save the model parameters
+        """
+        print('Setting up bidders...')
+        self.models = [None] * self.n_models
+
+        for i in range(len(self.models)):
+            self.models[i] = NeuralNetStrategy(
+                self.input_length,
+                hidden_nodes=self.learning.hidden_nodes,
+                hidden_activations=self.learning.hidden_activations,
+                output_length=self.n_items,
+                non_negative_actions=self.learning.non_negative_actions,
+                use_bias=self.learning.use_bias
+            ).to(self.hardware.device)
+
+        self.bidders = [
+            self._strat_to_bidder(self.models[m_id], batch_size=self.learning.batch_size, player_position=i)
+            for i, m_id in enumerate(self._bidder2model)]
+
+        self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
+                             self.models]
+
+        if self.learning.pretrain_iters > 0:
+            print('\tpretraining...')
+
+            if hasattr(self, 'pretrain_transform'):
+                pretrain_transform = self.pretrain_transform  # pylint: disable=no-member
+            else:
+                pretrain_transform = None
+
+            for i, model in enumerate(self.models):
+                model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
+                               self.learning.pretrain_iters, pretrain_transform)
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+        return CycleBidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions)
+
+    def _get_logdir_hierarchy(self):
+        name = ['single_item', 'cycle']
         return os.path.join(*name)

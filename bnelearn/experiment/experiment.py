@@ -155,20 +155,21 @@ class Experiment(ABC):
         pass
 
     def _setup_learners(self):
-
-        # TODO
-        # if self.learning.learner == 'ESPGLearner':
-        #     ...
-        # elif ...
-        #   ...
-        self.learners = [
-            ESPGLearner(model=model,
-                        environment=self.env,
-                        hyperparams=self.learning.learner_hyperparams,
-                        optimizer_type=self.learning.optimizer,
-                        optimizer_hyperparams=self.learning.optimizer_hyperparams,
-                        strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]})
-            for m_id, model in enumerate(self.models)]
+        if self.learning.learner_type == 'ESPGLearner':
+            self.learners = [
+                ESPGLearner(
+                    model=model,
+                    environment=self.env,
+                    hyperparams=self.learning.learner_hyperparams,
+                    optimizer_type=self.learning.optimizer,
+                    optimizer_hyperparams=self.learning.optimizer_hyperparams,
+                    strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
+                )
+                for m_id, model in enumerate(self.models)]
+        elif self.learning.learner_type == 'LOLALearner':
+            raise NotImplementedError('`LOLALearner` not implemented.')
+        elif self.learning.learner_type == 'SOSLearner':
+            raise NotImplementedError('`SOSLearner` not implemented.')
 
     def _setup_bidders(self):
         """
