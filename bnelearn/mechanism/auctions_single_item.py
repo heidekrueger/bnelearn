@@ -198,9 +198,8 @@ class ThirdPriceSealedBidAuction(Mechanism):
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
 
-class CycleAuction(Mechanism):
-    "Game mechanism that has cyclic gradient dynamics."
-
+class CycleGame(Mechanism):
+    """Game mechanism that has cyclic gradient dynamics."""
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
         assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
@@ -217,6 +216,18 @@ class CycleAuction(Mechanism):
         # allocate return variables
         temp = bids[:, 0, :] * bids[:, 1, :]
         payments = torch.cat((temp, -temp), axis=1)
-        allocations = torch.ones(batch_size, n_players, n_items, device=self.device)
+
+        # dummy allocations
+        allocations = torch.empty(batch_size, n_players, n_items, device=self.device)
 
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
+
+
+class CycleAuction(Mechanism):
+    """
+    Game mechanism that has problematic cyclic gradient dynamics AND
+    problematic auction gardients.
+    """
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """TODO"""
+        pass

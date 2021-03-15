@@ -29,7 +29,7 @@ if __name__ == '__main__':
 
     for learner in learners:
         experiment_config, experiment_class = ConfigurationManager(
-            experiment_type='cycle',
+            experiment_type='cycle_game',
             n_runs=1,
             n_epochs=100,
         ) \

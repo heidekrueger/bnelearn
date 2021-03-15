@@ -289,7 +289,7 @@ class ConfigurationManager:
             (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
             (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
-        'cycle':
+        'cycle_game':
             (CycleExperiment, _init_cycle, _post_init_cycle),
         'jordan':
             (JordanExperiment, _init_jordan, _post_init_jordan)
