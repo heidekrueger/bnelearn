@@ -4,6 +4,7 @@ can often be shared by specific experiments.
 """
 
 import os
+from sys import platform
 import time
 from abc import ABC, abstractmethod
 from time import perf_counter as timer
@@ -290,10 +291,10 @@ class Experiment(ABC):
             self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
             tic = timer()
-            self._log_experiment_params()
-            self._log_hyperparams()
+            # self._log_experiment_params()
+            # self._log_hyperparams()
 
-            self._log_experiment_params()
+            # self._log_experiment_params()
             logging_utils.save_experiment_config(self.experiment_log_dir, self.config)
             elapsed = timer() - tic
             logging_utils.log_git_commit_hash(self.experiment_log_dir)
@@ -302,9 +303,12 @@ class Experiment(ABC):
             elapsed = 0
         self.overhead += elapsed
 
-    def _exit_run(self):
+    def _exit_run(self, global_step=None):
         """Cleans up a run after it is completed"""
-        if self.logging.enable_logging and self.logging.save_models:
+        if self.logging.enable_logging:
+            self._log_experiment_params(global_step=global_step)
+
+        if self.logging.save_models:
             self._save_models(directory=self.run_log_dir)
 
         del self.writer  # make this explicit to force cleanup and closing of tb-logfiles
@@ -348,11 +352,17 @@ class Experiment(ABC):
 
         for run_id, seed in enumerate(self.running.seeds):
             print(f'\nRunning experiment {run_id} (using seed {seed})')
-
+            e = None
             try:
+                t = time.strftime('%T ')
+                if platform == 'win32':
+                    t = t.replace(':', '.')
+
                 self.run_log_dir = os.path.join(
                     self.experiment_log_dir,
-                    f'{run_id:02d} ' + time.strftime('%T ') + str(seed))
+                    f'{run_id:02d} ' + t + str(seed)
+                    )
+
                 torch.random.manual_seed(seed)
                 torch.cuda.manual_seed_all(seed)
                 np.random.seed(seed)
@@ -403,7 +413,7 @@ class Experiment(ABC):
                         step=self.logging.export_step_wise_linear_bid_function_size)
 
             finally:
-                self._exit_run()
+                self._exit_run(global_step=e)
 
         # Once all runs are done, convert tb event files to csv
         if self.logging.enable_logging and (
@@ -610,7 +620,6 @@ class Experiment(ABC):
                 self._cur_epoch_log_params['epsilon_absolute' + n] = epsilon_absolute[i]
                 self._cur_epoch_log_params['L_2' + n] = L_2[i]
                 self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
-
 
         if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
             create_plot_output = epoch % self.logging.plot_frequency == 0
@@ -822,9 +831,23 @@ class Experiment(ABC):
 
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 
-    def _log_experiment_params(self):
+    def _log_experiment_params(self, global_step=None):
+        """Logging of paramters after learning finished.
+
+        Arguments:
+            global_step, int: number of completed iterations/epochs. Will usually
+                be equal to `self.running.n_epochs`, except when a stopping
+                criterion is met earlier.
+
+        Returns:
+            Writes to `self.writer`.
+
+        """
         # TODO: write out all experiment params (complete dict) #See issue #113
         # TODO: Stefan: this currently called _per run_. is this desired behavior?
+        for i, model in enumerate(self.models):
+            self.writer.add_text('hyperparameters/neural_net_spec', str(model))
+            self.writer.add_graph(model, self.env.agents[i].valuations)
 
         h_params = {'hyperparameters/batch_size': self.learning.batch_size,
                     'hyperparameters/pretrain_iters': self.learning.pretrain_iters,
@@ -833,14 +856,31 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_hyperparams': str(self.learning.optimizer_hyperparams),
                     'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
-        self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
+        ignored_metrics = ['utilities', 'update_norm', 'overhead_hours']
+        try:
+            for i, (k, v) in enumerate(self._cur_epoch_log_params.items()):
+                if k not in ignored_metrics:
+                    if isinstance(v, list):  # TODO: isn't this the same behavior as in the second case for tensor?
+                        for model_number in range(len(v)):
+                            self._hparams_metrics["metrics/" + k+"_"+str(model_number)] = v[model_number]
+                    elif isinstance(v, torch.Tensor):
+                        for model_number, metric in enumerate(v):
+                            self._hparams_metrics["metrics/" + k+"_"+str(model_number)] = metric
+                    elif isinstance(v, int) or isinstance(v, float):
+                        self._hparams_metrics["metrics/" + k] = v
+                    else:
+                        print("the type ", type(v), " is not supported as a metric")
+        except Exception as e:  # pylint: disable=broad-except
+            print(e)
+        self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics,
+                                global_step=global_step)
 
-    def _log_hyperparams(self, epoch=0):
-        """Everything that should be logged on every learning_rate update"""
-
-        for i, model in enumerate(self.models):
-            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)  # ToDO To hyperparams
-            self.writer.add_graph(model, self.env.agents[i].valuations)
+    # def _log_hyperparams(self, epoch=0):
+    #     """Everything that should be logged on every learning_rate update"""
+    #
+    #     for i, model in enumerate(self.models):
+    #         self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)  # ToDO To hyperparams
+    #         self.writer.add_graph(model, self.env.agents[i].valuations)
 
     def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to
