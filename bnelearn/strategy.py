@@ -326,6 +326,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
         class GaussLayer(nn.Module):
             """
             Custom layer for normally distributed predictions (non-negatvie).
+
+            Has no trainable parameters.
             """
             def forward(self, x):
                 if x.dim() == 1:
@@ -336,7 +338,9 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         class UniformLayer(nn.Module):
             """
-            Custom layer for predictions following a beta distribution.
+            Custom layer for predictions following a uniform distribution.
+
+            Has no trainable parameters.
             """
             def forward(self, x):
                 if x.dim() == 1:
