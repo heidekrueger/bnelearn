@@ -1,0 +1,27 @@
+digraph "packages" {
+charset="utf-8"
+rankdir=BT
+"0" [label="bnelearn", shape="box"];
+"1" [label="bnelearn.bidder", shape="box"];
+"2" [label="bnelearn.correlation_device", shape="box"];
+"3" [label="bnelearn.environment", shape="box"];
+"4" [label="bnelearn.mechanism", shape="box"];
+"5" [label="bnelearn.mechanism.auctions_combinatorial", shape="box"];
+"6" [label="bnelearn.mechanism.auctions_multiunit", shape="box"];
+"7" [label="bnelearn.mechanism.auctions_single_item", shape="box"];
+"8" [label="bnelearn.mechanism.auctions_single_player", shape="box"];
+"9" [label="bnelearn.mechanism.mechanism", shape="box"];
+"2" -> "1" [arrowhead="open", arrowtail="none"];
+"3" -> "1" [arrowhead="open", arrowtail="none"];
+"3" -> "2" [arrowhead="open", arrowtail="none"];
+"3" -> "4" [arrowhead="open", arrowtail="none"];
+"4" -> "4" [arrowhead="open", arrowtail="none"];
+"4" -> "5" [arrowhead="open", arrowtail="none"];
+"4" -> "6" [arrowhead="open", arrowtail="none"];
+"4" -> "7" [arrowhead="open", arrowtail="none"];
+"4" -> "8" [arrowhead="open", arrowtail="none"];
+"5" -> "9" [arrowhead="open", arrowtail="none"];
+"6" -> "9" [arrowhead="open", arrowtail="none"];
+"7" -> "9" [arrowhead="open", arrowtail="none"];
+"8" -> "9" [arrowhead="open", arrowtail="none"];
+}
