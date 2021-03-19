@@ -16,6 +16,7 @@ from bnelearn.experiment.configurations import (SettingConfig,
                                                 EnhancedJSONEncoder)
 
 from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
+                                                          LLGFullExperiment,
                                                           LLLLGGExperiment)
 from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
 
@@ -95,6 +96,10 @@ class ConfigurationManager:
         self.setting.u_lo = 0
         self.setting.u_hi = 1
         self.setting.payment_rule = 'second_price'
+        self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
+                                    'efficiency': True,
+                                    'revenue': True}
 
     def _init_affiliated_observations(self):
         self.running.n_runs = 1
@@ -106,6 +111,10 @@ class ConfigurationManager:
         self.setting.u_lo = 0
         self.setting.u_hi = 1
         self.setting.payment_rule = 'first_price'
+        self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
+                                    'efficiency': True,
+                                    'revenue': True}
 
     def _init_llg(self):
         self.learning.model_sharing = True
@@ -114,7 +123,12 @@ class ConfigurationManager:
         self.setting.n_players = 3
         self.setting.payment_rule = 'nearest_zero'
         self.setting.correlation_groups = [[0, 1], [2]]
+        self.setting.regret = 0.0
         self.setting.gamma = 0.0
+        self.logging.log_metrics = {'opt': True,
+                                    'efficiency': True,
+                                    'revenue': True,
+                                    'util_loss': True}
 
     #     self.setting.correlation_types = 'independent'
     #
@@ -130,6 +144,19 @@ class ConfigurationManager:
     #         print('BNE in constant weights correlation model not approximated.')
     #
     #     return self
+
+    def _init_llg_full(self):
+        self.learning.model_sharing = False
+        self.setting.u_lo = [0, 0, 0]
+        self.setting.u_hi = [1, 1, 2]
+        self.setting.n_players = 3
+        self.setting.payment_rule = 'first_price'
+        self.setting.correlation_groups = [[0, 1], [2]]
+        self.setting.gamma = 0.0
+        self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
+                                    'efficiency': False,
+                                    'revenue': False}
 
     def _init_llllgg(self):
         self.logging.util_loss_batch_size = 2 ** 12
@@ -147,17 +174,23 @@ class ConfigurationManager:
         self.setting.payment_rule = 'vcg'
         self.setting.n_units = 2
         self.learning.model_sharing = True
-        self.setting.u_lo = [0, 0]
-        self.setting.u_hi = [1, 1]
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1]
         self.setting.risk = 1.0
         self.setting.constant_marginal_values = False
+        self.setting.gamma = 0.0
+        self.setting.correlation_types = 'independent'
         self.logging.plot_points = 1000
+        self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
+                                    'efficiency': True,
+                                    'revenue': True}
 
     def _init_splitaward(self):
         self.setting.n_units = 2
         self.learning.model_sharing = True
-        self.setting.u_lo = [1, 1]
-        self.setting.u_hi = [1.4, 1.4]
+        self.setting.u_lo = [1]
+        self.setting.u_hi = [1.4]
         self.setting.constant_marginal_values = False
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
@@ -177,10 +210,13 @@ class ConfigurationManager:
         if self.logging.experiment_name:
             self.logging.experiment_dir += ' ' + str(self.logging.experiment_name)
 
-        valid_log_metrics = ['opt', 'util_loss']
+        valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue']
         if self.logging.log_metrics is not None:
             for metric in self.logging.log_metrics:
                 assert metric in valid_log_metrics, "Metric not known."
+            missing_metrics = list(set(valid_log_metrics) - set(self.logging.log_metrics))
+            for m in missing_metrics:
+                self.logging.log_metrics[m] = False
             if self.logging.log_metrics['util_loss'] and self.logging.util_loss_batch_size is None:
                 self.logging.util_loss_batch_size = 2 ** 8
                 self.logging.util_loss_grid_size = 2 ** 8
@@ -224,14 +260,22 @@ class ConfigurationManager:
         pass
 
     def _post_init_llg(self):
-        # How many of those types are there and how do they correspond to gamma values?
+        # How many of those types are there and how do they correspond to gammavalues?
         # I might wrongly understand the relationship here
         if self.setting.gamma == 0.0:
             self.setting.correlation_types = 'independent'
         elif self.setting.gamma > 0.0:
-            self.setting.correlation_types = 'Bernoulli_weights'
+            if self.setting.correlation_types not in ['Bernoulli_weights', 'constant_weights']:
+                raise NotImplementedError(f'`{self.setting.correlation_types}` corrrelation model unknown.')
         elif self.setting.gamma > 1.0:
             raise Exception('Wrong gamma')
+
+        # Extend the distribution boundaries to all bidders if the request 
+        # number exceeds the default
+        while len(self.setting.u_lo) < self.setting.n_players:
+            self.setting.u_lo.insert(0, self.setting.u_lo[0])
+            self.setting.u_hi.insert(0, self.setting.u_hi[0])
+        self.setting.u_hi[-1] = self.setting.n_players - 1
 
     def _post_init_llllgg(self):
         pass
@@ -261,6 +305,8 @@ class ConfigurationManager:
             (AffiliatedObservationsExperiment, _init_affiliated_observations, _post_init_affiliated_observations),
         'llg':
             (LLGExperiment, _init_llg, _post_init_llg),
+        'llg_full':
+            (LLGFullExperiment, _init_llg_full, _post_init_llg),
         'llllgg':
             (LLLLGGExperiment, _init_llllgg, _post_init_llllgg),
         'multiunit':
@@ -290,7 +336,7 @@ class ConfigurationManager:
                     correlation_coefficients: List[float] = 'None', n_units: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None'):
+                    core_solver: str = 'None', regret: float = 'None',):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
@@ -348,19 +394,23 @@ class ConfigurationManager:
     def set_logging(self, enable_logging: bool = 'None', log_root_dir: str = 'None', util_loss_batch_size: int = 'None',
                     util_loss_grid_size: int = 'None', util_loss_frequency: int = 'None', eval_batch_size: int = 'None',
                     cache_eval_action: bool = 'None', plot_frequency: int = 'None', plot_points: int = 'None',
-                    plot_show_inline: bool = 'None', log_metrics: dict = 'None',
+                    plot_show_inline: bool = 'None', log_metrics: dict = 'None', best_response: bool = 'None',
                     save_tb_events_to_csv_aggregate: bool = 'None', save_tb_events_to_csv_detailed: bool = 'None',
                     save_tb_events_to_binary_detailed: bool = 'None', save_models: bool = 'None',
                     save_figure_to_disk_png: bool = 'None', save_figure_to_disk_svg: bool = 'None',
                     save_figure_data_to_disk: bool = 'None', stopping_criterion_rel_util_loss_diff: float = 'None',
                     stopping_criterion_frequency: int = 'None', stopping_criterion_duration: int = 'None',
                     stopping_criterion_batch_size: int = 'None', stopping_criterion_grid_size: int = 'None',
-                    export_step_wise_linear_bid_function_size: bool = 'None',
+                    cache_eval_actions: bool = 'None', export_step_wise_linear_bid_function_size: bool = 'None',
                     experiment_dir: str = 'None', experiment_name: str = 'None'):
         """Sets only the parameters of logging which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
             if hasattr(self.logging, arg):
                 setattr(self.logging, arg, v)
+
+        if isinstance(eval_batch_size, int) and eval_batch_size < 2**16 and cache_eval_actions:
+            warnings.warn('Using fixed valuations for evaluation. This may introduce bias!')
+
         return self
 
     # pylint: disable=too-many-arguments, unused-argument
@@ -429,6 +479,7 @@ class ConfigurationManager:
                                 util_loss_batch_size=2 ** 4,
                                 util_loss_grid_size=2 ** 4,
                                 util_loss_frequency=100,
+                                best_response=False,
                                 eval_batch_size=2 ** 22,
                                 cache_eval_actions=True,
                                 stopping_criterion_rel_util_loss_diff=0.001)

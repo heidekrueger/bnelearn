@@ -6,6 +6,7 @@ as it shares most its properties.
 
 import os
 from abc import ABC
+import warnings
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -14,45 +15,55 @@ from scipy import integrate, interpolate
 
 from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.experiment import  Experiment
+from .experiment import  Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.mechanism import (
-    MultiUnitVickreyAuction, MultiUnitUniformPriceAuction, MultiUnitDiscriminatoryAuction,
-    FPSBSplitAwardAuction
+    MultiUnitVickreyAuction, MultiUnitUniformPriceAuction,
+    MultiUnitDiscriminatoryAuction, FPSBSplitAwardAuction
 )
 from bnelearn.strategy import ClosureStrategy
+from bnelearn.correlation_device import (
+    IndependentValuationDevice, MultiUnitDevice
+)
 
 
-########################################################################################################################
-###                                                 BNE STRATEGIES                                                   ###
-########################################################################################################################
+###############################################################################
+###                             BNE STRATEGIES                              ###
+###############################################################################
 
-def _multiunit_bne(experiment_config, payment_rule):
+def _multiunit_bne(setting, payment_rule):
     """
     Method that returns the known BNE strategy for the standard multi-unit auctions
     (split-award is NOT one of the) as callable if available and None otherwise.
     """
 
-    if payment_rule in ('vcg', 'vickrey'):
-        def truthful(valuation, player_position=None):
-            return torch.clone(valuation)
+    if  float(setting.risk) != 1:
+        return None  # Only know BNE for risk neutral bidders
 
+    if payment_rule in ('vcg', 'vickrey'):
+        def truthful(valuation, player_position=None):  # pylint: disable=unused-argument
+            return valuation
         return truthful
 
-    elif payment_rule in ('first_price', 'discriminatory'):
-        if experiment_config.n_units == 2 and experiment_config.n_players == 2:
-            if not experiment_config.constant_marginal_values:
+    if (setting.correlation_types not in [None, 'independent'] or
+            setting.risk != 1):
+        return None
+
+    if payment_rule in ('first_price', 'discriminatory'):
+        if setting.n_units == 2 and setting.n_players == 2:
+            if not setting.constant_marginal_values:
                 print('BNE is only approximated roughly!')
                 return _optimal_bid_multidiscriminatory2x2
             else:
                 # TODO get valuation_cdf from experiment_config
-                raise NotImplementedError
                 # return _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf)
+                return None
 
-    elif payment_rule == 'uniform':
-        if experiment_config.n_units == 2 and experiment_config.n_players == 2:
+    if payment_rule == 'uniform':
+        if setting.n_units == 2 and setting.n_players == 2:
             return _optimal_bid_multiuniform2x2()
-        elif (experiment_config.n_units == 3 and experiment_config.n_players == 2 and experiment_config.item_interest_limit == 2):
+        if (setting.n_units == 3 and setting.n_players == 2
+                and setting.item_interest_limit == 2):
             return _optimal_bid_multiuniform3x2limit2
 
     return None
@@ -259,7 +270,7 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
 
     return _optimal_bid
 
-########################################################################################################################
+###############################################################################
 
 
 class MultiUnitExperiment(Experiment, ABC):
@@ -273,9 +284,38 @@ class MultiUnitExperiment(Experiment, ABC):
         self.n_units = self.n_items = self.config.setting.n_units
         self.n_players = self.config.setting.n_players
         self.payment_rule = self.config.setting.payment_rule
+        self.risk = float(self.config.setting.risk)
 
-        self.u_lo = self.config.setting.u_lo
-        self.u_hi = self.config.setting.u_hi
+        if len(self.config.setting.u_lo) == 1:
+            self.u_lo = self.config.setting.u_lo * self.n_players
+
+        if len(self.config.setting.u_hi) == 1:
+            self.u_hi = self.config.setting.u_hi * self.n_players
+
+        # Correlated setting?
+        if config.setting.correlation_types == 'additive':
+            self.CorrelationDevice = MultiUnitDevice
+            self.gamma = self.correlation = float(config.setting.gamma)
+        elif config.setting.correlation_types in ['independent', None]:
+            self.gamma = self.correlation = 0.
+            if config.setting.gamma is not None and float(config.setting.gamma) > 0:
+                warnings.warn('No correlation selected.')
+        else:
+            raise NotImplementedError('Correlation not implemented.')
+
+        if self.gamma > 0.0:
+            self.correlation_groups = [list(range(self.n_players))]
+            self.correlation_coefficients = [self.gamma]
+            self.correlation_devices = [
+                self.CorrelationDevice(
+                    common_component_dist=torch.distributions.Uniform(
+                        config.setting.u_lo[0], config.setting.u_hi[0]),
+                    batch_size=config.learning.batch_size,
+                    n_common_components=self.n_items,
+                    correlation=self.gamma),
+                ]
+            # Can't sample cond values here
+            self.config.logging.log_metrics['util_loss'] = False
 
         self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
@@ -286,7 +326,8 @@ class MultiUnitExperiment(Experiment, ABC):
             self._bidder2model = list(range(self.n_players))
 
         if not hasattr(self, 'positive_output_point'):
-            self.positive_output_point = torch.tensor([[self.u_hi] * self.n_units], dtype=torch.float)
+            self.positive_output_point = torch.tensor(
+                [self.u_hi[0]] * self.n_items, dtype=torch.float)
 
         self.constant_marginal_values = self.config.setting.constant_marginal_values
         self.item_interest_limit = self.config.setting.item_interest_limit
@@ -303,21 +344,23 @@ class MultiUnitExperiment(Experiment, ABC):
 
         super().__init__(config=config)
 
-
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         """
         Standard strat_to_bidder method.
         """
+        correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
         return Bidder.uniform(
             lower=self.u_lo[player_position], upper=self.u_hi[player_position],
             strategy=strategy,
             n_items=self.n_units,
+            risk=self.risk,
             item_interest_limit=self.item_interest_limit,
             descending_valuations=True,
             constant_marginal_values=self.constant_marginal_values,
             player_position=player_position,
             batch_size=batch_size,
-            cache_actions=cache_actions
+            cache_actions=cache_actions,
+            correlation_type=correlation_type
         )
 
     def _setup_mechanism(self):
@@ -335,8 +378,10 @@ class MultiUnitExperiment(Experiment, ABC):
 
     def _check_and_set_known_bne(self):
         """check for available BNE strategy"""
-        self._optimal_bid = _multiunit_bne(self.config.setting, self.config.setting.payment_rule)
-        return self._optimal_bid is not None
+        if self.correlation in [0.0, None] and self.config.setting.correlation_types in ['independent', None]:
+            self._optimal_bid = _multiunit_bne(self.config.setting, self.config.setting.payment_rule)
+            return self._optimal_bid is not None
+        return False
 
     def _setup_eval_environment(self):
         """Setup the BNE envierment for later evaluation of the learned strategies"""
@@ -372,7 +417,10 @@ class MultiUnitExperiment(Experiment, ABC):
         print('BNE envs have been set up.')
 
     def _get_logdir_hierarchy(self):
-        name = ['MultiUnit', self.payment_rule, str(self.n_players) + 'players_' + str(self.n_units) + 'units']
+        name = ['multi_unit', self.payment_rule, str(self.risk) + 'risk',
+                str(self.n_players) + 'players_' + str(self.n_units) + 'units']
+        if self.gamma > 0:
+            name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
         return os.path.join(*name)
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
@@ -422,7 +470,8 @@ class SplitAwardExperiment(MultiUnitExperiment):
         if self.payment_rule == 'first_price':
             self.mechanism = FPSBSplitAwardAuction(cuda=self.hardware.cuda)
         else:
-            raise NotImplementedError('for the split-award auction only the ' + 'first-price payment rule is supported')
+            raise NotImplementedError('for the split-award auction only the ' \
+                + 'first-price payment rule is supported')
 
     def _check_and_set_known_bne(self):
         """check for available BNE strategy"""
@@ -450,7 +499,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
         return ReverseBidder.uniform(
             lower=self.u_lo[0], upper=self.u_hi[0],
             strategy=strategy,
-            n_units=self.n_units,
+            n_items=self.n_units,
             item_interest_limit=self.item_interest_limit,
             descending_valuations=False,
             constant_marginal_values=self.constant_marginal_values,

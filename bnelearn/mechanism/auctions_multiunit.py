@@ -8,79 +8,99 @@ from .mechanism import Mechanism
 from ..util.tensor_util import batched_index_select
 
 
-def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
+class MultiUnitAuction(Mechanism):
+    """Class for multi-unit auctions where multiple identical items
+    (so called units) are for sale. Agents thus don't care about winning
+    item no. x or no. y, as they're homogeneous.
     """
-    Helper function for cleaning bids in multi-unit auctions.
-    For multi-unit actions bids per must be in decreasing for each bidder.
-    If agents' bids fail to fulfill this property, this function sets their bid
-    to zero, which will result in no items allocated and thus zero payoff.
 
-    Parameters
-    ----------
-    bids: torch.Tensor
-        of bids with dimensions (batch_size, n_players, n_items); first entry of
-        n_items dim corrsponds to bid of first unit, second entry to bid of second
-        unit, etc.
+    @staticmethod
+    def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
+        """Helper function for cleaning bids in multi-unit auctions.
 
-    Returns
-    -------
-    cleaned_bids: torch.Tensor (batch_size, n_players, n_items)
-        same dimension as bids, with zero entries whenever a bidder bid
-        nondecreasing in a batch.
-    """
-    cleaned_bids = bids.clone()
+        For multi-unit actions bids per must be in decreasing for each bidder.
+        If agents' bids fail to fulfill this property, this function sets their bid
+        to zero, which will result in no items allocated and thus zero payoff.
 
-    diff = bids.sort(dim=2, descending=True)[0] - bids
-    diff = torch.abs(diff).sum(dim=2) != 0  # boolean, batch_size x n_players
-    if diff.any():
-        warnings.warn('bids which were not in dcreasing order have been ignored!')
-    cleaned_bids[diff] = 0.0
+        Args:
+            bids: torch.Tensor
+                of bids with dimensions (batch_size, n_players, n_items); first entry of
+                n_items dim corrsponds to bid of first unit, second entry to bid of second
+                unit, etc.
 
-    return cleaned_bids
+        Returns:
+            cleaned_bids: torch.Tensor (batch_size, n_players, n_items)
+                same dimension as bids, with zero entries whenever a bidder bid
+                nondecreasing in a batch.
+        """
+        cleaned_bids = bids.clone()
+
+        diff = bids.sort(dim=2, descending=True)[0] - bids
+        diff = torch.abs(diff).sum(dim=2) != 0  # boolean, batch_size x n_players
+        if diff.any():
+            warnings.warn('bids which were not in dcreasing order have been ignored!')
+        cleaned_bids[diff] = 0.0
+
+        return cleaned_bids
+
+    @staticmethod
+    def _solve_allocation_problem(
+            bids: torch.Tensor,
+            random_tie_break: bool = False,
+            accept_zero_bids: bool = False,
+        ) -> torch.Tensor:
+        """For bids (batch x player x item) in descending order for each batch/
+        player, returns efficient allocation (0/1, batch x player x item).
+
+        Args:
+            bids (torch.Tensor) of agents bids of shape (batch, agent, unit)
+            random_tie_break (bool), optinoal: wether or not to randomize the
+                order of the agents (matters e.g. when all agents bid same
+                amount, then the first agent would always win).
+            accept_zero_bids (bool), wether or not agents can win by bidding
+                zero on a unit.
+
+        Returns:
+            allocations (torch.Tensor) of zeros and ones to indicate the
+                alocated units for each batch and for each bid.
+
+        Note:
+            This function assumes that validity checks have already been
+            performed.
+
+        """
+        # for readability
+        batch_dim, player_dim, item_dim = 0, 1, 2  # pylint: disable=unused-variable
+        batch_size, n_players, n_items = bids.shape
+
+        allocations = torch.zeros(batch_size, n_players*n_items, device=bids.device)
+
+        if random_tie_break: # randomly change order of bidders
+            idx = torch.randn((batch_size, n_players*n_items), device=bids.device) \
+                .sort()[1] + (n_players*n_items) \
+                * torch.arange(batch_size, device=bids.device).reshape(-1, 1)
+            bids_flat = bids.view(-1)[idx]
+        else:
+            bids_flat = bids.reshape(batch_size, n_players*n_items)
+
+        _, sorted_idx = torch.sort(bids_flat, descending=True)
+        allocations.scatter_(player_dim, sorted_idx[:,:n_items], 1)
+
+        if random_tie_break:  # restore bidder order
+            idx_rev = idx.sort()[1] + (n_players*n_items) \
+                    * torch.arange(batch_size, device=bids.device).reshape(-1, 1)
+            allocations = allocations.view(-1)[idx_rev.view(-1)]
+
+        # sorting is needed, since tie break could end up in favour of lower valued item
+        allocations = allocations.reshape_as(bids).sort(descending=True, dim=item_dim)[0]
+
+        if not accept_zero_bids:
+            allocations.masked_fill_(mask=bids==0, value=0)
+
+        return allocations
 
 
-def _get_multiunit_allocation(
-        bids: torch.Tensor,
-        random_tie_break: bool = False,
-        accept_zero_bids: bool = False,
-    ) -> torch.Tensor:
-    """For bids (batch x player x item) in descending order for each batch/player,
-       returns efficient allocation (0/1, batch x player x item)
-
-       This function assumes that validity checks have already been performed.
-    """
-    # for readability
-    batch_dim, player_dim, item_dim = 0, 1, 2 #pylint: disable=unused-variable
-    batch_size, n_players, n_items = bids.shape
-
-    allocations = torch.zeros(batch_size, n_players*n_items, device=bids.device)
-
-    if random_tie_break: # randomly change order of bidders
-        idx = torch.randn((batch_size, n_players*n_items), device=bids.device) \
-              .sort()[1] + (n_players*n_items) \
-              * torch.arange(batch_size, device=bids.device).reshape(-1, 1)
-        bids_flat = bids.view(-1)[idx]
-    else:
-        bids_flat = bids.reshape(batch_size, n_players*n_items)
-
-    _, sorted_idx = torch.sort(bids_flat, descending=True)
-    allocations.scatter_(player_dim, sorted_idx[:,:n_items], 1)
-
-    if random_tie_break: # restore bidder order
-        idx_rev = idx.sort()[1] + (n_players*n_items) \
-                  * torch.arange(batch_size, device=bids.device).reshape(-1, 1)
-        allocations = allocations.view(-1)[idx_rev.view(-1)]
-
-    # sorting is needed, since tie break could end up in favour of lower valued item
-    allocations = allocations.reshape_as(bids).sort(descending=True, dim=item_dim)[0]
-
-    if not accept_zero_bids:
-        allocations.masked_fill_(mask=bids==0, value=0)
-
-    return allocations
-
-
-class MultiUnitDiscriminatoryAuction(Mechanism):
+class MultiUnitDiscriminatoryAuction(MultiUnitAuction):
     """ Multi item discriminatory auction.
         Units are allocated to the highest n_item bids, winners pay as bid.
 
@@ -121,17 +141,17 @@ class MultiUnitDiscriminatoryAuction(Mechanism):
         # only accept decreasing bids
         # assert torch.equal(bids.sort(dim=item_dim, descending=True)[0], bids), \
         #     "Bids must be in decreasing order"
-        bids = _remove_invalid_bids(bids)
+        bids = self._remove_invalid_bids(bids)
 
         # Alternative w/o loops
-        allocations = _get_multiunit_allocation(bids)
+        allocations = self._solve_allocation_problem(bids)
 
         payments = torch.sum(allocations * bids, dim=2)  # sum over items
 
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
 
-class MultiUnitUniformPriceAuction(Mechanism):
+class MultiUnitUniformPriceAuction(MultiUnitAuction):
     """ In a uniform-price auction, all units are sold at a “market-clearing” price
         such that the total amount demanded is equal to the total amount supplied.
         We adopt the rule that the market-clearing price is the same as the highest
@@ -168,10 +188,10 @@ class MultiUnitUniformPriceAuction(Mechanism):
         # only accept decreasing bids
         # assert torch.equal(bids.sort(dim=item_dim, descending=True)[0], bids), \
         #     "Bids must be in decreasing order"
-        bids = _remove_invalid_bids(bids)
+        bids = self._remove_invalid_bids(bids)
 
         # allocate return variables (flat at this stage)
-        allocations = _get_multiunit_allocation(bids)
+        allocations = self._solve_allocation_problem(bids)
 
         # pricing
         payments = torch.zeros(batch_size, n_players * n_items, device=self.device)
@@ -184,7 +204,7 @@ class MultiUnitUniformPriceAuction(Mechanism):
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
 
-class MultiUnitVickreyAuction(Mechanism):
+class MultiUnitVickreyAuction(MultiUnitAuction):
     """ In a Vickrey auction, a bidder who wins k units pays the k highest
         losing bids of the other bidders.
 
@@ -225,10 +245,10 @@ class MultiUnitVickreyAuction(Mechanism):
         # only accept decreasing bids
         # assert torch.equal(bids.sort(dim=item_dim, descending=True)[0], bids), \
         #     "Bids must be in decreasing order"
-        bids = _remove_invalid_bids(bids)
+        bids = self._remove_invalid_bids(bids)
 
         # allocate return variables
-        allocations = _get_multiunit_allocation(bids)
+        allocations = self._solve_allocation_problem(bids)
 
         # allocations
         bids_flat = bids.reshape(batch_size, n_players * n_items)
@@ -250,7 +270,7 @@ class MultiUnitVickreyAuction(Mechanism):
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
 
-class FPSBSplitAwardAuction(Mechanism):
+class FPSBSplitAwardAuction(MultiUnitAuction):
     """
     First-price sealed-bid split-award auction: Multiple agents bidding for either 100%
     of the share or 50%.
@@ -262,8 +282,7 @@ class FPSBSplitAwardAuction(Mechanism):
 
     def _solve_allocation_problem(self, bids: torch.Tensor,
                                   random_tie_break: bool = False):
-        """
-        Computes allocation and welfare
+        """Computes allocation
 
         Args:
             bids: torch.Tensor

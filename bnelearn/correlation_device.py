@@ -3,7 +3,6 @@
 """
 from abc import ABC, abstractmethod
 import math
-import numpy as np
 from typing import List, Dict
 import torch
 from torch.distributions import Distribution
@@ -79,6 +78,7 @@ class CorrelationDevice(ABC):
 
 
 class IndependentValuationDevice(CorrelationDevice):
+    """Dummy `CorrelationDevice` for no correlation between agents."""
     def __init__(self):
         super().__init__(None, None, None, 'independent_valuations', 0.0)
 
@@ -103,13 +103,13 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
     """
     Implements correlation between two or more bidders, where their valuations
     depend additively on an individual component z_i and a common component s.
-    In this scheme, a Bernoulli (0 or 1) weight determines that eitherv_i =
+    In this scheme, a Bernoulli (0 or 1) weight determines that either v_i =
     z_i or v_i = s, with weights/probabilities being set such that correlation
     gamma is achieved between bidders.
     """
     def __init__(self, common_component_dist: Distribution,
                  batch_size: int, n_items, correlation: float):
-        super().__init__(common_component_dist, batch_size, n_items, 
+        super().__init__(common_component_dist, batch_size, n_items,
                          "Bernoulli_weights_model", correlation)
 
     def get_weights(self):
@@ -128,10 +128,9 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
             conditional_observation: torch.Tensor,
             batch_size: int=None
         ) -> Dict[int, torch.Tensor]:
-
-        assert len(agents) == 2, \
-            "conditional draws currently only supported for 2 agents in " + \
-            "the correlation group!"
+        """
+        Conditional draws supported for arbitrary number of agents.
+        """
 
         # TODO: possibly unify LLG correlation devices in parent
         batch_size_0 = conditional_observation.shape[0]
@@ -139,16 +138,20 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
         conditionals_dict = dict()
 
         # own valuation is given: repeat for new sample dimension
-        conditionals_dict[player_position] = conditional_observation.repeat(1,
-            batch_size_1).view(batch_size_0 * batch_size_1, 1)
-
-        # draw conditional observation of other local bidder
-        local_opponent = 1 if player_position == 0 else 0
-        u = torch.empty((batch_size_1, 1),
-                        device=conditional_observation.device).uniform_(0, 1)
-        conditionals_dict[local_opponent] = self.local_cond_sample(
-            conditional_observation)(u[:, 0]) \
+        conditionals_dict[player_position] = conditional_observation\
+            .repeat(1,batch_size_1) \
             .view(batch_size_0 * batch_size_1, 1)
+
+        # draw conditional observation of other local bidders
+        for agent in agents:
+            if agent.player_position != player_position:
+                u = torch.empty(
+                    (batch_size_1, 1),
+                    device=conditional_observation.device
+                ).uniform_(0, 1)
+                conditionals_dict[agent.player_position] = \
+                    self.local_cond_sample(conditional_observation) \
+                        (u[:, 0]).view(batch_size_0 * batch_size_1, 1)
 
         return conditionals_dict
 
@@ -180,7 +183,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
     """
     Draw valuations according to the constant weights model in Ausubel &
     Baranov.
-    
+
     Bidders valuations depend additively on an individual component z_i and a
     common component s. In this scheme, a weight w (across the entire batch!)
     is chosen such that
@@ -206,10 +209,9 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
             conditional_observation: torch.Tensor,
             batch_size: int=None
         ) -> Dict[int, torch.Tensor]:
-
-        assert len(agents) == 2, \
-            "conditional draws currently only supported for 2 agents in " + \
-            "the correlation group!"
+        """
+        Conditional draws supported for arbitrary number of agents.
+        """
 
         batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
@@ -220,11 +222,13 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
             .repeat(1, batch_size_1)\
             .view(batch_size_0 * batch_size_1, 1)
 
-        # draw conditional observation of other local bidder
-        local_opponent = 1 if player_position == 0 else 0
-        conditionals_dict[local_opponent] = self.draw_conditional_v2(
-            conditional_observation, batch_size_1) \
-            .view(batch_size_0 * batch_size_1, 1)
+        # draw conditional observation of other local bidders
+        for agent in agents:
+            if agent.player_position != player_position:
+                conditionals_dict[agent.player_position] = \
+                    self.draw_conditional_v2(
+                        conditional_observation, batch_size_1) \
+                        .view(batch_size_0 * batch_size_1, 1)
 
         return conditionals_dict
 
@@ -241,16 +245,22 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
 
         # degenerate case: z1 doesn't matter, but we still need the interface
         if gamma == 1.0:
-            return torch.distributions.Uniform(0, 1)
+            return torch.empty((batch_size_1, 1), device=v1.device) \
+                .uniform_(0, 1) \
+                .repeat(batch_size_0, 1) \
+                .view(batch_size_0, batch_size_1)
 
         w = self.weight
         l_bounds = torch.max(torch.zeros_like(v1), (v1 - w)/(1 - w)) \
-            .repeat(1, batch_size_1).view(batch_size_0, batch_size_1)
+            .repeat(1, batch_size_1) \
+            .view(batch_size_0, batch_size_1)
         u_bounds = torch.min(torch.ones_like(v1), v1/(1 - w)) \
-            .repeat(1, batch_size_1).view(batch_size_0, batch_size_1)
+            .repeat(1, batch_size_1) \
+            .view(batch_size_0, batch_size_1)
         uniform = torch.empty((batch_size_1, 1), device=v1.device) \
             .uniform_(0, 1) \
-            .repeat(batch_size_0, 1).view(batch_size_0, batch_size_1)
+            .repeat(batch_size_0, 1) \
+            .view(batch_size_0, batch_size_1)
         return (u_bounds - l_bounds) * uniform + l_bounds
 
     def draw_conditional_v2(self, v1: torch.Tensor, batch_size: int):
@@ -270,8 +280,8 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
 
 class MineralRightsCorrelationDevice(CorrelationDevice):
     """
-    Draw valuations according to the constant weights model in Ausubel &
-    Baranov.
+    Draw valuations according to the single item mineral rights model in
+    Krishna.
     """
     def __init__(self, common_component_dist: Distribution,
                  batch_size: int, n_items: int, correlation: float):
@@ -333,8 +343,8 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
 
 class AffiliatedObservationsDevice(CorrelationDevice):
     """
-    Draw valuations according to the constant weights model in Ausubel &
-    Baranov.
+    Draw valuations according to the single item affiliated observations model
+    in Krishna.
     """
     def __init__(self, common_component_dist: Distribution, batch_size: int,
                  n_common_components: int, correlation: float):
@@ -355,7 +365,7 @@ class AffiliatedObservationsDevice(CorrelationDevice):
         # This method should work for an arbirtray number of agents
 
         opponent_positions = [a.player_position for a in agents if
-                             a.player_position != player_position]
+                              a.player_position != player_position]
         batch_size_0 = conditional_observation.shape[0]
         batch_size_1 = batch_size if batch_size is not None else batch_size_0
         conditionals_dict = dict()
@@ -410,3 +420,26 @@ class AffiliatedObservationsDevice(CorrelationDevice):
             .repeat(batch_size_0, 1).view(batch_size_0, batch_size_1)
 
         return (u_bounds - l_bounds) * uniform + l_bounds
+
+
+class MultiUnitDevice(CorrelationDevice):
+    """
+    Draw valuations according to the single item affiliated observations model
+    in Krishna.
+    """
+    def __init__(self, common_component_dist: Distribution, batch_size: int,
+                 n_common_components: int, correlation: float):
+        super().__init__(common_component_dist, batch_size,
+                         n_common_components, "multi_unit_model",
+                         correlation)
+
+    def get_weights(self):
+        return torch.tensor(self.corr)
+
+    def draw_conditionals(
+            self, agents: List[Bidder],
+            player_position: int,
+            conditional_observation: torch.Tensor,
+            batch_size: int=None
+        ) -> Dict[int, torch.Tensor]:
+        raise NotImplementedError

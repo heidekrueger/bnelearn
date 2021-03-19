@@ -12,7 +12,7 @@ from scipy import optimize
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.experiment import Experiment
+from .experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
@@ -637,7 +637,7 @@ class MineralRightsExperiment(SingleItemExperiment):
 
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, 'interdependent', self.valuation_prior,
-                'symmetric', self.risk_profile, str(self.n_players) + 'p']
+                'symmetric', str(self.risk) + 'risk', str(self.n_players) + 'players']
         return os.path.join(*name)
 
 
@@ -706,7 +706,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         # define bne agents once then use them in all runs
         agents = [
             self._strat_to_bidder(
-                bne_strategy,
+                strategy = bne_strategy,
                 player_position = i,
                 batch_size = self.config.logging.eval_batch_size,
                 cache_actions = self.config.logging.cache_eval_actions
@@ -740,12 +740,11 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities.tolist()))
         self.bne_utility = self.bne_utilities.mean()
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+    def _strat_to_bidder(self, **kwargs):
         correlation_type = 'affiliated'
-        return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions,
-                      risk=self.risk, correlation_type=correlation_type)
+        return Bidder(self.common_prior, correlation_type=correlation_type, **kwargs)
 
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, 'interdependent', self.valuation_prior,
-                'symmetric', self.risk_profile, str(self.n_players) + 'p']
+                'symmetric', str(self.risk) + 'risk', str(self.n_players) + 'players']
         return os.path.join(*name)

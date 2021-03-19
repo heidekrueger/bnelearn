@@ -86,14 +86,16 @@ ids_lg, *testdata_lg = zip(*[
     [
         'LLG-nearest_bid_correlated',
         *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3)
-                           .set_setting(payment_rule='nearest_bid', gamma=0.5)
+                           .set_setting(payment_rule='nearest_bid',
+                                        correlation_types='Bernoulli_weights', gamma=0.5)
                            .get_config(),
         True
     ],
     [  # Used to fail when 0.5 didn't, due to neg bids
         'LLG-nearest_bid_perfectly_correlated',
         *ConfigurationManager(experiment_type='llg', n_runs=2, n_epochs=3) \
-                           .set_setting(payment_rule='nearest_bid', gamma=1.0)
+                           .set_setting(payment_rule='nearest_bid',
+                                        correlation_types='Bernoulli_weights', gamma=1.0)
                            .get_config(),
         True],
 

@@ -104,7 +104,7 @@ class LoggingConfig:
     plot_points: int
     plot_show_inline: bool
     log_metrics: dict
-
+    best_response: bool
 
     save_tb_events_to_csv_aggregate: bool
     save_tb_events_to_csv_detailed: bool
@@ -115,8 +115,6 @@ class LoggingConfig:
     save_figure_to_disk_png: bool
     save_figure_to_disk_svg: bool
     save_figure_data_to_disk: bool
-
-    best_response = False
 
     # Stopping Criterion #TODO: this section should go into ExperimentConfiguration
     stopping_criterion_rel_util_loss_diff: float = None
