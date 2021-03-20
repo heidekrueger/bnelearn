@@ -180,7 +180,11 @@ def _optimal_bid_splitaward2x2_1(experiment_config):
     # cut off bids at top
     cut_off = 4 * u_hi[0]
 
-    value_cdf = torch.distributions.Uniform(u_lo[0], u_hi[0]).cdf
+    # @NILS: problem: value_cdf only accepts cpu-tensors now -- before you entered floats
+    # or gpu-tensors
+    #dist = torch.distributions.Uniform(u_lo[0], u_hi[0])
+    #value_cdf = lambda theta: dist.cdf(torch.tensor(theta))
+    value_cdf = lambda theta: (theta - u_lo[0]) / (u_hi[0] - u_lo[0])
 
     def _optimal_bid(valuation, player_position=None, return_payoff_dominant=True):
         sigma_bounds = torch.ones_like(valuation, device=valuation.device)
