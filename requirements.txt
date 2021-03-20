@@ -7,7 +7,7 @@ jupyterlab
 pytorch # conda install -c pytorch
 tensorboard
 matplotlib
-pynvml #conda install -c fastai pynvml
+pynvml #for accessing GPU statistics. conda install -c fastai pynvml
 pytest
 pytest-cov
 pytest-xdist #parallel tests
