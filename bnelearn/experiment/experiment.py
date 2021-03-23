@@ -87,7 +87,7 @@ class Experiment(ABC):
         self.models: Iterable[torch.nn.Module] = None
         self.bidders: Iterable[Bidder] = None
         self.env: Environment = None
-        self.learners: Iterable[learner.Learner] = None
+        self.learners: Iterable[learners.Learner] = None
 
         # These are set on first _log_experiment
         self.v_opt: torch.Tensor = None
@@ -162,6 +162,11 @@ class Experiment(ABC):
         """
         available_learners = dict(inspect.getmembers(learners))
         if self.learning.learner_type in available_learners.keys():
+            if 'LOLA' in self.learning.learner_type or 'SOS' in self.learning.learner_type:
+                self.opponent_aware = True
+            else:
+                self.opponent_aware = False
+
             self.learners = [
                 available_learners[self.learning.learner_type](
                     model=model,
@@ -288,6 +293,9 @@ class Experiment(ABC):
             self.fig = plt.figure()
             self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
+            for l in self.learners:
+                l.writer = self.writer
+
             tic = timer()
             self._log_experiment_params()
             self._log_hyperparams()
@@ -322,11 +330,16 @@ class Experiment(ABC):
         prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
                        for model in self.models]
 
-        # update model
-        utilities = torch.tensor([
-            learner.update_strategy_and_evaluate_utility()
-            for learner in self.learners
-        ])
+        if not self.opponent_aware:  # update model
+            utilities = torch.tensor([
+                learner.update_strategy_and_evaluate_utility()
+                for learner in self.learners
+            ])
+        else:  # changed to add opponent model
+            utilities = torch.tensor([
+                learner.update_strategy_and_evaluate_utility(self.models[1 - position])
+                for position, learner in enumerate(self.learners)
+            ])
 
         if self.logging.enable_logging:
             self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}
@@ -671,14 +684,28 @@ class Experiment(ABC):
             # TODO Stefan: this seems to be false in most settings, even when not desired.
             redraw_bne_vals = not self.logging.cache_eval_actions
             # length: n_models
-            utility_vs_bne[bne_idx] = torch.tensor([
-                bne_env.get_strategy_reward(
-                    model,
-                    player_position=m2b(m),
-                    draw_valuations=redraw_bne_vals,
-                    use_env_valuations=not redraw_bne_vals
-                ) for m, model in enumerate(self.models)
-            ])
+
+            if not self.opponent_aware:
+                utility_vs_bne[bne_idx] = torch.tensor([
+                    bne_env.get_strategy_reward(
+                        model,
+                        player_position=m2b(m),
+                        draw_valuations=redraw_bne_vals,
+                        use_env_valuations=not redraw_bne_vals
+                    ) for m, model in enumerate(self.models)
+                ])
+            else:  # Changed for adding opponent model
+                utility_vs_bne[bne_idx] = torch.tensor([
+                    bne_env.get_reward(
+                        self._strat_to_bidder(
+                            self.models[m], player_position=m2b(m),
+                            batch_size=self.logging.eval_batch_size
+                        ),
+                        bne_env.agents[1 - m],
+                        draw_valuations=False
+                    )[0] for m, model in enumerate(self.models)
+                ])
+
             epsilon_relative[bne_idx] = torch.tensor(
                 [1 - utility_vs_bne[bne_idx][i] / self.bne_utilities[bne_idx][m2b(i)]
                  for i, model in enumerate(self.models)]

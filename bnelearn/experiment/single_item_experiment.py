@@ -15,10 +15,15 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, CycleGame
+from bnelearn.mechanism import (
+    FirstPriceSealedBidAuction,
+    VickreyAuction,
+    CycleGame,
+    CycleAuction)
 from bnelearn.strategy import ClosureStrategy, NeuralNetStrategy
 from bnelearn.correlation_device import (
-    MineralRightsCorrelationDevice, AffiliatedObservationsDevice)
+    MineralRightsCorrelationDevice,
+    AffiliatedObservationsDevice)
 
 
 ###############################################################################
@@ -791,7 +796,7 @@ class CycleExperiment(SingleItemExperiment):
         super().__init__(config=config)
 
     def _setup_mechanism(self):
-        self.mechanism = CycleGame(cuda=self.hardware.cuda)
+        self.mechanism = CycleAuction(cuda=self.hardware.cuda)
 
     def _check_and_set_known_bne(self):
         self._optimal_bid = _zero_bid

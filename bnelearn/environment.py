@@ -55,6 +55,7 @@ class Environment(ABC):
         pass #pylint: disable=unnecessary-pass
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
+                            opponent_model: Strategy=None,
                             draw_valuations=False, aggregate_batch=True,
                             use_env_valuations=True,
                             **strat_to_player_kwargs) -> torch.Tensor:
@@ -64,6 +65,7 @@ class Environment(ABC):
         Args:
             strategy: the strategy to be evaluated
             player_position: the player position at which the agent will be evaluated
+            opponent_model: model of opponent, when learning with awareness
             draw_valuation: whether to redraw valuations (default false)
             aggregate_batch: whether to aggregate rewards into a single scalar (True),
                 or return batch_size many rewards (one for each sample). Default True
@@ -76,13 +78,32 @@ class Environment(ABC):
             raise NotImplementedError('This environment has no strategy_to_player closure!')
         agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
-        # TODO: this should rally be in AuctionEnv subclass
-        env_agent = self.agents[player_position]
-        if use_env_valuations and hasattr(env_agent, 'valuations'):
-            agent.valuations = env_agent.valuations
-        if use_env_valuations and hasattr(env_agent, '_unkown_valuation'):
-            agent._unkown_valuation = env_agent._unkown_valuation
-        return self.get_reward(agent, draw_valuations=draw_valuations, aggregate=aggregate_batch)
+        if opponent_model is None:
+            # TODO: this should rally be in AuctionEnv subclass
+            env_agent = self.agents[player_position]
+            if use_env_valuations and hasattr(env_agent, 'valuations'):
+                agent.valuations = env_agent.valuations
+            if use_env_valuations and hasattr(env_agent, '_unkown_valuation'):
+                agent._unkown_valuation = env_agent._unkown_valuation
+            opponent_agent = None  # placeholder
+        else:
+            if player_position == 1:
+                opponent_position = 0
+            else:
+                opponent_position = 1
+            opponent_agent = self.get_opponent_agent(
+                opponent_model=opponent_model, opponent_position=opponent_position,
+                **strat_to_player_kwargs)
+
+        return self.get_reward(agent, opponent_agent=opponent_agent,
+                               draw_valuations=draw_valuations, aggregate=aggregate_batch)
+
+    def get_opponent_agent(self, opponent_model: Strategy, opponent_position, **strat_to_player_kwargs):
+        """Create Opponent agent"""
+        opponent_agent = self._strategy_to_player(
+            strategy=opponent_model, batch_size=self.batch_size,
+            player_position=opponent_position, **strat_to_player_kwargs)
+        return opponent_agent
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
                                        draw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
@@ -156,7 +177,7 @@ class MatrixGameEnvironment(Environment):
                          strategy_to_player_closure=strategy_to_player_closure)
         self.game = game
 
-    def get_reward(self, agent, **kwargs) -> torch.tensor: #pylint: disable=arguments-differ
+    def get_reward(self, agent, opponent_agent=None, **kwargs) -> torch.tensor: #pylint: disable=arguments-differ
         """Simulates one batch of the environment and returns the average reward for `agent` as a scalar tensor.
         """
 
@@ -173,14 +194,28 @@ class MatrixGameEnvironment(Environment):
 
         action_profile[:, player_position] = agent.get_action().view(self.batch_size)
 
-        for opponent_action in self._generate_agent_actions(exclude = set([player_position])):
-            position, action = opponent_action
-            action_profile[:, position] = action.view(self.batch_size)
+        if opponent_agent is None:
+            for opponent_action in self._generate_agent_actions(exclude = set([player_position])):
+                position, action = opponent_action
+                action_profile[:, position] = action.view(self.batch_size)
 
-        allocation, payments = self.game.play(action_profile.view(self.batch_size, self.n_players, -1))
-        utilities =  agent.get_utility(allocation[:,player_position,:], payments[:,player_position])
+            allocation, payments = self.game.play(action_profile.view(self.batch_size, self.n_players, -1))
+            utilities = agent.get_utility(allocation[:,player_position,:], payments[:,player_position])
 
-        return utilities.mean()
+            return utilities.mean()
+
+        else:
+            if player_position == 1:
+                opp_position = 0
+            else:
+                opp_position = 1
+            action_profile[:, opp_position] = opponent_agent.get_action().view(self.batch_size)
+
+            allocation, payments = self.game.play(action_profile.view(self.batch_size, self.n_players, -1))
+            utilities = agent.get_utility(allocation[:,player_position,:], payments[:,player_position])
+            opponent_utility = opponent_agent.get_utility(allocation[:,opp_position,:], payments[:,opp_position])
+
+            return utilities.mean(), opponent_utility.mean()
 
 
 class AuctionEnvironment(Environment):
@@ -236,6 +271,7 @@ class AuctionEnvironment(Environment):
     def get_reward(
             self,
             agent: Bidder,
+            opponent_agent: Bidder = None,
             draw_valuations = False,
             aggregate = True
         ) -> torch.Tensor: #pylint: disable=arguments-differ
@@ -279,25 +315,53 @@ class AuctionEnvironment(Environment):
 
             # ugly af hack: if environment is dynamic, all player positions will be
             # none. simply start at 1 for the first opponent and count up
-            # TODO: clean this up 🤷 ¯\_(ツ)_/¯
-            counter = 1
-            for opponent_pos, opponent_bid in self._generate_agent_actions(exclude=set([player_position])):
-                # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
-                if opponent_pos is None:
-                    opponent_pos = counter
-                bid_profile[:, opponent_pos, :] = opponent_bid
-                counter = counter + 1
+            if opponent_agent is None:
+                # TODO: clean this up 🤷 ¯\_(ツ)_/¯
+                counter = 1
+                for opponent_pos, opponent_bid in self._generate_agent_actions(exclude=set([player_position])):
+                    # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
+                    if opponent_pos is None:
+                        opponent_pos = counter
+                    bid_profile[:, opponent_pos, :] = opponent_bid
+                    counter = counter + 1
 
-            allocation, payments = self.mechanism.play(bid_profile)
+                allocation, payments = self.mechanism.play(bid_profile)
 
-            # average over batch against this opponent
-            utility = agent.get_utility(allocation[:,player_position,:],
-                                        payments[:,player_position])
+                # average over batch against this opponent
+                utility = agent.get_utility(allocation[:,player_position,:],
+                                            payments[:,player_position])
 
-        if aggregate:
-            utility = utility.mean()
+            else:
+                if player_position == 1:
+                    opp_position = 0
+                else:
+                    opp_position = 1
 
-        return utility
+                # Changed the way to draw opponent bid profile.
+                opponent_bid = opponent_agent.get_action()
+                bid_profile[:, opp_position, :] = opponent_bid
+
+                allocation, payments = self.mechanism.play(bid_profile)
+
+                # average over batch to get self and opponent utility
+                utility = agent.get_utility(allocation[:,player_position,:],
+                                            payments[:,player_position])
+
+                opp_utility = opponent_agent.get_utility(allocation[:,opp_position,:],
+                                                         payments[:,opp_position])
+
+        if opponent_agent is None:
+            if aggregate:
+                utility = utility.mean()
+
+            return utility
+
+        else:
+            if aggregate:
+                utility = utility.mean()
+                opp_utility = opp_utility.mean()
+
+            return utility, opp_utility
 
     def prepare_iteration(self):
         self.draw_valuations_()
