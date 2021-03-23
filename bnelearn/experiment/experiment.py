@@ -5,6 +5,7 @@ can often be shared by specific experiments.
 
 import os
 import time
+import inspect
 from abc import ABC, abstractmethod
 from time import perf_counter as timer
 from typing import Iterable, List
@@ -21,10 +22,10 @@ from torch.utils.tensorboard import SummaryWriter
 
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
+import bnelearn.learner as learners
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
 from bnelearn.experiment.configurations import (ExperimentConfig)
-from bnelearn.learner import ESPGLearner, Learner
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import NeuralNetStrategy
 
@@ -86,7 +87,7 @@ class Experiment(ABC):
         self.models: Iterable[torch.nn.Module] = None
         self.bidders: Iterable[Bidder] = None
         self.env: Environment = None
-        self.learners: Iterable[Learner] = None
+        self.learners: Iterable[learner.Learner] = None
 
         # These are set on first _log_experiment
         self.v_opt: torch.Tensor = None
@@ -155,9 +156,14 @@ class Experiment(ABC):
         pass
 
     def _setup_learners(self):
-        if self.learning.learner_type == 'ESPGLearner':
+        """Setup learner.
+
+        All classes within `bnelearn.learner` are considered.
+        """
+        available_learners = dict(inspect.getmembers(learners))
+        if self.learning.learner_type in available_learners.keys():
             self.learners = [
-                ESPGLearner(
+                available_learners[self.learning.learner_type](
                     model=model,
                     environment=self.env,
                     hyperparams=self.learning.learner_hyperparams,
@@ -166,10 +172,8 @@ class Experiment(ABC):
                     strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
                 )
                 for m_id, model in enumerate(self.models)]
-        elif self.learning.learner_type == 'LOLALearner':
-            raise NotImplementedError('`LOLALearner` not implemented.')
-        elif self.learning.learner_type == 'SOSLearner':
-            raise NotImplementedError('`SOSLearner` not implemented.')
+        else:
+            raise ValueError(f'Learner {self.learning.learner_type} not available.')
 
     def _setup_bidders(self):
         """
