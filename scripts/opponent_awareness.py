@@ -23,25 +23,38 @@ if __name__ == '__main__':
       `Experiment._setup_learners()` should be the place for the actual selection.
 
     """
-    learners = ['ESPGLearner']  # ['ESPGLearner', 'LOLALearner', 'SOSLearner']
+    # ['ESPGLearner', 'LOLALearner', 'SOSLearner', 'LOLA_ESPGLearner', 'SOS_ESPGLearner']
+    learners = ['ESPGLearner']
     log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn',
                                 'experiments', 'opponent-awareness')
+
+    # Params
+    n_epochs = 200
+    batch_size = 2**10
+    util_loss_batch_size = 2
 
     for learner in learners:
         experiment_config, experiment_class = ConfigurationManager(
             experiment_type='cycle_game',
             n_runs=1,
-            n_epochs=100,
+            n_epochs=n_epochs,
         ) \
         .set_setting(
+            continuous=True,
         ) \
         .set_learning(
+            batch_size=batch_size,
+            pretrain_iters=0,
             learner_type=learner,
+            learner_hyperparams={
+                'population_size': 32,
+                'sigma': 1.,
+                'scale_sigma_by_model_size': True},
             # hidden_nodes=[],
             # hidden_activations=[],
             non_negative_actions=False,
             use_bias=False,
-            optimizer_type='Adam',
+            optimizer_type='SGD',
             model_sharing=False,
         ) \
         .set_hardware(
@@ -49,12 +62,17 @@ if __name__ == '__main__':
         ) \
         .set_logging(
             log_root_dir=log_root_dir,
+            util_loss_batch_size=util_loss_batch_size
         ) \
         .get_config()
         experiment = experiment_class(experiment_config)
 
         try:
             experiment.run()
+            print("---")
+            print(f"{learner} reached a L2 of [{experiment._cur_epoch_log_params['L_2']}.")
+            print("---")
+
         except KeyboardInterrupt:
             print('\nKeyboardInterrupt: released memory after interruption')
             torch.cuda.empty_cache()

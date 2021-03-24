@@ -796,7 +796,10 @@ class CycleExperiment(SingleItemExperiment):
         super().__init__(config=config)
 
     def _setup_mechanism(self):
-        self.mechanism = CycleAuction(cuda=self.hardware.cuda)
+        if self.setting.continuous:
+            self.mechanism = CycleGame(cuda=self.hardware.cuda)
+        else:
+            self.mechanism = CycleAuction(cuda=self.hardware.cuda)
 
     def _check_and_set_known_bne(self):
         self._optimal_bid = _zero_bid
@@ -870,5 +873,8 @@ class CycleExperiment(SingleItemExperiment):
         return CycleBidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions)
 
     def _get_logdir_hierarchy(self):
-        name = ['single_item', 'cycle_game']
+        if self.setting.continuous:
+            name = ['single_item', 'cycle_game']
+        if self.setting.continuous:
+            name = ['single_item', 'cycle_auction']
         return os.path.join(*name)

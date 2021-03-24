@@ -169,8 +169,11 @@ class ConfigurationManager:
         self.setting.u_lo = 0
         self.setting.u_hi = 2
         self.learning.optimizer = torch.optim.SGD
-        self.learning.optimizer_hyperparams = {'lr': 1e-1}
-        self.setting.bayesian = True
+        self.learning.optimizer_hyperparams = {'lr': 1e-2}
+        self.setting.bayesian = True  # TODO delete non-bayesian?
+        self.setting.continuous = True
+        self.logging.log_metrics = {'opt': True,
+                                    'util_loss': False}
 
     def _init_jordan(self):
         self.setting.n_players = 3
@@ -317,7 +320,7 @@ class ConfigurationManager:
                     correlation_coefficients: List[float] = 'None', n_units: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None'):
+                    continuous: bool = 'None', core_solver: str = 'None'):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
