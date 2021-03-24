@@ -337,7 +337,9 @@ class Experiment(ABC):
             ])
         else:  # changed to add opponent model
             utilities = torch.tensor([
-                learner.update_strategy_and_evaluate_utility(self.models[1 - position])
+                learner.update_strategy_and_evaluate_utility(
+                    opponent_model=self.models[1 - position]
+                )
                 for position, learner in enumerate(self.learners)
             ])
 

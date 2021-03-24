@@ -48,11 +48,11 @@ class GradientBasedLearner(Learner):
         self.optimizer: torch.optim.Optimizer = optimizer_type(self.params(), **self.optimizer_hyperparams)
 
     @abstractmethod
-    def _set_gradients(self, opponent_model=None):
+    def _set_gradients(self):
         """Calculate current (pseudo)gradient for all params."""
 
-    def update_strategy(self, opponent_model: torch.nn.Module=None,
-                        closure: Callable=None) -> None or torch.Tensor: # pylint: disable=arguments-differ
+    def update_strategy(self, closure: Callable=None,
+                        opponent_model: torch.nn.Module=None) -> None or torch.Tensor: # pylint: disable=arguments-differ
         """Performs one model-update to the player's strategy.
 
         Params:
@@ -76,17 +76,18 @@ class GradientBasedLearner(Learner):
             opponent_model.optimizer: torch.optim.Optimizer = optimizer_type(
                 opponent_model.parameters(), **self.optimizer_hyperparams)
             opponent_model.optimizer.zero_grad()
-            self._set_gradients(opponent_model)
+            self._set_gradients(opponent_model=opponent_model)
 
             # Undo comment to enable simultaneous update of parameters
             # opponent_model.optimizer.step(closure=closure)
 
         return self.optimizer.step(closure=closure)
 
-    def update_strategy_and_evaluate_utility(self, opponent_model: torch.nn.Module=None, closure=None):
+    def update_strategy_and_evaluate_utility(self, closure: Callable=None,
+                                             opponent_model: torch.nn.Module=None):
         """updates model and returns utility after the update."""
 
-        self.update_strategy(opponent_model, closure)
+        self.update_strategy(closure=closure, opponent_model=opponent_model)
         reward = self.environment.get_strategy_reward(
             strategy=self.model, opponent_model=opponent_model,
             **self.strat_to_player_kwargs
@@ -213,7 +214,9 @@ class ESPGLearner(GradientBasedLearner):
             for tensors in zip(*(
                 (
                     self.environment.get_strategy_reward(
-                        strategy=self.model, **self.strat_to_player_kwargs).detach().view(1),
+                        strategy=model,
+                        **self.strat_to_player_kwargs
+                    ).detach().view(1),
                     epsilon
                 )
                 for (model, epsilon) in population
@@ -224,9 +227,10 @@ class ESPGLearner(GradientBasedLearner):
         # these choices come from.
         baseline = \
             self.environment.get_strategy_reward(
-                    strategy=self.model, **self.strat_to_player_kwargs
-                ).detach().view(1) \
-                if self.baseline == 'current_reward' \
+                strategy=self.model,
+                **self.strat_to_player_kwargs
+            ).detach().view(1) \
+            if self.baseline == 'current_reward' \
             else rewards.mean(dim=0) if self.baseline == 'mean_reward' \
             else self.baseline # a float
 
@@ -294,7 +298,7 @@ class LOLALearner(GradientBasedLearner):
         # Validate and set LOLA hyperparams
         if not set(['eta']) <= set(hyperparams):
             print('Fallback to default second order LOLA step size')
-            self.eta = .1
+            self.eta = 1
         else:
             self.eta = hyperparams['eta']
 
@@ -1135,7 +1139,7 @@ class PGLearner(GradientBasedLearner):
             pass # is already constant float
 
         loss = -self.environment.get_strategy_reward(
-            strategy=self.model,**self.strat_to_player_kwargs
+            strategy=self.model, **self.strat_to_player_kwargs
         )
 
         loss.backward()
@@ -1241,8 +1245,9 @@ class AESPGLearner(GradientBasedLearner):
             for tensors in zip(*(
                 (
                     self.environment.get_strategy_reward(
-                        strategy=self.model, aggregate_batch=False,
-                        **self.strat_to_player_kwargs).detach().view(1, n_batch, 1),
+                        strategy=model, aggregate_batch=False,
+                        **self.strat_to_player_kwargs
+                    ).detach().view(1,n_batch, 1),
                     epsilon.unsqueeze(0)
                 )
                 for (model, epsilon) in population
