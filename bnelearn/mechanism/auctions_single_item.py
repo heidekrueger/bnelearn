@@ -221,35 +221,65 @@ class CycleAuction(Mechanism):
     """
     Game mechanism that has problematic cyclic gradient dynamics AND
     problematic auction gardients.
+
+    BNE should be at $\pi = (0, 0)$.
     """
-    def __init__(self, radius: float=1, **kwargs):
+    def __init__(self, version: int=1, radius: float=.5, **kwargs):
         self.radius = radius
+        self.version = version
         super().__init__(**kwargs)
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
 
-        batch_size, n_players, n_items = bids.shape
+        version = self.version
         radius = self.radius
-        payments = torch.zeros((batch_size, n_players), device=self.device)
+        batch_size, n_players, n_items = bids.shape
 
-        cycle_mask = bids[:, 0, 0].pow(2) + bids[:, 1, 0].pow(2) > radius
+        # 1. Outer cycle part
+        temp = (bids[:, 0, :] * bids[:, 1, :])
+        payments = torch.cat((temp, -temp), axis=1)
 
-        # 1. Cycle
-        temp = (bids[cycle_mask, 0, :] * bids[cycle_mask, 1, :])
-        payments[cycle_mask] = torch.cat((temp, -temp), axis=1)
+        # 2. Inner discont. part
+        inner_cycle_mask = bids[:, 0, 0].abs() + bids[:, 1, 0].abs() < radius
+        inner_half_mask = torch.logical_and(inner_cycle_mask, bids[:, 0, 0] > 0)
 
-        # 2. Discont.
-        disc_mask = torch.logical_not(cycle_mask)
-        mask_a = bids[:, 0, 0] > 0
-        mask_a = torch.logical_and(disc_mask, mask_a)
-        payments[mask_a, 0] = radius - torch.abs(bids[mask_a, 0, 0]) - torch.abs(bids[mask_a, 1, 0]) 
-        payments[mask_a, 1] = radius - torch.abs(bids[mask_a, 0, 0]) - torch.abs(bids[mask_a, 1, 0])
-        mask_b = bids[:, 0, 0] > 0
-        mask_b = torch.logical_and(disc_mask, mask_b)
-        payments[mask_b, 0] = - radius + torch.abs(bids[mask_b, 0, 0]) + torch.abs(bids[mask_b, 1, 0]) 
-        payments[mask_b, 1] = - radius + torch.abs(bids[mask_b, 0, 0]) + torch.abs(bids[mask_b, 1, 0]) 
+        if version == 1:
+            payments[inner_half_mask, 0] += radius \
+                - torch.abs(bids[inner_half_mask, 0, 0]) \
+                - torch.abs(bids[inner_half_mask, 1, 0])
+            payments[inner_half_mask, 1] += - radius \
+                + torch.abs(bids[inner_half_mask, 0, 0]) \
+                + torch.abs(bids[inner_half_mask, 1, 0])
+
+        elif version == 2:
+            payments[inner_half_mask, 0] += - radius \
+                + torch.abs(bids[inner_half_mask, 0, 0]) \
+                + torch.abs(bids[inner_half_mask, 1, 0])
+            payments[inner_half_mask, 1] += radius \
+                - torch.abs(bids[inner_half_mask, 0, 0]) \
+                - torch.abs(bids[inner_half_mask, 1, 0])
+
+        elif version == 3:
+            inner_other_half_mask = torch.logical_and(
+                inner_cycle_mask, torch.logical_not(inner_half_mask))
+            payments[inner_half_mask, 0] += radius \
+                - torch.abs(bids[inner_half_mask, 0, 0]) \
+                - torch.abs(bids[inner_half_mask, 1, 0])
+            payments[inner_other_half_mask, 1] += - radius \
+                + torch.abs(bids[inner_other_half_mask, 0, 0]) \
+                + torch.abs(bids[inner_other_half_mask, 1, 0])
+
+        elif version == 4:
+            inner_other_half_mask = torch.logical_and(
+                inner_cycle_mask, torch.logical_not(inner_half_mask))
+            payments[inner_half_mask, 0] += - radius \
+                + torch.abs(bids[inner_half_mask, 0, 0]) \
+                + torch.abs(bids[inner_half_mask, 1, 0])
+            payments[inner_other_half_mask, 1] += radius \
+                - torch.abs(bids[inner_other_half_mask, 0, 0]) \
+                - torch.abs(bids[inner_other_half_mask, 1, 0])
 
         # dummy allocations
         allocations = torch.empty(batch_size, n_players, n_items,
