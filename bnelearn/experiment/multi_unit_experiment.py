@@ -180,6 +180,8 @@ def _optimal_bid_splitaward2x2_1(experiment_config):
     # cut off bids at top
     cut_off = 4 * u_hi[0]
 
+    value_cdf = lambda theta: (theta - u_lo[0]) / (u_hi[0] - u_lo[0])
+
     def _optimal_bid(valuation, player_position=None, return_payoff_dominant=True):
         sigma_bounds = torch.ones_like(valuation, device=valuation.device)
         sigma_bounds[:, 0] = efficiency_parameter * u_hi[0]
@@ -189,10 +191,6 @@ def _optimal_bid_splitaward2x2_1(experiment_config):
         _p_sigma = (1 - efficiency_parameter) * u_lo[0]  # highest possible p_sigma
 
         def G(theta):
-            value_cdf = torch.distributions.Uniform(
-                torch.tensor(u_lo[0], device=theta.device),
-                torch.tensor(u_hi[0], device=theta.device)
-            ).cdf
             return _p_sigma + (_p_sigma - u_hi[0] * efficiency_parameter * value_cdf(theta)) \
                    / (1 - value_cdf(theta))
 

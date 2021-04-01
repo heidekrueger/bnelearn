@@ -263,16 +263,16 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
                 warnings.simplefilter('ignore')
                 # don't print scipy accuracy warnings
                 bne_utility, error_estimate = integrate.dblquad(
-                    lambda x, v: self.common_prior.cdf(x) ** (self.n_players - 1) * self.common_prior.log_prob(
-                        v).exp(),
+                    lambda x, v: self.common_prior.cdf(torch.tensor(x)) ** (self.n_players - 1) \
+                        * self.common_prior.log_prob(torch.tensor(v)).exp(),
                     0, float('inf'),  # outer boundaries
                     lambda v: 0, lambda v: v)  # inner boundaries
                 if error_estimate > 1e-6:
                     warnings.warn('Error in optimal utility might not be negligible')
         elif self.payment_rule == 'second_price':
-            F = self.common_prior.cdf
+            F = lambda x: self.common_prior.cdf(torch.tensor(x))
             f = lambda x: self.common_prior.log_prob(torch.tensor(x)).exp()
-            f1n = lambda x, n: n * F(torch.tensor(x)) ** (n - 1) * f(x)
+            f1n = lambda x, n: n * F(x) ** (n - 1) * f(x)
 
             bne_utility, error_estimate = integrate.dblquad(
                 lambda x, v: (v - x) * f1n(x, self.n_players - 1) * f(v),
