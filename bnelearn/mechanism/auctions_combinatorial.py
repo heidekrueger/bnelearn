@@ -19,27 +19,37 @@ from .mechanism import Mechanism
 from bnelearn.util import mpc
 # from bnelearn.util import qpth_class
 from time import perf_counter as timer
+
+
 class _OptNet_for_LLLLGG(nn.Module):
-    def __init__(self, device, A, beta, b, payment_vcg, precision=torch.double):
+    def __init__(self, device, A, beta, b, payment_vcg=None,
+                 precision=torch.double, max_iter=20):
         """
         Build basic model
-        s.t.
-        pA >= beta
-        p <= b
-        ->
-        G =     (-A   )
-            diag(1,...,1)
-        h = (-beta)
-            (b      )
+            s.t.
+                pA >= beta
+                p <= b
+            ->
+                G =     (-A     )
+                    diag(1,...,1)
+                h = (-beta)
+                    (b    )
 
         See LLLLGGAuction._calculate_payments_nearest_vcg_core for details on variables.
         """
-        self.n_batch, self.n_coalitions, self.n_player = A.shape  # pylint:disable=unused-variable
+        # TODO Stefan/Paul: Please provide minimal docstring
+        # I think there should be a clearer interface between solving and using
+        # it for this specifc problem, e.g., what's the general form of the 
+        # problem Anne's solver can tackle?
+        self.n_batch, self.n_coalitions, self.n_player = A.shape  # pylint: disable=unused-variable
 
+        # TODO Nils: would it make sense to have an optional consistency check
+        # whether or not the dimensions match?
         super().__init__()
         self.device = device
         self.precision = precision
         self.payment_vcg = payment_vcg
+        self.max_iter = max_iter
 
         A = torch.as_tensor(A, dtype=precision, device=self.device)
         b = torch.as_tensor(b, dtype=precision, device=self.device)
@@ -48,10 +58,12 @@ class _OptNet_for_LLLLGG(nn.Module):
         self.G = torch.cat(
             (
                 -A,
-                torch.eye(self.n_player, dtype=precision, device=self.device).repeat(self.n_batch, 1, 1),
-                -torch.eye(self.n_player, dtype=precision, device=self.device).repeat(self.n_batch, 1, 1)
+                torch.eye(self.n_player, dtype=precision, device=self.device) \
+                    .repeat(self.n_batch, 1, 1),
+                -torch.eye(self.n_player, dtype=precision, device=self.device) \
+                    .repeat(self.n_batch, 1, 1)
             ), 1)
-        self.h= torch.cat(
+        self.h = torch.cat(
             (
                 -beta,
                 b,
@@ -71,7 +83,13 @@ class _OptNet_for_LLLLGG(nn.Module):
         Q = (0,...,0)
         q = (1,...,1)
         """
-        self.Q = torch.diag(torch.tensor([1e-5, ] * self.n_player, dtype=self.precision, device=self.device)).repeat(self.n_batch,1,1)
+        self.Q = torch.diag(
+            torch.tensor(
+                [1e-5,] * self.n_player,
+                dtype=self.precision,
+                device=self.device
+            )
+        ).repeat(self.n_batch, 1, 1)
         self.q = torch.ones([self.n_batch, self.n_player], dtype=self.precision, device=self.device)
 
     def _add_objective_min_vcg_distance(self, min_payments=None):
@@ -83,39 +101,49 @@ class _OptNet_for_LLLLGG(nn.Module):
         q = -2p_0
         """
         if min_payments is not None:
-            self.e = torch.ones([self.n_batch, 1, self.n_player], dtype=self.precision, device=self.device)
+            self.e = torch.ones(
+                [self.n_batch, 1, self.n_player],
+                dtype=self.precision,
+                device=self.device
+            )
             self.mu = min_payments.sum(1).reshape(self.n_batch, 1)
 
-        self.Q = torch.diag(torch.tensor([2, ] * self.n_player, dtype=self.precision, device=self.device)).repeat(self.n_batch,1,1)
+        self.Q = torch.diag(
+            torch.tensor(
+                [2, ] * self.n_player,
+                dtype=self.precision,
+                device=self.device
+            )
+        ).repeat(self.n_batch,1,1)
         self.q = -2 * torch.as_tensor(self.payment_vcg, dtype=self.precision, device=self.device)
+
     def forward(self, solver, input=None):
         """input is not used, as problem is fully specified
         Choose either 'mpc' or 'qpth' solver. The latter is both slower and more imprecise"""
 
         if solver == 'qpth':
-            if self.e == None:
+            if self.e is None:
                 self.e = torch.zeros(0, dtype=self.precision, device=self.device, requires_grad=True)
-            if self.mu == None:
+            if self.mu is None:
                 self.mu = torch.zeros(0, dtype=self.precision, device=self.device, requires_grad=True)
             return QPFunction(verbose=-1, eps=1e-19, maxIter=20, notImprovedLim=10, check_Q_spd=False) \
                              (self.Q, self.q, self.G, self.h, self.e, self.mu)
 
         elif solver == 'mpc':
-            mpc_solver=mpc.mpc_class(max_iter=20)
+            mpc_solver=mpc.mpc_class(max_iter=self.max_iter)
             # detach all variables to set requires_grad=False
-            if self.e!=None:
+            if self.e is not None:
                 self.e_no_grad=self.e.detach()
                 self.mu_no_grad=self.mu.detach()
             else:
                 self.e_no_grad=None
                 self.mu_no_grad=None
-            x_mpc, opt_mpc = mpc_solver.solve(self.Q.detach(), self.q.detach(), self.G.detach(),
-                                            self.h.detach(), self.e_no_grad, self.mu_no_grad,
-                                            print_warning=False)
+            x_mpc, _ = mpc_solver.solve(self.Q.detach(), self.q.detach(), self.G.detach(),
+                                        self.h.detach(), self.e_no_grad, self.mu_no_grad,
+                                        print_warning=False)
             return x_mpc
         else:
             raise NotImplementedError(":/")
-
 
 
 class LLGAuction(Mechanism):
@@ -170,63 +198,79 @@ class LLGAuction(Mechanism):
         batch_dim, player_dim, item_dim = 0, 1, 2  # pylint: disable=unused-variable
         batch_size, n_players, n_items = bids.shape
 
-        assert n_players == 3, "invalid n_players in LLG setting"
         assert n_items == 1, "invalid bid_dimensionality in LLG setting"  # dummy item is desired bundle for each player
 
         # move bids to gpu/cpu if necessary, get rid of unused item_dim
         bids = bids.squeeze(item_dim).to(self.device)  # batch_size x n_players
         # individual bids as batch_size x 1 tensors:
-        b1, b2, bg = bids.split(1, dim=1)
+        b_locals, b_global = bids[:, :-1], bids[:, [-1]]
 
         # allocate return variables
         payments = torch.zeros(batch_size, n_players, device=self.device)
-        allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
+        allocations = torch.zeros(batch_size, n_players, n_items, dtype=bool,
+                                  device=self.device)
+
+        # Two possible allocations
+        allocation_locals = torch.ones(1, n_players, dtype=bool, device=self.device)
+        allocation_locals[0, -1] = 0
+        allocation_global = torch.zeros(1, n_players, dtype=bool, device=self.device)
+        allocation_global[0, -1] = 1
 
         # 1. Determine efficient allocation
-        locals_win = (b1 + b2 > bg).float()  # batch_size x 1
-        allocations = locals_win * torch.tensor([[1., 1., 0.]], device=self.device) + \
-                      (1 - locals_win) * torch.tensor([[0., 0., 1.]], device=self.device)  # batch x players
+        locals_win = (b_locals.sum(axis=1, keepdim=True) > b_global).float()  # batch_size x 1
+        allocations = locals_win * allocation_locals + (1 - locals_win) * allocation_global
 
         if self.rule == 'first_price':
             payments = allocations * bids  # batch x players
         else:  # calculate local and global winner prices separately
             payments = torch.zeros(batch_size, n_players, device=self.device)
-            global_winner_prices = b1 + b2  # batch_size x 1
-            payments[:, [2]] = (1 - locals_win) * global_winner_prices
+            global_winner_prices = b_locals.sum(axis=1, keepdim=True)  # batch_size x 1
+            payments[:, [-1]] = (1 - locals_win) * global_winner_prices
 
-            local_winner_prices = torch.zeros(batch_size, 2, device=self.device)
+            local_winner_prices = torch.zeros(batch_size, n_players - 1, device=self.device)
 
             if self.rule in ['vcg', 'nearest_vcg']:
                 # vcg prices are needed for vcg, nearest_vcg
-                local_vcg_prices = (bg - bids[:, [1, 0]]).relu()
+                local_vcg_prices = torch.zeros_like(local_winner_prices)
+
+                local_vcg_prices += (
+                    b_global - b_locals.sum(axis=1, keepdim=True) + b_locals
+                ).relu()
 
                 if self.rule == 'vcg':
                     local_winner_prices = local_vcg_prices
                 else:  # nearest_vcg
-                    delta = 0.5 * (bg - local_vcg_prices[:, [0]] - local_vcg_prices[:, [1]])  # batch_size x 1
+                    delta = (1/(n_players - 1)) * \
+                        (b_global - local_vcg_prices.sum(axis=1, keepdim=True))  # batch_size x 1
                     local_winner_prices = local_vcg_prices + delta  # batch_size x 2
-            elif self.rule in ['proxy', 'nearest_zero']:
+
+            elif self.rule in ['proxy', 'nearest_zero'] and n_players == 3:
+                b1, b2 = b_locals[:, [0]], b_locals[:, [1]]
+
                 # three cases when local bidders win:
                 #  1. "both_strong": each local > half of global --> both play same
                 #  2. / 3. one player 'weak': weak local player pays her bid, other pays enough to match global
-                both_strong = ((bg <= 2 * b1) & (bg <= 2 * b2)).float()  # batch_size x 1
-                first_weak = (2 * b1 < bg).float()
+                both_strong = ((b_global <= 2 * b1) & (b_global <= 2 * b2)).float()  # batch_size x 1
+                first_weak = (2 * b1 < b_global).float()
                 # (second_weak implied otherwise)
-                local_prices_case_both_strong = 0.5 * torch.cat(2 * [bg], dim=player_dim)
-                local_prices_case_first_weak = torch.cat([b1, bg - b1], dim=player_dim)
-                local_prices_case_second_weak = torch.cat([bg - b2, b2], dim=player_dim)
+                local_prices_case_both_strong = 0.5 * torch.cat(2 * [b_global], dim=player_dim)
+                local_prices_case_first_weak = torch.cat([b1, b_global - b1], dim=player_dim)
+                local_prices_case_second_weak = torch.cat([b_global - b2, b2], dim=player_dim)
 
                 local_winner_prices = both_strong * local_prices_case_both_strong + \
                                       first_weak * local_prices_case_first_weak + \
                                       (1 - both_strong - first_weak) * local_prices_case_second_weak
-            elif self.rule == 'nearest_bid':
-                case_1_outbids = (bg < b1 - b2).float()  # batch_size x 1
-                case_2_outbids = (bg < b2 - b1).float()  # batch_size x 1
 
-                local_prices_case_1 = torch.cat([bg, torch.zeros_like(bg)], dim=player_dim)
-                local_prices_case_2 = torch.cat([torch.zeros_like(bg), bg], dim=player_dim)
+            elif self.rule == 'nearest_bid' and n_players == 3:
+                b1, b2 = b_locals[:, [0]], b_locals[:, [1]]
 
-                delta = 0.5 * (b1 + b2 - bg)
+                case_1_outbids = (b_global < b1 - b2).float()  # batch_size x 1
+                case_2_outbids = (b_global < b2 - b1).float()  # batch_size x 1
+
+                local_prices_case_1 = torch.cat([b_global, torch.zeros_like(b_global)], dim=player_dim)
+                local_prices_case_2 = torch.cat([torch.zeros_like(b_global), b_global], dim=player_dim)
+
+                delta = 0.5 * (b1 + b2 - b_global)
                 local_prices_else = bids[:, [0, 1]] - delta
 
                 local_winner_prices = case_1_outbids * local_prices_case_1 + \
@@ -236,9 +280,371 @@ class LLGAuction(Mechanism):
             else:
                 raise ValueError("invalid bid rule")
 
-            payments[:, [0, 1]] = locals_win * local_winner_prices
+            payments[:, :-1] = locals_win * local_winner_prices  # TODO: do we even need this * op?
 
         return (allocations.unsqueeze(-1), payments)  # payments: batches x players, allocation: batch x players x items
+
+    def get_efficiency(self, env, draw_valuations: bool = False) -> float:
+        """LLG auction specific efficiency that uses fact of single-minded
+        bidders.
+        """
+        batch_size = min(env.agents[0].valuations.shape[0], 2 ** 12)
+
+        if draw_valuations:
+            env.draw_valuations_()
+
+        bid_profile = torch.zeros(batch_size, env.n_players, 1,
+                                  device=self.device)
+        for pos, bid in env._generate_agent_actions():
+            bid_profile[:, pos, :] = bid[:batch_size, ...]
+        allocations, _ = self.play(bid_profile)
+        actual_welfare = torch.zeros(batch_size, device=self.device)
+        for a in env.agents:
+            actual_welfare += a.get_welfare(
+                allocations[:batch_size, a.player_position],
+                a.valuations[:batch_size, ...]
+            )
+
+        local_valuations = torch.zeros_like(actual_welfare)
+        for a in env.agents[:-1]:
+            local_valuations += a.valuations[:batch_size, ...].squeeze()
+        maximum_welfare = torch.max(
+            env.agents[-1].valuations[:batch_size, ...].squeeze(), local_valuations
+        ).view_as(actual_welfare)
+
+        efficiency = (actual_welfare / maximum_welfare).mean()
+        return efficiency
+
+
+class LLGFullAuction(Mechanism):
+    """Implements auctions in the LLG setting with 3 bidders and 2 goods.
+
+    Here, bidders do submit full bundle (XOR) bids. For this specific LLG
+    domain see Beck & Ott 2013.
+
+    Item dim 0 corresponds to item A, dim 1 to item B and dim 2 to the bundle
+    of both.
+
+    """
+    def __init__(self, rule='first_price', cuda: bool=True):
+        # pylint:disable=import-outside-toplevel
+        from bnelearn.util import large_lists_LLG
+        super().__init__(cuda)
+
+        if rule not in ['first_price', 'vcg', 'nearest_vcg', 'mrcs_favored']:
+            raise ValueError('Invalid Pricing rule!')
+        self.rule = rule
+
+        self.subsolutions = torch.tensor(
+            large_lists_LLG.subsolutions,
+            device=self.device
+        )
+        self.n_subsolutions = self.subsolutions[-1][0] + 1
+        self.subul_dim = len(self.subsolutions) + 1
+        self.max_iter = 20
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Runs a batch of LLG Combinatorial auctions.
+
+        We assume n_players == 3 with 0, 1 being local bidders and 3 being the
+        global bidder.
+
+        Args:
+            bids (:obj:`torch.Tensor`): of bids with dimensions (batch_size,
+                n_players, 3).
+
+        Returns:
+            (allocation, payments) (:obj:`tuple` of :obj:`torch.Tensor`):
+                allocation: tensor of dimension (n_batches x n_players x 3)
+                payments: tensor of dimension (n_batches x n_players)
+
+        """
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x 3)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # name dimensions for readibility
+        # pylint: disable=unused-variable
+        batch_dim, player_dim, item_dim = 0, 1, 2
+        batch_size, n_players, n_items = bids.shape
+
+        assert n_players == 3, "invalid n_players in full LLG setting"
+        assert n_items == 3, "invalid bid_dimensionality in full LLG setting"
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # 1. Determine allocations
+        allocations = self._solve_allocation_problem(bids)
+
+        # 2. Determine payments
+        if self.rule == 'first_price':
+            payments = self._calculate_payments_first_price(bids, allocations)
+
+        elif self.rule == 'vcg':
+            payments = self._calculate_payments_vcg(bids, allocations)
+
+        elif self.rule == 'nearest_vcg':
+            payments = self._calculate_payments_core(bids, allocations)
+
+        elif self.rule == 'mrcs_favored':
+            payments = self._calculate_payments_core(
+                bids, allocations, core_selection='mrcs_favored'
+            )
+
+        else:
+            raise NotImplementedError()
+
+        # allocations: batch x players x items, payments: batches x players
+        return (allocations, payments)
+
+    def _solve_allocation_problem(
+            self,
+            bids: torch.Tensor,
+            dont_allocate_to_zero_bid: bool = True
+        ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Compute allocation and welfare
+
+        Args:
+            bids: torch.Tensor of bids with dimensions (batch_size, n_players,
+                n_bids), values = [0, Inf].
+            dont_allocate_to_zero_bid: bool, whether to allocate items to zero
+                bids or not.
+
+        Returns:
+            allocation: tensor of dimension (n_batches x n_players x 3)
+                values = {0, 1}.
+
+        """
+        allocations = torch.zeros_like(bids, dtype=torch.int8)
+
+        max_individually = bids[:, :, :2].max(axis=1)
+        max_bundle = bids[:, :, 2].max(dim=1)
+        individually = \
+            max_individually.values.sum(dim=1) > max_bundle.values
+
+        # assign individual items
+        allocations_individual = max_individually.indices[individually, :]
+        # item A
+        allocations[individually, allocations_individual[:, 0], 0] = 1
+        # item B
+        allocations[individually, allocations_individual[:, 1], 1] = 1
+
+        # assign bundle
+        individually = torch.logical_not(individually)
+        allocations_bundle = max_bundle.indices[individually]
+        allocations[individually, allocations_bundle, 2] = 1
+
+        if dont_allocate_to_zero_bid:
+            allocations *= bids > 0
+
+        return allocations.view_as(bids)
+
+    def _calculate_payments_first_price(
+            self,
+            bids: torch.Tensor,
+            allocations: torch.Tensor
+        ) -> torch.Tensor:
+        """Compute first prices
+
+        Args:
+            bids: torch.Tensor of bids with dimensions (batch_size,
+                n_players, n_bids), values in [0,Inf].
+            allocations: torch.Tensor of dim (batch_size, b_bundles),
+                values = {0, 1}.
+
+        Returns:
+            payments: torch.Tensor, dim (batch_size, n_bidders).
+
+        """
+        return (allocations * bids).sum(dim=2)
+
+    def _calculate_payments_vcg(
+            self,
+            bids: torch.Tensor,
+            allocations: torch.Tensor
+        ) -> torch.Tensor:
+        """Computes VCG prices
+
+        Args:
+            bids: torch.Tensor, dims (batch_size, n_players, n_bids),
+                values = [0, Inf].
+            allocations: torch.Tensor, dims (batch_size, b_bundles),
+                values = {0, 1}.
+
+        Returns:
+            payments: torch.Tensor, dim (batch_size, n_bidders),
+                values = [0, Inf].
+
+        """
+        n_batch, n_players, _ = bids.shape
+        vcg_payments = torch.zeros(n_batch, n_players, device=self.device)
+        for player_position in range(n_players):
+            bids_reduced = bids.clone()
+            bids_reduced[:, player_position] = 0
+            optimal_welfare_wo_current = self._calculate_welfare(
+                valuations=bids_reduced,
+                allocations=self._solve_allocation_problem(bids_reduced),
+                # exclude=[player_position] -> should be zero anyway
+            )
+            actual_welfare_wo_current = self._calculate_welfare(
+                valuations=bids, allocations=allocations, exclude=[player_position])
+            vcg_payments[:, player_position] = optimal_welfare_wo_current \
+                - actual_welfare_wo_current
+        return vcg_payments
+
+    def _calculate_payments_core(
+            self,
+            bids: torch.Tensor,
+            allocations: torch.Tensor,
+            core_selection: str='nearest_vcg'
+        ) -> torch.Tensor:
+        """
+        """
+        n_batch, n_player, n_bundle = bids.shape
+
+        # Generate dense tensor of subsolutions
+        subsolutions_dense = torch.sparse.FloatTensor(
+            self.subsolutions.t(),
+            torch.ones(self.subul_dim - 1, device=self.device),
+            torch.Size(
+                [self.n_subsolutions, n_player * n_bundle],
+                device=self.device
+            )
+        ).to_dense()
+
+        # Compute beta
+        coalition_willing_to_pay = torch.mm(
+            bids.view(n_batch, n_player * n_bundle),
+            subsolutions_dense.t()
+        )
+
+        # For b_j(S_j) we need to consider the actual winning bid of j.
+        # Therefore, we adjust the coalition and set 1 for each bundle of j
+        winning_and_in_coalition = torch.einsum(
+            'ij,kjl->kijl',
+            subsolutions_dense.view(self.n_subsolutions, n_player, n_bundle) \
+                .bool().any(axis=2).float(),
+            allocations.view(n_batch, n_player, n_bundle)
+        ).view(n_batch, self.n_subsolutions, n_player * n_bundle)
+
+        coalition_already_getting = torch.bmm(
+            bids.view(n_batch, 1, n_player * n_bundle),
+            winning_and_in_coalition.permute(0, 2, 1)
+        ).reshape(n_batch, self.n_subsolutions)
+
+        beta = coalition_willing_to_pay - coalition_already_getting
+
+        # Fixing numerical imprecision
+        beta[beta < 1e-6] = 0
+
+        assert beta.shape == (n_batch, self.n_subsolutions), \
+            "beta has the wrong shape"
+
+        A = allocations.view(n_batch, 1, n_player * n_bundle) \
+            - winning_and_in_coalition
+        A = A.view(n_batch, self.n_subsolutions, n_player, n_bundle) \
+            .bool().any(axis=3)
+
+        # Computing b
+        b = torch.sum(allocations.view(n_batch, n_player, n_bundle) \
+            * bids.view(n_batch, n_player, n_bundle), dim=2)
+
+        # Calculate VCG payments
+        payments_vcg = self._calculate_payments_vcg(bids, allocations).clone()
+
+        if core_selection == 'mrcs_favored':
+            # Force agent 1 to have VCG prices: plug her prices into constraints
+            beta -= torch.einsum('ij,i->ij', A[:, :, 1], payments_vcg[:, 1])
+            A = A[:, :, [0, 2]]
+            b = b[:, [0, 2]]
+            payments_vcg_1 = payments_vcg[:, [1]]
+
+            # Simpler way
+            payment = torch.zeros(n_batch, n_player, device=self.device)
+
+            tight = A.sum(axis=2)
+            non_zero_mask = tight.sum(axis=1) > 0
+            c1 = A[non_zero_mask, :, 0] == 1
+            c3 = A[non_zero_mask, :, 1] == 1
+            beta_temp = beta[non_zero_mask, ...].clone()
+            beta_temp[torch.logical_or(~c1, c3), ...] = 0
+            payment[non_zero_mask, 0] = torch.max(beta_temp, axis=1).values
+            beta_temp = beta[non_zero_mask, ...].clone()
+            beta_temp[torch.logical_or(c1, ~c3), ...] = 0
+            payment[non_zero_mask, 1] = torch.max(beta_temp, axis=1).values
+
+            diag_batch_mask = torch.any(tight==2, axis=1)
+            try:
+                p_alter = torch.max(beta[diag_batch_mask], axis=1).values / 2
+                diag_tight_mask = torch.logical_and(
+                    p_alter > payment[diag_batch_mask, 0],
+                    p_alter > payment[diag_batch_mask, 1]
+                )
+                diag_batch_mask[diag_batch_mask] = diag_tight_mask
+                payment[diag_batch_mask, 0] = p_alter
+                payment[diag_batch_mask, 1] = p_alter
+            except RuntimeError: # happens when there isn't a single instance with True
+                pass
+
+            # Combine all agents' prices
+            payment = torch.cat(
+                [payment[:, [0]], payments_vcg_1, payment[:, [1]]],
+                axis=1
+            )
+
+            # payment_old = self._run_batch_core_solver(
+            #     A=A, beta=beta, payments_vcg=payments_vcg, b=b,
+            #     min_distance_to_vcg=core_selection=='nearest_vcg'
+            # ).view(n_batch, n_player-1)
+            # payment_old = torch.cat(
+            #     [payment_old[:, [0]], payments_vcg_1, payment_old[:, [1]]],
+            #     axis=1
+            # ).view(n_batch, n_player)
+            # print('error:', torch.mean(torch.abs(payment - payment_old)))
+            return payment
+
+        else:
+            payment = self._run_batch_core_solver(
+                A=A, beta=beta, payments_vcg=payments_vcg, b=b,
+                min_distance_to_vcg=core_selection=='nearest_vcg'
+            )
+            payment = payment.view(n_batch, n_player)
+            return payment.float()
+
+    def _run_batch_core_solver(self, A, beta, payments_vcg, b,
+                               min_distance_to_vcg=True):
+        model = _OptNet_for_LLLLGG(self.device, A, beta, b, payments_vcg,
+                                   max_iter=self.max_iter)
+        model._add_objective_min_payments()  # pylint: disable=protected-access
+        if min_distance_to_vcg:
+            mu = model('mpc')
+            model._add_objective_min_vcg_distance(mu)  # pylint: disable=protected-access
+        return model('mpc')
+
+    @staticmethod
+    # pylint: disable=dangerous-default-value
+    def _calculate_welfare(
+            valuations: torch.tensor,
+            allocations: torch.tensor,
+            exclude: list=[]
+        ) -> torch.tensor:
+        """Calculate total welfare of players excluding a given set.
+
+        Arguments:
+            valuations: torch.tensor.
+            allocations: torch.tensor.
+            exclude: list=None.
+
+        Returns:
+            welfare: torch.Tensor, dims (batch_size), values = [0, Inf].
+
+        """
+        batch_dim, player_dim, item_dim = 0, 1, 2
+        # welfare per batch and per player (reduced all items)
+        welfare = (valuations * allocations).sum(axis=item_dim)
+        # exclude players and sum over remaining
+        welfare[:, exclude] = 0
+        return welfare.sum(axis=player_dim)
 
 
 class LLLLGGAuction(Mechanism):
@@ -308,11 +714,10 @@ class LLLLGGAuction(Mechanism):
             solutions: torch.Tensor
                 of possible allocations.
 
-        Returns:        
+        Returns:
             allocation: torch.Tensor, dims (batch_size, b_bundles = 18), values = {0,1}
             welfare: torch.Tensor, dims (batch_size), values = [0, Inf]
 
-        
         """
         solutions = self.solutions_non_sparse.to(self.device)
 
@@ -352,7 +757,7 @@ class LLLLGGAuction(Mechanism):
 
         Returns:
             payments: torch.Tensor, dim (batch_size, n_bidders), values = [0, Inf]
-        
+
         """
         player_bundles = self.player_bundles.to(self.device)
 
@@ -372,32 +777,38 @@ class LLLLGGAuction(Mechanism):
         return vcg_payments
 
     def _calculate_payments_nearest_vcg_core(self, bids: torch.Tensor, allocation: torch.Tensor, welfare: torch.Tensor):
-        '''
-        Nearest VCG core payments by Day and Crampton (2012) [link to paper]
-        Instead of computing all possible coalitions, or the most blocking respectively,
-            we iterate through all possible subsolutions, containing all possible coalitions.
-        We minimize the prices and solve the LP:
-        mu = min p1
-        pA >= beta
-        p <= b
+        """
+        [Nearest VCG core payments by Day and Crampton (2012)]
+        (ftp://www.cramton.umd.edu/papers2005-2009/day-cramton-core-payments-for-combinatorial-auctions.pdf)
+
+        Instead of computing all possible coalitions, or the most blocking
+        respectively, we iterate through all possible subsolutions, containing
+        all possible coalitions. We minimize the prices and solve the LP:
+            mu = min p1
+                s.t.
+                pA >= beta
+                p <= b
 
         and after, we minimize the deviation from VCG and solve the QP:
-        min (p-p_0)(p-p_0)
-        s.t.
-        pA >= beta
-        p <= b
-        p1 == mu
+            min (p-p_0)(p-p_0)
+                s.t.
+                pA >= beta
+                p <= b
+                p1 == mu
         ------
-        p_0: Parameter - VCG payments
-        p: Variable - Core Payments
+        p_0: (parameter) VCG payments
+        p: (variable) Core Payments
         ---
-        beta = Parameter - coalitions willingness to pay
-        beta = welfare(coalition) - sum_(j \\in coalition){b_j(S_j)} \\forall coalitions in subsolutions
-        with b_j(S_j) being the bid of the actual allocation (their willingness to pay for what they already get.)
+        beta: (parameter) coalitions willingness to pay
+        beta = welfare(coalition) - sum_(j \\in coalition){b_j(S_j)}
+            \\forall coalitions in subsolutions
+        with b_j(S_j) being the bid of the actual allocation (their willingness
+        to pay for what they already get).
         ---
-        A = Parameter - winning and not in coalition (1, else 0)
-        b = Parameter - bid of winning bidders (0 if non winning)
-        '''
+        A: (parameter) winning and not in coalition (1, else 0)
+        b: (parameter) bid of winning bidders (0 if non winning)
+
+        """
         subsolutions = self.subsolutions.to(self.device)
 
         n_batch, n_player, n_bundle = bids.shape
@@ -672,9 +1083,9 @@ class LLLLGGAuction(Mechanism):
                 payment_out[batch_k][player_k] = model.getVarByName("payment_%s_%s" % (batch_k, player_k)).X
         return payment_out
 
-    # Adjusted to LEQ with 1e-5 instead of equals (according to Bosshard code)
-    # TODO: method could be a function (no self use)
-    def _add_constraint_min_payments(self, model, mu, n_mini_batch, n_player):
+    @staticmethod
+    def _add_constraint_min_payments(model, mu, n_mini_batch, n_player):
+        # adjusted to LEQ with 1e-5 instead of equals (according to Bosshard code)
         # p1 = mu
         for batch_k in range(n_mini_batch):
             sum_payments = 0

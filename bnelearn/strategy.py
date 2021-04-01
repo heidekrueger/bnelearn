@@ -333,7 +333,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
                 if x.dim() == 1:
                     x = x.view(-1, 1)
                 m = x.shape[-1] // 2
-                normal = torch.distributions.normal.Normal(x[:, :m], x[:, m:])
+                normal = torch.distributions.normal.Normal(x[:, :m], x[:, m:].abs() + 1e-8)
                 return normal.rsample()
 
         class UniformLayer(nn.Module):
@@ -346,20 +346,24 @@ class NeuralNetStrategy(Strategy, nn.Module):
                 if x.dim() == 1:
                     x = x.view(-1, 1)
                 m = x.shape[-1] // 2
-                uniform = torch.distributions.uniform.Uniform(x[:, :m], x[:, m:])
+
+                # enforce non-negative width of boundaries
+                err = (x[:, :m] - x[:, m:]).relu() + 1e-4
+
+                uniform = torch.distributions.uniform.Uniform(x[:, :m], x[:, m:] + err)
                 return uniform.rsample()
 
         if len(hidden_nodes) > 0:
             ## create hdiden layers
             # first hidden layer (from input)
             self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
-            self.layers['activation_0'] = self.activations[0]
+            self.layers[str(self.activations[0]) + '_0'] = self.activations[0]
             if self.dropout:
                 self.layers['dropout_0'] = nn.AlphaDropout(p=self.dropout)
             # hidden-to-hidden-layers
             for i in range (1, len(hidden_nodes)):
                 self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
-                self.layers['activation_' + str(i)] = self.activations[i]
+                self.layers[str(self.activations[i]) + '_' + str(i)] = self.activations[i]
                 if self.dropout:
                     self.layers['dropout_' + str(i)] = nn.AlphaDropout(p=self.dropout)
         else:
@@ -372,13 +376,13 @@ class NeuralNetStrategy(Strategy, nn.Module):
             2 * self.output_length if self.mixed_strategy else self.output_length
         )
         if self.mixed_strategy == 'normal':
-            self.layers['stochastic'] = GaussLayer()
-            self.activations.append(self.layers['stochastic'])
+            self.layers['gauss_stochastic'] = GaussLayer()
+            self.activations.append(self.layers['gauss_stochastic'])
         elif self.mixed_strategy == 'uniform':
-            self.layers['stochastic'] = UniformLayer()
-            self.activations.append(self.layers['stochastic'])
-        self.layers['activation_out'] = nn.ReLU()
-        self.activations.append(self.layers['activation_out'])
+            self.layers['uniform_stochastic'] = UniformLayer()
+            self.activations.append(self.layers['uniform_stochastic'])
+        self.layers[str(nn.ReLU()) + '_out'] = nn.ReLU()
+        self.activations.append(self.layers[str(nn.ReLU()) + '_out'])
 
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization
@@ -387,16 +391,35 @@ class NeuralNetStrategy(Strategy, nn.Module):
                 self.reset(ensure_positive_output)
 
     @classmethod
-    def load(cls, path: str):
+    def load(cls, path: str, device='cpu'):
         """
         Initializes a saved NeuralNetStrategy from ´path´.
         """
 
-        model_dict = torch.load(path)
+        model_dict = torch.load(path, map_location=device)
 
-        # TODO Nils: WIP! Needs careful handling as it's not a default ´torch.nn.Module´.
-        #            Read out the needed parameters
+        # TODO: Dangerous hack for reloading a startegy
         params = {}
+        params["hidden_nodes"] = []
+        params["hidden_activations"] = []
+        length = len(list(model_dict.values()))
+        layer_idx = 0
+        value_key_zip = zip(
+            list(model_dict.values()),
+            list(model_dict._metadata.keys())[2:] # pylint: disable=protected-access
+        )
+        for tensor, layer_activation in value_key_zip:
+            if layer_idx == 0:
+                params["input_length"] = tensor.shape[1]
+            elif layer_idx == length - 1:
+                params["output_length"] = tensor.shape[0]
+            elif layer_idx % 2 == 1:
+                params["hidden_nodes"].append(tensor.shape[0])
+                params["hidden_activations"].append(
+                    # TODO Nils: change once models are saved correctly
+                    # eval('nn.' + layer_activation[7:-2]))
+                    nn.SELU())
+            layer_idx += 1
 
         # standard initialization
         strategy = cls(
@@ -428,7 +451,10 @@ class NeuralNetStrategy(Strategy, nn.Module):
         if transformation is not None:
             desired_output = transformation(input_tensor)
 
-        if desired_output.shape[-1] != self.output_length:
+        if desired_output.shape[-1] < self.output_length:
+            # TODO: not appropriate for CAs
+            torch.cat([desired_output] * self.output_length, axis=1)
+        elif desired_output.shape[-1] > self.output_length:
             raise ValueError('Desired pretraining output does not match NN output dimension.')
 
         optimizer = torch.optim.Adam(self.parameters())

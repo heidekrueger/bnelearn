@@ -40,3 +40,76 @@ class Mechanism(Game, ABC):
     def run(self, bids):
         """Alias for play for auction mechanisms"""
         raise NotImplementedError()
+
+    def get_revenue(self, env, draw_valuations: bool = False) -> float:
+        """Returns the average seller revenue over a batch.
+
+        Args:
+            env (:obj:`Environment`).
+            draw_valuations (bool): whether or not to redraw the valuations of
+                the agents.
+
+        Returns:
+            revenue (float): average of seller revenue over a batch of games.
+
+        """
+        if draw_valuations:
+            env.draw_valuations_()
+
+        action_length = env.agents[0].n_items
+
+        bid_profile = torch.zeros(env.batch_size, env.n_players, action_length,
+                                  device=self.device)
+        for pos, bid in env._generate_agent_actions():  # pylint: disable=protected-access
+            bid_profile[:, pos, :] = bid
+        _, payments = self.play(bid_profile)
+
+        return payments.sum(axis=1).float().mean()
+
+    def get_efficiency(self, env, draw_valuations: bool = False) -> float:
+        """Average percentage that the actual welfare reaches of the maximal
+        possible welfare over a batch.
+
+        Args:
+            env (:obj:`Environment`).
+            draw_valuations (:bool:) whether or not to redraw the valuations of
+                the agents.
+
+        Returns:
+            efficiency (:float:) Percentage that the actual welfare reaches of
+                the maximale possible welfare. Averaged over batch.
+
+        """
+        batch_size = min(env.agents[0].valuations.shape[0], 2 ** 12)
+
+        if draw_valuations:
+            env.draw_valuations_()
+
+        action_length = env.agents[0].n_items
+
+        bid_profile = torch.zeros(batch_size, env.n_players, action_length,
+                                  device=self.device)
+        for pos, bid in env._generate_agent_actions():  # pylint: disable=protected-access
+            bid_profile[:, pos, :] = bid[:batch_size, ...]
+        actual_allocations, _ = self.play(bid_profile)
+        actual_welfare = torch.zeros(batch_size, device=self.device)
+        for a in env.agents:
+            actual_welfare += a.get_welfare(
+                actual_allocations[:batch_size, a.player_position],
+                a.valuations[:batch_size, ...]
+            )
+
+        valuation_profile = torch.zeros(env.batch_size, env.n_players, action_length,
+                                        device=self.device)
+        for agent in env.agents:
+            valuation_profile[:, agent.player_position, :] = agent.valuations
+        maximum_allocations, _ = self.play(valuation_profile)
+        maximum_welfare = torch.zeros(batch_size, device=self.device)
+        for a in env.agents:
+            maximum_welfare += a.get_welfare(
+                maximum_allocations[:batch_size, a.player_position],
+                a.valuations[:batch_size, ...]
+            )
+
+        efficiency = (actual_welfare / maximum_welfare).mean().float()
+        return efficiency

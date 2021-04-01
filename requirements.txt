@@ -4,7 +4,7 @@ gurobi # conda -c gurobi
 numpy
 future
 jupyterlab
-pytorch # conda -c pytorch
+pytorch # conda install -c pytorch
 tensorboard
 matplotlib
 pynvml #conda install -c fastai pynvml
@@ -17,7 +17,7 @@ scipy # for numeric integration
 Sphinx
 sphinx-rtd-theme # pip
 tqdm #for progress bars
-fire #conda -c conda-forge
+fire #conda install -c conda-forge fire
 tabulate # required for pandas pretty-printing
 
 # non-python requirements (for package development only)

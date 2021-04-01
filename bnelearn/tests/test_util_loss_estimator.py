@@ -237,7 +237,7 @@ def test_ex_interim_util_loss_estimator_splitaward_bne():
 
     agents = [
         ReverseBidder.uniform(config.u_lo[0], config.u_hi[0], strat,
-                              n_units=n_items, efficiency_parameter=config.efficiency_parameter,
+                              n_items=n_items, efficiency_parameter=config.efficiency_parameter,
                               player_position=i, batch_size=batch_size)
         for i in range(n_players)
     ]
