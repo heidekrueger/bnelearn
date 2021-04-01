@@ -299,7 +299,7 @@ class LOLALearner(GradientBasedLearner):
         # Validate and set LOLA hyperparams
         if not set(['eta']) <= set(hyperparams):
             print('Fallback to default second order LOLA step size')
-            self.eta = 1
+            self.eta = 3e-3
         else:
             self.eta = hyperparams['eta']
 
@@ -425,7 +425,7 @@ class LOLA_ESPGLearner(ESPGLearner):
         # Validate and set LOLA hyperparams
         if not set(['eta']) <= set(hyperparams):
             print('Fallback to default second order LOLA step size')
-            self.eta = .1
+            self.eta = 3e-3
         else:
             self.eta = hyperparams['eta']
 
@@ -594,7 +594,7 @@ class SOSLearner(GradientBasedLearner):
         # Validate and set SOS hyperparams
         if not set(['eta']) <= set(hyperparams):
             print('Fallback to default second order SOS step size')
-            self.eta = .1
+            self.eta = 3e-3
         else:
             self.eta = hyperparams['eta']
 
@@ -741,7 +741,7 @@ class SOS_ESPGLearner(ESPGLearner):
         # Validate and set SOS hyperparams
         if not set(['eta']) <= set(hyperparams):
             print('Fallback to default second order SOS step size')
-            self.eta = .1
+            self.eta = 3e-3
         else:
             self.eta = hyperparams['eta']
 

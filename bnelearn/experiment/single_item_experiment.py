@@ -797,9 +797,10 @@ class CycleExperiment(SingleItemExperiment):
 
     def _setup_mechanism(self):
         if self.setting.continuous:
-            self.mechanism = CycleGame(cuda=self.hardware.cudan)
+            self.mechanism = CycleGame(cuda=self.hardware.cuda)
         else:
             self.mechanism = CycleAuction(cuda=self.hardware.cuda,
+                                          radius=self.setting.radius,
                                           version=self.setting.game_version)
 
     def _check_and_set_known_bne(self):
@@ -877,5 +878,5 @@ class CycleExperiment(SingleItemExperiment):
         if self.setting.continuous:
             name = ['single_item', 'cycle_game']
         else:
-            name = ['single_item', f'cycle_auction_v{self.setting.game_version}']
+            name = ['single_item', f'cycle_auction_v{self.setting.game_version}_r{self.setting.radius}']
         return os.path.join(*name)

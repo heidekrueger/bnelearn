@@ -632,6 +632,14 @@ class Experiment(ABC):
             print("\tcurrent est. ex-interim loss:" + str(
                 [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
 
+        if self.logging.log_metrics['actions']:
+            bid_profile = torch.zeros(self.learning.batch_size, self.env.n_players,
+                                      self.n_items, device=self.hardware.device)
+            for p_pos, p_bid in self.env._generate_agent_actions():
+                bid_profile[:, p_pos, :] = p_bid
+            actions = bid_profile.mean(axis=0)
+            self._cur_epoch_log_params['actions'] = actions
+
         # plotting
         if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
