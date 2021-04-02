@@ -185,9 +185,8 @@ def test_PSO_learner():
     optimizer_type = None
     optimizer_hyperparams = {}
     learner_hyperparams = {'swarm_size': 30, 'inertia_weight': 0.792, 'cognition_ratio': 1.49445,
-                           'social_ratio': 1.49445, 'topology': 'von_neumann', 'upper_bounds': 1.0,
-                           'lower_bounds': -1.0, 'max_velocity': 2.0, 'bound_handling': False,
-                           'velocity_clamping': True}
+                           'social_ratio': 1.49445, 'topology': 'von_neumann', 'search_range_stdv': 0.0,
+                           'bound_handling': False, 'velocity_clamping': True}
 
     model = NeuralNetStrategy(
         input_length,
