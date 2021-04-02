@@ -379,7 +379,7 @@ class ConfigurationManager:
         return self
 
     # pylint: disable=too-many-arguments, unused-argument
-    def set_learning(self, model_sharing: bool = 'None', learner_hyperparams: dict = 'None',
+    def set_learning(self, model_sharing: bool = 'None', learner_type: str = 'None', learner_hyperparams: dict = 'None',
                      optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
@@ -452,6 +452,7 @@ class ConfigurationManager:
                                 payment_rule='first_price',
                                 risk=1.0)
         learning = LearningConfig(model_sharing=True,
+                                  learner_type='ESPGLearner',
                                   learner_hyperparams={'population_size': 64,
                                                        'sigma': 1.,
                                                        'scale_sigma_by_model_size': True},
@@ -682,5 +683,7 @@ class ConfigurationManager:
                 return torch.optim.Adam
             if optimizer in ('SGD', 'sgd', 'Sgd'):
                 return torch.optim.SGD
+            if optimizer in ('PSO', 'pso', 'Pso'):
+                return True
             # add more optimizers as needed
         raise ValueError('Optimizer type could not be inferred!')

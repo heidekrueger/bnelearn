@@ -6,6 +6,10 @@ from copy import deepcopy
 from abc import ABC, abstractmethod
 from typing import Tuple, Type, Callable
 
+#for PSOLearner
+import sympy.ntheory as sympy
+import math
+
 import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from bnelearn.environment import Environment
@@ -500,3 +504,301 @@ class DummyNonLearner(GradientBasedLearner):
 
     def _set_gradients(self):
         pass
+
+
+#additional libraries math, sympy.ntheory
+class PSOLearner(Learner):
+    """ Implements the Particle Swarm Optimization Algorithm as a Learner
+
+        Particles represent a possible solutions to the model parameters.
+        Every update step they move one step in the search space to sample a new solution point.
+        They are guided by their previously best found solution (personal best position)
+        and the best solution found by the entire swarm (best position)
+
+        NOTE: dim = number of parameters in the model to be optimized
+
+        Arguments:
+            model: bnelearn.bidder
+            environment: bnelearn.Environment
+            hyperparams: dict
+                (required:)
+                    swarm_size: int
+                        Number of particles in the swarm
+                    inertia_weight: float
+                        Scales the impact of the old velocity on the new one
+                    cognition_ratio: float
+                        Upper limit for the impact of the personal best solution on the velocity
+                    social_ratio: float
+                        Upper limit for the impact of the swarm's best solution on the velocity
+                    topology: str
+                        Defines the communication network of the swarm
+                        If 'global', particles are drawn to the global best position of the swarm.
+                            Neighborhood size = swarm size
+                        If 'ring', particles are drawn to the best position in their neighborhood.
+                            Particles form a neighborhood based on their position in the population array.
+                            The first and last particles are connected to form a ring structure.
+                            Neighborhood size = 3. E.g., neighborhood of particle i: particle i-1, particle i, particle i+1
+                        If 'von_neumann', particles are drawn to the best position in their neighborhood.
+                            Particles form a neighborhood based on their position in the population matrix.
+                            A particle is connected to its left, right, upper and lower neighbor in the matrix.
+                            Neighborhood size = 5
+                    upper_bounds: float, List or Tensor
+                        Upper search space bounds for each dimension
+                        If a float is given, the value will be used for each dim
+                        If bound_handling == False then only used for initialization
+                    lower_bounds: float, List or Tensor
+                        Lower search space bounds for each dimension
+                        If a float is given, this value will be used for each dim
+                        If bound_handling == False then only used for initialization
+                    max_velocity: float
+                        Max step size in each direction during one update step
+                        If velocity_clamping == False then only used for initialization
+                (optional:)
+                    bound_handling: bool (default: False)
+                        If true will clamp particle's positions in each dim to the interval [lower_bounds, upper_bounds]
+                    velocity_clamping: bool (default: True)
+                        If true will clamp particle's velocities in each dim to the interval [-max_velocity, max_velocity]
+                        before adding to the positions
+            optimizer_type: Type[torch.optim.Optimizer]
+                A class implementing torch's optimizer interface used for parameter update step.
+                PSO does not need an torch optimizer to compute an parameter update step.
+                -> currently only used to have an consistent interface with other learners
+            optimizer_hyperparams: dict
+            strat_to_player_kwargs: dict
+                Dict of arguments provided to environment used for evaluating utility of current and candidate strategies.
+        """
+
+    def __init__(self,
+                 model: torch.nn.Module, environment: Environment, hyperparams: dict,
+                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
+                 strat_to_player_kwargs: dict = None):
+        self.model = model
+        self.params = model.parameters
+        self.environment = environment
+
+        self.strat_to_player_kwargs = strat_to_player_kwargs if strat_to_player_kwargs else {}
+        # warn if weird initialization
+        if 'player_position' not in self.strat_to_player_kwargs.keys():
+            warnings.warn('You haven\'t specified a player_position to evaluate the model. Defaulting to position 0.')
+            self.strat_to_player_kwargs['player_position'] = 0
+
+        # validate PSO hyperparams
+        if not set(['swarm_size', 'inertia_weight', 'cognition_ratio', 'social_ratio', 'topology', 'search_range_stdv']) <= set(hyperparams):
+            raise ValueError(
+                'Missing hyperparams for PSO. Provide at least, swarm_size, inertia_weight, cognition_ratio, social_ratio, topology, search_range_stdv.')
+        if not isinstance(hyperparams['swarm_size'], int) or hyperparams['swarm_size'] < 2:
+            raise ValueError('Please provide a valid `swarm_size` parameter >=2')
+        if hyperparams['search_range_stdv'] < 0.0:
+            raise ValueError('Please provide a valid `search range deviation` >= 0.0')
+        if hyperparams['topology'] not in ['global', 'Global', 'GLOBAL', 'von_neumann', 'von_Neumann', 'VON_NEUMANN',
+                                           'ring', 'Ring', 'RING']:
+            raise ValueError('Please provide a valid `topology`')
+
+        # params needed only for initialization
+        swarm_size = hyperparams['swarm_size']
+        search_range_stdv = float(hyperparams['search_range_stdv'])
+        n_parameters = sum([p.numel() for p in self.params()])
+        # model params a commonly initialized within max range [-1, 1]
+        # i.e., pytorch linear: stdv = 1. / math.sqrt(input_length); self.weight.data.uniform_(-stdv,stdv)
+        max_params_init_stdv = 1.0
+        params_device = parameters_to_vector(self.params()).device
+
+        self.inertia = float(hyperparams['inertia_weight'])
+        self.cognition = float(hyperparams['cognition_ratio'])
+        self.social = float(hyperparams['social_ratio'])
+        # only for random position init
+        self.max_velocity = max_params_init_stdv
+        self.max_position = max_params_init_stdv + search_range_stdv
+        self.topology = hyperparams['topology']
+
+        # --- initialize the swarm ---
+        # positions and velocities
+        # option 1: pertubation of pretrained model params
+        #self.position = torch.zeros(swarm_size, n_parameters, device=params_device).uniform_(-search_range_stdv, search_range_stdv)
+        #self.position.add_(parameters_to_vector(self.params()))
+        # option 2: random positions
+        self.position = (2 * self.max_position
+                          * torch.rand(swarm_size, n_parameters) - self.max_position).to(params_device)
+        # option 1: random velocities:
+        self.velocity = 2 * self.max_velocity * torch.rand_like(self.position) - self.max_velocity
+        # option 2: zero velocities:
+        #self.velocity = torch.zeros_like(self.position)
+
+        # personal best fitness and positions
+        self.pbest_fitness = torch.full((swarm_size,), float("Inf"), device=self.position.device)
+        self.pbest_position = torch.empty_like(self.position)
+        # the shape of swarm's best position and fitness depend on the topology structure
+        self.best_fitness, self.best_position, self.neighborhood = self.calculate_neighborhood(swarm_size)
+
+        # initialize non-required options
+        if 'bound_handling' in hyperparams and hyperparams['bound_handling']:
+            self.bound_handling = True
+            self.max_position = max_params_init_stdv + search_range_stdv
+        else:
+            self.bound_handling = False
+        if 'velocity_clamping' in hyperparams and not hyperparams['velocity_clamping']:
+            self.velocity_clamping = False
+        else:
+            self.velocity_clamping = True
+
+
+    def calculate_neighborhood(self, swarm_size):
+        """Initializes the swarm's best position and fitness
+            and information structure (neighborhood) defining the social attractor for each particle
+
+            Arguments:
+                swarm_size: int
+                    Number of particles in the swarm
+            Returns:
+                best_fitness: Tensor
+                    The fitness value of the social attractor for each particle
+                best_position: Tensor
+                    The position of the social attractor for each particle
+                neighborhood: Tensor
+                    The indices of all particles part of the particle's neighborhood for each particle
+
+
+            If a global topology is used the neighborhood size = swarm_size
+            all particle remember the same best position and fitness
+            only one global attractor is used as social influence
+            best_position: 1 x n_params, best_fitness: 1 x 1 (single value), neighborhood: None
+
+            If a local topology is use (ring, von Neumann) a neighborhood is defined for each particle
+            each particle is attracted by the local best position and fitness of its neighborhood
+            the neighborhood tensor holds the particle indices for each neighborhood
+            best_position: swarm_size x n_params, best_fitness: 1 x swarm_size, neighborhood: swarm_size x neighborhood_size
+
+        """
+        if self.topology == 'global':
+            # all particle use the same global position as reference -> no neighborhood indices necessary
+            # the position will be set in step 0
+            return torch.Tensor([float("Inf")]).to(device=self.position.device), None, None
+
+        index = torch.unsqueeze(torch.arange(0, swarm_size, dtype=torch.long), 1)
+        if self.topology == 'ring':
+            # a neighborhood consists of 3 particle, the particle itself and its left and right index neighbor
+            # neighborhood of particle i: particle i-1, particle i, particle i+1
+            # first and last particle are connected to form a ring network
+            # NOTE: torch.remainder: The remainder has the same sign as the divisor
+            # neighborhood: swarm size x 3, structure: [left index, particle index, right index]
+            neighborhood = index.repeat(1, 3)
+            neighborhood.add_(torch.tensor([-1, 0, 1], dtype=torch.long)).remainder_(swarm_size)
+        else:
+            # --- von Neumann ---
+            # a neighborhood consists of 5 particle, the particle and its left, right, upper and lower index neighbor
+            # particles are arranged as a matrix (n,m); size: swarm_size N = n x m ; with n,m >= 3
+            # neighborhood of particle i in 1,...,N
+            #       Above neighbor: N_a = (i-column) mod N; if N_a == 0, N_a = N
+            #       Left neighbor: N_l = i-1; if (i-1) mod column == 0, N_l = i–1+column
+            #       Right neighbor: N_r = i+1; if i mod column == 0, N_r = i+1-column
+            #       Below neighbor: N_b = (i+column) mod N; if N_b == 0, N_b = N
+            # NOTE: torch.remainder: The remainder has the same sign as the divisor.
+            # neighborhood: swarm size x 5,
+            # structure: [uppper index, left index, particle index, right index, lower index]
+
+            # 1. calculate the size of the matrix (column length)
+            if sympy.isprime(swarm_size) or swarm_size < 9:
+                raise ValueError("{} is not a valid value for von neumann neighborhood size".format(swarm_size))
+            if math.ceil(math.sqrt(swarm_size)) ** 2 == swarm_size:
+                column = math.ceil(math.sqrt(swarm_size))
+            else:
+                prime = torch.Tensor(list(sympy.primerange(3, math.ceil(math.sqrt(swarm_size)))))
+                column_candidates = torch.cat((torch.Tensor([4]), prime))
+                swarm_dividers = torch.remainder(torch.full((column_candidates.numel(),), swarm_size, dtype=torch.long),
+                                                 column_candidates) == 0
+                if column_candidates[swarm_dividers].numel() == 0:
+                    raise ValueError("{} is not a valid value for von neumann neighborhood size".format(swarm_size))
+                column = column_candidates[swarm_dividers].max().long()
+            # 2. initialize the neighborhood index tensor
+            neighborhood = index.repeat(1, 5)
+            neighborhood.add_(torch.Tensor([-column, -1, 0, 1, column]).long())
+            neighborhood[::column, 1].add_(column)
+            neighborhood[(column - 1)::column, 3].add_(-column)
+            neighborhood.remainder_(swarm_size)
+
+        # best_position: swarm_size x n_params, best_fitness: 1 x swarm size
+        return deepcopy(self.pbest_fitness), torch.empty_like(self.position), neighborhood.to(
+            device=self.position.device)
+
+    def calculate_fitness(self, position):
+        """Let the candidate particle try against the environment and get its utility
+
+            NOTE: PSO minimize but we use a maximization formulation in the rewards,
+            thus we need to use the negative reward.
+
+            Arguments:
+                position: Tensor
+                    The current particle's parameter values
+            Returns:
+                reward: Tensor
+                    The fitness value (utility) of the current particle
+        """
+        vector_to_parameters(position, self.params())
+        reward = self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach()
+        assert reward.numel() == 1
+        return -reward
+
+    def update_strategy(self):
+        # Performs one model-update to the player's strategy.
+
+        # 1. if required redraw valuations / perform random moves (determined by env)
+        self.environment.prepare_iteration()
+        # 2. evaluate each particles current position (solution)
+        # fitness: 1 x swarm size
+        fitness = torch.Tensor([self.calculate_fitness(p) for p in self.position]).to(device=self.position.device)
+
+        # --- best solution update ---
+        # 3. update the personal best positions:
+        # check if the current sample point of the particle is a better solution than the particles previous found solution
+        # -> check if the particle's current fitness is better than the particle's "personal best fitness".
+        # if so, update the personal best position and fitness to the values of the current ones
+        new_best = fitness < self.pbest_fitness
+        if new_best.any():
+            self.pbest_fitness[new_best] = fitness[new_best]
+            self.pbest_position[new_best, :] = self.position[new_best, :]
+
+        # 4. update the swarm's best position(s):
+        if self.topology == 'global':
+            # check if a particle found a better solution than the current global best
+            #  -> check if the best fitness of all "personal best fitness" is better than the "global best fitness".
+            # if so, update the global best position and fitness to the values of the best personal best
+            if self.pbest_fitness.min() < self.best_fitness:
+                self.best_fitness = self.pbest_fitness.min()
+                self.best_position = torch.unsqueeze(self.pbest_position[self.pbest_fitness.argmin(), :], 0)
+
+        else:
+            # get the best particle of each neighborhood (best "personal best fitness" of the neighborhood)
+            # check if this particle's "personal best fitness" is better than the previous "best fitness" of the neighborhood.
+            # if so, update the neighborhoods best positions and fitness to the values of this particle's personal best
+            neighbor_fitness = self.pbest_fitness[self.neighborhood]
+            best_neighbor = neighbor_fitness.min(axis=1)
+            new_best = best_neighbor.values < self.best_fitness
+            if new_best.any():
+                self.best_fitness[new_best] = best_neighbor.values[new_best]
+                index = self.neighborhood[torch.arange(0, self.neighborhood.size()[0]), best_neighbor.indices][new_best]
+                self.best_position[new_best, :] = self.pbest_position[index, :]
+                print("best: ", self.best_fitness.min())
+
+        # --- move ---
+        # 5. update the velocities:
+        # new velocity = old velocity + cognitive component + social component
+        self.velocity = self.inertia * self.velocity \
+                        + self.cognition * torch.rand_like(self.position) * (self.pbest_position - self.position) \
+                        + self.social * torch.rand_like(self.position) * (self.best_position - self.position)
+        # clamp particles velocity values to be <= the maximal allowed velocity step size
+        if self.velocity_clamping:
+            self.velocity.clamp_(-self.max_velocity, self.max_velocity)
+        # 6. update the positions
+        self.position.add_(self.velocity)
+        # clamp particles position values to lay inside the search space bounds
+        if self.bound_handling:
+           self.position.clamp_(-self.max_position, self.max_position)
+           # torch.max(torch.min(self.position, self.max_position), -self.max_position, out=self.position)
+
+        assert torch.isfinite(self.best_fitness.min())
+        # assign the parameters of the best particle to the model parameters
+        vector_to_parameters(self.best_position[self.best_fitness.argmin(), :], self.params())
+
+    def update_strategy_and_evaluate_utility(self):
+        self.update_strategy()
+        return self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach()

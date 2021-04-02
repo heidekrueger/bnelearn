@@ -34,16 +34,30 @@ if __name__ == '__main__':
 
     # Well, path is user-specific
     log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
+    #Carina's local logdir
+    #log_root_dir = os.path.join(os.path.expanduser('~'),  'Documents', 'Uni', 'Masterarbeit', 'bnelearn', 'experiments')
 
 
     ### SINGLE ITEM EXPERIMENTS ###
 
     experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
-                                                               n_epochs=200) \
+                                                               n_epochs=500) \
         .set_setting(risk=1.1)\
         .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
-        .set_learning(pretrain_iters=5) \
-        .set_logging(eval_batch_size=2**4).get_config()
+        .set_learning(pretrain_iters=500) \
+        .set_logging(eval_batch_size=2**22, util_loss_batch_size=2**10, util_loss_grid_size=2**10).set_hardware(specific_gpu=4).get_config()
+
+    #PSO config
+    #experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
+    #                                                           n_epochs=500) \
+    #    .set_setting(risk=1.1)\
+    #    .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True) \
+    #    .set_learning(pretrain_iters=500) \
+    #    .set_learning(learner_type='PSOLearner', learner_hyperparams={'swarm_size': 30, 'inertia_weight': 0.792, 'cognition_ratio': 1.49445,
+    #                                       'social_ratio': 1.49445, 'topology': 'von_neumann', 'search_range_stdv': 0.0, 'bound_handling': False, 'velocity_clamping': False},
+    #                  optimizer_type='pso') \
+    #    .set_logging(eval_batch_size=2 ** 22, util_loss_batch_size=2**10, util_loss_grid_size=2**10) \
+    #    .set_hardware(specific_gpu=6).get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
     #                                                            n_runs=2, n_epochs=2)\
@@ -143,14 +157,17 @@ if __name__ == '__main__':
     #     .get_config()
 
     # for making a toy experiment
-    experiment_config.running.n_epochs = 2
-    experiment_config.logging.plot_frequency = 1
-    experiment_config.logging.util_loss_frequency = 1
-    experiment_config.logging.plot_points = 10
-    experiment_config.logging.util_loss_batch_size = 2 ** 2
-    experiment_config.logging.util_loss_grid_size = 2 ** 2
-    experiment_config.learning.batch_size = 2 ** 2
-    experiment_config.logging.eval_batch_size = 2 ** 2
+    #experiment_config.running.n_epochs = 20
+    #experiment_config.logging.plot_frequency = 1
+    #experiment_config.logging.util_loss_frequency = 1
+    #experiment_config.logging.plot_points = 10
+    #experiment_config.logging.util_loss_batch_size = 2 ** 2
+    #experiment_config.logging.util_loss_grid_size = 2 ** 2
+    #experiment_config.learning.batch_size = 2 ** 2
+    #experiment_config.logging.eval_batch_size = 2 ** 2
+    #Carina's smaller toy
+    #experiment_config.learning.hidden_nodes = [2, 2]
+    #experiment_config.running.n_epochs = 5
 
     try:
         experiment = experiment_class(experiment_config)

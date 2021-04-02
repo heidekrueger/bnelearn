@@ -6,6 +6,7 @@ can often be shared by specific experiments.
 import os
 from sys import platform
 import time
+import inspect
 from abc import ABC, abstractmethod
 from time import perf_counter as timer
 from typing import Iterable, List
@@ -22,6 +23,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
+import bnelearn.learner as learners
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
 from bnelearn.experiment.configurations import (ExperimentConfig)
@@ -158,15 +160,38 @@ class Experiment(ABC):
         pass
 
     def _setup_learners(self):
+        # self.learners = [
+        #    ESPGLearner(model=model,
+        #                environment=self.env,
+        #                hyperparams=self.learning.learner_hyperparams,
+        #                optimizer_type=self.learning.optimizer,
+        #                optimizer_hyperparams=self.learning.optimizer_hyperparams,
+        #                strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]})
+        #    for m_id, model in enumerate(self.models)]
 
-        self.learners = [
-            ESPGLearner(model=model,
-                        environment=self.env,
-                        hyperparams=self.learning.learner_hyperparams,
-                        optimizer_type=self.learning.optimizer,
-                        optimizer_hyperparams=self.learning.optimizer_hyperparams,
-                        strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]})
-            for m_id, model in enumerate(self.models)]
+        # self.learners = [
+        #    PSOLearner(model=model,
+        #                environment=self.env,
+        #                hyperparams=self.learning.learner_hyperparams,
+        #                strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]})
+        #    for m_id, model in enumerate(self.models)]
+
+        """Setup learner.
+
+          All classes within `bnelearn.learner` are considered.
+          """
+        available_learners = dict(inspect.getmembers(learners))
+        if self.learning.learner_type in available_learners.keys():
+            self.learners = [
+                available_learners[self.learning.learner_type](
+                    model=model,
+                    environment=self.env,
+                    hyperparams=self.learning.learner_hyperparams,
+                    optimizer_type=self.learning.optimizer,
+                    optimizer_hyperparams=self.learning.optimizer_hyperparams,
+                    strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
+                )
+                for m_id, model in enumerate(self.models)]
 
     def _setup_bidders(self):
         """
@@ -297,7 +322,7 @@ class Experiment(ABC):
             # self._log_experiment_params()
             logging_utils.save_experiment_config(self.experiment_log_dir, self.config)
             elapsed = timer() - tic
-            logging_utils.log_git_commit_hash(self.experiment_log_dir)
+            #logging_utils.log_git_commit_hash(self.experiment_log_dir)
         else:
             print('Logging disabled.')
             elapsed = 0
