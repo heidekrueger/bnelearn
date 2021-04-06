@@ -24,15 +24,16 @@ if __name__ == '__main__':
 
     """
     log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn',
-                                'experiments', 'opponent-awareness')
+                                'experiments', 'opponent-awareness-specific-v1')
 
 
     # Params ------------------------------------------------------------------
     # ['ESPGLearner', 'LOLALearner', 'SOSLearner', 'LOLA_ESPGLearner', 'SOS_ESPGLearner']
     learners = ['ESPGLearner', 'LOLALearner', 'SOSLearner', 'LOLA_ESPGLearner', 'SOS_ESPGLearner']
-    game_versions = [1, 2, 3, 4]
-    radii = [.1, .5, 1.]
-    n_epochs = 500
+    n_runs = 3
+    game_versions = [1]
+    radii = [1.]
+    n_epochs = 1000
     batch_size = 2**12
     eval_batch_size = 2**17
     specific_gpu = 6
@@ -44,7 +45,7 @@ if __name__ == '__main__':
                 log_dir = os.path.join(log_root_dir, learner)
                 experiment_config, experiment_class = ConfigurationManager(
                     experiment_type='cycle_game',
-                    n_runs=1,
+                    n_runs=n_runs,
                     n_epochs=n_epochs,
                 ) \
                 .set_setting(

@@ -844,13 +844,15 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_hyperparams': str(self.learning.optimizer_hyperparams),
                     'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
+        # try:
+        #     self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
+        # except:
+        #     pass
         try:
-            self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
+            self._hparams_metrics['util_loss_ex_interim'] = self._cur_epoch_log_params['util_loss_ex_interim']
         except:
-            try:
-                self._hparams_metrics['util_loss_ex_interim'] = self._cur_epoch_log_params['util_loss_ex_interim']
-            except:
-                pass
+            pass
+
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
 
     def _log_hyperparams(self, epoch=0):

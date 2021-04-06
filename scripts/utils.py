@@ -23,18 +23,18 @@ def logs_to_df(path: str):
     aggregate_df.to_csv('experiments/summary.csv', index=False)
 
 
-def cycle_logs_to_csv(path: str = '../experiments/summary.csv'):
+def cycle_logs_to_csv(path: str = 'experiments/summary.csv'):
     df = pd.read_csv(path)
     del df['epoch'], df['run']
 
-    def reduce_exp(row):
-        return row['exp'][54:]
-    df['exp'] = df.apply(reduce_exp, axis=1)
-
     def get_learner(v):
-        s = 0
-        e = v.find('Learner') + len('Learner')
-        return v[s:e]
+        word = 'Learner'
+        l = len(word)
+        e = v.find(word) + l
+        s = e - l
+        while v[s] != '/':
+            s = s-1
+        return v[s+1:e]
     df['learner'] = df['exp'].apply(get_learner)
 
     def get_game(v):
@@ -47,6 +47,14 @@ def cycle_logs_to_csv(path: str = '../experiments/summary.csv'):
         elif 'cycle_auction_v4' in v:
             return 'v4'
     df['game'] = df['exp'].apply(get_game)
+
+    def get_game_radius(v):
+        s = v.find('_r') + 2
+        e = s + 1
+        while v[e] != '/':
+            e += 1
+        return v[s:e]
+    df['radius'] = df['exp'].apply(get_game_radius)
 
     del df['exp']
     df.to_csv('oa.csv')
@@ -66,10 +74,11 @@ def plot_cycle_game(path: str):
             x = df[df['subrun'] == 'bidder0']['value'].to_numpy()
             y = df[df['subrun'] == 'bidder1']['value'].to_numpy()
 
-            fig, ax = plt.subplots()
+            _, ax = plt.subplots()
             ax.plot(x, y, label='learning')
             ax.plot(x[0], y[0], 'x', label='start point')
-            ax.set_xlabel('action agent 1'); ax.set_ylabel('action agent 2')
+            ax.set_xlabel('action agent 1')
+            ax.set_ylabel('action agent 2')
             ax.plot(x[-1], y[-1], 'x', label='end point')
             ax.plot(0, 0, '.', label='origin', color='black')
             ax.set_box_aspect(1)
@@ -78,15 +87,16 @@ def plot_cycle_game(path: str):
             # plt.xlim([-1, 1])
             # plt.ylim([-1, 1])
             plt.savefig(exp_path + 'learning.png')
+            plt.close()
 
 
 if __name__ == '__main__':
 
     path = '/home/kohring/bnelearn/experiments/opponent-awareness-default-hps'
-    
-    # extract log
-    # logs_to_df(path=path)
-    # cycle_logs_to_csv()
 
-    # plot actions
-    plot_cycle_game(path=path)
+    # Extract log
+    # logs_to_df(path=path)
+    cycle_logs_to_csv()
+
+    # Plot actions
+    # plot_cycle_game(path=path)
