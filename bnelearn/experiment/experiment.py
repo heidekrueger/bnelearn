@@ -796,13 +796,16 @@ class Experiment(ABC):
             for player_positions in self._model2bidder
         ]
         if self.logging.best_response:
+            # Extract return values from `util_loss`
             best_responses = (
-                torch.stack([r[1][0] for r in util_loss], dim=1)[:, :, None],
-                torch.stack([r[1][1] for r in util_loss], dim=1)[:, :, None]
+                torch.stack([r[1][0] for r in util_loss], dim=1),  # observation
+                torch.stack([r[1][1] for r in util_loss], dim=1)   # best response
             )
-            util_loss = [t[0] for t in util_loss]
+            util_loss = [t[0] for t in util_loss]                  # actual util loss
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
+
+            # Plot
             self._plot(plot_data=best_responses, writer=self.writer,
                        ylim=[0, max(a._grid_ub for a in self.env.agents).cpu()],
                        figure_name='best_responses', y_label='best response',

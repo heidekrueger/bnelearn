@@ -304,7 +304,10 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
 
             utility_alternative = torch.zeros_like(utility_actual)
             if return_best_response:
-                best_response = torch.zeros_like(utility_actual)
+                best_response = torch.zeros(
+                    agent_batch_size, output_length,
+                    dtype=action_actual.dtype, device=device
+                )
 
             for b in custom_range:
 
@@ -360,12 +363,8 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
 
                 # maximum expected utility over grid of alternative actions
                 if return_best_response:
-                    if output_length > 1:
-                        raise NotImplementedError(
-                            'best responses are only available for 1d setting.'
-                        ) # TODO Nils: shouln't be too much effort to generalize
                     utility_alternative[b:b+mini_batch_size], idx = torch.max(utility_alternative_batch, axis=1)
-                    best_response[b:b+mini_batch_size] = action_alternative[idx].squeeze()
+                    best_response[b:b+mini_batch_size, :] = action_alternative[idx, :]
                 else:
                     utility_alternative[b:b+mini_batch_size], _ = torch.max(utility_alternative_batch, axis=1)
 
