@@ -70,33 +70,36 @@ def plot_cycle_game(path: str):
         if 'full_results' in exp_name:
             df = pd.read_csv(exp_path)
             df = df[df['tag'] == 'eval/actions']
-            df = df[['subrun', 'epoch', 'value']]
-            x = df[df['subrun'] == 'bidder0']['value'].to_numpy()
-            y = df[df['subrun'] == 'bidder1']['value'].to_numpy()
+            runs = df.run.unique()
+            for run in runs:
+                df_run = df[df['run'] == run]
+                df_run = df_run[['subrun', 'epoch', 'value']]
+                x = df_run[df_run['subrun'] == 'bidder0']['value'].to_numpy()
+                y = df_run[df_run['subrun'] == 'bidder1']['value'].to_numpy()
 
-            _, ax = plt.subplots()
-            ax.plot(x, y, label='learning')
-            ax.plot(x[0], y[0], 'x', label='start point')
-            ax.set_xlabel('action agent 1')
-            ax.set_ylabel('action agent 2')
-            ax.plot(x[-1], y[-1], 'x', label='end point')
-            ax.plot(0, 0, '.', label='origin', color='black')
-            ax.set_box_aspect(1)
-            plt.title(exp_name)
-            plt.legend(loc='upper left')
-            # plt.xlim([-1, 1])
-            # plt.ylim([-1, 1])
-            plt.savefig(exp_path + 'learning.png')
-            plt.close()
+                _, ax = plt.subplots()
+                ax.plot(x, y, label='learning')
+                ax.plot(x[0], y[0], 'x', label='start point')
+                ax.set_xlabel('action agent 1')
+                ax.set_ylabel('action agent 2')
+                ax.plot(x[-1], y[-1], 'x', label='end point')
+                ax.plot(0, 0, '.', label='origin', color='black')
+                ax.set_box_aspect(1)
+                plt.title(exp_name)
+                plt.legend(loc='upper left')
+                # plt.xlim([-1, 1])
+                # plt.ylim([-1, 1])
+                plt.savefig(exp_name + run + ' learning.png')
+                plt.close()
 
 
 if __name__ == '__main__':
 
-    path = '/home/kohring/bnelearn/experiments/opponent-awareness-default-hps'
+    path = '/home/kohring/bnelearn/experiments/opponent-awareness-specific-v4'
 
     # Extract log
     # logs_to_df(path=path)
-    cycle_logs_to_csv()
+    # cycle_logs_to_csv()
 
     # Plot actions
-    # plot_cycle_game(path=path)
+    plot_cycle_game(path=path)
