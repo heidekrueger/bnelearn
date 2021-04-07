@@ -641,6 +641,10 @@ class Experiment(ABC):
             self._cur_epoch_log_params['revenue'] = \
                 self.mechanism.get_revenue(self.env)
 
+        if 'regularization' in self.learning.learner_hyperparams.keys():
+            self._cur_epoch_log_params['regularization'] = \
+                torch.tensor([l.regularize for l in self.learners])
+
         # plotting
         if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))

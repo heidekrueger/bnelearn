@@ -35,9 +35,18 @@ if __name__ == '__main__':
         .set_learning(
             batch_size=2**17,
             pretrain_iters=500,
+            learner_hyperparams={
+                'population_size': 64,
+                'sigma': 1.,
+                'scale_sigma_by_model_size': True,
+                'regularization': {
+                    'inital_strength': .05,
+                    'regularize_decay': .999
+                    }
+            }
             ) \
         .set_hardware(
-            specific_gpu=3,
+            specific_gpu=1,
             ) \
         .set_logging(
             eval_batch_size=2**17,

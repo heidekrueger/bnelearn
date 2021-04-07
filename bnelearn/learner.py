@@ -198,7 +198,6 @@ class ESPGLearner(GradientBasedLearner):
         # both of these as a row-matrix. i.e.
         # rewards: population_size x 1
         # epsilons: population_size x parameter_length
-        self.regularize *= self.regularize_decay
         rewards, epsilons = (
             torch.cat(tensors).view(self.population_size, -1)
             for tensors in zip(*(
@@ -249,6 +248,9 @@ class ESPGLearner(GradientBasedLearner):
                 p.grad.add_(-d_p)
             else:
                 p.grad = -d_p
+                
+        # Decay of regularization
+        self.regularize *= self.regularize_decay
 
     def _perturb_model(self, model: torch.nn.Module) -> Tuple[torch.nn.Module, torch.Tensor]:
         """
