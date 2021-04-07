@@ -504,7 +504,7 @@ class Experiment(ABC):
                     x[:, agent_idx, plot_idx], y[:, agent_idx, plot_idx],
                     fmts[agent_idx % len(fmts)],
                     label=None if labels is None else labels[agent_idx % len(labels)],
-                    color=cycle[agent_idx % n_colors] if colors is None else cycle[colors[agent_idx]],
+                    color=cycle[agent_idx % n_colors] if colors is None else cycle[colors[agent_idx % n_colors]],
                 )
 
             # formating
@@ -797,16 +797,27 @@ class Experiment(ABC):
         ]
         if self.logging.best_response:
             # Extract return values from `util_loss`
-            best_responses = (
-                torch.stack([r[1][0] for r in util_loss], dim=1),  # observation
-                torch.stack([r[1][1] for r in util_loss], dim=1)   # best response
-            )
-            util_loss = [t[0] for t in util_loss]                  # actual util loss
-            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
-            fmts = ['bo'] * len(self.models)
+            observation = torch.stack([r[1][0] for r in util_loss], dim=1)
+            bid = torch.stack([r[1][1] for r in util_loss], dim=1)
+            util_loss = [t[0] for t in util_loss]
+            batch_size = min(self.plot_points, observation.shape[0])
 
             # Plot
-            self._plot(plot_data=best_responses, writer=self.writer,
+            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
+            fmts = ['bo'] * len(self.models)
+            if self.known_bne and self.logging.log_metrics['opt']:
+                for env_idx, _ in enumerate(self.bne_env):
+                    observation = torch.cat(
+                        [observation[:batch_size, ...], self.v_opt[env_idx][:batch_size, ...]],
+                        dim=1)
+                    bid = torch.cat(
+                        [bid[:batch_size, ...], self.b_opt[env_idx][:batch_size, ...]],
+                        dim=1)
+                    labels += ['BNE {} agent {}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
+                               for j in range(len(self.models))]
+                    fmts += ['b--'] * len(self.models)
+
+            self._plot(plot_data=(observation, bid), writer=self.writer,
                        ylim=[0, max(a._grid_ub for a in self.env.agents).cpu()],
                        figure_name='best_responses', y_label='best response',
                        colors=list(range(len(self.models))), epoch=epoch, labels=labels,

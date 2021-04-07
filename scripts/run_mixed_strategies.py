@@ -24,29 +24,34 @@ if __name__ == '__main__':
     experiment_config, experiment_class = \
         ConfigurationManager(
             experiment_type='llg_full',
+            seeds=[69],
             n_runs=1,
-            n_epochs=500
+            n_epochs=2000,
             ) \
         .set_setting(
+            payment_rule='mrcs_favored',
             # risk=1.1
             ) \
-        .set_logging(
-            util_loss_batch_size=2**10,
-            util_loss_grid_size=2**8,
-            util_loss_frequency=25,
-            log_root_dir=log_root_dir,
-            save_tb_events_to_csv_detailed=True,
-            best_response=True
-            ) \
         .set_learning(
-            pretrain_iters=5
+            batch_size=2**17,
+            pretrain_iters=500,
             ) \
         .set_hardware(
-            specific_gpu=1
+            specific_gpu=3,
             ) \
-        .set_logging() \
+        .set_logging(
+            eval_batch_size=2**17,
+            cache_eval_actions=False,
+            util_loss_batch_size=2**8,
+            util_loss_grid_size=2**14,
+            util_loss_frequency=100,
+            best_response=True,
+            log_root_dir=log_root_dir,
+            save_tb_events_to_csv_detailed=True,
+            plot_frequency=100,
+            ) \
         .get_config()
     experiment = experiment_class(experiment_config)
     experiment.run()
-   
+
     torch.cuda.empty_cache()

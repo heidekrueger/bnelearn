@@ -400,14 +400,14 @@ class LLGFullAuction(Mechanism):
     def _solve_allocation_problem(
             self,
             bids: torch.Tensor,
-            dont_allocate_to_zero_bid: bool = True
+            allocate_to_zero_bid: bool = True  # Beck & Ott always allocate all
         ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Compute allocation and welfare
 
         Args:
             bids: torch.Tensor of bids with dimensions (batch_size, n_players,
                 n_bids), values = [0, Inf].
-            dont_allocate_to_zero_bid: bool, whether to allocate items to zero
+            allocate_to_zero_bid: bool, whether to allocate items to zero
                 bids or not.
 
         Returns:
@@ -420,7 +420,7 @@ class LLGFullAuction(Mechanism):
         max_individually = bids[:, :, :2].max(axis=1)
         max_bundle = bids[:, :, 2].max(dim=1)
         individually = \
-            max_individually.values.sum(dim=1) > max_bundle.values
+            max_individually.values.sum(dim=1) >= max_bundle.values
 
         # assign individual items
         allocations_individual = max_individually.indices[individually, :]
@@ -434,7 +434,7 @@ class LLGFullAuction(Mechanism):
         allocations_bundle = max_bundle.indices[individually]
         allocations[individually, allocations_bundle, 2] = 1
 
-        if dont_allocate_to_zero_bid:
+        if not allocate_to_zero_bid:
             allocations *= bids > 0
 
         return allocations.view_as(bids)
@@ -704,7 +704,7 @@ class LLLLGGAuction(Mechanism):
         """suppresses stdout output from workers (avoid gurobi startup licence message clutter)"""
         sys.stdout = open(os.devnull, 'w')
 
-    def _solve_allocation_problem(self, bids: torch.Tensor, dont_allocate_to_zero_bid=True):
+    def _solve_allocation_problem(self, bids: torch.Tensor, allocate_to_zero_bid=False):
         """
         Computes allocation and welfare
 
@@ -726,8 +726,8 @@ class LLLLGGAuction(Mechanism):
         solutions_welfare = torch.mm(bids_flat, torch.transpose(solutions, 0, 1))
         welfare, solution = torch.max(solutions_welfare, dim=1)  # maximizes over all possible allocations
         winning_bundles = solutions.index_select(0, solution)
-        if dont_allocate_to_zero_bid:
-            winning_bundles = winning_bundles * (bids_flat > 0)
+        if not allocate_to_zero_bid:
+            winning_bundles *= bids_flat > 0
 
         return winning_bundles, welfare
 
