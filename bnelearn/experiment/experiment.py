@@ -342,7 +342,7 @@ class Experiment(ABC):
                   end="\r")
         return utilities
 
-    def run(self):
+    def run(self) -> dict:
         """Runs the experiment implemented by this class for `epochs` number of iterations."""
         if not self.running.seeds:
             self.running.seeds = list(range(self.running.n_runs))
@@ -415,13 +415,14 @@ class Experiment(ABC):
             finally:
                 self._exit_run(global_step=e)
 
+        logs = {}
         # Once all runs are done, convert tb event files to csv
         if self.logging.enable_logging and (
                 self.logging.save_tb_events_to_csv_detailed or
                 self.logging.save_tb_events_to_csv_aggregate or
                 self.logging.save_tb_events_to_binary_detailed):
             print('Tabulating tensorboard logs...', end=' ')
-            logging_utils.tabulate_tensorboard_logs(
+            logs = logging_utils.tabulate_tensorboard_logs(
                 experiment_dir=self.experiment_log_dir,
                 write_detailed=self.logging.save_tb_events_to_csv_detailed,
                 write_aggregate=self.logging.save_tb_events_to_csv_aggregate,
@@ -429,6 +430,7 @@ class Experiment(ABC):
 
             # logging_utils.print_aggregate_tensorboard_logs(self.experiment_log_dir)
             print('finished.')
+            return logs
 
     def _check_convergence(self, values: torch.Tensor, stopping_criterion: float = None, epoch: int = None):
         """

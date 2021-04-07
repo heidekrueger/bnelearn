@@ -37,9 +37,8 @@ if __name__ == '__main__':
 
 
     ### SINGLE ITEM EXPERIMENTS ###
-
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
-                                                               n_epochs=1000) \
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=2,
+                                                               n_epochs=500) \
         .set_setting(risk=1.1)\
         .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
         .set_learning(pretrain_iters=5) \

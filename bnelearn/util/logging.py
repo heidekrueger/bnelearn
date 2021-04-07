@@ -27,7 +27,7 @@ _git_commit_hash_file_name = 'git_hash'
 # based on https://stackoverflow.com/a/57411105/4755970
 # experiment must be the directory immediately above the runs and each run must have the same shape.
 # No aggregation of multiple subdirectories for now.
-def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detailed=False, write_binary=False):
+def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detailed=False, write_binary=False) -> dict:
     """
     This function reads all tensorboard event log files in subdirectories and converts their content into
     a single csv file containing info of all runs.
@@ -83,6 +83,7 @@ def tabulate_tensorboard_logs(experiment_dir, write_aggregate=True, write_detail
         f_name = os.path.join(experiment_dir, f'{_full_log_file_name}.pkl')
         all_tb_events.to_pickle(f_name)
 
+    return last_epoch_tb_events
 
 def print_full_tensorboard_logs(experiment_dir, first_row: int = 0, last_row=None):
     """
