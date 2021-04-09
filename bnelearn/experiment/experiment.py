@@ -822,10 +822,9 @@ class Experiment(ABC):
                     fmts += ['b--'] * len(self.models)
 
             self._plot(plot_data=(observation, bid), writer=self.writer,
-                       ylim=[0, max(a._grid_ub for a in self.env.agents).cpu()],
                        figure_name='best_responses', y_label='best response',
-                       colors=list(range(len(self.models))), epoch=epoch, labels=labels,
-                       fmts=fmts, plot_points=self.plot_points)
+                       epoch=epoch, labels=labels, fmts=fmts,
+                       plot_points=self.plot_points)
 
         ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_loss]
         ex_interim_max_util_loss = [util_loss_model.max() for util_loss_model in util_loss]

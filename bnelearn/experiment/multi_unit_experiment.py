@@ -423,18 +423,11 @@ class MultiUnitExperiment(Experiment, ABC):
             name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
         return os.path.join(*name)
 
-    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
-              xlim: list = None, ylim: list = None, labels: list = None,
-              x_label="valuation", y_label="bid", fmts=['o'],
-              figure_name: str = 'bid_function', plot_points=100):
-
-        super()._plot(plot_data=plot_data, writer=writer, epoch=epoch,
-                      xlim=xlim, ylim=ylim, labels=labels, x_label=x_label,
-                      y_label=y_label, fmts=fmts, figure_name=figure_name,
-                      plot_points=plot_points)
+    def _plot(self, **kwargs):
+        super()._plot(**kwargs)
 
         if self.n_units == 2 and not isinstance(self, SplitAwardExperiment):
-            super()._plot_3d(plot_data, writer, epoch, figure_name)
+            super()._plot_3d(**kwargs)
 
     @staticmethod
     def default_pretrain_transform(input_tensor):
@@ -481,18 +474,6 @@ class SplitAwardExperiment(MultiUnitExperiment):
                 _optimal_bid_splitaward2x2_2(self.config.setting)
             ]
         return True
-
-    # def default_pretrain_transform(self, input_tensor):
-    #     """Pretrain transformation for this setting"""
-    #     temp = torch.clone(input_tensor)
-    #     if input_tensor.shape[1] == 1:
-    #         output_tensor = torch.cat((
-    #             temp,
-    #             self.efficiency_parameter * temp
-    #         ), 1)
-    #     else:
-    #         output_tensor = temp
-    #     return output_tensor
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
         """Standard strat_to_bidder method, but with ReverseBidder"""

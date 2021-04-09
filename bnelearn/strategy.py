@@ -329,10 +329,23 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
             Has no trainable parameters.
             """
-            def forward(self, x):
+            def __init__(self, **kwargs):
+                self.mixed_strategy = True
+                super(GaussLayer, self).__init__(**kwargs)
+
+            def forward(self, x, pretrain=False):
                 if x.dim() == 1:
                     x = x.view(-1, 1)
                 m = x.shape[-1] // 2
+
+                if pretrain:
+                    return torch.cat(
+                        [
+                            x[:, :m] - 1.96*(x[:, m:].abs() + 1e-8),
+                            x[:, :m] + 1.96*(x[:, m:].abs() + 1e-8)
+                        ],
+                        axis=0)
+
                 normal = torch.distributions.normal.Normal(x[:, :m], x[:, m:].abs() + 1e-8)
                 return normal.rsample()
 
@@ -342,13 +355,20 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
             Has no trainable parameters.
             """
-            def forward(self, x):
+            def __init__(self, **kwargs):
+                self.mixed_strategy = True
+                super(UniformLayer, self).__init__(**kwargs)
+
+            def forward(self, x, pretrain=False):
                 if x.dim() == 1:
                     x = x.view(-1, 1)
                 m = x.shape[-1] // 2
 
                 # enforce non-negative width of boundaries
-                err = (x[:, :m] - x[:, m:]).relu() + 1e-4
+                err = (x[:, :m] - x[:, m:] + 1e-4).detach().relu()
+
+                if pretrain:
+                    return torch.cat([x[:, :m], x[:, m:] + err], axis=0)
 
                 uniform = torch.distributions.uniform.Uniform(x[:, :m], x[:, m:] + err)
                 return uniform.rsample()
@@ -458,12 +478,25 @@ class NeuralNetStrategy(Strategy, nn.Module):
             raise ValueError('Desired pretraining output does not match NN output dimension.')
 
         optimizer = torch.optim.Adam(self.parameters())
-        for _ in range(iters):
-            self.zero_grad()
-            diff = (self.forward(input_tensor) - desired_output)
-            loss = (diff * diff).sum()
-            loss.backward()
-            optimizer.step()
+
+        # For mixed strategy: pretreain on zero to desired_output
+        if self.mixed_strategy is not None:
+            desired_output = torch.cat(
+                [torch.zeros_like(desired_output), desired_output])
+            for _ in range(iters):
+                self.zero_grad()
+                diff = (self.forward(input_tensor, pretrain=True) - desired_output)
+                loss = (diff * diff).sum()
+                loss.backward()
+                optimizer.step()
+
+        else:
+            for _ in range(iters):
+                self.zero_grad()
+                diff = (self.forward(input_tensor) - desired_output)
+                loss = (diff * diff).sum()
+                loss.backward()
+                optimizer.step()
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
@@ -478,9 +511,13 @@ class NeuralNetStrategy(Strategy, nn.Module):
             mixed_strategy=self.mixed_strategy,
         )
 
-    def forward(self, x):
+    def forward(self, x, pretrain=False):
         for layer in self.layers.values():
-            x = layer(x)
+            if pretrain and hasattr(layer, 'mixed_strategy'):
+                # ignore last ReLU layer if existend (no fails due to negative values)
+                return layer.forward(x, pretrain=pretrain)
+            else:
+                x = layer(x)
         return x
 
     def play(self, inputs):

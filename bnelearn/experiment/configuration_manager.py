@@ -80,13 +80,13 @@ class ConfigurationManager:
 
     def _init_single_item_asymmetric_uniform_overlapping(self):
         self.learning.model_sharing = False
-        self.setting.u_lo = [5, 5]
-        self.setting.u_hi = [15, 25]
+        self.setting.u_lo = [0, 0]
+        self.setting.u_hi = [.5, 1]
 
     def _init_single_item_asymmetric_uniform_disjunct(self):
         self.learning.model_sharing = False
-        self.setting.u_lo = [0, 6]
-        self.setting.u_hi = [5, 7]
+        self.setting.u_lo = [0, .6]
+        self.setting.u_hi = [.5, .7]
 
     def _init_mineral_rights(self):
         self.setting.n_players = 3
