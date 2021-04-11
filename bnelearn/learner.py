@@ -279,6 +279,10 @@ class ESPGLearner(GradientBasedLearner):
 
 class LOLALearner(GradientBasedLearner):
     """LOLA Learner implemented with Automatic Differentiation Gradient (ADG).
+    
+    LOLA Algorithm Reference: https://arxiv.org/abs/1709.04326
+
+    LOLA Gradient for player 1 is calculated as: L1/Q1 - L1/Q2 * L2/Q2Q1 * eta
 
     Author: Liu Wusheng.
     """
@@ -364,10 +368,15 @@ class LOLALearner(GradientBasedLearner):
 
 
 class LOLA_ESPGLearner(ESPGLearner):
-    """LOLA implemented with mixed ADG and ESPG. First order gradient with ESPG.
+    """LOLA implemented with mixed ADG and ESPG. First order gradient R1/Q1 is calculated with ESPG.
+       For the second derivative term R2/Q2Q1, first calculate R2/Q2 with ADG, then take derivative over Q1 with ESPG.
+       
+        LOLA Algorithm Reference: https://arxiv.org/abs/1709.04326
 
-    For the second derivative term R2/Q1Q2, first calculate R2/Q2 with ADG,
-    then take derivative over Q1 with ESPG.
+        LOLA Gradient for player 1 is calculated as: -(R1/Q1 + R1/Q2 * R2/Q2Q1 * eta)
+    
+        ESPG is calculated as: mean( rewards - baseline) * epsilons / sigma²
+            and approximates the true gradient.
 
     Author: Liu Wusheng.
     """
@@ -502,7 +511,7 @@ class LOLA_ESPGLearner(ESPGLearner):
         else:
             cross_gradient_vector = ((cross_rewards - baseline)*cross_epsilons).mean(dim=0) / cross_denominator
 
-        # Calculate second order derivative, R2/Q1Q2
+        # Calculate second order derivative, R2/Q2Q1
         sec_gradient_vector = self._sec_gradient(self.model, opponent_model)
 
         LOLA_gradient = torch.einsum('b,bc->c', cross_gradient_vector, sec_gradient_vector)
@@ -574,6 +583,10 @@ class LOLA_ESPGLearner(ESPGLearner):
 
 class SOSLearner(GradientBasedLearner):
     """"SOS algorithm implemented with ADG.
+     
+    SOS Algorithm Reference: https://arxiv.org/abs/1811.08469
+
+    SOS Gradient for player 1 is calculated as: L1/Q1 - eta * L2/Q1 * L1/Q1Q2 - p*(eta * L1/Q2 * L2/Q2Q1)
 
     Author: Liu Wusheng.
     """
@@ -701,6 +714,13 @@ class SOSLearner(GradientBasedLearner):
 
 class SOS_ESPGLearner(ESPGLearner):
     """SOS implementation with ESPG.
+    
+    SOS Algorithm Reference: https://arxiv.org/abs/1811.08469
+
+    SOS Gradient for player 1 is calculated as: -（R1/Q1 + eta * R2/Q1 * R1/Q1Q2 + p*(eta * R1/Q2 * R2/Q2Q1)）
+
+    ESPG is calculated as: mean( rewards - baseline) * epsilons / sigma²
+            and approximates the true gradient.
 
     Author: Liu Wusheng.
     """
