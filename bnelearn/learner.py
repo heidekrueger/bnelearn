@@ -506,7 +506,7 @@ class DummyNonLearner(GradientBasedLearner):
         pass
 
 
-#additional libraries math, sympy.ntheory
+# additional libraries math, sympy.ntheory
 class PSOLearner(Learner):
     """ Implements the Particle Swarm Optimization Algorithm as a Learner
 
@@ -524,12 +524,6 @@ class PSOLearner(Learner):
                 (required:)
                     swarm_size: int
                         Number of particles in the swarm
-                    inertia_weight: float
-                        Scales the impact of the old velocity on the new one
-                    cognition_ratio: float
-                        Upper limit for the impact of the personal best solution on the velocity
-                    social_ratio: float
-                        Upper limit for the impact of the swarm's best solution on the velocity
                     topology: str
                         Defines the communication network of the swarm
                         If 'global', particles are drawn to the global best position of the swarm.
@@ -554,8 +548,23 @@ class PSOLearner(Learner):
                         Max step size in each direction during one update step
                         If velocity_clamping == False then only used for initialization
                 (optional:)
+                    The default values for the inertia weight and the cognition & social ratio are commonly used values
+                    performing well form most problem settings. Based on: Clerc, M., & Kennedy, J. (2002)
+                    inertia_weight: float (default: 0.792)
+                        Scales the impact of the old velocity on the new one.
+                    cognition_ratio: float (default: 1.49445)
+                        Upper limit for the impact of the personal best solution on the velocity
+                    social_ratio: float (default: 1.49445)
+                        Upper limit for the impact of the swarm's best solution on the velocity
+                    reevaluation_frequency: int (default: None)
+                        Number of epochs after which the personal and overall bests are reevaluated
+                        to prevent false memory introduced by varying batch data
+                    pretrain_deviation: float (default: 0)
+                        If pretrain_deviation > 0 the positions will be initialized as:
+                        model.parameters + U[-pretrain_deviation, pretrain_deviation]
+                        otherwise positions will be initialized randomly over the whole search space
                     bound_handling: bool (default: False)
-                        If true will clamp particle's positions in each dim to the interval [lower_bounds, upper_bounds]
+                        If true will clamp particle's positions in each dim to the interval [-max_position, max_position]
                     velocity_clamping: bool (default: True)
                         If true will clamp particle's velocities in each dim to the interval [-max_velocity, max_velocity]
                         before adding to the positions
@@ -573,8 +582,12 @@ class PSOLearner(Learner):
                  optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
                  strat_to_player_kwargs: dict = None):
         self.model = model
-        self.params = model.parameters
+        self.particle_evaluation_model = deepcopy(model)
+        # PSO does not need gradient computation
+        for param in self.particle_evaluation_model.parameters():
+            param.requires_grad = False
         self.environment = environment
+        self.current_epoch = 0
 
         self.strat_to_player_kwargs = strat_to_player_kwargs if strat_to_player_kwargs else {}
         # warn if weird initialization
@@ -583,64 +596,80 @@ class PSOLearner(Learner):
             self.strat_to_player_kwargs['player_position'] = 0
 
         # validate PSO hyperparams
-        if not set(['swarm_size', 'inertia_weight', 'cognition_ratio', 'social_ratio', 'topology', 'search_range_stdv']) <= set(hyperparams):
-            raise ValueError(
-                'Missing hyperparams for PSO. Provide at least, swarm_size, inertia_weight, cognition_ratio, social_ratio, topology, search_range_stdv.')
+        if not set(['swarm_size', 'topology']) <= set(hyperparams):
+            raise ValueError('Missing hyperparams for PSO. Provide at least, swarm_size, topology.')
         if not isinstance(hyperparams['swarm_size'], int) or hyperparams['swarm_size'] < 2:
             raise ValueError('Please provide a valid `swarm_size` parameter >=2')
-        if hyperparams['search_range_stdv'] < 0.0:
-            raise ValueError('Please provide a valid `search range deviation` >= 0.0')
         if hyperparams['topology'] not in ['global', 'Global', 'GLOBAL', 'von_neumann', 'von_Neumann', 'VON_NEUMANN',
                                            'ring', 'Ring', 'RING']:
             raise ValueError('Please provide a valid `topology`')
 
-        # params needed only for initialization
-        swarm_size = hyperparams['swarm_size']
-        search_range_stdv = float(hyperparams['search_range_stdv'])
-        n_parameters = sum([p.numel() for p in self.params()])
-        # model params a commonly initialized within max range [-1, 1]
-        # i.e., pytorch linear: stdv = 1. / math.sqrt(input_length); self.weight.data.uniform_(-stdv,stdv)
-        max_params_init_stdv = 1.0
-        params_device = parameters_to_vector(self.params()).device
-
-        self.inertia = float(hyperparams['inertia_weight'])
-        self.cognition = float(hyperparams['cognition_ratio'])
-        self.social = float(hyperparams['social_ratio'])
-        # only for random position init
-        self.max_velocity = max_params_init_stdv
-        self.max_position = max_params_init_stdv + search_range_stdv
         self.topology = hyperparams['topology']
 
-        # --- initialize the swarm ---
-        # positions and velocities
-        # option 1: pertubation of pretrained model params
-        #self.position = torch.zeros(swarm_size, n_parameters, device=params_device).uniform_(-search_range_stdv, search_range_stdv)
-        #self.position.add_(parameters_to_vector(self.params()))
-        # option 2: random positions
-        self.position = (2 * self.max_position
-                          * torch.rand(swarm_size, n_parameters) - self.max_position).to(params_device)
-        # option 1: random velocities:
-        self.velocity = 2 * self.max_velocity * torch.rand_like(self.position) - self.max_velocity
-        # option 2: zero velocities:
-        #self.velocity = torch.zeros_like(self.position)
+        # params needed only for initialization
+        swarm_size = hyperparams['swarm_size']
+        n_parameters = sum([p.numel() for p in self.model.parameters()])
+        # search range
+        if 'pretrain_deviation' in hyperparams:
+            pretrain_deviation = float(hyperparams['pretrain_deviation'])
+        else:
+            pretrain_deviation = 0.0
+        # model params a commonly initialized within max range [-1, 1]
+        # i.e., pytorch linear: stdv = 1. / math.sqrt(input_length); self.weight.data.uniform_(-stdv,stdv)
+        max_position_init = 1.0
+        max_velocity = max_position_init + pretrain_deviation
+        max_position = max_position_init + pretrain_deviation
 
-        # personal best fitness and positions
-        self.pbest_fitness = torch.full((swarm_size,), float("Inf"), device=self.position.device)
-        self.pbest_position = torch.empty_like(self.position)
-        # the shape of swarm's best position and fitness depend on the topology structure
-        self.best_fitness, self.best_position, self.neighborhood = self.calculate_neighborhood(swarm_size)
-
-        # initialize non-required options
+        # initialize non-required parameters
+        if 'inertia_weight' in hyperparams:
+            self.inertia = float(hyperparams['inertia_weight'])
+        else:
+            self.inertia = 0.792
+        if 'cognition_ratio' in hyperparams:
+            self.cognition = float(hyperparams['cognition_ratio'])
+        else:
+            self.cognition = 1.49445
+        if 'social_ratio' in hyperparams:
+            self.social = float(hyperparams['social_ratio'])
+        else:
+            self.social = 1.49445
+        if 'reevaluation_frequency' in hyperparams:
+            self.reevaluation_frequency = int(hyperparams['reevaluation_frequency'])
+        else:
+            self.reevaluation_frequency = None
         if 'bound_handling' in hyperparams and hyperparams['bound_handling']:
             self.bound_handling = True
-            self.max_position = max_params_init_stdv + search_range_stdv
+            self.max_position = max_position
         else:
             self.bound_handling = False
         if 'velocity_clamping' in hyperparams and not hyperparams['velocity_clamping']:
             self.velocity_clamping = False
         else:
             self.velocity_clamping = True
+            self.max_velocity = max_velocity
 
+        # --- initialize the swarm ---
+        # positions
+        if pretrain_deviation > 0:
+            # pertubation of pretrained model params
+            self.position = torch.zeros(swarm_size, n_parameters, device=torch.cuda.current_device()).uniform_(
+                -pretrain_deviation, pretrain_deviation)
+            self.position.add_(parameters_to_vector(self.model.parameters()))
+        else:
+            # random positions
+            self.position = 2 * max_position * torch.rand(swarm_size, n_parameters,
+                                                          device=torch.cuda.current_device()) - max_position
+            print("device: ", self.position.device)
+        # velocities
+        self.velocity = 2 * max_velocity * torch.rand_like(self.position) - max_velocity
+        # option for evaluation: zero velocities:
+        # self.velocity = torch.zeros_like(self.position)
+
+        # personal best fitness and positions
+        self.pbest_fitness = torch.full((swarm_size,), float("Inf"), device=self.position.device)
+        self.pbest_position = torch.empty_like(self.position)
+        # the shape of swarm's best position and fitness depend on the topology structure
+        self.best_fitness, self.best_position, self.neighborhood = self.calculate_neighborhood(swarm_size)
 
     def calculate_neighborhood(self, swarm_size):
         """Initializes the swarm's best position and fitness
@@ -672,7 +701,7 @@ class PSOLearner(Learner):
         if self.topology == 'global':
             # all particle use the same global position as reference -> no neighborhood indices necessary
             # the position will be set in step 0
-            return torch.Tensor([float("Inf")]).to(device=self.position.device), None, None
+            return torch.tensor([float("Inf")], device=self.position.device), None, None
 
         index = torch.unsqueeze(torch.arange(0, swarm_size, dtype=torch.long), 1)
         if self.topology == 'ring':
@@ -717,7 +746,7 @@ class PSOLearner(Learner):
             neighborhood.remainder_(swarm_size)
 
         # best_position: swarm_size x n_params, best_fitness: 1 x swarm size
-        return deepcopy(self.pbest_fitness), torch.empty_like(self.position), neighborhood.to(
+        return self.pbest_fitness.detach().clone(), torch.empty_like(self.position), neighborhood.to(
             device=self.position.device)
 
     def calculate_fitness(self, position):
@@ -733,8 +762,9 @@ class PSOLearner(Learner):
                 reward: Tensor
                     The fitness value (utility) of the current particle
         """
-        vector_to_parameters(position, self.params())
-        reward = self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach()
+        vector_to_parameters(position, self.particle_evaluation_model.parameters())
+        reward = self.environment.get_strategy_reward(self.particle_evaluation_model,
+                                                      **self.strat_to_player_kwargs).detach()
         assert reward.numel() == 1
         return -reward
 
@@ -745,7 +775,16 @@ class PSOLearner(Learner):
         self.environment.prepare_iteration()
         # 2. evaluate each particles current position (solution)
         # fitness: 1 x swarm size
-        fitness = torch.Tensor([self.calculate_fitness(p) for p in self.position]).to(device=self.position.device)
+        fitness = torch.tensor([self.calculate_fitness(p) for p in self.position], device=self.position.device)
+
+        # prevent stale memory: reevaluate the personal and overall best fitness
+        if self.reevaluation_frequency and self.current_epoch > 0 and not self.current_epoch % self.reevaluation_frequency:
+            old_best = self.best_fitness.detach().clone()
+            self.best_fitness = torch.squeeze(
+                torch.tensor([self.calculate_fitness(p) for p in self.best_position], device=self.position.device), 0)
+            if not torch.equal(old_best, self.best_fitness):
+                self.pbest_fitness = torch.tensor([self.calculate_fitness(p) for p in self.pbest_position],
+                                                  device=self.position.device)
 
         # --- best solution update ---
         # 3. update the personal best positions:
@@ -770,14 +809,12 @@ class PSOLearner(Learner):
             # get the best particle of each neighborhood (best "personal best fitness" of the neighborhood)
             # check if this particle's "personal best fitness" is better than the previous "best fitness" of the neighborhood.
             # if so, update the neighborhoods best positions and fitness to the values of this particle's personal best
-            neighbor_fitness = self.pbest_fitness[self.neighborhood]
-            best_neighbor = neighbor_fitness.min(axis=1)
+            best_neighbor = self.pbest_fitness[self.neighborhood].min(axis=1)
             new_best = best_neighbor.values < self.best_fitness
             if new_best.any():
                 self.best_fitness[new_best] = best_neighbor.values[new_best]
                 index = self.neighborhood[torch.arange(0, self.neighborhood.size()[0]), best_neighbor.indices][new_best]
                 self.best_position[new_best, :] = self.pbest_position[index, :]
-                print("best: ", self.best_fitness.min())
 
         # --- move ---
         # 5. update the velocities:
@@ -789,15 +826,16 @@ class PSOLearner(Learner):
         if self.velocity_clamping:
             self.velocity.clamp_(-self.max_velocity, self.max_velocity)
         # 6. update the positions
-        self.position.add_(self.velocity)
+        self.position += self.velocity
         # clamp particles position values to lay inside the search space bounds
         if self.bound_handling:
-           self.position.clamp_(-self.max_position, self.max_position)
-           # torch.max(torch.min(self.position, self.max_position), -self.max_position, out=self.position)
+            self.position.clamp_(-self.max_position, self.max_position)
+            # torch.max(torch.min(self.position, self.max_position), -self.max_position, out=self.position)
 
         assert torch.isfinite(self.best_fitness.min())
         # assign the parameters of the best particle to the model parameters
-        vector_to_parameters(self.best_position[self.best_fitness.argmin(), :], self.params())
+        vector_to_parameters(self.best_position[self.best_fitness.argmin(), :], self.model.parameters())
+        self.current_epoch += 1
 
     def update_strategy_and_evaluate_utility(self):
         self.update_strategy()

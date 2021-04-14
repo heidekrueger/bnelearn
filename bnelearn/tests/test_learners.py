@@ -176,7 +176,7 @@ def test_AESPG_learner_SGD():
 
 
 def test_PSO_learner():
-    """Tests ES PG learner with SGD optimizer in static environment.
+    """Tests PSO learner in static environment.
        This does not test complete convergence but 'running in the right direction'.
     """
     BATCH_SIZE = 2**12
@@ -184,25 +184,23 @@ def test_PSO_learner():
 
     optimizer_type = None
     optimizer_hyperparams = {}
-    learner_hyperparams = {'swarm_size': 30, 'inertia_weight': 0.792, 'cognition_ratio': 1.49445,
-                           'social_ratio': 1.49445, 'topology': 'von_neumann', 'search_range_stdv': 0.0,
-                           'bound_handling': False, 'velocity_clamping': True}
+    learner_hyperparams = {'swarm_size': 30, 'topology': 'von_neumann'}
 
     model = NeuralNetStrategy(
         input_length,
-        hidden_nodes =hidden_nodes,
+        hidden_nodes=hidden_nodes,
         hidden_activations=hidden_activations,
         ensure_positive_output=torch.tensor([float(u_hi)])
         ).to(device)
 
     bidder = strat_to_bidder(model, BATCH_SIZE, 0)
     env = AuctionEnvironment(
-        mechanism_auction, agents = [bidder],
+        mechanism_auction, agents=[bidder],
         strategy_to_player_closure=strat_to_bidder,
-        batch_size = BATCH_SIZE, n_players=1)
+        batch_size=BATCH_SIZE, n_players=1)
 
     learner = PSOLearner(
-        model = model,
+        model=model,
         environment=env,
         hyperparams=learner_hyperparams,
         optimizer_type=optimizer_type,

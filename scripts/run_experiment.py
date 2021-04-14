@@ -40,24 +40,28 @@ if __name__ == '__main__':
 
     ### SINGLE ITEM EXPERIMENTS ###
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
-                                                               n_epochs=500) \
-        .set_setting(risk=1.1)\
-        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
-        .set_learning(pretrain_iters=500) \
-        .set_logging(eval_batch_size=2**22, util_loss_batch_size=2**10, util_loss_grid_size=2**10).set_hardware(specific_gpu=4).get_config()
-
-    #PSO config
     #experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
     #                                                           n_epochs=500) \
     #    .set_setting(risk=1.1)\
-    #    .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True) \
+    #    .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
     #    .set_learning(pretrain_iters=500) \
-    #    .set_learning(learner_type='PSOLearner', learner_hyperparams={'swarm_size': 30, 'inertia_weight': 0.792, 'cognition_ratio': 1.49445,
-    #                                       'social_ratio': 1.49445, 'topology': 'von_neumann', 'search_range_stdv': 0.0, 'bound_handling': False, 'velocity_clamping': False},
-    #                  optimizer_type='pso') \
-    #    .set_logging(eval_batch_size=2 ** 22, util_loss_batch_size=2**10, util_loss_grid_size=2**10) \
-    #    .set_hardware(specific_gpu=6).get_config()
+    #    .set_logging(eval_batch_size=2**22, util_loss_batch_size=2**10, util_loss_grid_size=2**10).set_hardware(specific_gpu=4).get_config()
+
+    # PSO config
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric',
+                                                               n_runs=1,
+                                                               n_epochs=500) \
+        .set_setting(risk=1.1) \
+        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True) \
+        .set_learning(pretrain_iters=0) \
+        .set_learning(learner_type='PSOLearner', learner_hyperparams={'swarm_size': 30, 'topology': 'von_neumann',
+                                                                      'pretrain_deviation': 0.0,
+                                                                      'reevaluation_frequency': 1,
+                                                                      'bound_handling': False,
+                                                                      'velocity_clamping': True},
+                      optimizer_type='PSO', optimizer_hyperparams={}) \
+        .set_logging(eval_batch_size=2 ** 22, util_loss_batch_size=2 ** 10, util_loss_grid_size=2 ** 10) \
+        .set_hardware(specific_gpu=4).get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
     #                                                            n_runs=2, n_epochs=2)\
@@ -168,6 +172,7 @@ if __name__ == '__main__':
     #Carina's smaller toy
     #experiment_config.learning.hidden_nodes = [2, 2]
     #experiment_config.running.n_epochs = 5
+    #experiment_config.logging.util_loss_frequency = 10
 
     try:
         experiment = experiment_class(experiment_config)

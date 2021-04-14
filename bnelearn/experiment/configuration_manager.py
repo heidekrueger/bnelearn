@@ -684,6 +684,6 @@ class ConfigurationManager:
             if optimizer in ('SGD', 'sgd', 'Sgd'):
                 return torch.optim.SGD
             if optimizer in ('PSO', 'pso', 'Pso'):
-                return True
+                return 'PSO'
             # add more optimizers as needed
         raise ValueError('Optimizer type could not be inferred!')
