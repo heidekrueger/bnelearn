@@ -6,6 +6,7 @@ import torch
 from torch import distributions
 from torch.distributions import Distribution
 from torch.distributions.independent import Independent
+from torch.cuda import _device_t as Device
 
 
 class ValuationObservationSampler(ABC):
@@ -16,12 +17,13 @@ class ValuationObservationSampler(ABC):
     default_batch_size: int = None # a default batch size 
 
     @abstractmethod
-    def draw_profiles(self, batch_size: int = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def draw_profiles(self, batch_size: int = None, device=None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws and returns a batch of valuation and observation profiles.
 
         Kwargs: 
             batch_size (optional): int, the batch_size to draw. If none provided,
             `self.default_batch_size` will be used.
+            device (optional): torch.cuda.Device, the device to draw profiles on
         
         Returns:
             valuations: torch.Tensor (batch_size x n_players x valuation_size): a valuation profile
@@ -32,14 +34,9 @@ class ValuationObservationSampler(ABC):
     def draw_conditional_profiles(self,
                                   conditioned_player: int,
                                   conditioned_observation: torch.Tensor,
-                                  batch_size: int) -> Tuple[torch.Tensor, torch.Tensor]:
+                                  batch_size: int, device = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws and returns batches conditional valuation and corresponding observation profile.
         For each entry of `conditioned_observation`, `batch_size` samples will be drawn!
-
-        These conditioanl profiles are especially relevant when estimating the 
-        utility loss / exploitability of a given strategy for `conditioned_player`,
-        in that case, we need access to conditional observations of others, as well as
-        conditional valuations of `conditioned_player`.
 
         Note that here, we are returning full profiles instead (including 
         `conditioned_player`'s observation and others' valuations.)
@@ -65,26 +62,26 @@ class ValuationObservationSampler(ABC):
         """
 
 
-class ValuationSampler(ABC):
-    """Provides functionality to draw valuation profiles."""
-    n_players: int = None # The number of players in the valuation profile
-    valuation_size: int = None # The dimensionality / length of a single valuation vector
-    default_batch_size: int = None # a default batch size 
+# class ValuationSampler(ABC):
+#     """Provides functionality to draw valuation profiles."""
+#     n_players: int = None # The number of players in the valuation profile
+#     valuation_size: int = None # The dimensionality / length of a single valuation vector
+#     default_batch_size: int = None # a default batch size 
 
-    @abstractmethod
-    def sample(self, batch_size: int = None, device = None) -> torch.Tensor:
-        """Draws and returns a batch of valuation profiles.
+#     @abstractmethod
+#     def sample(self, batch_size: int = None, device = None) -> torch.Tensor:
+#         """Draws and returns a batch of valuation profiles.
 
-        Kwargs: 
-            batch_size (optional): int, the batch_size to draw. If none provided,
-            `self.default_batch_size` will be used.
+#         Kwargs: 
+#             batch_size (optional): int, the batch_size to draw. If none provided,
+#             `self.default_batch_size` will be used.
         
-        Returns:
-            valuations: torch.Tensor (batch_size x n_players x valuation_size): a valuation profile
-        """
+#         Returns:
+#             valuations: torch.Tensor (batch_size x n_players x valuation_size): a valuation profile
+#         """
 
 
-class SymmetricIPVSampler(ValuationSampler): #TODO: change name to express that this is symmetric also along items, not just players?
+class SymmetricIPVSampler(ValuationObservationSampler): #TODO: change name to express that this is symmetric also along items, not just players?
     """A Valuation Oracle that draws valuations independently and symmetrically
     for all players and each entry of their valuation vector according to a specified
     distribution.
@@ -95,7 +92,7 @@ class SymmetricIPVSampler(ValuationSampler): #TODO: change name to express that 
     """
     def __init__(self, distribution: Distribution, 
                  n_players: int, valuation_size: int = 1,
-                 default_batch_size: int = 1, default_device = None
+                 default_batch_size: int = 1, default_device: Device = None
                 ):
         """
         Args:
@@ -113,26 +110,54 @@ class SymmetricIPVSampler(ValuationSampler): #TODO: change name to express that 
         self.base_distribution = distribution
         self.distribution = self.base_distribution.expand([n_players, valuation_size])
 
-    def sample(self, batch_size: int = None, device=None) -> torch.Tensor:
+
+    def _sample(self, batch_size: int, device: Device) -> torch.Tensor:
+        """Draws a batch of observation/valuation profiles (equivalent in IPV)"""
         batch_size = batch_size or self.default_batch_size
         device = device or self.default_device
 
         return self.distribution.sample([batch_size]).to(device)
 
+    def draw_profiles(self, batch_size: int = None,
+                      device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        batch_size = batch_size or self.default_batch_size
+        device = device or self.default_device
+        # In the symmetric IPV setting, valuations and observations are identical.
+        profile = self._sample(batch_size, device)
+        return profile, profile
+
+    def draw_conditional_profiles(self,
+                                  conditioned_player: int,
+                                  conditioned_observation: torch.Tensor,
+                                  batch_size: int, 
+                                  device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Due to independence, we can simply draw a full profile and replace the
+        # conditioned_observations by their specified value.
+        # Due to PV, valuations are equal to the observations
+
+        device = device or self.default_device
+        inner_batch_size = batch_size or self.default_batch_size
+        outer_batch_size = conditioned_observation.shape[0]
+
+        profile = self._sample(outer_batch_size * inner_batch_size, device)
+        
+        profile[:,conditioned_player, :] = \
+            conditioned_observation.repeat(inner_batch_size, 1)
+
+        return profile, profile
+
+
 class UniformSymmetricIPVSampler(SymmetricIPVSampler):
     """An IPV sampler with symmetric Uniform priors."""
     def __init__(self, lo, hi,
                  n_players, valuation_size,
-                 default_batch_size, default_device = None):
+                 default_batch_size, default_device: Device = None):
         distribution = torch.distributions.uniform.Uniform(low=lo, high=hi)
         super().__init__(distribution,
                          n_players, valuation_size,
                          default_batch_size, default_device)
 
-    def sample(self, batch_size=None, device = None) -> torch.Tensor:
-        batch_size = batch_size or self.default_batch_size
-        device = device or self.default_device
-
+    def _sample(self, batch_size, device) -> torch.Tensor:
         # create an empty tensor on the output device, then sample in-place
         return torch.empty(
             [batch_size, self.n_players, self.valuation_size],
@@ -143,16 +168,13 @@ class GaussianSymmetricIPVSampler(SymmetricIPVSampler):
     """An IPV sampler with symmetric Gaussian priors."""
     def __init__(self, mean, stddev,
                  n_players, valuation_size,
-                 default_batch_size, default_device = None):
+                 default_batch_size, default_device: Device = None):
         distribution = torch.distributions.normal.Normal(loc=mean, scale=stddev)
         super().__init__(distribution,
                          n_players, valuation_size,
                          default_batch_size, default_device)
 
-    def sample(self, batch_size = None, device = None) -> torch.Tensor:
-        batch_size = batch_size or self.default_batch_size
-        device = device or self.default_device
-
+    def _sample(self, batch_size, device) -> torch.Tensor:
         # create empty tensor, sample in-place, clip
         return torch.empty([batch_size, self.n_players, self.valuation_size],
                            device=device) \
