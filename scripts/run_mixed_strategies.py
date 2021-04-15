@@ -23,7 +23,9 @@ if __name__ == '__main__':
     # Set up experiment
     experiment_config, experiment_class = \
         ConfigurationManager(
-            experiment_type='llg_full',
+            # experiment_type='single_item_asymmetric_uniform_overlapping',
+            experiment_type='single_item_asymmetric_uniform_disjunct',
+            # experiment_type='llg_full',
             seeds=[69],
             n_runs=1,
             n_epochs=2000,
@@ -34,19 +36,21 @@ if __name__ == '__main__':
             ) \
         .set_learning(
             batch_size=2**17,
+            pretrain_to_bne=0,
             pretrain_iters=500,
             learner_hyperparams={
                 'population_size': 64,
                 'sigma': 1.,
                 'scale_sigma_by_model_size': True,
-                'regularization': {
-                    'inital_strength': .05,
-                    'regularize_decay': .999
-                    }
-            }
+                # 'regularization': {
+                #     'inital_strength': .05,
+                #     'regularize_decay': .999
+                #     }
+            },
+            mixed_strategy='normal'
             ) \
         .set_hardware(
-            specific_gpu=1,
+            specific_gpu=2,
             ) \
         .set_logging(
             eval_batch_size=2**17,

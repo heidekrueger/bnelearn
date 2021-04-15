@@ -72,6 +72,7 @@ class LearningConfig:
     optimizer_hyperparams: dict
     hidden_nodes: List[int]
     pretrain_iters: int
+    pretrain_to_bne: None or int
     batch_size: int
     mixed_strategy: str
     hidden_activations: List[nn.Module] = None

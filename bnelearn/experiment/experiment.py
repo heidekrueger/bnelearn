@@ -199,14 +199,16 @@ class Experiment(ABC):
         if self.learning.pretrain_iters > 0:
             print('Pretraining...')
 
-            if hasattr(self, 'pretrain_transform'):
-                pretrain_transform = self.pretrain_transform  # pylint: disable=no-member
+            if self.learning.pretrain_to_bne is not None:
+                pretrain_transforms = [m.strategy.play for m in self.bne_env[0].agents]
+            elif hasattr(self, 'pretrain_transform'):
+                pretrain_transforms = [self.pretrain_transform] * len(self.models)  # pylint: disable=no-member
             else:
-                pretrain_transform = None
+                pretrain_transforms = [None] * len(self.models)
 
-            for i, model in enumerate(self.models):
+            for i, (model, transform) in enumerate(zip(self.models, pretrain_transforms)):
                 model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
-                               self.learning.pretrain_iters, pretrain_transform)
+                               self.learning.pretrain_iters, transform)
 
     def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding

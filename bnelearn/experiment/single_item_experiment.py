@@ -462,8 +462,11 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         return os.path.join(*name)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, **strat_to_player_kwargs):
-        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
-                              player_position=player_position, batch_size=batch_size, **strat_to_player_kwargs)
+        bidder = Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
+                                player_position=player_position, batch_size=batch_size, **strat_to_player_kwargs)
+        bidder._grid_lb_util_loss = 0
+        bidder._grid_ub_util_loss = max(self.u_hi)
+        return bidder
 
     def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding
