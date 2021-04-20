@@ -16,6 +16,7 @@ from typing import Iterable, List
 import math
 import warnings
 import numpy as np
+from scipy import optimize
 from torch.utils.tensorboard import SummaryWriter
 import torch
 
@@ -363,33 +364,45 @@ class LLGFullExperiment(LocalGlobalExperiment):
                     torch.zeros_like(valuation),
                     valuation], axis=1)
             if self.payment_rule == 'mrcs_favored':
-                # Beck & Ott provide no solution: Here we take real part of
-                # complex solution (sqrt of negative values), see
-                # https://www.wolframalpha.com/input/?i=0+%3D+12*v-+15*z+-+1+%2B+%289*z+-+1+-+3*v%29*sqrt%281+-+6*z%2B+6*v%29+solve+for+z
-                v = torch.as_tensor(valuation, device=valuation.device,
-                                    dtype=torch.cfloat)
-                sqrt = torch.sqrt(
-                    - 254016 * torch.pow(v, 5) - 45045 * torch.pow(v, 4) \
-                    + 47892 * torch.pow(v, 3) + 118676 * torch.pow(v, 2) \
-                    - 74560 * v + 11520
-                )
-                outer = torch.pow(
-                    + 23328 * torch.pow(v, 3) - 47871 * torch.pow(v, 2) \
-                    + 81 * np.sqrt(3) * sqrt + 6534 * v + 2884,
-                    1./3.
-                )
-                z = torch.real(outer / (81* 2**(2./3.)) \
-                    - (-1296* torch.pow(v, 2) - 2196 * v + 956) \
-                    / (162 * 2**(1./3.) * outer) + (1./81.) * (45 * v - 2))
+                # Beck & Ott provide incomplete/wrong solution
+                print('Calculating high-precision BNE...')
+                eps = 1e-16
 
-                b_A = torch.zeros_like(valuation)
-                mask = 2 - 2 * math.sqrt(6.) / 3. < valuation
+                v = valuation.cpu().numpy().astype('float64')
+                def root_func(z, v):
+                    """We're looking for roots of this function"""
+                    return 12*v - 15*z - 1 + (9*z - 1 - 3*v) * np.sqrt(1 - 6*z + 6*v)
+                def solve_for_z(v):
+                    """Brent-q for finding root"""
+                    f = lambda z: root_func(z, v=v)
+                    low = max((1 - np.sqrt(6*v - 2))/3., v - .5) + eps
+                    up = (1 + 6*v) / 6. - eps
+                    if np.sign(f(low)) == np.sign(f(up)):
+                        return 0
+                    z = optimize.brentq(f, a=low, b=up, xtol=1e-13, disp=False)
+                    return z
+
+                threshold = 2 - 2 * math.sqrt(6.) / 3.
+                z = np.zeros_like(v)
+                for i, vv in enumerate(v):
+                    if threshold < vv:
+                        z[i] = solve_for_z(vv)
+                z = torch.as_tensor(
+                    z, device=valuation.device, dtype=valuation.dtype
+                )
+
+                v = torch.as_tensor(
+                    valuation, device=valuation.device, dtype=valuation.dtype
+                )
+                b_A = torch.zeros_like(v)
+                mask = threshold < v
                 b_A[mask] = z[mask] \
-                    - (2 - torch.sqrt(1 - 6 * z[mask] + 6 * valuation[mask])) \
+                    - (2 - torch.sqrt(1 - 6 * z[mask] + 6 * v[mask])) \
                     / 3.
-                b_AB = 0.5 * valuation.detach().clone()
+                b_AB = 0.5 * v.detach().clone()
                 b_AB[mask] = z[mask]
-                bids = torch.cat([b_A, torch.zeros_like(valuation), b_AB], axis=1)
+                bids = torch.cat([b_A, torch.zeros_like(v), b_AB], axis=1)
+                bids[bids < 0] = 0  # b_A is somewhat inprecise
                 return bids
 
             warnings.warn('optimal bid not implemented for this payment rule')
@@ -411,12 +424,14 @@ class LLGFullExperiment(LocalGlobalExperiment):
     def _evaluate_and_log_epoch(self, epoch: int) -> float:
         # TODO keep track of time as in super()
         for name, agent in zip(['local 1', 'local 2', 'global'], self.env.agents):
-            self.writer.add_histogram(
-                tag="allocations/" + name,
-                values=self.env.get_allocation(agent),
-                bins=2*self.n_items-1,
-                global_step=epoch
-            )
+            allocation = self.env.get_allocation(agent)
+            if sum(allocation.shape) > 0:
+                self.writer.add_histogram(
+                    tag="allocations/" + name,
+                    values=allocation,
+                    bins=2*self.n_items-1,
+                    global_step=epoch
+                )
         return super()._evaluate_and_log_epoch(epoch)
 
     def _setup_eval_environment(self):
@@ -431,7 +446,8 @@ class LLGFullExperiment(LocalGlobalExperiment):
         self.bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
             agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                          batch_size=self.config.logging.eval_batch_size)
+                                          batch_size=self.config.logging.eval_batch_size,
+                                          cache_actions=self.logging.cache_eval_actions)
                     for i in range(self.n_players)],
             n_players=self.n_players,
             batch_size=self.config.logging.eval_batch_size,

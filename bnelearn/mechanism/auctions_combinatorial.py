@@ -374,7 +374,17 @@ class LLGFullAuction(Mechanism):
         bids = bids.to(self.device)
 
         # 1. Determine allocations
-        allocations = self._solve_allocation_problem(bids)
+        if self.rule == 'mrcs_favored':
+            # # Don't allow higher bids on single-items than bundle
+            # # (-> guarantees the existence of equilibria in undominated strategies)
+            # err = torch.logical_or(bids[:, :, 0] > bids[:, :, 2],
+            #                        bids[:, :, 1] > bids[:, :, 2])
+            # bids[err, :] = 0  # don't accept any of the bids of the violating bidders
+            allocations = self._solve_allocation_problem(
+                bids, dont_allocate_to_zero_bid=False
+            )
+        else:
+            allocations = self._solve_allocation_problem(bids)
 
         # 2. Determine payments
         if self.rule == 'first_price':
@@ -419,8 +429,10 @@ class LLGFullAuction(Mechanism):
 
         max_individually = bids[:, :, :2].max(axis=1)
         max_bundle = bids[:, :, 2].max(dim=1)
+
+        # tie-brake #1: prefer assignment with the maximal number of bidders
         individually = \
-            max_individually.values.sum(dim=1) > max_bundle.values
+            max_individually.values.sum(dim=1) >= max_bundle.values
 
         # assign individual items
         allocations_individual = max_individually.indices[individually, :]
@@ -433,6 +445,13 @@ class LLGFullAuction(Mechanism):
         individually = torch.logical_not(individually)
         allocations_bundle = max_bundle.indices[individually]
         allocations[individually, allocations_bundle, 2] = 1
+
+        # tie-break #2: choose assignments in which bidder 1 wins package A.
+        if self.rule == 'mrcs_favored':
+            # only handle the relevant tie-break of zero bids
+            mask = bids.sum(axis=[1, 2]) == 0
+            allocations[mask, 0, 0] = 1
+            allocations[mask, 1:, 0] = 0
 
         if dont_allocate_to_zero_bid:
             allocations *= bids > 0
@@ -550,57 +569,48 @@ class LLGFullAuction(Mechanism):
             * bids.view(n_batch, n_player, n_bundle), dim=2)
 
         # Calculate VCG payments
-        payments_vcg = self._calculate_payments_vcg(bids, allocations).clone()
+        payments_vcg = self._calculate_payments_vcg(
+            bids=bids, allocations=allocations,
+        ).clone()
 
         if core_selection == 'mrcs_favored':
             # Force agent 1 to have VCG prices: plug her prices into constraints
             beta -= torch.einsum('ij,i->ij', A[:, :, 1], payments_vcg[:, 1])
             A = A[:, :, [0, 2]]
             b = b[:, [0, 2]]
-            payments_vcg_1 = payments_vcg[:, [1]]
 
-            # Simpler way
             payment = torch.zeros(n_batch, n_player, device=self.device)
+            payment[:, 1] = payments_vcg[:, 1].clone()
 
-            tight = A.sum(axis=2)
+            tight = A.sum(axis=2)  # (batch x coaltions) sum of winners of these two
             non_zero_mask = tight.sum(axis=1) > 0
-            c1 = A[non_zero_mask, :, 0] == 1
-            c3 = A[non_zero_mask, :, 1] == 1
-            beta_temp = beta[non_zero_mask, ...].clone()
-            beta_temp[torch.logical_or(~c1, c3), ...] = 0
-            payment[non_zero_mask, 0] = torch.max(beta_temp, axis=1).values
-            beta_temp = beta[non_zero_mask, ...].clone()
-            beta_temp[torch.logical_or(c1, ~c3), ...] = 0
-            payment[non_zero_mask, 1] = torch.max(beta_temp, axis=1).values
-
-            diag_batch_mask = torch.any(tight==2, axis=1)
             try:
-                p_alter = torch.max(beta[diag_batch_mask], axis=1).values / 2
+                # For some reason `torch.max` can't handle empty tensors:
+                # https://github.com/pytorch/pytorch/issues/34907
+
+                # Constant constraints (p1 or p2 equals 0)
+                c1 = A[non_zero_mask, :, 0] == 1
+                c3 = A[non_zero_mask, :, 1] == 1
+                beta_temp = beta[non_zero_mask, :].clone()
+                beta_temp[torch.logical_or(torch.logical_not(c1), c3)] = 0
+                payment[non_zero_mask, 0] = torch.max(beta_temp, axis=1).values
+                beta_temp = beta[non_zero_mask, :].clone()
+                beta_temp[torch.logical_or(c1, torch.logical_not(c3))] = 0
+                payment[non_zero_mask, 2] = torch.max(beta_temp, axis=1).values
+
+                # Diagonal constraints (p1 and p2 do not equal 0)
+                diag_batch_mask = torch.any(tight==2, axis=1)
+                p_alter = torch.max(beta, axis=1).values / 2
                 diag_tight_mask = torch.logical_and(
-                    p_alter > payment[diag_batch_mask, 0],
-                    p_alter > payment[diag_batch_mask, 1]
+                    p_alter > payment[:, 0],
+                    p_alter > payment[:, 2]
                 )
-                diag_batch_mask[diag_batch_mask] = diag_tight_mask
-                payment[diag_batch_mask, 0] = p_alter
-                payment[diag_batch_mask, 1] = p_alter
-            except RuntimeError: # happens when there isn't a single instance with True
+                mask = torch.logical_and(diag_batch_mask, diag_tight_mask)
+                payment[mask, 0] = p_alter[mask]
+                payment[mask, 2] = p_alter[mask]
+            except RuntimeError:
                 pass
 
-            # Combine all agents' prices
-            payment = torch.cat(
-                [payment[:, [0]], payments_vcg_1, payment[:, [1]]],
-                axis=1
-            )
-
-            # payment_old = self._run_batch_core_solver(
-            #     A=A, beta=beta, payments_vcg=payments_vcg, b=b,
-            #     min_distance_to_vcg=core_selection=='nearest_vcg'
-            # ).view(n_batch, n_player-1)
-            # payment_old = torch.cat(
-            #     [payment_old[:, [0]], payments_vcg_1, payment_old[:, [1]]],
-            #     axis=1
-            # ).view(n_batch, n_player)
-            # print('error:', torch.mean(torch.abs(payment - payment_old)))
             return payment
 
         else:

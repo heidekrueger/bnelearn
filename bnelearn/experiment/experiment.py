@@ -336,10 +336,10 @@ class Experiment(ABC):
             self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
             print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),
-                  end="\r")
+                    end="\r")
         else:
             print('epoch {}:\telapsed {:.2f}s'.format(epoch, timer() - tic),
-                  end="\r")
+                end="\r")
         return utilities
 
     def run(self):
@@ -793,13 +793,16 @@ class Experiment(ABC):
             for player_positions in self._model2bidder
         ]
         if self.logging.best_response:
+            # Extract return values from `util_loss`
             best_responses = (
-                torch.stack([r[1][0] for r in util_loss], dim=1)[:, :, None],
-                torch.stack([r[1][1] for r in util_loss], dim=1)[:, :, None]
+                torch.stack([r[1][0] for r in util_loss], dim=1),  # observation
+                torch.stack([r[1][1] for r in util_loss], dim=1)   # best response
             )
-            util_loss = [t[0] for t in util_loss]
+            util_loss = [t[0] for t in util_loss]                  # actual util loss
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
+
+            # Plot
             self._plot(plot_data=best_responses, writer=self.writer,
                        ylim=[0, max(a._grid_ub for a in self.env.agents).cpu()],
                        figure_name='best_responses', y_label='best response',
