@@ -1,7 +1,7 @@
 """Testing correctness of LLG combinatorial auction implementations."""
 import pytest
 import torch
-from bnelearn.mechanism import LLGAuction
+from bnelearn.mechanism import LLGAuction, LLGFullAuction
 
 bids = torch.tensor([
     [1., 1., 2.1], # global bidder wins
@@ -104,3 +104,90 @@ def test_LLG_nearest_bid():
 
     run_llg_test(rule, 'cpu', expected_payments)
     run_llg_test(rule, 'cuda', expected_payments)
+
+
+llgfull_bids = torch.tensor(
+    [[[1, 1, 0], [0, 2, 2], [0, 0, 2]],
+     [[0, 1, 0], [1, 3, 0], [0, 0, 1]],
+     [[2, 2, 0], [0, 2, 2], [0, 0, 6]],
+     [[2, 2, 0], [0, 0, 0], [4, 4, 0]],
+     [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+     [[1, 1, 4], [0, 0, 0], [0, 0, 0]],
+     [[.7, .2, .4], [.2, .5, .4], [2, 2, 1]],
+     [[1, 0, 2], [0, 0, 1], [2, 2, 0]],
+     [[3, 0, 2], [1, 1, 3], [0, 2, 1]]],
+    dtype=torch.float)
+
+llgfull_allocations = torch.tensor(
+    [[[1, 0, 0], [0, 1, 0], [0, 0, 0]],
+     [[0, 0, 0], [1, 1, 0], [0, 0, 0]],
+     [[0, 0, 0], [0, 0, 0], [0, 0, 1]],
+     [[0, 0, 0], [0, 0, 0], [1, 1, 0]],
+     [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+     [[0, 0, 1], [0, 0, 0], [0, 0, 0]],
+     [[0, 0, 0], [0, 0, 0], [1, 1, 0]],
+     [[0, 0, 0], [0, 0, 0], [1, 1, 0]],
+     [[1, 0, 0], [0, 0, 0], [0, 1, 0]]],
+    dtype=torch.int8)
+
+llgfull_payments_vcg = torch.tensor(
+    [[0.0, 1.0, 0.0],
+     [0.0, 1.0, 0.0],
+     [0.0, 0.0, 4.0],
+     [0.0, 0.0, 4.0],
+     [0.0, 0.0, 0.0],
+     [0.0, 0.0, 0.0],
+     [0.0, 0.0, 1.2],
+     [0.0, 0.0, 2.0],
+     [1.0, 0.0, 1.0]]
+)
+
+llgfull_payments_nearest_vcg = torch.tensor(
+    [[0.5, 1.5, 0.0],
+     [0.0, 1.0, 0.0],
+     [0.0, 0.0, 4.0],
+     [0.0, 0.0, 4.0],
+     [0.0, 0.0, 0.0],
+     [0.0, 0.0, 0.0],
+     [0.0, 0.0, 1.2],
+     [0.0, 0.0, 2.0],
+     [1.5, 0.0, 1.5]],
+)
+
+llgfull_payments_mrcs_favored = torch.tensor(
+    [[1.0, 1.0, 0.0],
+     [0.0, 1.0, 0.0],
+     [0.0, 0.0, 4.0],
+     [0.0, 0.0, 4.0],
+     [0.0, 0.0, 0.0],
+     [0.0, 0.0, 0.0],
+     [0.0, 0.0, 1.2],
+     [0.0, 0.0, 2.0],
+     [1.0, 0.0, 1.0]],
+)
+
+def test_LLG_full():
+    """LLG setting with complete combinatrial (3d) bids."""
+    # TODO Nils: Warning - pricing rule seems to be not deterministic!
+    #            Watch e.g. last instance of `llgfull_payments_mrcs_favored`
+    device = 'cuda'
+
+    # VCG
+    vcg_mechanism = LLGFullAuction(rule='vcg', cuda=device)
+    allocations, payments_vcg_computed = vcg_mechanism.run(llgfull_bids.to(device))
+    assert torch.equal(allocations, llgfull_allocations.to(device))
+    assert torch.equal(payments_vcg_computed, llgfull_payments_vcg.to(device))
+
+    # Nearest VCG
+    nearest_vcg_mechanism = LLGFullAuction(rule='nearest_vcg', cuda=device)
+    _, payments_llgfull_computed = nearest_vcg_mechanism.run(llgfull_bids.to(device))
+    assert torch.allclose(payments_llgfull_computed, llgfull_payments_nearest_vcg.to(device),
+                          atol=0.0001)
+
+    # Favors bidder 1: she pays VCG prices
+    mrcs_favored_mechanism = LLGFullAuction(rule='mrcs_favored', cuda=device)
+    _, payments_favored_computed = mrcs_favored_mechanism.run(llgfull_bids.to(device))
+    assert torch.allclose(payments_favored_computed, llgfull_payments_mrcs_favored.to(device),
+                          atol=0.001)
+    assert torch.allclose(payments_vcg_computed[:, 1], payments_favored_computed[:, 1],
+                          atol=0.0001), 'agent 1 should pay VCG prices'

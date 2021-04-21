@@ -30,7 +30,7 @@ def test_prisoners_dilemma_training_shared_model():
     # Wrapper transforming a strategy to bidder, used by the optimizer
     # this is a dummy, valuation doesn't matter
     def strat_to_player(strategy, batch_size, player_position=None):
-        return MatrixGamePlayer(strategy, batch_size = batch_size, player_position=player_position)
+        return MatrixGamePlayer(strategy=strategy, batch_size=batch_size, player_position=player_position)
 
     # following game has NE at action profile (0,1)
     # i.e. rowPlayer: Top, colPlayer: Right,

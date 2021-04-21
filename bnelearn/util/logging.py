@@ -205,7 +205,7 @@ class CustomSummaryWriter(SummaryWriter):
         another tensorboard run file
     """
 
-    def add_hparams(self, hparam_dict=None, metric_dict=None):
+    def add_hparams(self, hparam_dict=None, metric_dict=None, global_step=None):
         """
         Overides the parent method to prevent the creation of unwanted additional subruns while logging hyperparams,
         as it is done by the original PyTorch method
@@ -215,12 +215,13 @@ class CustomSummaryWriter(SummaryWriter):
             raise TypeError('hparam_dict and metric_dict should be dictionary.')
         exp, ssi, sei = hparams(hparam_dict, metric_dict)
 
+
         self.file_writer.add_summary(exp)
         self.file_writer.add_summary(ssi)
         self.file_writer.add_summary(sei)
 
         for k, v in metric_dict.items():
-            self.add_scalar(k, v)
+            self.add_scalar(k, v, global_step=global_step)
 
     def add_metrics_dict(self, metrics_dict: dict, run_suffices: List[str],
                          global_step=None, walltime=None,
@@ -285,7 +286,8 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
     setting_database = bne_database[
         (bne_database.experiment_class == str(type(exp))) &
         (bne_database.payment_rule == exp.payment_rule) &
-        (bne_database.correlation == exp.correlation)
+        (bne_database.correlation == exp.correlation) &
+        (bne_database.risk == exp.risk)
     ]
 
     # 1. no entry found: make new db entry
@@ -296,6 +298,7 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
                     'experiment_class': str(type(exp)),
                     'payment_rule':     exp.payment_rule,
                     'correlation':      exp.correlation,
+                    'risk':             exp.risk,
                     'player_position':  player_position,
                     'batch_size':       bne_env.batch_size,
                     'bne_utilities':    bne_utilities_sampled[player_position].item()
@@ -315,9 +318,11 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
                 (bne_database.experiment_class == str(type(exp))) &
                 (bne_database.payment_rule == exp.payment_rule) &
                 (bne_database.correlation == exp.correlation) &
+                (bne_database.risk == exp.risk) &
                 (bne_database.player_position == player_position)
-            ] = [[str(type(exp)), exp.payment_rule, exp.correlation, player_position,
-                  bne_env.batch_size, bne_utilities_sampled[player_position].item()]]
+            ] = [[str(type(exp)), exp.payment_rule, exp.correlation, exp.risk,
+                  player_position, bne_env.batch_size,
+                  bne_utilities_sampled[player_position].item()]]
 
     print('Writing high precision utilities in BNE to database.')
     bne_database.to_csv(file_path, index=False)

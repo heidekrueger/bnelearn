@@ -4,6 +4,7 @@ can often be shared by specific experiments.
 """
 
 import os
+from sys import platform
 import time
 from abc import ABC, abstractmethod
 from time import perf_counter as timer
@@ -99,6 +100,8 @@ class Experiment(ABC):
             self.util_loss_batch_size = self.logging.util_loss_batch_size
         if self.logging.util_loss_grid_size is not None:
             self.util_loss_grid_size = self.logging.util_loss_grid_size
+        self.n_parameters = None
+        self._cur_epoch_log_params = {}
 
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
@@ -184,7 +187,7 @@ class Experiment(ABC):
             ).to(self.hardware.device)
 
         self.bidders = [
-            self._strat_to_bidder(self.models[m_id], batch_size=self.learning.batch_size, player_position=i)
+            self._strat_to_bidder(strategy=self.models[m_id], batch_size=self.learning.batch_size, player_position=i)
             for i, m_id in enumerate(self._bidder2model)]
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
@@ -244,10 +247,16 @@ class Experiment(ABC):
             self.v_opt = [None] * len(self.bne_env)
             self.b_opt = [None] * len(self.bne_env)
 
+            # Switch needed for high dimensional settings, where we can't
+            # exactly match the requested grid (see e.g. multi-unit simplex)
+            grid_size_differs = False
+
+            # Draw valuations and corresponding equilibrium bids in all the
+            # availabe BNE
             for i, bne_env in enumerate(self.bne_env):
                 # dim: [points, bidders, items]
                 self.v_opt[i] = torch.stack(
-                    [bidder.get_valuation_grid(self.plot_points)
+                    [bidder.get_valuation_grid(n_points=self.plot_points)
                      for bidder in [bne_env.agents[j[0]] for j in self._model2bidder]],
                     dim=1
                 )
@@ -257,8 +266,11 @@ class Experiment(ABC):
                     dim=1
                 )
                 if self.v_opt[i].shape[0] != self.plot_points:
-                    print('´plot_points´ changed due to get_valuation_grid')
-                    self.plot_points = self.v_opt[i].shape[0]
+                    grid_size_differs = True
+
+            if grid_size_differs:
+                print('´plot_points´ changed due to get_valuation_grid')
+                self.plot_points = self.v_opt[0].shape[0]
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
@@ -279,10 +291,10 @@ class Experiment(ABC):
             self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
             tic = timer()
-            self._log_experiment_params()
-            self._log_hyperparams()
+            # self._log_experiment_params()
+            # self._log_hyperparams()
 
-            self._log_experiment_params()
+            # self._log_experiment_params()
             logging_utils.save_experiment_config(self.experiment_log_dir, self.config)
             elapsed = timer() - tic
             logging_utils.log_git_commit_hash(self.experiment_log_dir)
@@ -291,9 +303,12 @@ class Experiment(ABC):
             elapsed = 0
         self.overhead += elapsed
 
-    def _exit_run(self):
+    def _exit_run(self, global_step=None):
         """Cleans up a run after it is completed"""
-        if self.logging.enable_logging and self.logging.save_models:
+        if self.logging.enable_logging:
+            self._log_experiment_params(global_step=global_step)
+
+        if self.logging.save_models:
             self._save_models(directory=self.run_log_dir)
 
         del self.writer  # make this explicit to force cleanup and closing of tb-logfiles
@@ -302,8 +317,6 @@ class Experiment(ABC):
         if self.hardware.cuda:
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
-        # if torch.cuda.memory_allocated() > 0:
-        #    warnings.warn("There's a memory leak")
 
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
@@ -319,6 +332,7 @@ class Experiment(ABC):
         ])
 
         if self.logging.enable_logging:
+            # pylint: disable=attribute-defined-outside-init
             self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
             print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),
@@ -338,61 +352,68 @@ class Experiment(ABC):
 
         for run_id, seed in enumerate(self.running.seeds):
             print(f'\nRunning experiment {run_id} (using seed {seed})')
-            self.run_log_dir = os.path.join(
-                self.experiment_log_dir,
-                f'{run_id:02d} ' 
-                #+ time.strftime('%T ') 
-                + str(seed))
-            torch.random.manual_seed(seed)
-            torch.cuda.manual_seed_all(seed)
-            np.random.seed(seed)
-            if self.logging.stopping_criterion_rel_util_loss_diff:
-                # stopping_list = np.empty((self.n_models,0))
-                stopping_criterion_length = self.logging.stopping_criterion_duration
-                stopping_queue = deque(maxlen=stopping_criterion_length)
-                stopping_criterion_batch_size = min(self.logging.util_loss_batch_size,
-                                                    self.logging.stopping_criterion_batch_size)
-                stopping_criterion_grid_size = self.logging.stopping_criterion_grid_size
-                stopping_criterion_frequency = self.logging.stopping_criterion_frequency
-                stop = False
+            e = None
+            try:
+                t = time.strftime('%T ')
+                if platform == 'win32':
+                    t = t.replace(':', '.')
 
-            self._init_new_run()
+                self.run_log_dir = os.path.join(
+                    self.experiment_log_dir,
+                    f'{run_id:02d} ' + t + str(seed)
+                    )
 
-            for e in range(self.running.n_epochs + 1):
-                utilities = self._training_loop(epoch=e)
+                torch.random.manual_seed(seed)
+                torch.cuda.manual_seed_all(seed)
+                np.random.seed(seed)
+                if self.logging.stopping_criterion_rel_util_loss_diff:
+                    # stopping_list = np.empty((self.n_models,0))
+                    stopping_criterion_length = self.logging.stopping_criterion_duration
+                    stopping_queue = deque(maxlen=stopping_criterion_length)
+                    stopping_criterion_batch_size = min(self.logging.util_loss_batch_size,
+                                                        self.logging.stopping_criterion_batch_size)
+                    stopping_criterion_grid_size = self.logging.stopping_criterion_grid_size
+                    stopping_criterion_frequency = self.logging.stopping_criterion_frequency
+                    stop = False
 
-                # Check stopping criterion
-                if self.logging.stopping_criterion_rel_util_loss_diff is not None and \
-                        e > 0 and not e % stopping_criterion_frequency:
-                    start_time = timer()
+                self._init_new_run()
 
-                    # Compute relative utility loss
-                    loss_ex_ante, _, _ = self._calculate_metrics_util_loss(
-                        create_plot_output=False,
-                        batch_size=stopping_criterion_batch_size,
-                        grid_size=stopping_criterion_grid_size)
-                    rel_util_loss = 1 - utilities / (utilities + torch.tensor(loss_ex_ante))
-                    stopping_queue.append(rel_util_loss)
+                for e in range(self.running.n_epochs + 1):
+                    utilities = self._training_loop(epoch=e)
 
-                    # Check for convergence when enough data is available
-                    if len(stopping_queue) == stopping_queue.maxlen:
-                        values = torch.stack(tuple(stopping_queue))
-                        if self.logging.enable_logging:
-                            stop = self._check_convergence(values, epoch=e)
+                    # Check stopping criterion
+                    if self.logging.stopping_criterion_rel_util_loss_diff is not None and \
+                            e > 0 and not e % stopping_criterion_frequency:
+                        start_time = timer()
 
-                    self.overhead = self.overhead + timer() - start_time
-                    if stop:
-                        print(f'Stopping criterion reached after {e} iterations.')
-                        break
+                        # Compute relative utility loss
+                        loss_ex_ante, _, _ = self._calculate_metrics_util_loss(
+                            create_plot_output=False,
+                            batch_size=stopping_criterion_batch_size,
+                            grid_size=stopping_criterion_grid_size)
+                        rel_util_loss = 1 - utilities / (utilities + torch.tensor(loss_ex_ante))
+                        stopping_queue.append(rel_util_loss)
 
-            if self.logging.enable_logging and (
-                    self.logging.export_step_wise_linear_bid_function_size is not None):
-                bidders = [self.bidders[self._model2bidder[m][0]] for m in range(self.n_models)]
-                logging_utils.export_stepwise_linear_bid(
-                    experiment_dir=self.run_log_dir, bidders=bidders,
-                    step=self.logging.export_step_wise_linear_bid_function_size)
+                        # Check for convergence when enough data is available
+                        if len(stopping_queue) == stopping_queue.maxlen:
+                            values = torch.stack(tuple(stopping_queue))
+                            if self.logging.enable_logging:
+                                stop = self._check_convergence(values, epoch=e)
 
-            self._exit_run()
+                        self.overhead = self.overhead + timer() - start_time
+                        if stop:
+                            print(f'Stopping criterion reached after {e} iterations.')
+                            break
+
+                if self.logging.enable_logging and (
+                        self.logging.export_step_wise_linear_bid_function_size is not None):
+                    bidders = [self.bidders[self._model2bidder[m][0]] for m in range(self.n_models)]
+                    logging_utils.export_stepwise_linear_bid(
+                        experiment_dir=self.run_log_dir, bidders=bidders,
+                        step=self.logging.export_step_wise_linear_bid_function_size)
+
+            finally:
+                self._exit_run(global_step=e)
 
         # Once all runs are done, convert tb event files to csv
         if self.logging.enable_logging and (
@@ -484,21 +505,21 @@ class Experiment(ABC):
                 )
 
             # formating
-            axs[plot_idx].set_xlabel(x_label)
+            axs[plot_idx].set_xlabel(
+                x_label if not isinstance(x_label, list) else x_label[plot_idx]
+            )
             if plot_idx == 0:
                 axs[plot_idx].set_ylabel(y_label)
                 if n_players < 10 and labels is not None:
                     axs[plot_idx].legend(loc='upper left')
 
-            """
-            set axis limits based on function parameters ´xlim´, ´ylim´ if provided otherwise
-            based on ´self.plot_xmin´ etc. object attributes. In either case, these variables
-            can also be lists for sperate limits of individual plots.
-            """
+            # Set axis limits based on function parameters ´xlim´, ´ylim´ if provided otherwise
+            # based on ´self.plot_xmin´ etc. object attributes. In either case, these variables
+            # can also be lists for sperate limits of individual plots.
             lims = (xlim, ylim)
             set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
-            # pylint: disable=eval-used
+
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
                 a, b = None, None
                 if lim is not None:  # use parameters ´xlim´ etc.
@@ -511,7 +532,8 @@ class Experiment(ABC):
                         a = eval('self.' + str(str_lim[plot_idx]))[0]
                         b = eval('self.' + str(str_lim[plot_idx]))[1]
                     else:
-                        a, b = eval('self.' + str(str_lim[0])), eval('self.' + str(str_lim[1]))
+                        a = eval('self.' + str(str_lim[0]))
+                        b = eval('self.' + str(str_lim[1]))
                 if a is not None:
                     set_lim(a, b)  # call matplotlib function
 
@@ -599,7 +621,6 @@ class Experiment(ABC):
                 self._cur_epoch_log_params['L_2' + n] = L_2[i]
                 self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
 
-
         if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
             create_plot_output = epoch % self.logging.plot_frequency == 0
             self._cur_epoch_log_params['util_loss_ex_ante'], \
@@ -608,6 +629,14 @@ class Experiment(ABC):
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
             print("\tcurrent est. ex-interim loss:" + str(
                 [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
+
+        if self.logging.log_metrics['efficiency'] and (epoch % self.logging.util_loss_frequency) == 0:
+            self._cur_epoch_log_params['efficiency'] = \
+                self.mechanism.get_efficiency(self.env)
+
+        if self.logging.log_metrics['revenue'] and (epoch % self.logging.util_loss_frequency) == 0:
+            self._cur_epoch_log_params['revenue'] = \
+                self.mechanism.get_revenue(self.env)
 
         # plotting
         if epoch % self.logging.plot_frequency == 0:
@@ -621,13 +650,13 @@ class Experiment(ABC):
             b = torch.stack([b.get_action()[:self.plot_points, ...]
                              for b in unique_bidders], dim=1)
 
-            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
+            labels = ['NPGA agent {}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
             if self.known_bne and self.logging.log_metrics['opt']:
                 for env_idx, _ in enumerate(self.bne_env):
                     v = torch.cat([v, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
-                    labels += ['BNE{}_{}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
+                    labels += ['BNE {} agent {}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
                                for j in range(len(self.models))]
                     fmts += ['b--'] * len(self.models)
 
@@ -665,10 +694,10 @@ class Experiment(ABC):
             # length: n_models
             utility_vs_bne[bne_idx] = torch.tensor([
                 bne_env.get_strategy_reward(
-                    model,
+                    strategy=model,
                     player_position=m2b(m),
                     draw_valuations=redraw_bne_vals,
-                    use_env_valuations=not redraw_bne_vals
+                    use_env_valuations= not redraw_bne_vals
                 ) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(
@@ -681,6 +710,23 @@ class Experiment(ABC):
             )
 
         return utility_vs_bne, epsilon_relative, epsilon_absolute
+
+    def relevant_actions(self):
+        r"""Get indecies of actions that matter.
+
+        In some games, and in their BNE, only some of the agents' actions
+        matter.
+
+        Returns:
+            relevant_actions: (torch.Tensor) of shape (n_agents, n_actions)
+                with elements in $\{0, 1\}$ for marking relevancy for BNE.
+
+        """
+        return torch.ones(
+            size=(len(self.models), self.n_items),
+            device=self.config.hardware.device,
+            dtype=torch.bool
+        )
 
     def _calculate_metrics_action_space_norms(self):
         """
@@ -705,14 +751,16 @@ class Experiment(ABC):
             L_2[bne_idx] = [
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, 2,
-                    componentwise=self.logging.log_componentwise_norm
+                    componentwise=self.logging.log_componentwise_norm,
+                    component_selection=self.relevant_actions()[i, :]
                 )
                 for i, model in enumerate(self.models)
             ]
             L_inf[bne_idx] = [
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, float('inf'),
-                    componentwise=self.logging.log_componentwise_norm
+                    componentwise=self.logging.log_componentwise_norm,
+                    component_selection=self.relevant_actions()[i, :]
                 )
                 for i, model in enumerate(self.models)
             ]
@@ -735,13 +783,8 @@ class Experiment(ABC):
         if grid_size is None:
             grid_size = self.logging.util_loss_grid_size
 
-        assert batch_size <= env.batch_size, "Util_loss for larger than actual batch size not implemented."
-        bid_profile = torch.zeros(batch_size, env.n_players, env.agents[0].n_items,
-                                  dtype=env.agents[0].valuations.dtype, device=env.mechanism.device)
-
-        # Only supports regret_batch_size <= batch_size
-        for agent in env.agents:
-            bid_profile[:, agent.player_position, :] = agent.get_action()[:batch_size, ...]
+        assert batch_size <= env.batch_size, \
+            "Util_loss for larger than actual batch size not implemented."
 
         torch.cuda.empty_cache()
         util_loss = [
@@ -788,9 +831,23 @@ class Experiment(ABC):
 
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 
-    def _log_experiment_params(self):
+    def _log_experiment_params(self, global_step=None):
+        """Logging of paramters after learning finished.
+
+        Arguments:
+            global_step, int: number of completed iterations/epochs. Will usually
+                be equal to `self.running.n_epochs`, except when a stopping
+                criterion is met earlier.
+
+        Returns:
+            Writes to `self.writer`.
+
+        """
         # TODO: write out all experiment params (complete dict) #See issue #113
         # TODO: Stefan: this currently called _per run_. is this desired behavior?
+        for i, model in enumerate(self.models):
+            self.writer.add_text('hyperparameters/neural_net_spec', str(model))
+            self.writer.add_graph(model, self.env.agents[i].valuations)
 
         h_params = {'hyperparameters/batch_size': self.learning.batch_size,
                     'hyperparameters/pretrain_iters': self.learning.pretrain_iters,
@@ -799,21 +856,31 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_hyperparams': str(self.learning.optimizer_hyperparams),
                     'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
+        ignored_metrics = ['utilities', 'update_norm', 'overhead_hours']
         try:
-            self._hparams_metrics['epsilon_relative'] = self._cur_epoch_log_params['epsilon_relative']
-        except:
-            try:
-                self._hparams_metrics['util_loss_ex_interim'] = self._cur_epoch_log_params['util_loss_ex_interim']
-            except:
-                pass
-        self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics)
+            for i, (k, v) in enumerate(self._cur_epoch_log_params.items()):
+                if k not in ignored_metrics:
+                    if isinstance(v, list):  # TODO: isn't this the same behavior as in the second case for tensor?
+                        for model_number in range(len(v)):
+                            self._hparams_metrics["metrics/" + k+"_"+str(model_number)] = v[model_number]
+                    elif isinstance(v, torch.Tensor):
+                        for model_number, metric in enumerate(v):
+                            self._hparams_metrics["metrics/" + k+"_"+str(model_number)] = metric
+                    elif isinstance(v, int) or isinstance(v, float):
+                        self._hparams_metrics["metrics/" + k] = v
+                    else:
+                        print("the type ", type(v), " is not supported as a metric")
+        except Exception as e:  # pylint: disable=broad-except
+            print(e)
+        self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics,
+                                global_step=global_step)
 
-    def _log_hyperparams(self, epoch=0):
-        """Everything that should be logged on every learning_rate update"""
-
-        for i, model in enumerate(self.models):
-            self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)  # ToDO To hyperparams
-            self.writer.add_graph(model, self.env.agents[i].valuations)
+    # def _log_hyperparams(self, epoch=0):
+    #     """Everything that should be logged on every learning_rate update"""
+    #
+    #     for i, model in enumerate(self.models):
+    #         self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)  # ToDO To hyperparams
+    #         self.writer.add_graph(model, self.env.agents[i].valuations)
 
     def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to

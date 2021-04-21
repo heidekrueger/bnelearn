@@ -12,7 +12,7 @@ from scipy import optimize
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.experiment import Experiment
+from .experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
@@ -37,7 +37,7 @@ def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(
     if valuation.dim() == 0:
         valuation.unsqueeze_(0)
     # shorthand notation for F^(n-1)
-    Fpowered = lambda v: torch.pow(prior_cdf(v), n_players - 1)
+    Fpowered = lambda v: torch.pow(prior_cdf(torch.tensor(v)), n_players - 1)
     # do the calculations
     numerator = torch.tensor(
         [integrate.quad(Fpowered, 0, v)[0] for v in valuation],
@@ -263,14 +263,14 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
                 warnings.simplefilter('ignore')
                 # don't print scipy accuracy warnings
                 bne_utility, error_estimate = integrate.dblquad(
-                    lambda x, v: self.common_prior.cdf(x) ** (self.n_players - 1) * self.common_prior.log_prob(
-                        v).exp(),
+                    lambda x, v: self.common_prior.cdf(torch.tensor(x)) ** (self.n_players - 1) \
+                        * self.common_prior.log_prob(torch.tensor(v)).exp(),
                     0, float('inf'),  # outer boundaries
                     lambda v: 0, lambda v: v)  # inner boundaries
                 if error_estimate > 1e-6:
                     warnings.warn('Error in optimal utility might not be negligible')
         elif self.payment_rule == 'second_price':
-            F = self.common_prior.cdf
+            F = lambda x: self.common_prior.cdf(torch.tensor(x))
             f = lambda x: self.common_prior.log_prob(torch.tensor(x)).exp()
             f1n = lambda x, n: n * F(x) ** (n - 1) * f(x)
 
@@ -637,7 +637,7 @@ class MineralRightsExperiment(SingleItemExperiment):
 
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, 'interdependent', self.valuation_prior,
-                'symmetric', self.risk_profile, str(self.n_players) + 'p']
+                'symmetric', str(self.risk) + 'risk', str(self.n_players) + 'players']
         return os.path.join(*name)
 
 
@@ -706,7 +706,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         # define bne agents once then use them in all runs
         agents = [
             self._strat_to_bidder(
-                bne_strategy,
+                strategy = bne_strategy,
                 player_position = i,
                 batch_size = self.config.logging.eval_batch_size,
                 cache_actions = self.config.logging.cache_eval_actions
@@ -740,12 +740,11 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities.tolist()))
         self.bne_utility = self.bne_utilities.mean()
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+    def _strat_to_bidder(self, **kwargs):
         correlation_type = 'affiliated'
-        return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions,
-                      risk=self.risk, correlation_type=correlation_type)
+        return Bidder(self.common_prior, correlation_type=correlation_type, **kwargs)
 
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, 'interdependent', self.valuation_prior,
-                'symmetric', self.risk_profile, str(self.n_players) + 'p']
+                'symmetric', str(self.risk) + 'risk', str(self.n_players) + 'players']
         return os.path.join(*name)

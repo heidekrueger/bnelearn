@@ -116,6 +116,10 @@ class ESPGLearner(GradientBasedLearner):
                     If a float is given, will use that float as reward.
                     Defaults to 'current_reward' if normalize_gradients is False, or
                     to 'mean_reward' if normalize_gradients is True.
+                regularization: dict of
+                    inital_strength: float, inital penaltization factor of bid value
+                    regularize_decay: float, decay rate by which the regularization factor
+                        is mutliplied each iteration.
 
         optimizer_type: Type[torch.optim.Optimizer]
             A class implementing torch's optimizer interface used for parameter update step.
@@ -162,6 +166,13 @@ class ESPGLearner(GradientBasedLearner):
                 raise ValueError('Invalid baseline provided. Should be float or '\
                     + 'one of "mean_reward", "current_reward"')
 
+        if 'regularization' in hyperparams:
+            self.regularize = hyperparams['regularization']['inital_strength']
+            self.regularize_decay = hyperparams['regularization']['regularize_decay']
+        else:
+            self.regularize = 0.0
+            self.regularize_decay = 1.0
+
     def _set_gradients(self):
         """Calculates ES-pseudogradients and applies them to the model parameter
            gradient data.
@@ -187,13 +198,14 @@ class ESPGLearner(GradientBasedLearner):
         # both of these as a row-matrix. i.e.
         # rewards: population_size x 1
         # epsilons: population_size x parameter_length
-
+        self.regularize *= self.regularize_decay
         rewards, epsilons = (
             torch.cat(tensors).view(self.population_size, -1)
             for tensors in zip(*(
                 (
                     self.environment.get_strategy_reward(
-                        model, **self.strat_to_player_kwargs).detach().view(1),
+                        model, **self.strat_to_player_kwargs, regularize=self.regularize
+                    ).detach().view(1),
                     epsilon
                 )
                 for (model, epsilon) in population
@@ -203,8 +215,11 @@ class ESPGLearner(GradientBasedLearner):
         # See ES_Analysis notebook in repository for more information about where
         # these choices come from.
         baseline = \
-            self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach().view(1) \
-                if self.baseline == 'current_reward' \
+            self.environment.get_strategy_reward(
+                self.model, regularize=self.regularize,
+                **self.strat_to_player_kwargs
+            ).detach().view(1) \
+            if self.baseline == 'current_reward' \
             else rewards.mean(dim=0) if self.baseline == 'mean_reward' \
             else self.baseline # a float
 
