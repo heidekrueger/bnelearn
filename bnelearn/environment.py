@@ -11,7 +11,7 @@ from typing import Callable, Set, List, Iterable
 import torch
 
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
-from bnelearn.mechanism import MatrixGame, Mechanism
+from bnelearn.mechanism import MatrixGame, Mechanism, DoubleAuctionMechanism
 from bnelearn.strategy import Strategy
 from bnelearn.correlation_device import CorrelationDevice, IndependentValuationDevice
 
@@ -289,10 +289,17 @@ class AuctionEnvironment(Environment):
                 counter = counter + 1
 
             allocation, payments = self.mechanism.play(bid_profile)
+            print("bid_profile",bid_profile)
+            print("allocation",allocation)
+            print("payments", payments)
+
+            print("pp", player_position)
 
             # average over batch against this opponent
             utility = agent.get_utility(allocation[:,player_position,:],
                                         payments[:,player_position])
+            
+            print("utility",utility)
 
         if aggregate:
             utility = utility.mean()

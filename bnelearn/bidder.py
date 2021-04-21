@@ -87,6 +87,7 @@ class Bidder(Player):
                  item_interest_limit = None,
                  constant_marginal_values = False,
                  correlation_type = None,
+                 seller = False
                  ):
 
         super().__init__(strategy, player_position, batch_size, cuda)
@@ -97,6 +98,7 @@ class Bidder(Player):
         self.item_interest_limit = item_interest_limit
         self.constant_marginal_values = constant_marginal_values
         self.correlation_type = correlation_type
+        self.seller = seller
         self.risk = risk
         self._cache_actions = cache_actions
         self._valuations_changed = False # true if new valuation drawn since actions calculated
@@ -318,7 +320,12 @@ class Bidder(Player):
         payoff.
         """
         welfare = self.get_welfare(allocations, counterfactual_valuations)
-        payoff = welfare - payments
+        print("seller", self.seller)
+        print("welfare", welfare)
+        if not self.seller:
+            payoff = welfare - payments
+        else:
+            payoff = payments - welfare
 
         if self.risk == 1.0:
             return payoff
@@ -342,6 +349,7 @@ class Bidder(Player):
         if valuations is None:
             valuations = self.valuations
 
+        print("val", valuations)
         item_dimension = valuations.dim() - 1
         welfare = (valuations * allocations).sum(dim=item_dimension)
 

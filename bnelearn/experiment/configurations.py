@@ -63,6 +63,11 @@ class SettingConfig:
     core_solver: str = None
     # parallel: int = 1 in hardware config now
 
+    # Double Auction
+    n_buyers: int = None
+    n_sellers: int = None
+
+
 
 @dataclass
 class LearningConfig:

@@ -25,7 +25,7 @@ from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
 from bnelearn.experiment.configurations import (ExperimentConfig)
 from bnelearn.learner import ESPGLearner, Learner
-from bnelearn.mechanism import Mechanism
+from bnelearn.mechanism import Mechanism, DoubleAuctionMechanism
 from bnelearn.strategy import NeuralNetStrategy
 
 
@@ -340,7 +340,9 @@ class Experiment(ABC):
             print(f'\nRunning experiment {run_id} (using seed {seed})')
             self.run_log_dir = os.path.join(
                 self.experiment_log_dir,
-                f'{run_id:02d} ' + time.strftime('%T ') + str(seed))
+                f'{run_id:02d} ' 
+                #+ time.strftime('%T ') 
+                + str(seed))
             torch.random.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
             np.random.seed(seed)

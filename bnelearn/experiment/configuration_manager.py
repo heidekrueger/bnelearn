@@ -24,6 +24,8 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
                                                         AffiliatedObservationsExperiment)
+                
+from bnelearn.experiment.double_auction_single_item_experiment import DoubleAuctionUniformSymmetricPriorSingleItemExperiment
 
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
@@ -162,6 +164,13 @@ class ConfigurationManager:
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
 
+    def _init_double_auction_single_item_uniform_symmetric(self):
+        self.learning.model_sharing = False
+        self.setting.u_lo = 0
+        self.setting.u_hi = 1
+        self.setting.n_buyers = 1
+        self.setting.n_sellers = 1
+
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
         # Learning
@@ -242,6 +251,9 @@ class ConfigurationManager:
     def _post_init_splitaward(self):
         pass
 
+    def _post_init_double_auction_single_item_uniform_symmetric(self):
+        pass
+
     experiment_types = {
         'single_item_uniform_symmetric':
             (UniformSymmetricPriorSingleItemExperiment, _init_single_item_uniform_symmetric,
@@ -266,7 +278,10 @@ class ConfigurationManager:
         'multiunit':
             (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
-            (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)}
+            (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
+        'double_auction_single_item':
+            (DoubleAuctionUniformSymmetricPriorSingleItemExperiment, _init_double_auction_single_item_uniform_symmetric,
+            _post_init_double_auction_single_item_uniform_symmetric)}
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type
@@ -290,7 +305,7 @@ class ConfigurationManager:
                     correlation_coefficients: List[float] = 'None', n_units: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None'):
+                    core_solver: str = 'None', n_buyers: int = 'None', n_sellers: int = 'None'):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
