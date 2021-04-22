@@ -25,7 +25,7 @@ def test_independent_correlation_device_draw():
 
     corr = np.corrcoef(torch.stack((bidder1.valuations.flatten(),
                                     bidder2.valuations.flatten())).cpu())
-        
+
     assert abs(corr[0,1] ) < 0.01, \
             f'Bidders are not independent! Found correlation {corr[0,1]:.3f}, exp. {0.000:.3f}!'
 
@@ -48,7 +48,7 @@ def test_perfectly_correlated_valuation_draw():
 
     corr = np.corrcoef(torch.stack((bidder1.valuations.flatten(),
                                     bidder2.valuations.flatten())).cpu())
-        
+
     assert abs(corr[0,1] - 1.0) < 1e-4, f"valuations are not perfectly correlated! got {corr[0,1]:.3f}"
 
     corrdev = cd.ConstantWeightsCorrelationDevice(dist, batch_size, 1, 1.0)
@@ -60,7 +60,7 @@ def test_perfectly_correlated_valuation_draw():
     corr = np.corrcoef(torch.stack((bidder1.valuations.flatten(),
                                     bidder2.valuations.flatten())
                            ).cpu())
-        
+
     assert abs(corr[0,1] - 1.0) < 1e-4, f"valuations are not perfectly correlated! got {corr[0,1]:.3f}"
 
 def test_correlated_valuation_draw_constant_weights():
@@ -91,7 +91,7 @@ def test_correlated_valuation_draw_constant_weights():
                                         bidder1.valuations.flatten().cpu(),
                                         bidder2.valuations.flatten().cpu())
                            ))
-        
+
         assert abs(corr[0,1]**2 - gamma) < 0.01, \
             f'Wrong cor between common and bidder 1, got {corr[0,1]:.3f}, exp. {gamma.sqrt():.3f}!'
         assert abs(corr[0,2]**2 - gamma) < 0.01, \
@@ -124,7 +124,7 @@ def test_correlated_valuation_draw_Bernoulli_weights():
                                         bidder1.valuations.flatten().cpu(),
                                         bidder2.valuations.flatten().cpu())
                            ))
-        
+
         assert abs(corr[0,1] - gamma) < 0.01, \
             f'Wrong cor between common and bidder 1, got {corr[0,1]:.3f}, exp. {gamma:.3f}!'
         assert abs(corr[0,2] - gamma) < 0.01, \
@@ -150,7 +150,7 @@ def test_correlated_drawing_in_environment():
     batch = 2**18
     items = 1
     n = 6
-    
+
     bidders = [b.Bidder(dist, strat, batch_size=batch, correlation_type='additive') for _ in range(n)]
     gamma1 = 0.5
     gamma2 = 0.75

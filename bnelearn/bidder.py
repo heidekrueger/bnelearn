@@ -302,14 +302,14 @@ class Bidder(Player):
 
         ### 4. Finishing up
         self.valuations.relu_() #ensure nonnegativity for unbounded-support distributions
-
+## in doc list
         if isinstance(self.item_interest_limit, int):
             self.valuations[:,self.item_interest_limit:] = 0
-
+## in doc list
         if self.constant_marginal_values:
             self.valuations.index_copy_(1, torch.arange(1, self.n_items, device=self.device),
                                         self.valuations[:,0:1].repeat(1, self.n_items-1))
-
+## in doc list
         if self.descending_valuations:
             # for uniform vals and 2 items <=> F1(v)=v**2, F2(v)=2v-v**2
             self.valuations, _ = self.valuations.sort(dim=1, descending=True)

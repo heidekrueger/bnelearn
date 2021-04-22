@@ -8,6 +8,13 @@ import torch
 from torch.distributions import Distribution
 from bnelearn.bidder import Bidder
 
+
+def superseeded(func):
+    def wrapper(*args, **kwargs):
+        print("Calling a superseded function!")
+        func(*args, **kwargs)
+    return wrapper
+
 class CorrelationDevice(ABC):
     """
     Implements logic to draw from joint prior distributions that are not
@@ -112,6 +119,7 @@ class BernoulliWeightsCorrelationDevice(CorrelationDevice):
         super().__init__(common_component_dist, batch_size, n_items,
                          "Bernoulli_weights_model", correlation)
 
+    @superseeded
     def get_weights(self):
         """
         Choose individual component with prob (1-gamma), common component with
@@ -190,6 +198,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
        v_i = (1-w)z_i + ws
     such that the correlation between v_i becomes gamma.
     """
+    @superseeded
     def __init__(self, common_component_dist: Distribution,
                  batch_size: int, n_items: int, correlation: float):
         self.correlation = correlation
@@ -199,9 +208,11 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
         super().__init__(common_component_dist, batch_size, n_items,
                          "constant_weights_model", correlation)
 
+    @superseeded
     def get_weights(self):
         return self.weight
 
+    @superseeded
     def draw_conditionals(
             self,
             agents: List[Bidder],
@@ -232,6 +243,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
 
         return conditionals_dict
 
+    @superseeded
     def draw_z1_given_v1(self, v1: torch.Tensor, batch_size):
         """
         Sample own private component of local bidder conditioned on its
@@ -263,6 +275,7 @@ class ConstantWeightsCorrelationDevice(CorrelationDevice):
             .view(batch_size_0, batch_size_1)
         return (u_bounds - l_bounds) * uniform + l_bounds
 
+    @superseeded
     def draw_conditional_v2(self, v1: torch.Tensor, batch_size: int):
         """
         Sample local opponents observation conditioned on the other local's

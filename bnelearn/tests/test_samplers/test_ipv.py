@@ -1,4 +1,4 @@
-""" This pytest test file checks whether valuation and observation samplers have the 
+""" This pytest test file checks whether valuation and observation samplers have the
 expected behaviour"""
 
 import torch
@@ -7,7 +7,7 @@ import numpy as np
 import bnelearn.valuation_sampler as vs
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-n_players = 3
+n_players = 2
 
 batch_size = 2**18
 alternative_batch_size = 2**15
@@ -27,7 +27,7 @@ n_std = 3.
 # helper functions
 def correlation(valuation_profile):
     """Pearson correlation between valuations of bidders.
-    
+
     valuation_profile should be (batch x n_players x 1)
     """
     assert valuation_profile.dim() == 3, "invalid valuation profile."
@@ -37,9 +37,9 @@ def correlation(valuation_profile):
         np.corrcoef(valuation_profile.squeeze(-1).t().cpu())
         ).float() #numpy is float 64
 
-def check_validity(valuation_profile, expected_shape, 
+def check_validity(valuation_profile, expected_shape,
                    expected_mean, expected_std, expected_correlation=None):
-    """Checks whether a given batch of profiles has expected shape, mean, std 
+    """Checks whether a given batch of profiles has expected shape, mean, std
        and correlation matrix.
     """
     assert valuation_profile.dim() == 3, "invalid number of dimensions!"
@@ -123,7 +123,7 @@ def test_gaussian_symmetric_ipv():
     o,v = s.draw_profiles(device='cpu')
     assert v.device.type == 'cpu', "sampling didn't respect device parameter."
 
-    ### ensure valuation clipping at zero by using std=mean 
+    ### ensure valuation clipping at zero by using std=mean
     s = vs.GaussianSymmetricIPVSampler(n_mean, n_mean, n_players, 1, batch_size)
     o,v = s.draw_profiles()
     assert torch.all(v.ge(0)), "negative draws should be clipped to zero!"

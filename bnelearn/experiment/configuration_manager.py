@@ -2,7 +2,7 @@ import json
 import os
 import time
 import warnings
-from typing import List, Type, Iterable
+from typing import List, Type, Iterable, Tuple
 
 import torch
 import torch.nn as nn
@@ -224,10 +224,10 @@ class ConfigurationManager:
                 self.logging.save_tb_events_to_csv_aggregate = False
                 self.logging.save_tb_events_to_csv_detailed = False
                 self.logging.save_tb_events_to_binary_detailed = False
-            self.logging.save_models = False
-            self.logging.save_figure_to_disk_png = False
-            self.logging.save_figure_to_disk_svg = False
-            self.logging.save_figure_data_to_disk = False
+                self.logging.save_models = False
+                self.logging.save_figure_to_disk_png = False
+                self.logging.save_figure_to_disk_svg = False
+                self.logging.save_figure_data_to_disk = False
 
         # Hardware
         if self.hardware.cuda and not torch.cuda.is_available():
@@ -270,7 +270,7 @@ class ConfigurationManager:
         elif self.setting.gamma > 1.0:
             raise Exception('Wrong gamma')
 
-        # Extend the distribution boundaries to all bidders if the request 
+        # Extend the distribution boundaries to all bidders if the request
         # number exceeds the default
         while len(self.setting.u_lo) < self.setting.n_players:
             self.setting.u_lo.insert(0, self.setting.u_lo[0])
@@ -445,8 +445,11 @@ class ConfigurationManager:
         return ConfigurationManager.experiment_types[experiment_type][0]
 
     @staticmethod
-    def get_default_config_members() -> (RunningConfig, SettingConfig, LearningConfig, LoggingConfig, HardwareConfig):
-        """Creates with default (or most common) parameters and returns members of the ExperimentConfig"""
+    def get_default_config_members() -> Tuple[RunningConfig, SettingConfig,
+                                              LearningConfig, LoggingConfig,
+                                              HardwareConfig]:
+        """Creates with default (or most common) parameters and returns members
+         of the ExperimentConfig"""
         running = RunningConfig(n_runs=0, n_epochs=0)
         setting = SettingConfig(n_players=2,
                                 payment_rule='first_price',
