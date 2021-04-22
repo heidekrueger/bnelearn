@@ -14,7 +14,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 batch_size = 2**20
 alternative_batch_size = 2**15
-conditioned_inner_batch_size = 2**1
+conditioned_inner_batch_size = 2**18
 
 
 

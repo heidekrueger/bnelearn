@@ -372,7 +372,5 @@ class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUnifo
         w = self._weight.to(device)
         lower = torch.max(self.u_lo*torch.ones_like(v), (v - w*self.u_hi)/(1 - w))
         upper = torch.min(self.u_hi*torch.ones_like(v), (v - w*self.u_lo)/(1 - w))
-        # for debugging
-        torch.stack([v,lower,upper],dim=2)
 
-        return torch.empty_like(v).uniform_(lower, upper)
+        return (upper - lower) * torch.empty_like(v).uniform_(0,1) + lower

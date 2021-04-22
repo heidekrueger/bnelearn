@@ -7,9 +7,9 @@ import numpy as np
 import bnelearn.valuation_sampler as vs
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-n_players = 2
+n_players = 3
 
-batch_size = 2**18
+batch_size = 2**20
 alternative_batch_size = 2**15
 
 # parameters for tests with uniform distributions
