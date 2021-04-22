@@ -224,10 +224,10 @@ class ConfigurationManager:
                 self.logging.save_tb_events_to_csv_aggregate = False
                 self.logging.save_tb_events_to_csv_detailed = False
                 self.logging.save_tb_events_to_binary_detailed = False
-            self.logging.save_models = False
-            self.logging.save_figure_to_disk_png = False
-            self.logging.save_figure_to_disk_svg = False
-            self.logging.save_figure_data_to_disk = False
+                self.logging.save_models = False
+                self.logging.save_figure_to_disk_png = False
+                self.logging.save_figure_to_disk_svg = False
+                self.logging.save_figure_data_to_disk = False
 
         # Hardware
         if self.hardware.cuda and not torch.cuda.is_available():
