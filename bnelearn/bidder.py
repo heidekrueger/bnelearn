@@ -409,8 +409,7 @@ class Bidder(Player):
         payoff.
         """
         welfare = self.get_welfare(allocations, counterfactual_valuations)
-        print("seller", self.seller)
-        print("welfare", welfare)
+        
         if not self.seller:
             payoff = welfare - payments
         else:
@@ -438,7 +437,6 @@ class Bidder(Player):
         if valuations is None:
             valuations = self.valuations
 
-        print("val", valuations)
         item_dimension = valuations.dim() - 1
         welfare = (valuations * allocations).sum(dim=item_dimension)
 

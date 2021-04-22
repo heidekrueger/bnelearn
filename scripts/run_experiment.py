@@ -33,7 +33,7 @@ if __name__ == '__main__':
     #    .get_class_by_experiment_type(experiment_config.experiment_class)
 
     # Well, path is user-specific
-    #log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
 
 
     ### SINGLE ITEM EXPERIMENTS ###
@@ -142,14 +142,14 @@ if __name__ == '__main__':
     #     .set_hardware(specific_gpu=1) \
     #     .get_config()
 
-    log_root_dir = os.path.join(os.path.expanduser('~'),'Desktop','Master Thesis','bnelearn', 'experiments')
 
+    ### DOUBLE AUCTION EXPERIMENTS ###
     experiment_config, experiment_class = ConfigurationManager(experiment_type='double_auction_single_item', n_runs=1,
-                                                               n_epochs=1) \
+                                                               n_epochs=50) \
          .set_setting(risk=1.0)\
          .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
          .set_learning(pretrain_iters=5) \
-         .set_logging(eval_batch_size=1).get_config()
+         .set_logging(eval_batch_size=2**4).get_config()
 
     # for making a toy experiment
     experiment_config.running.n_epochs = 2

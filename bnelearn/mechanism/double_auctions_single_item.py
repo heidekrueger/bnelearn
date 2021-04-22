@@ -1,3 +1,20 @@
+"""
+
+This module implements mechanisms for double auction.
+Double auctions contains buyers and sellers. 
+
+In a given bid profile for double auctions, 
+    0 : n_buyers -> indices for buyers
+    n_buyers+1 : n_players -> indices for sellers
+
+allocation for a buyer is 1 when the buyer buys an item.
+payment for a buyer is the amount buyer pays for an item.
+
+allocation for a seller is 1 when the seller sells an item.
+payment for a seller is the amount seller receives for an item.
+
+"""
+
 from typing import Tuple
 
 import torch
@@ -15,7 +32,6 @@ class AverageAuction(DoubleAuctionMechanism):
 
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
-        #print("bids",bids)
 
         batch_dim, player_dim, item_dim = 0, 1, 2
         bids_buyers, bids_sellers = torch.split(bids,[self.n_buyers, self.n_sellers], dim=player_dim)
@@ -40,9 +56,6 @@ class AverageAuction(DoubleAuctionMechanism):
         payments = torch.cat((payments_per_item_buyers, payments_per_item_sellers), 
                             dim=player_dim).sum(dim=item_dim)
         
-        #print(allocations)
-        #print(payments)
-
         return (allocations, payments)
 
 
