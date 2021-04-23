@@ -1,13 +1,14 @@
 """ This pytest test file checks whether valuation and observation samplers have the
 expected behaviour"""
 
-import pytest
-
 from math import sqrt
-import torch
+
 import numpy as np
+import pytest
+import torch
 
 import bnelearn.valuation_sampler as vs
+
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -15,8 +16,6 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 batch_size = 2**20
 alternative_batch_size = 2**15
 conditioned_inner_batch_size = 2**18
-
-
 
 
 # helper functions
@@ -62,13 +61,13 @@ def check_validity_of_conditional_sampler(sampler: vs.CorrelatedSymmetricUniform
                           [u_lo + 0.5*(u_hi-u_lo)],
                           [u_lo + 0.25*(u_hi-u_lo)]]) \
                 .repeat(1, valuation_size)
-    
+
     #### test conditional sampling for different players (first and last)
     for i in [0, n_players-1]:
-        
-    
+
+
         co, cv = sampler.draw_conditional_profiles(
-            i, conditioned_observation, 
+            i, conditioned_observation,
             conditioned_inner_batch_size)
 
         assert co.device == cv.device, "Private values, obs and valuations should be identical."
@@ -81,9 +80,9 @@ def check_validity_of_conditional_sampler(sampler: vs.CorrelatedSymmetricUniform
                 .repeat_interleave(conditioned_inner_batch_size, dim=0)
         ), "conditioned sample must respect conditioned_observation input!"
 
-    """When outer batch is drawn from real distribution and inner_batch size is 
-    1, then the conditional samples should have the same distribution as 'regular'
-    samples."""
+    # When outer batch is drawn from real distribution and inner_batch size is
+    # 1, then the conditional samples should have the same distribution as 'regular'
+    # samples.
 
     # get outer obs
     _, o = sampler.draw_profiles(batch_size)
@@ -100,17 +99,17 @@ def check_validity_of_conditional_sampler(sampler: vs.CorrelatedSymmetricUniform
         assert torch.allclose(o.mean(dim=0), co.mean(dim=0), atol=.01)
         assert torch.allclose(o.std(dim=0), co.std(dim=0), atol=.01)
         for k in range(valuation_size):
-            assert torch.allclose(correlation( o[:,:,[k]]),
-                                  correlation(co[:,:,[k]]),
-                                  atol=0.01
-                ), "Unexpected correlation matrix encountered!"
+            assert torch.allclose(
+                correlation( o[:,:,[k]]),
+                correlation(co[:,:,[k]]),
+                atol=0.01), "Unexpected correlation matrix encountered!"
 
 
 
 # test cases
 # base case is 2p, U[0,1], correlation of 0.5
 ids, test_cases = zip(*[
-                        #nplayers, valuation_size, gamma,       u_lo,  u_hi
+    #                    nplayers, valuation_size, gamma,       u_lo,  u_hi
     ['base_case',       (2,        1,              0.5,         0,     1     )],
     ['perfect_corr',    (2,        1,              1.0,         0,     1     )],
     ['independent',     (2,        1,              0.0,         0,     1     )],
@@ -133,7 +132,7 @@ def test_correlated_constant_weight_pv(n_players, valuation_size,
       - dimensions and output devices
       - ipv, i.e. valuations == observations
       - correctness of mean, std (where known) of marginals
-      - correlation matrix 
+      - correlation matrix
     - conditioned sampling on one player's observation
       - has correct shapes and devices
       - has correct entries for the given player
@@ -166,6 +165,70 @@ def test_correlated_constant_weight_pv(n_players, valuation_size,
 
 
     s = vs.ConstantWeightCorrelatedSymmetricUniformPVSampler(
+        n_players, valuation_size,
+        gamma,
+        u_lo, u_hi, batch_size)
+
+
+    ### test standard profile sampling
+
+    v,o = s.draw_profiles()
+    assert o.device == v.device, "Observations and Valuations should be on same device"
+    assert o.device.type == device, "Standard device should be cuda, if available!"
+
+    assert torch.equal(o, v), "observations and valuations should be identical in IPV"
+
+    check_validity(v,
+                   expected_shape= torch.Size([batch_size, n_players, valuation_size]),
+                   expected_mean = marginal_mean,
+                   expected_std = marginal_std,
+                   expected_correlation= expected_correlation)
+
+    ## sample with a different batch size
+    v,o = s.draw_profiles(alternative_batch_size)
+    assert v.shape == torch.Size([alternative_batch_size, n_players, valuation_size]), \
+        "failed to sample with nonstandard size."
+
+    ## sample on cpu
+    v,o = s.draw_profiles(device='cpu')
+    assert v.device.type == 'cpu', "sampling didn't respect device parameter."
+
+    check_validity_of_conditional_sampler(s, n_players, valuation_size, u_lo, u_hi)
+
+
+@pytest.mark.parametrize("n_players, valuation_size, gamma, u_lo, u_hi",
+                         test_cases, ids=ids)
+def test_correlated_Bernoulli_weight_pv(n_players, valuation_size,
+                                        gamma, u_lo, u_hi):
+    """Functionality and correcness test of the Bernoulli Weights sampler.
+    We test
+    - correctness of sample on standard device with standard batch_size
+      - dimensions and output devices
+      - ipv, i.e. valuations == observations
+      - correctness of mean, std (where known) of marginals
+      - correlation matrix
+    - conditioned sampling on one player's observation
+      - has correct shapes and devices
+      - has correct entries for the given player
+      - otherwise looks like a valid sample
+    - additionally, we test dimensions and output devices for manually specified
+      devises or batch_sizes.
+    """
+
+
+    marginal_mean = torch.tensor((u_hi - u_lo)/2 + u_lo) \
+        .repeat([n_players, valuation_size])
+
+    # in the Bernoulli weights model, the marginals are themselves U[u_lo,u_hi]
+    # distributed.
+    marginal_std = torch.tensor(sqrt(1/12) * (u_hi-u_lo)) \
+            .repeat([n_players, valuation_size])
+
+    # 1s on diagonal, correlation on non-diagonal entries
+    expected_correlation = torch.eye(n_players) * (1-gamma) + gamma
+
+
+    s = vs.BernoulliWeightsCorrelatedSymmetricUniformPVSampler(
         n_players, valuation_size,
         gamma,
         u_lo, u_hi, batch_size)

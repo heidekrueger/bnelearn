@@ -1,6 +1,8 @@
 """ This pytest test file checks whether valuation and observation samplers have the
 expected behaviour"""
 
+from math import sqrt
+
 import torch
 import numpy as np
 
@@ -16,7 +18,7 @@ alternative_batch_size = 2**15
 u_lo = 0.
 u_hi = 10.
 u_mean = 5.
-u_std = 2.8868
+u_std = (u_hi - u_lo) * sqrt(1/12)
 
 
 # parameters for tests with Normal distributions

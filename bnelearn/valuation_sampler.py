@@ -1,19 +1,16 @@
 """This class implements drawing of valuation and observation profiles."""
 
 from abc import ABC, abstractmethod
-from typing import Tuple, List, Dict
-import warnings
-import torch
-from torch import distributions
-from torch.distributions import Distribution
-from torch.distributions.independent import Independent
-from torch.cuda import _device_t as Device
 from math import sqrt
+from typing import Tuple
+
+import torch
+from torch.cuda import _device_t as Device
+from torch.distributions import Distribution
 
 
 class ValuationObservationSampler(ABC):
     """Provides functionality to draw valuation and observation profiles."""
-
 
     def __init__(self, n_players, valuation_size, observation_size,
                  default_batch_size = 1, default_device = None):
@@ -90,7 +87,8 @@ class PVSampler(ValuationObservationSampler, ABC):
         profile = self._sample(batch_size, device)
         return profile, profile
 
-class SymmetricIPVSampler(PVSampler): #TODO: change name to express that this is symmetric also along items, not just players?
+#TODO: change name to express that this is symmetric also along items, not just players?
+class SymmetricIPVSampler(PVSampler):
     """A Valuation Oracle that draws valuations independently and symmetrically
     for all players and each entry of their valuation vector according to a specified
     distribution.
@@ -268,11 +266,65 @@ class BernoulliWeightsCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUni
 
     def _get_weights(self, batch_size: int, device: Device) -> torch.Tensor:
         """Draws Bernoulli distributed weights along the batch size.
+
+        Returns:
+            w: Tensor of shape (batch_size, 1, 1)
         """
 
-        return (torch.empty([batch_size, 1], device=device)
-            .bernoulli_(self.gamma) # different weight per batch
-            .repeat(1, self.valuation_size)) # same weight for each item/bundle in each batch-instance
+        return (torch.empty([batch_size], device=device)
+                .bernoulli_(self.gamma) # different weight per batch
+                .view(-1, 1, 1)) # same weight across item/bundle in each batch-instance
+
+    def draw_conditional_profiles(self, conditioned_player: int,
+                                  conditioned_observation: torch.Tensor,
+                                  batch_size: int, device: Device  = None
+                                  ) -> Tuple[torch.Tensor, torch.Tensor]:
+        device = device or self.default_device
+        outer_batch_size = conditioned_observation.shape[0]
+        inner_batch_size = batch_size
+
+        conditioned_observation = conditioned_observation.to(device)
+        # let i be the index of the player conditioned on.
+        i = conditioned_player
+
+        # repeat each entry of conditioned_observation inner_batch_size times.
+        v_i = conditioned_observation \
+            .repeat_interleave(inner_batch_size, dim=0)
+
+        # individual components z_j are conditionally independent of z_i.
+        # start by sampling these (and overwriting ith entry with actual obs.)
+        # (ith's entry is technically incorrect, but the cases
+        # where v_i != z_i are disregarded by the weights drawn below.)
+        z = torch.empty([outer_batch_size*inner_batch_size,
+                         self.n_players,
+                         self.valuation_size], device = device) \
+            .uniform_(self.u_lo, self.u_hi)
+        z[:,i,:] = v_i
+
+        # each observation v_i has a probability of self.gamma of being the
+        # common component v_i=s, and (1-self.gamma) of being the player's
+        # individual component v_i=z_i
+        # In the former case, all players should have the same obs.
+        # otherwise, they should have their individual component z,
+        # which is then independent from v_i = z_i
+
+        # NOTE: with our current test (e.g. testing correlation matrix
+        # of conditional valuation profile for large outer_batch and
+        # inner_batch of 1), we cannot use the same drawn weights in each outer
+        # batch, otherwise, we'll always end up perfectly correlated, or not
+        # at all, rather than the correct amount.
+
+        w = torch.empty([outer_batch_size * inner_batch_size, 1, 1], device=device) \
+            .bernoulli_(self.gamma) \
+
+        # sample valuations directly:
+        # either individual component of each player z_j,
+        # or common component s=v_i, which we stored in the ith entry of the z tensor
+        v = (1-w)*z + w * z[:,[i],:]
+
+        # private values setting: observations = valuations
+        return v, v
+
 
 class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUniformPVSampler):
 
@@ -317,7 +369,6 @@ class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUnifo
         # start by sampling these (and overwriting ith entry with actual obs.)
 
         # create repeated entries for conditioned_player
-        ## TODO -- what about valuation size > 1?
         z = torch.empty([outer_batch_size*inner_batch_size,
                          self.n_players,
                          self.valuation_size], device = device) \
@@ -348,16 +399,18 @@ class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUnifo
         are computed. --> add detailed documentation here.
 
         Args:
-            v (tensor) a tensor of shape (outer_batch_size*inner_batch_size, valuation_size) 
+            v (tensor) a tensor of shape (outer_batch_size*inner_batch_size, valuation_size)
 
         Returns:
             z (tensor) of shape (outer_batch_size * inner_batch_size,
                                  valuation_size) on the same device as v
         """
-        # TODO: we might want to ensure that we use the same (quasi-)random 
+        # TODO: we might want to ensure that we use the same (quasi-)random
         # nubmers in the inner_batch for each outer_batch? [If we use
         # quasi-randomness, this would certainly be required, for pseudo-random
         # numbers it shouldn't be an issue.]
+        # NOTE: the above todo would break the correlation test for
+        # inner_batch_sizes of 1!
         device = v.device
 
         # degenerate case: semantically, z doesn't matter,
