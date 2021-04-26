@@ -21,6 +21,7 @@ test:
     when: always
     reports:
       junit: testreport.xml
+    expire_in: 6 months
 
 lint:
   stage: lint
@@ -48,7 +49,8 @@ lint:
     - ${CI_PROJECT_DIR}/artifacts/codeclimate.json
     - ${CI_PROJECT_DIR}/artifacts/metrics.txt
     - ${CI_PROJECT_DIR}/artifacts/lint_badge.svg
-  
+    expire_in: 6 months
+
   # get the json with all badge urls via API and regex the id of the badge with 'blue.svg' in it
   # this works with a personal access token but doesn't seem to work with deploy token / project token or
   # deploy key. thus not doing this for now for security purposes.
