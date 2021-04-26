@@ -147,7 +147,7 @@ if __name__ == '__main__':
     experiment_config, experiment_class = ConfigurationManager(experiment_type='double_auction_single_item', n_runs=1,
                                                                n_epochs=2000) \
          .set_setting(risk=1.0)\
-         .set_setting(payment_rule='first_price')
+         .set_setting(payment_rule='first_price')\
          .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
          .set_learning(pretrain_iters=5) \
          .set_logging(eval_batch_size=2**22).get_config()
