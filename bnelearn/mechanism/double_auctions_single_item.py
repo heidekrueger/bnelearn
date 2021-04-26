@@ -81,7 +81,7 @@ class VickreyDoubleAuction(DoubleAuctionMechanism):
         payments_per_item_sellers = torch.zeros(batch_size, self.n_sellers, n_items, device=self.device)
         allocations_sellers = torch.zeros(batch_size, self.n_sellers, n_items, device=self.device)
 
-        allocations_buyers = torch.ge(bids_buyers,bids_sellers).type(torch.uint8)
+        allocations_buyers = torch.gt(bids_buyers,bids_sellers).type(torch.uint8)
         allocations_sellers = allocations_buyers
 
         payments_per_item_buyers = bids_sellers*allocations_buyers
