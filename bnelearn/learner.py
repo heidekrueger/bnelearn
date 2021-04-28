@@ -9,6 +9,7 @@ from typing import Tuple, Type, Callable
 #for PSOLearner
 import sympy.ntheory as sympy
 import math
+from time import perf_counter as timer
 
 import torch
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
@@ -38,6 +39,8 @@ class GradientBasedLearner(Learner):
         self.n_parameters = sum([p.numel() for p in self.params()])
 
         self.environment = environment
+        self.writer = None
+        self.cur_epoch = 0
 
         self.strat_to_player_kwargs = strat_to_player_kwargs if strat_to_player_kwargs else {}
             # warn if weird initialization
@@ -67,9 +70,16 @@ class GradientBasedLearner(Learner):
 
         Returns: None or loss evaluated by closure. (See above.)
         """
+        #self.optimizer.zero_grad()
+        #self._set_gradients()
+        #return self.optimizer.step(closure=closure)
+        start_timer = timer()
         self.optimizer.zero_grad()
         self._set_gradients()
-        return self.optimizer.step(closure=closure)
+        loss = self.optimizer.step(closure=closure)
+        self.writer.add_scalar('learner/time_per_step', timer()-start_timer, self.cur_epoch)
+        self.cur_epoch += 1
+        return loss
 
     def update_strategy_and_evaluate_utility(self, closure = None):
         """updates model and returns utility after the update."""
@@ -587,7 +597,11 @@ class PSOLearner(Learner):
         for param in self.particle_evaluation_model.parameters():
             param.requires_grad = False
         self.environment = environment
-        self.current_epoch = 0
+        self.cur_epoch = 0
+
+        # for logging
+        self.writer = None
+        self.utility_eval_counter = 0
 
         self.strat_to_player_kwargs = strat_to_player_kwargs if strat_to_player_kwargs else {}
         # warn if weird initialization
@@ -617,14 +631,14 @@ class PSOLearner(Learner):
         # model params a commonly initialized within max range [-1, 1]
         # i.e., pytorch linear: stdv = 1. / math.sqrt(input_length); self.weight.data.uniform_(-stdv,stdv)
         max_position_init = 1.0
-        max_velocity = max_position_init + pretrain_deviation
+        max_velocity = max_position_init
         max_position = max_position_init + pretrain_deviation
 
         # initialize non-required parameters
         if 'inertia_weight' in hyperparams:
             self.inertia = float(hyperparams['inertia_weight'])
         else:
-            self.inertia = 0.792
+            self.inertia = 0.729
         if 'cognition_ratio' in hyperparams:
             self.cognition = float(hyperparams['cognition_ratio'])
         else:
@@ -648,18 +662,17 @@ class PSOLearner(Learner):
             self.velocity_clamping = True
             self.max_velocity = max_velocity
 
-        # --- initialize the swarm ---
+        #### --- initialize the swarm ---
         # positions
         if pretrain_deviation > 0:
             # pertubation of pretrained model params
-            self.position = torch.zeros(swarm_size, n_parameters, device=torch.cuda.current_device()).uniform_(
-                -pretrain_deviation, pretrain_deviation)
+            self.position = torch.zeros(swarm_size, n_parameters, device=torch.cuda.current_device()).normal_(mean=0.0,
+                                                                                                              std=pretrain_deviation)
             self.position.add_(parameters_to_vector(self.model.parameters()))
         else:
             # random positions
             self.position = 2 * max_position * torch.rand(swarm_size, n_parameters,
                                                           device=torch.cuda.current_device()) - max_position
-            print("device: ", self.position.device)
         # velocities
         self.velocity = 2 * max_velocity * torch.rand_like(self.position) - max_velocity
         # option for evaluation: zero velocities:
@@ -669,9 +682,9 @@ class PSOLearner(Learner):
         self.pbest_fitness = torch.full((swarm_size,), float("Inf"), device=self.position.device)
         self.pbest_position = torch.empty_like(self.position)
         # the shape of swarm's best position and fitness depend on the topology structure
-        self.best_fitness, self.best_position, self.neighborhood = self.calculate_neighborhood(swarm_size)
+        self.best_fitness, self.best_position, self.neighborhood = self._calculate_neighborhood(swarm_size)
 
-    def calculate_neighborhood(self, swarm_size):
+    def _calculate_neighborhood(self, swarm_size):
         """Initializes the swarm's best position and fitness
             and information structure (neighborhood) defining the social attractor for each particle
 
@@ -708,12 +721,13 @@ class PSOLearner(Learner):
             # a neighborhood consists of 3 particle, the particle itself and its left and right index neighbor
             # neighborhood of particle i: particle i-1, particle i, particle i+1
             # first and last particle are connected to form a ring network
+
             # NOTE: torch.remainder: The remainder has the same sign as the divisor
             # neighborhood: swarm size x 3, structure: [left index, particle index, right index]
             neighborhood = index.repeat(1, 3)
             neighborhood.add_(torch.tensor([-1, 0, 1], dtype=torch.long)).remainder_(swarm_size)
         else:
-            # --- von Neumann ---
+            ### --- von Neumann ---
             # a neighborhood consists of 5 particle, the particle and its left, right, upper and lower index neighbor
             # particles are arranged as a matrix (n,m); size: swarm_size N = n x m ; with n,m >= 3
             # neighborhood of particle i in 1,...,N
@@ -721,11 +735,12 @@ class PSOLearner(Learner):
             #       Left neighbor: N_l = i-1; if (i-1) mod column == 0, N_l = i–1+column
             #       Right neighbor: N_r = i+1; if i mod column == 0, N_r = i+1-column
             #       Below neighbor: N_b = (i+column) mod N; if N_b == 0, N_b = N
+
             # NOTE: torch.remainder: The remainder has the same sign as the divisor.
-            # neighborhood: swarm size x 5,
+            # neighborhood: swarm size x 5
             # structure: [uppper index, left index, particle index, right index, lower index]
 
-            # 1. calculate the size of the matrix (column length)
+            ### 1. calculate the size of the matrix (column length)
             if sympy.isprime(swarm_size) or swarm_size < 9:
                 raise ValueError("{} is not a valid value for von neumann neighborhood size".format(swarm_size))
             if math.ceil(math.sqrt(swarm_size)) ** 2 == swarm_size:
@@ -738,7 +753,8 @@ class PSOLearner(Learner):
                 if column_candidates[swarm_dividers].numel() == 0:
                     raise ValueError("{} is not a valid value for von neumann neighborhood size".format(swarm_size))
                 column = column_candidates[swarm_dividers].max().long()
-            # 2. initialize the neighborhood index tensor
+
+            ### 2. initialize the neighborhood index tensor
             neighborhood = index.repeat(1, 5)
             neighborhood.add_(torch.Tensor([-column, -1, 0, 1, column]).long())
             neighborhood[::column, 1].add_(column)
@@ -749,7 +765,7 @@ class PSOLearner(Learner):
         return self.pbest_fitness.detach().clone(), torch.empty_like(self.position), neighborhood.to(
             device=self.position.device)
 
-    def calculate_fitness(self, position):
+    def _calculate_fitness(self, position):
         """Let the candidate particle try against the environment and get its utility
 
             NOTE: PSO minimize but we use a maximization formulation in the rewards,
@@ -766,28 +782,30 @@ class PSOLearner(Learner):
         reward = self.environment.get_strategy_reward(self.particle_evaluation_model,
                                                       **self.strat_to_player_kwargs).detach()
         assert reward.numel() == 1
+        self.utility_eval_counter += 1
         return -reward
 
     def update_strategy(self):
         # Performs one model-update to the player's strategy.
+        start_time = timer()
 
-        # 1. if required redraw valuations / perform random moves (determined by env)
+        ### 1. if required redraw valuations / perform random moves (determined by env)
         self.environment.prepare_iteration()
-        # 2. evaluate each particles current position (solution)
+        ### 2. evaluate each particles current position (solution)
         # fitness: 1 x swarm size
-        fitness = torch.tensor([self.calculate_fitness(p) for p in self.position], device=self.position.device)
+        fitness = torch.tensor([self._calculate_fitness(p) for p in self.position], device=self.position.device)
 
         # prevent stale memory: reevaluate the personal and overall best fitness
-        if self.reevaluation_frequency and self.current_epoch > 0 and not self.current_epoch % self.reevaluation_frequency:
+        if self.reevaluation_frequency and self.cur_epoch > 0 and not self.cur_epoch % self.reevaluation_frequency:
             old_best = self.best_fitness.detach().clone()
             self.best_fitness = torch.squeeze(
-                torch.tensor([self.calculate_fitness(p) for p in self.best_position], device=self.position.device), 0)
+                torch.tensor([self._calculate_fitness(p) for p in self.best_position], device=self.position.device), 0)
             if not torch.equal(old_best, self.best_fitness):
-                self.pbest_fitness = torch.tensor([self.calculate_fitness(p) for p in self.pbest_position],
+                self.pbest_fitness = torch.tensor([self._calculate_fitness(p) for p in self.pbest_position],
                                                   device=self.position.device)
 
-        # --- best solution update ---
-        # 3. update the personal best positions:
+        ### --- best solution update ---
+        ### 3. update the personal best positions:
         # check if the current sample point of the particle is a better solution than the particles previous found solution
         # -> check if the particle's current fitness is better than the particle's "personal best fitness".
         # if so, update the personal best position and fitness to the values of the current ones
@@ -816,8 +834,11 @@ class PSOLearner(Learner):
                 index = self.neighborhood[torch.arange(0, self.neighborhood.size()[0]), best_neighbor.indices][new_best]
                 self.best_position[new_best, :] = self.pbest_position[index, :]
 
-        # --- move ---
-        # 5. update the velocities:
+        ### --- move ---
+        ### 5. update the velocities:
+        #save current velocity before updating
+        cur_velocity = self.velocity
+        cur_position = self.position
         # new velocity = old velocity + cognitive component + social component
         self.velocity = self.inertia * self.velocity \
                         + self.cognition * torch.rand_like(self.position) * (self.pbest_position - self.position) \
@@ -825,7 +846,7 @@ class PSOLearner(Learner):
         # clamp particles velocity values to be <= the maximal allowed velocity step size
         if self.velocity_clamping:
             self.velocity.clamp_(-self.max_velocity, self.max_velocity)
-        # 6. update the positions
+        ### 6. update the positions
         self.position += self.velocity
         # clamp particles position values to lay inside the search space bounds
         if self.bound_handling:
@@ -835,8 +856,29 @@ class PSOLearner(Learner):
         assert torch.isfinite(self.best_fitness.min())
         # assign the parameters of the best particle to the model parameters
         vector_to_parameters(self.best_position[self.best_fitness.argmin(), :], self.model.parameters())
-        self.current_epoch += 1
+        #an sich unnötig aber so übernommen von Nils
+        #wenn model sharing = on ist es eh immer 0
+        #prob wenn model sharing = off dann würde sosnt für zweites model einfach angehangen ohne unterscheidung
+        #kann mir für eval egal sein brauch die werte nicht für model sharing
+        time_per_step = timer()-start_time
+        if self.strat_to_player_kwargs == {'player_position': 0}:
+            self._log_pso_params(cur_velocity, cur_position, time_per_step)
+        self.cur_epoch += 1
 
     def update_strategy_and_evaluate_utility(self):
         self.update_strategy()
-        return self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach()
+        true_best_fitness = self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach()
+        self.writer.add_scalar('learner/fitness_error', torch.abs(torch.neg(self.best_fitness.min())-true_best_fitness), self.cur_epoch)
+        return true_best_fitness
+        #return self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach()
+
+    def _log_pso_params(self, velocity, position, time_per_step):
+        position_L_2_norm = torch.linalg.norm(position - self.best_position)*(1./float(position.shape[0]))**(1/2)
+        velocity_L_2_norm = torch.linalg.norm(velocity)*(1./float(velocity.shape[0]))**(1/2)
+
+        self.writer.add_scalar('learner/util_eval_counter', self.utility_eval_counter, self.cur_epoch)
+        self.writer.add_scalar('learner/velocity_L_2', velocity_L_2_norm, self.cur_epoch)
+        self.writer.add_scalar('learner/position_L_2', position_L_2_norm, self.cur_epoch)
+        self.writer.add_scalar('learner/best_fitness', torch.neg(self.best_fitness.min()), self.cur_epoch)
+        self.writer.add_scalar('learner/time_per_step', time_per_step, self.cur_epoch)
+

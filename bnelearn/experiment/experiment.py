@@ -315,6 +315,9 @@ class Experiment(ABC):
             self.fig = plt.figure()
             self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
+            for learner in self.learners:
+                learner.writer = self.writer
+
             tic = timer()
             # self._log_experiment_params()
             # self._log_hyperparams()
@@ -351,10 +354,14 @@ class Experiment(ABC):
                        for model in self.models]
 
         # update model
+        #start_timer = timer()
         utilities = torch.tensor([
             learner.update_strategy_and_evaluate_utility()
             for learner in self.learners
         ])
+        #self._cur_epoch_log_params['time_per_step'] = timer()-start_timer
+
+
 
         if self.logging.enable_logging:
             # pylint: disable=attribute-defined-outside-init

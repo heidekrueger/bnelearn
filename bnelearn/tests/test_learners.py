@@ -182,7 +182,7 @@ def test_PSO_learner():
     BATCH_SIZE = 2**12
     epoch = 100
 
-    optimizer_type = None
+    optimizer_type = 'PSO'
     optimizer_hyperparams = {}
     learner_hyperparams = {'swarm_size': 30, 'topology': 'von_neumann'}
 
