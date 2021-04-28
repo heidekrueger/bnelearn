@@ -62,7 +62,7 @@ def test_uniform_symmetric_ipv():
     s = vs.UniformSymmetricIPVSampler(u_lo, u_hi, n_players, 1, batch_size)
 
 
-    o,v = s.draw_profiles()
+    v,o = s.draw_profiles()
     assert o.device == v.device, "Observations and Valuations should be on same device"
     assert o.device.type == device, "Standard device should be cuda, if available!"
 
@@ -76,18 +76,18 @@ def test_uniform_symmetric_ipv():
                    )
 
     ## sample with a different batch size
-    o,v = s.draw_profiles(alternative_batch_size)
+    v,o = s.draw_profiles(alternative_batch_size)
     assert v.shape == torch.Size([alternative_batch_size, n_players, 1]), \
         "failed to sample with nonstandard size."
 
     ## sample on cpu
-    o,v = s.draw_profiles(device='cpu')
+    v,o = s.draw_profiles(device='cpu')
     assert v.device.type == 'cpu', "sampling didn't respect device parameter."
 
     ### test with valuation size 4.
     valuation_size = 4
     s = vs.UniformSymmetricIPVSampler(u_lo, u_hi, n_players, valuation_size, batch_size)
-    o,v = s.draw_profiles()
+    v,o = s.draw_profiles()
     assert v.device.type == device, "Standard device should be cuda, if available!"
 
     check_validity(v,
@@ -103,7 +103,7 @@ def test_gaussian_symmetric_ipv():
     s = vs.GaussianSymmetricIPVSampler(n_mean, n_std, n_players, 1, batch_size)
 
 
-    o,v = s.draw_profiles()
+    v,o = s.draw_profiles()
     assert o.device == v.device, "Observations and Valuations should be on same device"
     assert v.device.type == device, "Standard device should be cuda, if available!"
 
@@ -117,23 +117,23 @@ def test_gaussian_symmetric_ipv():
                    )
 
     ## sample with a different batch size
-    o,v = s.draw_profiles(alternative_batch_size)
+    v,o = s.draw_profiles(alternative_batch_size)
     assert v.shape == torch.Size([alternative_batch_size, n_players, 1]), \
         "failed to sample with nonstandard size."
 
     ## sample on cpu
-    o,v = s.draw_profiles(device='cpu')
+    v,o = s.draw_profiles(device='cpu')
     assert v.device.type == 'cpu', "sampling didn't respect device parameter."
 
     ### ensure valuation clipping at zero by using std=mean
     s = vs.GaussianSymmetricIPVSampler(n_mean, n_mean, n_players, 1, batch_size)
-    o,v = s.draw_profiles()
+    v,o = s.draw_profiles()
     assert torch.all(v.ge(0)), "negative draws should be clipped to zero!"
 
     ### test with valuation size 4.
     valuation_size = 4
     s = vs.GaussianSymmetricIPVSampler(n_mean, n_std, n_players, valuation_size, batch_size)
-    o,v = s.draw_profiles()
+    v,o = s.draw_profiles()
     assert v.device.type == device, "Standard device should be cuda, if available!"
 
     check_validity(v,
