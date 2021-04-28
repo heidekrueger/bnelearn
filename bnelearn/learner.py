@@ -77,7 +77,8 @@ class GradientBasedLearner(Learner):
         self.optimizer.zero_grad()
         self._set_gradients()
         loss = self.optimizer.step(closure=closure)
-        self.writer.add_scalar('learner/time_per_step', timer()-start_timer, self.cur_epoch)
+        if self.writer is not None:
+            self.writer.add_scalar('learner/time_per_step', timer()-start_timer, self.cur_epoch)
         self.cur_epoch += 1
         return loss
 
@@ -861,14 +862,15 @@ class PSOLearner(Learner):
         #prob wenn model sharing = off dann würde sosnt für zweites model einfach angehangen ohne unterscheidung
         #kann mir für eval egal sein brauch die werte nicht für model sharing
         time_per_step = timer()-start_time
-        if self.strat_to_player_kwargs == {'player_position': 0}:
+        if self.strat_to_player_kwargs == {'player_position': 0} and self.writer is not None:
             self._log_pso_params(cur_velocity, cur_position, time_per_step)
         self.cur_epoch += 1
 
     def update_strategy_and_evaluate_utility(self):
         self.update_strategy()
         true_best_fitness = self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach()
-        self.writer.add_scalar('learner/fitness_error', torch.abs(torch.neg(self.best_fitness.min())-true_best_fitness), self.cur_epoch)
+        if self.writer is not None:
+            self.writer.add_scalar('learner/fitness_error', torch.abs(torch.neg(self.best_fitness.min())-true_best_fitness), self.cur_epoch)
         return true_best_fitness
         #return self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach()
 
