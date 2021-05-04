@@ -5,7 +5,7 @@ from math import sqrt
 from typing import List, Tuple
 
 import torch
-from torch.cuda import _device_t as Device
+from torch.cuda import _device_t as Device, device_of
 from torch.distributions import Distribution
 from torch.overrides import is_tensor_like
 
@@ -434,8 +434,9 @@ class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUnifo
 
 class MineralRightsValuationObservationSampler(ValuationObservationSampler):
     """The 'Mineral Rights' model is a common value model:
-    There is a uniformly distributed common value of the item(s), 
+    There is a uniformly distributed common value of the item(s),
     each agent's  observation is then uniformly drawn from U[0,2v].
+    See Kishna (2009), Example 6.1
     """
 
     def __init__(self, n_players: int, valuation_size: int = 1,
@@ -448,7 +449,7 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
             common_value_lo: lower bound for uniform common value
             common_value_hi: upper bound for uniform common value
             default_batch_size
-            default_device            
+            default_device
         """
         observation_size = valuation_size
 
@@ -489,13 +490,13 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
                                   device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
 
         device = device or self.default_device
-        inner_batch_size = batch_size or self.default_batch_size
-        outer_batch_size = conditioned_observation.shape[0]
+        inner_batch = batch_size or self.default_batch_size
+        outer_batch = conditioned_observation.shape[0]
 
         # shorthands
         i = conditioned_player
 
-        v = self._draw_v_given_o(conditioned_observation, inner_batch_size)
+        v = self._draw_v_given_o(conditioned_observation, inner_batch)
 
         valuations = v.to(device) \
                       .view(-1, 1, self.valuation_size) \
@@ -503,11 +504,11 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
 
         # draw individual factors, then overwrite for i
         x = torch.empty(
-            [outer_batch_size*inner_batch_size, self.n_players, self.valuation_size],
+            [outer_batch*inner_batch, self.n_players, self.valuation_size],
             device=device).uniform_()
         x[:, i, :] = conditioned_observation \
-            .repeat_interleave(inner_batch_size, dim=0) / (2*v)
-        # previous operation introduces NaNs when cond_observation == 0 
+            .repeat_interleave(inner_batch, dim=0) / (2*v)
+        # previous operation introduces NaNs when cond_observation == 0
         # and u_lo ==0 ==> v == 0, thus x/v = 0/0.
         # in this case, we set x to 0.
         # this should only happen for player i, if it happens somewhere else,
@@ -533,13 +534,13 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
 
         o_i = o_i.repeat_interleave(inner_batch_size, dim=0)
 
-        # Let o = 2*v*x where v is U[lo,hi], x is U[0,1]. Then 
+        # Let o = 2*v*x where v is U[lo,hi], x is U[0,1]. Then
         #  1. f(o|v) ∝ 1/v on [0, 2v]
         #  2. with new_lo = max(o/2, lo), and c=log(hi)-log(new_lo), we get
-        #  f(o) = ∫_v=new_lo^hi f(o|v) ∝ c on [new_lo, hi] 
+        #  f(o) = ∫_v=new_lo^hi f(o|v) ∝ c on [new_lo, hi]
         #  3. pdf: f(v|o) = f(o|v)f(v)/f(o) ∝  1/(cv) on [new_lo, hi]
         #     cdf: F(v|o) = (log(v) - log(new_lo)) / c
-        #     icdf: inv(F)(u) = hi**u * lo**(1-u) 
+        #     icdf: inv(F)(u) = hi**u * lo**(1-u)
         # we can then sample V|o via the icdf method:
 
         # adjusted bounds for V|o
@@ -548,6 +549,106 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
 
         u = torch.empty_like(o_i).uniform_()
         v =(u* hi.log() + (1-u) * lo.log()).exp()
-        # alternative form of the same: v= b**u * a**(1-u). Which is faster/more stable? 
+        # alternative form of the same: v= b**u * a**(1-u). Which is faster/more stable?
 
         return v
+
+
+
+class AffiliatedValuationObservationSampler(ValuationObservationSampler):
+    """The 'Affiliated Values Model' model. (Krishna 2009, Example 6.2).
+       This is a private values model.
+
+       Two bidders have signals
+
+        .. math::
+        o_i = z_i + s
+
+        and valuations
+        .. math::
+        v_i = s + (z_1+z_2)/2 = mean_i(o_i)
+
+        where z_i and s are i.i.d. standard uniform.
+    """
+
+    def __init__(self, n_players: int, valuation_size: int = 1,
+                 u_lo: float = 0.0, u_hi: float = 1.0,
+                 default_batch_size: int = 1, default_device = None):
+        """
+        Args:
+            n_players
+            valuation_size
+            u_lo: lower bound for uniform distribution of z_i and s
+            u_hi: upper bound for uniform distribtuion of z_i and s
+            default_batch_size
+            default_device
+        """
+        observation_size = valuation_size
+
+        super().__init__(
+            n_players,
+            valuation_size,
+            observation_size,
+            default_batch_size=default_batch_size,
+            default_device=default_device)
+
+        assert u_lo >= 0, "valuations must be nonnegative"
+        assert u_hi > u_lo, "upper bound must larger than lower bound"
+
+        self._u_lo = u_lo
+        self._u_hi = u_hi
+
+
+    def draw_profiles(self, batch_size: int = None, device = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        batch_size = batch_size or self.default_batch_size
+        device = device or self.default_device
+
+        z_and_s = torch.empty([batch_size, self.n_players+1, self.valuation_size],
+                              device=device).uniform_(self._u_lo, self._u_hi)
+
+        weights_v = torch.column_stack([0.5*torch.ones([self.n_players]*2, device = device),
+                                       torch.ones([self.n_players, 1], device=device)])
+
+        weights_o = torch.column_stack([torch.eye(self.n_players, device=device),
+                                       torch.ones([self.n_players, 1], device = device)])
+
+        # dim u represents the n+1 uniform vectors
+        valuations =   torch.einsum('buv,nu->bnv', z_and_s, weights_v)
+        observations = torch.einsum('buv,nu->bnv', z_and_s, weights_o)
+
+        return valuations, observations
+
+    def draw_conditional_profiles(self,
+                                  conditioned_player: int,
+                                  conditioned_observation: torch.Tensor,
+                                  batch_size: int,
+                                  device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        device = device or self.default_device
+        inner_batch = batch_size or self.default_batch_size
+        outer_batch = conditioned_observation.shape[0]
+
+        i = conditioned_player
+        o_i = conditioned_observation.repeat_interleave(inner_batch, dim=0)
+
+        # S|o_i is uniform on [max(lo, o-hi),  min(hi, o-lo)]
+        # z_i = o_i - s
+        # z_j is conditionally independent of o_i
+        # we can then sample o_j and v directly
+
+        lo = torch.ones_like(o_i) * self._u_lo
+        hi = torch.ones_like(o_i) * self._u_hi
+
+        s = torch.empty_like(o_i).uniform_(
+            torch.max(lo, o_i - hi),
+            torch.min(hi, o_i - lo))
+
+        #sample for all players then overwrite for i
+        z = torch.empty_like(
+            [outer_batch*inner_batch, self.n_players, self.valuation_size],
+            device = device).uniform_(self._u_lo, self._u_hi)
+        z[:,i,:] = o_i - s
+
+        observations = z + s
+        valuations = torch.sum(z, dim = 1) / self.n_players + s
+
+        return valuations, observations
