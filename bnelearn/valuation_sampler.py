@@ -507,6 +507,12 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
             device=device).uniform_()
         x[:, i, :] = conditioned_observation \
             .repeat_interleave(inner_batch_size, dim=0) / (2*v)
+        # previous operation introduces NaNs when cond_observation == 0 
+        # and u_lo ==0 ==> v == 0, thus x/v = 0/0.
+        # in this case, we set x to 0.
+        # this should only happen for player i, if it happens somewhere else,
+        # we don't overwrite to avoid missing errors downstream.
+        x[:,i,:][x[:,i,:].isnan()] = 0.0
 
         observations = 2*valuations*x
 
