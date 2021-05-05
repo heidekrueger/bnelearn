@@ -606,7 +606,7 @@ class AffiliatedValuationObservationSampler(ValuationObservationSampler):
         z_and_s = torch.empty([batch_size, self.n_players+1, self.valuation_size],
                               device=device).uniform_(self._u_lo, self._u_hi)
 
-        weights_v = torch.column_stack([0.5*torch.ones([self.n_players]*2, device = device),
+        weights_v = torch.column_stack([torch.ones([self.n_players]*2, device = device) / self.n_players,
                                        torch.ones([self.n_players, 1], device=device)])
 
         weights_o = torch.column_stack([torch.eye(self.n_players, device=device),
@@ -635,20 +635,21 @@ class AffiliatedValuationObservationSampler(ValuationObservationSampler):
         # z_j is conditionally independent of o_i
         # we can then sample o_j and v directly
 
-        lo = torch.ones_like(o_i) * self._u_lo
-        hi = torch.ones_like(o_i) * self._u_hi
+        lo = torch.zeros_like(o_i) + self._u_lo
+        hi = torch.zeros_like(o_i) + self._u_hi
 
-        s = torch.empty_like(o_i).uniform_(
-            torch.max(lo, o_i - hi),
-            torch.min(hi, o_i - lo))
+        s_lo = torch.max(lo, o_i - hi)
+        s_hi = torch.min(hi, o_i - lo)
+
+        s = (s_hi - s_lo) * torch.empty_like(o_i).uniform_() + s_lo
 
         #sample for all players then overwrite for i
-        z = torch.empty_like(
+        z = torch.empty(
             [outer_batch*inner_batch, self.n_players, self.valuation_size],
             device = device).uniform_(self._u_lo, self._u_hi)
         z[:,i,:] = o_i - s
 
-        observations = z + s
+        observations = z + s.view(-1, 1, self.valuation_size)
         valuations = torch.sum(z, dim = 1) / self.n_players + s
 
         return valuations, observations
