@@ -712,12 +712,390 @@ class SOSLearner(GradientBasedLearner):
                 p.grad = d_p
 
 
+class SOS_ESPGLearner_Mixed(ESPGLearner):
+    """SOS implementation with Mixed ADG and ESPG.
+    
+       SOS Algorithm Reference: https://arxiv.org/abs/1811.08469
+
+       SOS Gradient for player 1 is calculated as: -（R1/Q1 + eta * R2/Q1 * R1/Q1Q2 + p*(eta * R1/Q2 * R2/Q2Q1)）
+     
+       ESPG is calculated as: mean( rewards - baseline) * epsilons / sigma²
+            and approximates the true gradient.
+
+    Author: Liu Wusheng.
+    """
+    def __init__(self,
+                 model: torch.nn.Module, environment: Environment, hyperparams: dict,
+                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
+                 strat_to_player_kwargs: dict = None):
+        # Create and validate optimizer
+        super().__init__(model=model, environment=environment,
+                         hyperparams=hyperparams, optimizer_type=optimizer_type,
+                         optimizer_hyperparams=optimizer_hyperparams,
+                         strat_to_player_kwargs=strat_to_player_kwargs)
+
+        # Note: There are two SOS versions 1 (default) and 2 (simultaneous updating, faster?)
+        self.simultaneous = False
+
+        # set hyperparams
+        self.population_size = hyperparams['population_size']
+        self.sigma = float(hyperparams['sigma'])
+        self.sigma_base = self.sigma
+        if hyperparams['scale_sigma_by_model_size']:
+            self.sigma = self.sigma / self.n_parameters
+
+        if 'normalize_gradients' in hyperparams and hyperparams['normalize_gradients']:
+            self.normalize_gradients = True
+            self.baseline = 'mean_reward'
+        else:
+            self.normalize_gradients = False
+            self.baseline = 'current_reward'
+        # overwrite baseline method if provided
+        if 'baseline' in hyperparams:
+            self.baseline_method = hyperparams['baseline']
+            if not isinstance(self.baseline_method, float) \
+                    and not self.baseline_method in ['current_reward', 'mean_reward']:
+                raise ValueError('Invalid baseline provided. Should be float or '\
+                    + 'one of "mean_reward", "current_reward"')
+
+        # Validate and set SOS hyperparams
+        if not set(['eta']) <= set(hyperparams):
+            print('Fallback to default second order SOS step size')
+            self.eta = 3e-3
+        else:
+            self.eta = hyperparams['eta']
+
+        self.epoch = 0
+        self.writer = None
+
+    def _set_gradients(self, opponent_model):
+
+        ### 1. if required redraw valuations / perform random moves (determined by env)
+        self.environment.prepare_iteration()
+
+        ### 2. Create a population of perturbations of the original model
+        population = (self._perturb_model(self.model) for _ in range(self.population_size))
+        population2 = (self._perturb_model(self.model) for _ in range(self.population_size))
+        population3 = (self._perturb_model(opponent_model) for _ in range(self.population_size))
+
+        ### 3. let each candidate against the environment and get their utils ###
+        # both of these as a row-matrix. i.e.
+        # rewards: population_size x 1
+        # epsilons: population_size x parameter_length
+
+        # Calculate gradient of self, R1/Q1
+        rewards, epsilons = (
+            torch.cat(tensors).view(self.population_size, -1)
+            for tensors in zip(*(
+                (
+                    self.environment.get_strategy_reward(
+                        strategy=model, opponent_model=opponent_model,
+                        **self.strat_to_player_kwargs)[0].detach().view(1),
+                    epsilon
+                )
+                for (model, epsilon) in population
+                ))
+            )
+
+        # Calculate self gradient over opponent, R1/Q2
+        cross_gradient_vector = self.cross_gradient_vector(
+            strategy=self.model, opponent_model=opponent_model)
+
+        # Calculate second order derivative, R2/Q2Q1
+        sec_rewards, sec_epsilons = (
+            torch.cat(tensors).view(self.population_size, -1)
+            for tensors in zip(*(
+                (
+                    self.opp_gradient(
+                        strategy=model, opponent_model=opponent_model).detach(),
+                    epsilon
+                )
+                for (model, epsilon) in population2
+                ))
+            )
+
+        # Calculate gradient of opponent,R2/Q2
+        opp_gradient_vector = self.opp_gradient_vector(
+            strategy=self.model, opponent_model=opponent_model
+        ).detach()
+
+        # Calculate second order derivative, R1/Q1Q2
+        sos_rewards, sos_epsilons = (
+            torch.cat(tensors).view(self.population_size, -1)
+            for tensors in zip(*(
+                (
+                    self.self_gradient(
+                        model, opponent_model).detach(),
+                    epsilon
+                )
+                for (model, epsilon) in population3
+                ))
+            )
+
+        ### 4. calculate the ES-pseuogradients   ####
+        baseline = \
+            self.environment.get_strategy_reward(
+                strategy=self.model, opponent_model=opponent_model,
+                **self.strat_to_player_kwargs
+            )[0].detach().view(1) if self.baseline == 'current_reward' \
+            else rewards.mean(dim=0) if self.baseline == 'mean_reward' \
+            else self.baseline # a float
+
+        sec_baseline = \
+            self.opp_gradient(strategy=self.model, opponent_model=opponent_model).detach() \
+                if self.baseline == 'current_reward' \
+            else sec_rewards.mean(dim=0)
+
+        sos_baseline = \
+            self.self_gradient(strategy=self.model, opponent_model=opponent_model).detach() \
+                if self.baseline == 'current_reward' \
+            else sos_rewards.mean(dim=0)
+
+        denominator = self.sigma * rewards.std() if self.normalize_gradients else self.sigma**2
+        sec_denominator = self.sigma * sec_rewards.std() if self.normalize_gradients else self.sigma**2
+        sos_denominator = self.sigma * sos_rewards.std() if self.normalize_gradients else self.sigma**2
+
+        if denominator == 0:
+            # all candidates returned same reward and normalize is true --> stationary
+            gradient_vector = torch.zeros_like(parameters_to_vector(self.params()))
+        else:
+            gradient_vector = ((rewards - baseline)*epsilons).mean(dim=0) / denominator
+
+        if sec_denominator == 0:
+            # all candidates returned same reward and normalize is true --> stationary
+            sec_gradient_vector = torch.zeros_like(
+                parameters_to_vector(self.params()),
+                parameters_to_vector(self.params()))
+        else:
+            sec_gradient_vector = torch.einsum(
+                'ba,bc->bac', (sec_rewards - sec_baseline), sec_epsilons
+            ).mean(dim=0) / sec_denominator
+
+        if sos_denominator == 0:
+            # all candidates returned same reward and normalize is true --> stationary
+            sos_gradient_vector = torch.zeros_like(
+                parameters_to_vector(self.params()),
+                parameters_to_vector(self.params()))
+        else:
+            sos_gradient_vector = torch.einsum(
+                'ba,bc->bac', (sos_rewards - sos_baseline), sos_epsilons
+            ).mean(dim=0) / sos_denominator
+
+        # Calculate LOLA second order correction and SOS LookAhead second order correction term for self
+        LOLA_gradient = torch.einsum('b,bc->c', cross_gradient_vector, sec_gradient_vector)
+        SOS_gradient = torch.einsum('b,bc->c', opp_gradient_vector, sos_gradient_vector)
+
+        a = 0.5
+        b = 0.1
+        if self.simultaneous:
+            # Calculate opponent gradient over self, L2/Q1
+            opp_cross_gradient_vector = self.opp_cross_gradient_vector(self.model, opponent_model)
+
+            # Calculate LOLA second order correction and SOS LookAhead second order correction term for opponent
+            opp_LOLA_gradient = torch.einsum('b,bc->c', opp_cross_gradient_vector, sos_gradient_vector)
+            opp_SOS_gradient = torch.einsum('b,bc->c', gradient_vector, sec_gradient_vector)
+
+            # SOS Algorithm gradient
+            xi_0 = torch.cat(
+                [
+                    gradient_vector + self.eta*SOS_gradient,
+                    opp_gradient_vector + self.eta*opp_SOS_gradient
+                ],
+                0
+            )
+            chi = torch.cat([LOLA_gradient, opp_LOLA_gradient], 0)
+
+            dot = torch.dot(self.eta*chi, xi_0)
+            p1 = 1 if dot >= 0 else min(1, -a*torch.norm(xi_0)**2/dot)
+            xi_norm = torch.norm(torch.cat([gradient_vector, opp_gradient_vector], 0))
+            p2 = xi_norm**2 if xi_norm < b else 1
+            p = min(p1, p2)
+
+            gradient_vector, opp_gradient_vector = (xi_0 + p*self.eta*chi).view(2, -1)
+
+        else:
+            # SOS Algorithm gradient
+            xi_0 = gradient_vector + self.eta*SOS_gradient
+            chi = LOLA_gradient
+            dot = torch.dot(self.eta*chi, xi_0)
+            p1 = 1 if dot >= 0 else min(1, -a*torch.norm(xi_0)**2/dot)
+            xi_norm = torch.norm(gradient_vector)
+            p2 = xi_norm**2 if xi_norm < b else 1
+            p = min(p1, p2)
+            gradient_vector = xi_0+p*self.eta*chi
+
+        # Logging P-value
+        if self.strat_to_player_kwargs == {'player_position': 0}:
+            self.epoch += 1
+            self.writer.add_scalar('learner/dot', dot, self.epoch)
+            self.writer.add_scalar('learner/xi_norm', xi_norm, self.epoch)
+            self.writer.add_scalar('learner/p1_value', p1, self.epoch)
+            self.writer.add_scalar('learner/p2_value', p2, self.epoch)
+            self.writer.add_scalar('learner/p_value', p, self.epoch)
+
+        # put gradient vector into same format as model parameters
+        gradient_params = deepcopy(list(self.params()))
+        vector_to_parameters(gradient_vector, gradient_params)
+        if self.simultaneous:
+            opp_gradient_params = deepcopy(list(opponent_model.parameters()))
+            vector_to_parameters(opp_gradient_vector, opp_gradient_params)
+
+        ### 5. assign gradients to model gradient ####
+        # We actually _add_ to existing gradient (as common in pytorch), to make it
+        # possible to accumulate gradients over multiple batches.
+        # When this is not desired (most of the time!), you need to flush the gradients
+        # before calling this method.
+        # NOTE: torch.otpimizers minimize but we use a maximization formulation
+        # in the rewards, thus we need to use the negative gradient here.
+
+        for p, d_p in zip(self.params(), gradient_params):
+            if p.grad is not None:
+                p.grad.add_(-d_p)
+            else:
+                p.grad = -d_p
+
+        if self.simultaneous:
+            for p, d_p in zip(opponent_model.parameters(), opp_gradient_params):
+                if p.grad is not None:
+                    p.grad.add_(-d_p)
+                else:
+                    p.grad = -d_p
+
+    def self_gradient(self, model, opponent_model)-> torch.Tensor: 
+        # Calculate gradient of opponent with ADG,R1/Q1
+        loss = self.environment.get_strategy_reward(
+            strategy=model, opponent_model=opponent_model,
+            **self.strat_to_player_kwargs
+        )[0]
+        gradient=torch.autograd.grad(loss, model.parameters(),create_graph=True)
+        self_flat = [torch.flatten(p) for p in gradient]
+        gradient_vector = torch.squeeze(torch.cat(self_flat).view(-1, 1), 1)
+        return gradient_vector
+
+    def opp_gradient(self, model, opponent_model)-> torch.Tensor: 
+        # Calculate gradient of opponent with ADG,R2/Q2
+        loss_opponent = self.environment.get_strategy_reward(
+            strategy=model, opponent_model=opponent_model,
+            **self.strat_to_player_kwargs
+        )[1]
+        opp_gradient=torch.autograd.grad(loss_opponent, opponent_model.parameters(),create_graph=True)
+        opp_flat = [torch.flatten(p) for p in opp_gradient]
+        opp_gradient_vector = torch.squeeze(torch.cat(opp_flat).view(-1, 1), 1)
+        return opp_gradient_vector
+
+    def opp_gradient_vector(self, strategy, opponent_model) -> torch.Tensor:
+        """Calculate gradient of opponent, R2/Q2"""
+        opp_population = (self._perturb_model(opponent_model) for _ in range(self.population_size))
+        opp_rewards, opp_epsilons = (
+            torch.cat(tensors).view(self.population_size, -1)
+            for tensors in zip(*(
+                (
+                    self.environment.get_strategy_reward(
+                        strategy=strategy, opponent_model=opp_model,
+                        **self.strat_to_player_kwargs)[1].detach().view(1),
+                    opp_epsilon
+                )
+                for (opp_model, opp_epsilon) in opp_population
+                ))
+            )
+
+        opp_baseline = \
+            self.environment.get_strategy_reward(
+                strategy=strategy, opponent_model=opponent_model,
+                **self.strat_to_player_kwargs
+            )[1].detach().view(1) if self.baseline == 'current_reward' \
+            else opp_rewards.mean(dim=0) if self.baseline == 'mean_reward' \
+            else self.baseline # a float
+
+        opp_denominator = self.sigma * opp_rewards.std() if self.normalize_gradients else self.sigma**2
+
+        if opp_denominator == 0:
+            # all candidates returned same reward and normalize is true --> stationary
+            opp_gradient_vector = torch.zeros_like(parameters_to_vector(self.params()))
+        else:
+            opp_gradient_vector = ((opp_rewards - opp_baseline)*opp_epsilons).mean(dim=0) / opp_denominator
+        return opp_gradient_vector
+
+    def cross_gradient_vector(self, strategy, opponent_model) -> torch.Tensor:
+        """Calculate self gradient over opponent, R1/Q2 """
+        opp_population = (self._perturb_model(opponent_model) for _ in range(self.population_size))
+
+        cross_rewards, cross_epsilons = (
+            torch.cat(tensors).view(self.population_size, -1)
+            for tensors in zip(*(
+                (
+                    self.environment.get_strategy_reward(
+                        strategy=strategy, opponent_model=cross_model,
+                        **self.strat_to_player_kwargs)[0].detach().view(1),
+                    cross_epsilon
+                )
+                for (cross_model, cross_epsilon) in opp_population
+                ))
+            )
+
+        baseline = \
+            self.environment.get_strategy_reward(
+                strategy=strategy, opponent_model=opponent_model,
+                **self.strat_to_player_kwargs
+            )[0].detach().view(1) if self.baseline == 'current_reward' \
+            else cross_rewards.mean(dim=0) if self.baseline == 'mean_reward' \
+            else self.baseline # a float
+
+        cross_denominator = self.sigma * cross_rewards.std() if self.normalize_gradients else self.sigma**2
+        if cross_denominator == 0:
+            # all candidates returned same reward and normalize is true --> stationary
+            cross_gradient_vector = torch.zeros_like(parameters_to_vector(self.params()))
+        else:
+            cross_gradient_vector = ((cross_rewards - baseline)*cross_epsilons).mean(dim=0) / cross_denominator
+
+        return cross_gradient_vector
+
+    def opp_cross_gradient_vector(self, strategy, opponent_model)-> torch.Tensor:
+        """Calculate self gradient over opponent, R2/Q1
+
+        Only required for simultaneous version of this learner.
+        """
+        population = (self._perturb_model(strategy) for _ in range(self.population_size))
+        cross_rewards, cross_epsilons = (
+            torch.cat(tensors).view(self.population_size, -1)
+            for tensors in zip(*(
+                (
+                    self.environment.get_strategy_reward(
+                        strategy=cross_model, opponent_model=opponent_model,
+                        **self.strat_to_player_kwargs)[1].detach().view(1),
+                    cross_epsilon
+                )
+                for (cross_model, cross_epsilon) in population
+                ))
+            )
+
+        baseline = \
+            self.environment.get_strategy_reward(
+                strategy=strategy, opponent_model=opponent_model,
+                **self.strat_to_player_kwargs
+            )[1].detach().view(1) if self.baseline == 'current_reward' \
+            else cross_rewards.mean(dim=0) if self.baseline == 'mean_reward' \
+            else self.baseline # a float
+
+        cross_denominator = self.sigma * cross_rewards.std() if self.normalize_gradients else self.sigma**2
+        if cross_denominator == 0:
+            # all candidates returned same reward and normalize is true --> stationary
+            opp_cross_gradient_vector = torch.zeros_like(parameters_to_vector(self.params()))
+        else:
+            opp_cross_gradient_vector = ((cross_rewards - baseline)*cross_epsilons).mean(dim=0) / cross_denominator
+
+        return opp_cross_gradient_vector
+
 class SOS_ESPGLearner(ESPGLearner):
     """SOS implementation with ESPG.
     
        SOS Algorithm Reference: https://arxiv.org/abs/1811.08469
 
-       SOS Gradient for player 1 is calculated as: -（R1/Q1 + eta * R2/Q1 * R1/Q1Q2 + p*(eta * R1/Q2 * R2/Q2Q1)）
+       SOS Gradient for player 1 is calculated as: -（R1/Q1 + eta * R2/Q1 * R1/Q1Q2 + p*(eta * R1/Q2 * R2/Q2Q1)
+
+       First order gradient R1/Q1 is calculated with ESPG. For the second derivative term R2/Q2Q1, first calculate R2/Q2 with ADG, then take   
+       derivative over Q1 with ESPG. For the second derivative term R1/Q1Q2, first calculate R1/Q1 with ADG, then take   
+       derivative over Q2 with ESPG.
 
        ESPG is calculated as: mean( rewards - baseline) * epsilons / sigma²
             and approximates the true gradient.
@@ -849,7 +1227,7 @@ class SOS_ESPGLearner(ESPGLearner):
         sos_baseline = \
             self.cross_gradient_vector(strategy=self.model, opponent_model=opponent_model).detach() \
                 if self.baseline == 'current_reward' \
-            else sec_rewards.mean(dim=0)
+            else sos_rewards.mean(dim=0)
 
         denominator = self.sigma * rewards.std() if self.normalize_gradients else self.sigma**2
         sec_denominator = self.sigma * sec_rewards.std() if self.normalize_gradients else self.sigma**2
@@ -1063,7 +1441,6 @@ class SOS_ESPGLearner(ESPGLearner):
             opp_cross_gradient_vector = ((cross_rewards - baseline)*cross_epsilons).mean(dim=0) / cross_denominator
 
         return opp_cross_gradient_vector
-
 
 class PGLearner(GradientBasedLearner):
     """Neural Self-Play with directly computed Policy Gradients.
