@@ -825,7 +825,7 @@ class SOS_ESPGLearner_Mixed(ESPGLearner):
             for tensors in zip(*(
                 (
                     self.self_gradient(
-                        model, opponent_model).detach(),
+                        strategy=model, opponent_model=opponent_model).detach(),
                     epsilon
                 )
                 for (model, epsilon) in population3
@@ -961,10 +961,10 @@ class SOS_ESPGLearner_Mixed(ESPGLearner):
                 else:
                     p.grad = -d_p
 
-    def self_gradient(self, model, opponent_model)-> torch.Tensor: 
+    def self_gradient(self, strategy, opponent_model)-> torch.Tensor: 
         # Calculate gradient of opponent with ADG,R1/Q1
         loss = self.environment.get_strategy_reward(
-            strategy=model, opponent_model=opponent_model,
+            strategy=strategy, opponent_model=opponent_model,
             **self.strat_to_player_kwargs
         )[0]
         gradient=torch.autograd.grad(loss, model.parameters(),create_graph=True)
@@ -972,10 +972,10 @@ class SOS_ESPGLearner_Mixed(ESPGLearner):
         gradient_vector = torch.squeeze(torch.cat(self_flat).view(-1, 1), 1)
         return gradient_vector
 
-    def opp_gradient(self, model, opponent_model)-> torch.Tensor: 
+    def opp_gradient(self, strategy, opponent_model)-> torch.Tensor: 
         # Calculate gradient of opponent with ADG,R2/Q2
         loss_opponent = self.environment.get_strategy_reward(
-            strategy=model, opponent_model=opponent_model,
+            strategy=strategy, opponent_model=opponent_model,
             **self.strat_to_player_kwargs
         )[1]
         opp_gradient=torch.autograd.grad(loss_opponent, opponent_model.parameters(),create_graph=True)
