@@ -12,7 +12,7 @@ from scipy import optimize
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
-from .experiment import Experiment
+from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
@@ -81,6 +81,8 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(u_lo: List, u_hi
     Source: Equilibrium 1 of https://link.springer.com/article/10.1007/s40505-014-0049-1
     """
     interpol_points = 2**11
+    u_lo = [10*u for u in u_lo]
+    u_hi = [10*u for u in u_hi]
 
     # 1. Solve implicit bid function
     v1 = np.linspace(u_lo[0], u_hi[0], interpol_points)
@@ -117,11 +119,11 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(u_lo: List, u_hi
         if valuation.dim() == 0:
             valuation.unsqueeze_(0)
         bid = torch.tensor(
-            opt_bid_function[player_position](valuation.cpu().numpy()),
+            opt_bid_function[player_position](10 * valuation.cpu().numpy()),
             device=valuation.device,
             dtype=valuation.dtype
         )
-        return bid
+        return bid / 10
 
     return _optimal_bid
 
@@ -133,6 +135,8 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2(
     Optimal bid in this experiment when bidders do NOT share same lower bound.
     Source: Equilibrium 2 of https://link.springer.com/article/10.1007/s40505-014-0049-1
     """
+    valuation = 10 * torch.clone(valuation)
+
     if not isinstance(valuation, torch.Tensor):
         valuation = torch.tensor(valuation, dtype=torch.float)
     # unsqueeze if simple float
@@ -146,7 +150,7 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2(
     else:
         bids = valuation / 2 + 1
 
-    return bids
+    return bids / 10
 
 
 def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3(
@@ -156,6 +160,8 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3(
     Optimal bid in this experiment when bidders do NOT share same lower bound.
     Source: Equilibrium 3 of https://link.springer.com/article/10.1007/s40505-014-0049-1
     """
+    valuation = 10 * torch.clone(valuation)
+
     if not isinstance(valuation, torch.Tensor):
         valuation = torch.tensor(valuation, dtype=torch.float)
     # unsqueeze if simple float
@@ -167,7 +173,7 @@ def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3(
     else:
         bids = 5 * torch.ones_like(valuation)
 
-    return bids
+    return bids / 10
 
 
 def _optimal_bid_single_item_3p_mineral_rights(valuation: torch.Tensor, player_position: int = 0) -> torch.Tensor:
@@ -456,8 +462,11 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         return os.path.join(*name)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, **strat_to_player_kwargs):
-        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
-                              player_position=player_position, batch_size=batch_size, **strat_to_player_kwargs)
+        bidder = Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
+                                player_position=player_position, batch_size=batch_size, **strat_to_player_kwargs)
+        bidder._grid_lb_util_loss = 0
+        bidder._grid_ub_util_loss = max(self.u_hi)
+        return bidder
 
     def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding

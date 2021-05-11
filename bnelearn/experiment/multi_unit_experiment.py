@@ -427,18 +427,12 @@ class MultiUnitExperiment(Experiment, ABC):
             name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
         return os.path.join(*name)
 
-    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
-              xlim: list = None, ylim: list = None, labels: list = None,
-              x_label="valuation", y_label="bid", fmts=['o'],
-              figure_name: str = 'bid_function', plot_points=100):
+    def _plot(self, **kwargs):
 
-        super()._plot(plot_data=plot_data, writer=writer, epoch=epoch,
-                      xlim=xlim, ylim=ylim, labels=labels, x_label=x_label,
-                      y_label=y_label, fmts=fmts, figure_name=figure_name,
-                      plot_points=plot_points)
+        super()._plot(**kwargs)
 
         if self.n_units == 2 and not isinstance(self, SplitAwardExperiment):
-            super()._plot_3d(plot_data, writer, epoch, figure_name)
+            super()._plot_3d(**kwargs)
 
     @staticmethod
     def default_pretrain_transform(input_tensor):

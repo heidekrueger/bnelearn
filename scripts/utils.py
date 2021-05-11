@@ -198,7 +198,7 @@ def single_asym_exp_logs_to_df(
                          'eval/estimated_relative_ex_ante_util_loss'],
         precision: int = 4,
         with_stddev: bool = True,
-        bidder_names: list = ['local 1', 'local 2', 'global']
+        bidder_names: list = None
     ):
     """Creates and returns a Pandas DataFrame from the logs in `path` for an
     individual experiment with different bidders.
@@ -227,6 +227,17 @@ def single_asym_exp_logs_to_df(
     ).agg({'value': ['mean', 'std']})
 
     df.columns = ['metric', 'bidder', 'mean', 'std']
+
+    # multiple BNE
+    new_metrics = metrics.copy()
+    i = 1
+    while f'eval/L_2_bne{i}' in df['metric'].to_list():
+        for m in metrics:
+            new_metrics.append(m + f'_bne{i}')
+        i += 1
+    if i > 1:
+        metrics = new_metrics
+
     df = df.loc[df['metric'].isin(metrics)]
 
     def map_mean_std(row):
@@ -234,17 +245,27 @@ def single_asym_exp_logs_to_df(
         if with_stddev:
             result += ' (' + str(form.format(round(row['std'], precision))) \
                 + ')'
+        if result == 'nan (nan)':
+            result = '--'
         return result
     df['value'] = df.apply(map_mean_std, axis=1)
     del df['mean'], df['std']
     df.set_index(['bidder', 'metric'], inplace=True)
     df = df.unstack(level='metric')
     df.columns = [y for (x, y) in df.columns]
-    if bidder_names:
-        df.insert(0, 'bidder', bidder_names)
 
+    # bidder names
+    if not bidder_names:
+        bidder_names = [f'bidder {i + 1}' for i in range(df.shape[0])]
+    df.insert(0, 'bidder', bidder_names)
+
+    aliasies = ALIASES.copy()
+    if i > 1:
+        for k in ALIASES.keys():
+            for j in range(i):
+                aliasies[k + f'_bne{j + 1}'] = aliasies[k][:-1] + '^\text{BNE{' + str(j + 1) + '}}$'
     df.columns = df.columns.map(
-        lambda m: ALIASES[m] if m in ALIASES.keys() else m
+        lambda m: aliasies[m] if m in aliasies.keys() else m
     )
 
     return df
@@ -364,12 +385,6 @@ def bids_to_csv(
 
 if __name__ == '__main__':
 
-    ### Create bid function plot ----------------------------------------------
-    exps = {
-        'Full LLG': 'experiments/LLGFull/mrcs_favored/independent/2021-04-21 Wed 14.32/09 04:25:46 9',
-    }
-    bids_to_csv(exps)
-
-    # path = '/home/kohring/bnelearn/experiments/LLGFull/mrcs_favored/independent/2021-04-21 Wed 14.32/full_results.csv'
-    # df = single_asym_exp_logs_to_df(path)
-    # df_to_tex(df, label='tab:llgfull', caption='Results of NPGA in the asymmetric LLG setting after 2{,}000 iterations and averaged over 10 repetitions.')
+    path = '/home/kohring/bnelearn/experiments/single_item/first_price/uniform/asymmetric/risk_neutral/2p/2021-05-03 Mon 11.07/full_results.csv'
+    df = single_asym_exp_logs_to_df(path, bidder_names=['weak', 'strong'])
+    df_to_tex(df)
