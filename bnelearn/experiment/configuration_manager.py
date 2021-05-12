@@ -150,7 +150,7 @@ class ConfigurationManager:
         self.setting.u_lo = [0, 0, 0]
         self.setting.u_hi = [1, 1, 2]
         self.setting.n_players = 3
-        self.setting.payment_rule = 'first_price'
+        self.setting.payment_rule = 'mrcs_favored'
         self.setting.correlation_groups = [[0, 1], [2]]
         self.setting.gamma = 0.0
         self.logging.log_metrics = {'opt': True,
@@ -379,7 +379,7 @@ class ConfigurationManager:
         return self
 
     # pylint: disable=too-many-arguments, unused-argument
-    def set_learning(self, model_sharing: bool = 'None', learner_hyperparams: dict = 'None',
+    def set_learning(self, model_sharing: bool = 'None', learner_type: str = 'None', learner_hyperparams: dict = 'None',
                      optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
@@ -393,7 +393,7 @@ class ConfigurationManager:
     # pylint: disable=too-many-arguments, unused-argument
     def set_logging(self, enable_logging: bool = 'None', log_root_dir: str = 'None', util_loss_batch_size: int = 'None',
                     util_loss_grid_size: int = 'None', util_loss_frequency: int = 'None', eval_batch_size: int = 'None',
-                    cache_eval_action: bool = 'None', plot_frequency: int = 'None', plot_points: int = 'None',
+                    plot_frequency: int = 'None', plot_points: int = 'None',
                     plot_show_inline: bool = 'None', log_metrics: dict = 'None', best_response: bool = 'None',
                     save_tb_events_to_csv_aggregate: bool = 'None', save_tb_events_to_csv_detailed: bool = 'None',
                     save_tb_events_to_binary_detailed: bool = 'None', save_models: bool = 'None',
@@ -452,6 +452,7 @@ class ConfigurationManager:
                                 payment_rule='first_price',
                                 risk=1.0)
         learning = LearningConfig(model_sharing=True,
+                                  learner_type='ESPGLearner',
                                   learner_hyperparams={'population_size': 64,
                                                        'sigma': 1.,
                                                        'scale_sigma_by_model_size': True},
@@ -682,5 +683,7 @@ class ConfigurationManager:
                 return torch.optim.Adam
             if optimizer in ('SGD', 'sgd', 'Sgd'):
                 return torch.optim.SGD
+            if optimizer in ('PSO', 'pso', 'Pso'):
+                return 'PSO'
             # add more optimizers as needed
         raise ValueError('Optimizer type could not be inferred!')

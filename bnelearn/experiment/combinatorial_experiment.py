@@ -254,7 +254,8 @@ class LLGExperiment(LocalGlobalExperiment):
         bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
             agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                          batch_size=self.config.logging.eval_batch_size)
+                                          batch_size=self.config.logging.eval_batch_size,
+                                          cache_actions=self.logging.cache_eval_actions)
                     for i in range(self.n_players)],
             n_players=self.n_players,
             batch_size=self.config.logging.eval_batch_size,
@@ -411,15 +412,15 @@ class LLGFullExperiment(LocalGlobalExperiment):
 
         self.known_bne = False
 
-    def relevant_actions(self):
-        if self.config.setting.correlation_types in ['independent'] and \
-            self.payment_rule in ['vcg', 'mrcs_favored']:
-            return torch.tensor(
-                [[1, 0, 0], [0, 1, 0], [0, 0, 1]], # TODO rather: [[1, 0, 1], [0, 1, 1], [0, 0, 1]]
-                device=self.config.hardware.device,
-                dtype=torch.bool
-            )
-        return super().relevant_actions()
+    # def relevant_actions(self):
+    #     if self.config.setting.correlation_types in ['independent'] and \
+    #         self.payment_rule in ['vcg', 'mrcs_favored']:
+    #         return torch.tensor(
+    #             [[1, 0, 0], [0, 1, 0], [0, 0, 1]], # TODO rather: [[1, 0, 1], [0, 1, 1], [0, 0, 1]]
+    #             device=self.config.hardware.device,
+    #             dtype=torch.bool
+    #         )
+    #     return super().relevant_actions()
 
     def _evaluate_and_log_epoch(self, epoch: int) -> float:
         # TODO keep track of time as in super()

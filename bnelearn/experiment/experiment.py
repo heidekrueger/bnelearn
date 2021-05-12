@@ -6,6 +6,7 @@ can often be shared by specific experiments.
 import os
 from sys import platform
 import time
+import inspect
 from abc import ABC, abstractmethod
 from time import perf_counter as timer
 from typing import Iterable, List
@@ -22,6 +23,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
+import bnelearn.learner as learners
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
 from bnelearn.experiment.configurations import (ExperimentConfig)
@@ -158,14 +160,24 @@ class Experiment(ABC):
         pass
 
     def _setup_learners(self):
+        """Setup learner.
+
+        All classes within `bnelearn.learner` are considered.
+        """
+        available_learners = dict(inspect.getmembers(learners))
+
+        assert self.learning.learner_type in available_learners.keys(), \
+            f'Learner `{self.learning.learner_type}` unkonwn.'
 
         self.learners = [
-            ESPGLearner(model=model,
-                        environment=self.env,
-                        hyperparams=self.learning.learner_hyperparams,
-                        optimizer_type=self.learning.optimizer,
-                        optimizer_hyperparams=self.learning.optimizer_hyperparams,
-                        strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]})
+            available_learners[self.learning.learner_type](
+                model=model,
+                environment=self.env,
+                hyperparams=self.learning.learner_hyperparams,
+                optimizer_type=self.learning.optimizer,
+                optimizer_hyperparams=self.learning.optimizer_hyperparams,
+                strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
+            )
             for m_id, model in enumerate(self.models)]
 
     def _setup_bidders(self):
@@ -290,6 +302,9 @@ class Experiment(ABC):
             self.fig = plt.figure()
             self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
+            for learner in self.learners:
+                learner.writer = self.writer
+
             tic = timer()
             # self._log_experiment_params()
             # self._log_hyperparams()
@@ -326,10 +341,14 @@ class Experiment(ABC):
                        for model in self.models]
 
         # update model
+        #start_timer = timer()
         utilities = torch.tensor([
             learner.update_strategy_and_evaluate_utility()
             for learner in self.learners
         ])
+        #self._cur_epoch_log_params['time_per_step'] = timer()-start_timer
+
+
 
         if self.logging.enable_logging:
             # pylint: disable=attribute-defined-outside-init
@@ -701,11 +720,11 @@ class Experiment(ABC):
                 ) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(
-                [1 - utility_vs_bne[bne_idx][i] / self.bne_utilities[bne_idx][m2b(i)]
+                [1 - utility_vs_bne[bne_idx][i] / bne_env.get_reward(bne_env.agents[m2b(i)])
                  for i, model in enumerate(self.models)]
             )
             epsilon_absolute[bne_idx] = torch.tensor(
-                [self.bne_utilities[bne_idx][m2b(i)] - utility_vs_bne[bne_idx][i]
+                [bne_env.get_reward(bne_env.agents[m2b(i)]) - utility_vs_bne[bne_idx][i]
                  for i, model in enumerate(self.models)]
             )
 
