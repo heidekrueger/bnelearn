@@ -653,3 +653,64 @@ class AffiliatedValuationObservationSampler(ValuationObservationSampler):
         valuations = torch.sum(z, dim = 1) / self.n_players + s
 
         return valuations, observations
+
+
+class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
+    """Sampler for Multi-Unit, private value settings.
+    Sampler for valuations and signals in Multi-Unit Auctions, following
+    Krishna, Chapter 13.
+
+    These are symmetric private value settings, where
+    (a) valuations are descending along the valuation_size dimension and
+        represent the marginal utility of winning an additional item.
+    (b) bidders may be limited to be interested in at most a certain number of
+        items.
+
+    """
+
+    def __init__(self, n_players: int, n_items: int = 1,
+                 max_demand: int = None,
+                 u_lo: float = 0.0, u_hi: float = 1.0,
+                 default_batch_size: int = 1, default_device = None):
+        """
+
+        Args:
+            n_players
+            n_items: the number of items 
+            max_demand: the maximal number of items a bidder is interested in winning.
+            u_lo: lower bound for uniform distribution
+            u_hi: upper bound for uniform distribtuion
+            default_batch_size
+            default_device
+        """
+
+        super().__init__(u_lo, u_hi,
+                         n_players, n_items,
+                         default_batch_size=default_batch_size,
+                         default_device=default_device)
+
+        self.n_items = self.valuation_size
+        # if no demand limit is given, assume it is the total number of items
+        self.max_demand: int = max_demand or self.valuation_size
+        assert isinstance(self.max_demand, int), "maximum demand must be integer or none."
+        assert self.max_demand > 0, "invalid max demand"
+        assert self.max_demand <= self.valuation_size, "invalid max demand"
+
+        assert u_lo >= 0, "valuations must be nonnegative"
+        assert u_hi > u_lo, "upper bound must larger than lower bound"
+
+        self._u_lo = u_lo
+        self._u_hi = u_hi
+
+
+    def _sample(self, batch_size, device) -> torch.Tensor:
+        """Draws a batch of uniform valuations, sorts them,
+        and masks them out if necessary"""
+        # profile is batch x player x items
+        profile =  super()._sample(batch_size, device)
+        # sort by item
+        profile, _ = profile.sort(dim=2, descending=True)
+        # valuations beyond the limit are 0
+        profile[:, :, self.max_demand:self.n_items] = 0.0
+
+        return profile

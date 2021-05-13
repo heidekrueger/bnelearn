@@ -289,7 +289,6 @@ class MultiUnitExperiment(Experiment, ABC):
         self.n_players = self.config.setting.n_players
         self.payment_rule = self.config.setting.payment_rule
         self.risk = float(self.config.setting.risk)
-
         if len(self.config.setting.u_lo) == 1:
             self.u_lo = self.config.setting.u_lo * self.n_players
 
