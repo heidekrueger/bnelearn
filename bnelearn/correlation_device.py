@@ -327,18 +327,18 @@ class MineralRightsCorrelationDevice(CorrelationDevice):
         """
         Draw the common valuation given an observation o. This is done via
         calling its inverse CDF at a uniformly random sample.
+
+        NOTE: this only works for V~U[0.1]!
         """
-        c = -4 / (o**2 - 4)
         cond_batch_size = o.shape[0]
 
         o = o.clone().repeat(1, batch_size).view(cond_batch_size, batch_size)
-        c = c.repeat(1, batch_size).view(cond_batch_size, batch_size)
 
         uniform = torch.empty((1, batch_size), device=o.device) \
             .uniform_(0, 1) \
             .repeat(1, cond_batch_size).view(cond_batch_size, batch_size)
 
-        return o / torch.sqrt(-c * o**2 + 4*c + uniform*o**2 - 4*uniform)
+        return ((1-uniform) * (o/2).log()).exp()
 
 
 class AffiliatedObservationsDevice(CorrelationDevice):
