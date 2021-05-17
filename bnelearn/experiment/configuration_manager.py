@@ -521,7 +521,8 @@ class ConfigurationManager:
     @staticmethod
     def experiment_config_could_be_saved_properly(exp_config: ExperimentConfig) -> bool:
         """
-        Tests whether the given config could be serialized and deserialized properly.
+        Tests whether the given config could be serialized and deserialized properly. Should only be checked after the experiment has been 
+        initialized with the config, since the config is modified during the serialization
         """
         dir_path = os.path.join(os.getcwd(), 'temp')
         file_path = os.path.join(dir_path, logging_utils._configurations_f_name)

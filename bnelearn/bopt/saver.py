@@ -1,7 +1,8 @@
 import os
 import sys
-
 import torch
+import numpy as np
+import json
 
 # pylint: disable=wrong-import-position
 sys.path.append(os.path.realpath('.'))
@@ -9,30 +10,70 @@ sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
 from bnelearn.experiment.configuration_manager import ConfigurationManager # pylint: disable=import-error
 
+class Saver:
+    def __init__(self, experiment_config, experiment_class, n_runs: int = 1):
+        """        
+        n_runs : this is the number of full runs, actual number of runs (learning procedures) would be n_runs * # of seeds per run
+        """
+        self.experiment = experiment_class(experiment_config)
+
+        self.n_runs = n_runs
+        self.log = {'dir': [], 'n_seeds': [], 'epoch': [], 'lr':[], 'avrg_eps_rel': [], 'eps_rel_var': []}
+
+    def run(self):
+        for run in range(self.n_runs):
+            log['dir'].append(experiment_config.logging.experiment_dir)
+            print('Inside the run {}', run + 1)
+            try:
+                single_run_res = self.experiment.run()
+                self._add_single_run_result(single_run_res)
+            except KeyboardInterrupt:
+                print('\nKeyboardInterrupt: released memory after interruption')
+                torch.cuda.empty_cache()
+
+        print(self.log)
+        self._save_results()
+    
+    def _add_basic_run_info(self):
+        log['dir'].append(experiment_config.logging.experiment_dir)
+
+    def _add_single_run_result(self, single_run_res):
+        eps_rel = []
+        for metric_entry in single_run_res:
+            if metric_entry[2] == 'eval/epsilon_relative':                    
+                print(metric_entry)
+                eps_rel.append(metric_entry[4])                    
+
+            np.array(eps_rel)
+            print(np.average(eps_rel))
+            
+
+    def _save_results(self):
+        pass
+
+
 if __name__ == '__main__':
     log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=10,
-                                                                n_epochs=1000) \
+    #n_runs here means # of seeds
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=2,
+                                                                n_epochs=3) \
             .set_setting(risk=1.1)\
             .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
             .set_learning(pretrain_iters=5) \
-            .set_logging(eval_batch_size=2**22).set_hardware(specific_gpu=5).get_config()
+            .set_logging(eval_batch_size=2**22).set_hardware(specific_gpu=7).get_config()
 
-    log = {'dir': [], 'number_runs': [], 'epoch': [], 'lr':[], 'eps_rel': [], 'eps_rel_var': []}
-    log['dir'].append(experiment_config.logging.experiment_dir)
+    saver = Saver(experiment_config, experiment_class)
+    saver.run()
 
-    try:
-        experiment = experiment_class(experiment_config)
+    #result = result.to_dict()
+    #print(json.dumps(result, sort_keys=False, indent=4))
+    #result = result.to_numpy()
+    #print(result)
 
-        # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
-        if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
-            result = experiment.run()
-        else:
-            raise Exception('Unable to perform the correct serialization')
+    #if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
+    #        pass
+    #else:
+    #    raise Exception('Unable to perform the correct serialization')
 
-    except KeyboardInterrupt:
-        print('\nKeyboardInterrupt: released memory after interruption')
-        torch.cuda.empty_cache()
     
-    print(result)
