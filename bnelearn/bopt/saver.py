@@ -10,15 +10,26 @@ sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
 from bnelearn.experiment.configuration_manager import ConfigurationManager # pylint: disable=import-error
 
+saved_results = {'directory': '', 'experiment_type': '', 'hyperparameters': [], 'reults': {}}
+
+#TODO rework the saver, it should just receive the results, not run experiments
 class Saver:
+    """
+    Accumulates and aggregates resuts from multiple experiments of the same type but with different hyperparameters. Saves them on request. 
+    Seeds averaged out. In a single json only single hyperparameter varies, but all other fixed are logged
+    """
     def __init__(self, experiment_config, experiment_class, n_runs: int = 1):
         """        
         n_runs : this is the number of full runs, actual number of runs (learning procedures) would be n_runs * # of seeds per run
         """
-        self.experiment = experiment_class(experiment_config)
-
+        self.experiment_config = experiment_config
+        self.expereiment_class = experiment_class
+        
         self.n_runs = n_runs
         self.log = {'dir': [], 'n_seeds': [], 'epoch': [], 'lr':[], 'avrg_eps_rel': [], 'eps_rel_var': []}
+
+    def add_experiment_result():        
+        pass
 
     def run(self):
         for run in range(self.n_runs):
