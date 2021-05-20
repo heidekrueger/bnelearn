@@ -18,32 +18,15 @@ class Saver:
     Accumulates and aggregates resuts from multiple experiments of the same type but with different hyperparameters. Saves them on request. 
     Seeds averaged out. In a single json only single hyperparameter varies, but all other fixed are logged
     """
-    def __init__(self, experiment_config, experiment_class, n_runs: int = 1):
+    def __init__(self):
         """        
         n_runs : this is the number of full runs, actual number of runs (learning procedures) would be n_runs * # of seeds per run
         """
-        self.experiment_config = experiment_config
-        self.expereiment_class = experiment_class
         
-        self.n_runs = n_runs
         self.log = {'dir': [], 'n_seeds': [], 'epoch': [], 'lr':[], 'avrg_eps_rel': [], 'eps_rel_var': []}
 
     def add_experiment_result():        
         pass
-
-    def run(self):
-        for run in range(self.n_runs):
-            log['dir'].append(experiment_config.logging.experiment_dir)
-            print('Inside the run {}', run + 1)
-            try:
-                single_run_res = self.experiment.run()
-                self._add_single_run_result(single_run_res)
-            except KeyboardInterrupt:
-                print('\nKeyboardInterrupt: released memory after interruption')
-                torch.cuda.empty_cache()
-
-        print(self.log)
-        self._save_results()
     
     def _add_basic_run_info(self):
         log['dir'].append(experiment_config.logging.experiment_dir)
