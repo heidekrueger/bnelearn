@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from math import sqrt
 from typing import List, Tuple
+import warnings
 
 import torch
 from torch.cuda import _device_t as Device, device_of
@@ -673,7 +674,6 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
                  u_lo: float = 0.0, u_hi: float = 1.0,
                  default_batch_size: int = 1, default_device = None):
         """
-
         Args:
             n_players
             n_items: the number of items
@@ -731,7 +731,7 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
 
         self.n_groups = len(subgroup_samplers)
         self.group_sizes = [sampler.n_players for sampler in subgroup_samplers]
-        assert sum(self.group_sizes == n_players), "number of players in subgroup don't match total n_players."
+        assert sum(self.group_sizes) == n_players, "number of players in subgroup don't match total n_players."
         for sampler in subgroup_samplers:
             assert sampler.valuation_size == valuation_size, "incorrect valuation size in subgroup sampler."
             assert sampler.observation_size == observation_size, "incorrect observation size in subgroup sampler"
@@ -775,7 +775,6 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
         return v,o
 
 
-    @abstractmethod
     def draw_conditional_profiles(self,
                                   conditioned_player: int,
                                   conditioned_observation: torch.Tensor,
@@ -860,8 +859,6 @@ class LocalGlobalCompositePVSampler(CompositeValuationObservationSampler):
         assert 0 <=correlation_locals  <= 1, "invalid locals correlation"
         assert 0 <=correlation_globals <= 1, "invalid globals correlation"
 
-
-
         # setup local sampler
         if correlation_locals > 0.0:
             if correlation_method_locals == 'Bernoulli':
@@ -872,11 +869,13 @@ class LocalGlobalCompositePVSampler(CompositeValuationObservationSampler):
                 raise ValueError('Only "Bernoulli" and "constant" correlation methods are implemented for LocalGlobal samplers')
 
             sampler_locals = LocalSamplerClass(
-                n_players=n_locals, valuation_size = valuation_size, 
+                n_players=n_locals, valuation_size = valuation_size,
                 correlation = correlation_locals, u_lo = 0.0, u_hi = 1.0,
                 default_batch_size=default_batch_size, default_device=default_device)
         else:
             # no correlation between locals
+            if correlation_locals is not None:
+                warnings.warn("Warning: You specified a correlation method, but correlation is 0.0.")
             sampler_locals = UniformSymmetricIPVSampler(
                 0.0, 1.0, n_locals, valuation_size, default_batch_size, default_device)
 
@@ -890,17 +889,19 @@ class LocalGlobalCompositePVSampler(CompositeValuationObservationSampler):
                 raise ValueError('Only "Bernoulli" and "constant" correlation methods are implemented for LocalGlobal samplers')
 
             sampler_globals = LocalSamplerClass(
-                n_players=n_globals, valuation_size = valuation_size, 
+                n_players=n_globals, valuation_size = valuation_size,
                 correlation = correlation_globals, u_lo = 0.0, u_hi = 2.0,
                 default_batch_size=default_batch_size, default_device=default_device)
         else:
             # no correlation between globals
+            if correlation_globals is not None:
+                warnings.warn("Warning: You specified a correlation method, but correlation is 0.0.")
             sampler_globals = UniformSymmetricIPVSampler(
                 0.0, 2.0, n_globals, valuation_size, default_batch_size, default_device)
 
         n_players = n_locals + n_globals
         observation_size = valuation_size # this is a PV setting, valuations = observations
-        subgroup_samplers = [sampler_locals, sampler_globals]       
+        subgroup_samplers = [sampler_locals, sampler_globals]
 
         super().__init__(n_players, valuation_size, observation_size, subgroup_samplers, default_batch_size, default_device)
 
@@ -912,7 +913,7 @@ class LLGSampler(LocalGlobalCompositePVSampler):
             takes values in [0.0, 1.0]
         correlation_method (str or None, default: None): The type of correlation
             model. For correlation > 0.0, must be one of 'Bernoulli' or 'constant'
-        
+
     """
     def __init__(self, correlation = 0.0, correlation_method = None,
                  default_batch_size = 1, default_device= None):
@@ -932,7 +933,7 @@ class LLLLGGSampler(LocalGlobalCompositePVSampler):
             takes values in [0.0, 1.0]
         correlation_method_locals (str or None, default: None): The type of correlation
             model. For correlation > 0.0, must be one of 'Bernoulli' or 'constant'
-        
+
     """
     def __init__(self, correlation = 0.0, correlation_method = None,
                  default_batch_size = 1, default_device= None):
