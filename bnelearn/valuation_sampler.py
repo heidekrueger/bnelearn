@@ -676,7 +676,7 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
 
         Args:
             n_players
-            n_items: the number of items 
+            n_items: the number of items
             max_demand: the maximal number of items a bidder is interested in winning.
             u_lo: lower bound for uniform distribution
             u_hi: upper bound for uniform distribtuion
@@ -714,3 +714,229 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         profile[:, :, self.max_demand:self.n_items] = 0.0
 
         return profile
+
+class CompositeValuationObservationSampler(ValuationObservationSampler):
+    """A class representing composite prior distributions that are
+    made up of several groups of bidders, each of which can be represented by
+    an atomic ValuationObservationSampler, and which are independent between-group
+    (but not necessarily within-group).
+
+    Limitation: The current implementation requires that all players nevertheless
+    have the same valuation_size.
+    """
+
+    def __init__(self, n_players: int, valuation_size: int, observation_size: int,
+                 subgroup_samplers: List[ValuationObservationSampler],
+                 default_batch_size = 1, default_device = None):
+
+        self.n_groups = len(subgroup_samplers)
+        self.group_sizes = [sampler.n_players for sampler in subgroup_samplers]
+        assert sum(self.group_sizes == n_players), "number of players in subgroup don't match total n_players."
+        for sampler in subgroup_samplers:
+            assert sampler.valuation_size == valuation_size, "incorrect valuation size in subgroup sampler."
+            assert sampler.observation_size == observation_size, "incorrect observation size in subgroup sampler"
+
+        self.group_samplers = subgroup_samplers
+        self.group_indices: List[torch.IntTensor] = [
+            torch.tensor(range(sum(self.group_sizes[:i]),
+                               sum(self.group_sizes[:i+1])))
+            for i in range(self.n_groups)
+        ]
+
+        super().__init__(n_players, valuation_size, observation_size, default_batch_size, default_device)
+
+
+
+    def draw_profiles(self, batch_size: int = None, device=None) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Draws and returns a batch of valuation and observation profiles.
+
+        Kwargs:
+            batch_size (optional): int, the batch_size to draw. If none provided,
+            `self.default_batch_size` will be used.
+            device (optional): torch.cuda.Device, the device to draw profiles on
+
+        Returns:
+            valuations: torch.Tensor (batch_size x n_players x valuation_size): a valuation profile
+            observations: torch.Tensor (batch_size x n_players x observation_size): an observation profile
+        """
+        device = device or self.default_device
+        batch_size = batch_size or self.default_batch_size
+
+        v = torch.empty([batch_size, self.n_players, self.valuation_size], device=device)
+        o = torch.empty([batch_size, self.n_players, self.observation_size], device=device)
+
+        ## Draw independently for each group.
+
+        for g in range(self.n_groups):
+            # player indices in the group
+            players = self.group_indices[g]
+            v[:, players, :], o[:, players, :] = self.group_samplers[g].draw_profiles(batch_size, device)
+
+        return v,o
+
+
+    @abstractmethod
+    def draw_conditional_profiles(self,
+                                  conditioned_player: int,
+                                  conditioned_observation: torch.Tensor,
+                                  batch_size: int, device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Draws and returns batches conditional valuation and corresponding observation profile.
+        For each entry of `conditioned_observation`, `batch_size` samples will be drawn!
+
+        Note that here, we are returning full profiles instead (including
+        `conditioned_player`'s observation and others' valuations.)
+
+        Args:
+            conditioned_player: int
+                Index of the player whose observation we are conditioning on.
+            conditioned_observation: torch.Tensor (`outer_batch_size` (implicit), `observation_size`)
+                A (batch of) observations of player `conditioned_player`.
+
+        Kwargs:
+            batch_size (optional): int, the "inner"batch_size to draw - i.e.
+            how many conditional samples to draw for each provided `conditional_observation`.
+            If none provided, will use `self.default_batch_size` of the class.
+
+        Returns:
+            valuations: torch.Tensor (batch_size x n_players x valuation_size):
+                a conditional valuation profile
+            observations: torch.Tensor ((batch_size * `outer_batch_size`) x n_players x observation_size):
+                a corresponding conditional observation profile.
+                observations[:,conditioned_observation,:] will be equal to
+                `conditioned_observation` repeated `batch_size` times
+        """
+
+        device = device or self.default_device
+        inner_batch = batch_size or self.default_batch_size
+        outer_batch = conditioned_observation.shape[0]
+        full_batch = inner_batch * outer_batch
+
+        i = conditioned_player
+        o_i = conditioned_observation.repeat_interleave(inner_batch, dim=0)
+
+        cv = torch.empty([batch_size, self.n_players, self.valuation_size], device=device)
+        co = torch.empty([batch_size, self.n_players, self.observation_size], device=device)
+
+        ## Draw independently for each group.
+
+        for g in range(self.n_groups):
+            # player indices in the group
+            players = self.group_indices[g]
+
+            if i in players:
+                # this is the group of the conditioned player, we need to sample
+                # from the group's conditional distribtuion
+
+                # i's relative position in the subgroup:
+                sub_i =  i - sum(self.group_sizes[:g])
+
+                cv[:, players, :], co[:, players, :] = \
+                    self.group_samplers[g].draw_conditional_profiles(
+                        conditioned_player= sub_i,
+                        conditioned_observation= conditioned_observation,
+                        batch_size = inner_batch,
+                        device = device
+                    )
+            else:
+                # the conditioned player is not in this group, the groups draw
+                # is independent of the observation
+                cv[:, players, :], co[:, players, :] = \
+                    self.group_samplers[g].draw_profiles(full_batch, device)
+
+        return cv, co
+
+class LocalGlobalCompositePVSampler(CompositeValuationObservationSampler):
+    """Settings with two groups of players: The local players have
+    symmetric (possibly correlated) uniform valuations on [0,1]. The
+    global bidders have symmetric (possibly correlated) uniform valuations on
+    [0,2].
+    """
+
+    def __init__(self, n_locals: int, n_globals: int, valuation_size: int,
+                 correlation_locals = 0.0, correlation_method_locals = None,
+                 correlation_globals = 0.0, correlation_method_globals = None,
+                 default_batch_size = 1 , default_device = None):
+
+        assert 0 <=correlation_locals  <= 1, "invalid locals correlation"
+        assert 0 <=correlation_globals <= 1, "invalid globals correlation"
+
+
+
+        # setup local sampler
+        if correlation_locals > 0.0:
+            if correlation_method_locals == 'Bernoulli':
+                LocalSamplerClass = BernoulliWeightsCorrelatedSymmetricUniformPVSampler
+            elif correlation_method_locals == 'constant':
+                LocalSamplerClass = ConstantWeightCorrelatedSymmetricUniformPVSampler
+            else:
+                raise ValueError('Only "Bernoulli" and "constant" correlation methods are implemented for LocalGlobal samplers')
+
+            sampler_locals = LocalSamplerClass(
+                n_players=n_locals, valuation_size = valuation_size, 
+                correlation = correlation_locals, u_lo = 0.0, u_hi = 1.0,
+                default_batch_size=default_batch_size, default_device=default_device)
+        else:
+            # no correlation between locals
+            sampler_locals = UniformSymmetricIPVSampler(
+                0.0, 1.0, n_locals, valuation_size, default_batch_size, default_device)
+
+        # setup global sampler
+        if correlation_globals > 0.0:
+            if correlation_method_globals == 'Bernoulli':
+                GlobalSamplerClass = BernoulliWeightsCorrelatedSymmetricUniformPVSampler
+            elif correlation_method_globals == 'constant':
+                GlobalSamplerClass = ConstantWeightCorrelatedSymmetricUniformPVSampler
+            else:
+                raise ValueError('Only "Bernoulli" and "constant" correlation methods are implemented for LocalGlobal samplers')
+
+            sampler_globals = LocalSamplerClass(
+                n_players=n_globals, valuation_size = valuation_size, 
+                correlation = correlation_globals, u_lo = 0.0, u_hi = 2.0,
+                default_batch_size=default_batch_size, default_device=default_device)
+        else:
+            # no correlation between globals
+            sampler_globals = UniformSymmetricIPVSampler(
+                0.0, 2.0, n_globals, valuation_size, default_batch_size, default_device)
+
+        n_players = n_locals + n_globals
+        observation_size = valuation_size # this is a PV setting, valuations = observations
+        subgroup_samplers = [sampler_locals, sampler_globals]       
+
+        super().__init__(n_players, valuation_size, observation_size, subgroup_samplers, default_batch_size, default_device)
+
+class LLGSampler(LocalGlobalCompositePVSampler):
+    """A sampler for the LLG settings in Ausubel & Baranov.
+
+    Args:
+        correlation (float), correlation coefficient between local bidders,
+            takes values in [0.0, 1.0]
+        correlation_method (str or None, default: None): The type of correlation
+            model. For correlation > 0.0, must be one of 'Bernoulli' or 'constant'
+        
+    """
+    def __init__(self, correlation = 0.0, correlation_method = None,
+                 default_batch_size = 1, default_device= None):
+        super().__init__(n_locals =2, n_globals = 1, valuation_size = 1,
+                         correlation_locals=correlation, correlation_method_locals=correlation_method,
+                         correlation_globals=0.0, correlation_method_globals=None,
+                         default_batch_size=default_batch_size, default_device=default_device)
+
+class LLLLGGSampler(LocalGlobalCompositePVSampler):
+    """A sampler for the LLLLGG settings in Bosshard et al (2020).
+
+    Note: while the auction is for 6 players and 8 items, our auction implementation uses symmetries and
+        encodes each player's valuations with a valuation_size of 2!
+
+    Args:
+        correlation_locals (float), correlation coefficient between local bidders,
+            takes values in [0.0, 1.0]
+        correlation_method_locals (str or None, default: None): The type of correlation
+            model. For correlation > 0.0, must be one of 'Bernoulli' or 'constant'
+        
+    """
+    def __init__(self, correlation = 0.0, correlation_method = None,
+                 default_batch_size = 1, default_device= None):
+        super().__init__(n_locals =4, n_globals = 2, valuation_size = 2,
+                         correlation_locals=correlation, correlation_method_locals=correlation_method,
+                         correlation_globals=0.0, correlation_method_globals=None,
+                         default_batch_size=default_batch_size, default_device=default_device)
