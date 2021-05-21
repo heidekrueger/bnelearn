@@ -37,12 +37,12 @@ if __name__ == '__main__':
 
 
     ### SINGLE ITEM EXPERIMENTS ###
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=2,
-                                                               n_epochs=500) \
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
+                                                               n_epochs=5000) \
         .set_setting(risk=1.1)\
         .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
         .set_learning(pretrain_iters=5) \
-        .set_logging(eval_batch_size=2**22).set_hardware(specific_gpu=5).get_config()
+        .set_logging(eval_batch_size=2**22).set_hardware(specific_gpu=3).get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
     #                                                            n_runs=2, n_epochs=2)\

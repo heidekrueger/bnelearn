@@ -2,7 +2,7 @@ import json
 import os
 import time
 import warnings
-from typing import List, Type, Iterable
+from typing import List, Tuple, Type, Iterable
 
 import torch
 import torch.nn as nn
@@ -445,7 +445,7 @@ class ConfigurationManager:
         return ConfigurationManager.experiment_types[experiment_type][0]
 
     @staticmethod
-    def get_default_config_members() -> (RunningConfig, SettingConfig, LearningConfig, LoggingConfig, HardwareConfig):
+    def get_default_config_members() -> Tuple[RunningConfig, SettingConfig, LearningConfig, LoggingConfig, HardwareConfig]:
         """Creates with default (or most common) parameters and returns members of the ExperimentConfig"""
         running = RunningConfig(n_runs=0, n_epochs=0)
         setting = SettingConfig(n_players=2,

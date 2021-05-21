@@ -23,8 +23,9 @@ optimizer = BayesianOptimization(
 
 optimizer.maximize(
     init_points=2,
-    n_iter=3,
+    n_iter=20,
 )
+
 
 
 print(optimizer.max)
