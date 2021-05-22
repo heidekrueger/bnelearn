@@ -1,0 +1,3 @@
+[submodule "bnelearn/bopt/BayesianOptimization"]
+	path = bnelearn/bopt/BayesianOptimization
+	url = https://github.com/kilichenko/BayesianOptimization.git
