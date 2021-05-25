@@ -5,7 +5,6 @@ import pytest
 
 import torch
 import numpy as np
-from torch._C import Size
 
 import bnelearn.valuation_sampler as vs
 
@@ -74,7 +73,7 @@ def test_local_global_samplers(setting, method, gamma):
                           atol= 2e-3), \
         "unexpected means for global player"
 
-    ## quick checks for conditional sampling, let's fix the valuation of the 
+    ## quick checks for conditional sampling, let's fix the valuation of the
     # second local player
     # this is more about testing for runtime errors, rather than correctness
     # of the ocnditional sampling, which has been tested in the sub-group samplers
@@ -83,8 +82,10 @@ def test_local_global_samplers(setting, method, gamma):
 
     cv,co = s.draw_conditional_profiles(conditioned_player, conditioned_observation, batch_size)
 
+    assert torch.equal(co, cv)
+
     assert cv.shape == torch.Size([batch_size, n_players, valuation_size]), 'invalid shape!'
-    
+
     assert torch.allclose(v[:, local_indices, :].mean(dim=0) - local_means,
                           torch.zeros([2],device=device),
                           atol= 2e-3), \

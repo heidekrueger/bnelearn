@@ -1,14 +1,9 @@
 """ This pytest test file checks whether valuation and observation samplers have the
 expected behaviour"""
 
-from math import sqrt
-
-import pytest
-
-import torch
-import numpy as np
-
 import bnelearn.valuation_sampler as vs
+import pytest
+import torch
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 

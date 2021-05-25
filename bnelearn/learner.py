@@ -21,6 +21,11 @@ class Learner(ABC):
         """Updates the player's strategy."""
         raise NotImplementedError()
 
+    @abstractmethod
+    def update_strategy_and_evaluate_utility(self, closure = None) -> torch.Tensor:
+        """updates model and returns utility after the update."""
+        pass
+
 class GradientBasedLearner(Learner):
     """A learning rule that is based on computing some version of (pseudo-)
        gradient, then applying an SGD-like update via a `torch.optim.Optimizer`

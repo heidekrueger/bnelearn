@@ -310,8 +310,6 @@ class BernoulliWeightsCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUni
             .uniform_(self.u_lo, self.u_hi)
         z[:,i,:] = v_i
 
-
-
         # NOTE: with our current test (e.g. testing correlation matrix
         # of conditional valuation profile for large outer_batch and
         # inner_batch of 1), we cannot use the same drawn weights in each outer

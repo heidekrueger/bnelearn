@@ -13,7 +13,7 @@ import torch
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism
 from bnelearn.strategy import Strategy
-from bnelearn.correlation_device import CorrelationDevice, IndependentValuationDevice
+from bnelearn.valuation_sampler import ValuationObservationSampler
 
 class Environment(ABC):
     """Environment
@@ -209,12 +209,13 @@ class AuctionEnvironment(Environment):
             self,
             mechanism: Mechanism,
             agents: Iterable[Bidder],
+            valuation_observation_sampler: ValuationObservationSampler,
             batch_size = 100,
             n_players = None,
-            strategy_to_player_closure: Callable[[Strategy], Bidder] = None,
-            correlation_groups: List[List[int]] = None,
-            correlation_devices: List[CorrelationDevice] = None
+            strategy_to_player_closure: Callable[[Strategy], Bidder] = None            
         ):
+
+        assert isinstance(valuation_observation_sampler, ValuationObservationSampler)
 
         if not n_players:
             n_players = len(agents)
@@ -227,17 +228,8 @@ class AuctionEnvironment(Environment):
         )
 
         self.mechanism = mechanism
+        self.sampler = valuation_observation_sampler
 
-        if not correlation_groups:
-            self.correlation_groups = [list(range(n_players))] # all agents in one independent group
-            self.correlation_devices = [IndependentValuationDevice()]
-        else:
-            assert len(correlation_groups) == len(correlation_devices)
-            self.correlation_groups = correlation_groups
-            self.correlation_devices = correlation_devices
-
-        assert sorted([a for g in self.correlation_groups for a in g]) == list(range(n_players)), \
-            "Each agent should be in exactly one correlation group!"
 
     def get_reward(
             self,
@@ -334,82 +326,41 @@ class AuctionEnvironment(Environment):
     def prepare_iteration(self):
         self.draw_valuations_()
 
-    def draw_valuations_(self, exclude: Set[int] or None = None):
+    def draw_valuations_(self):
         """
-        Draws new valuations for each agent in the environment except the
-        excluded set.
-
-        args:
-            exclude: (deprecated - setting this variable will return an error)
-                A set of player positions to exclude.
-                Used e.g. to generate action profile of all but currently
-                learning player.
+        Draws a new valuation and observation profile
 
         returns/yields:
             nothing
 
         side effects:
-            updates agent valuation states
+            updates agent's valuations and observation states
         """
 
-        # TODO: remove exclude block if it turns out to be used nowhere.
-        if exclude is None:
-            exclude = set()
+        v, o = self.sampler.draw_profiles(batch_size=self.batch_size)
 
-        if exclude:
-            raise ValueError('With the introduction of Correlation Devices, excluding agents is no logner supported!')
+        for i, a in enumerate(self.agents):
+            a.valuations = v[:, i, :]
+            a.observations = o[:,i, :]
 
-        # for agent in (a for a in self.agents if a.player_position not in exclude):
-        #     agent.batch_size = self.batch_size
-        #     if isinstance(agent, Bidder):
-        #         agent.draw_valuations_()
-
-        # For each group of correlated agents, draw their correlated valuations
-        for group, device in zip(self.correlation_groups, self.correlation_devices):
-            common_component, weights = device.get_component_and_weights()
-            for i in group:
-                self.agents[i].draw_valuations_(common_component, weights)
 
     def draw_conditionals(
             self,
-            player_position: int,
-            conditional_observation: torch.Tensor,
-            batch_size: int = None
+            conditioned_player: int,
+            conditioned_observation: torch.Tensor,
+            inner_batch_size: int = None
         ) -> dict:
+        """Draws a conditional valuation / observation profile based on a (vector of)
+        fixed observations for one player.
+
+        Total batch size will be conditioned_observation.shape[0] x inner_batch_size
         """
-        Draws valuations/observations from all agents conditioned on the observation `cond`
-        of the agent at `player_position` from the correlation_devices.
 
-        Returns
-            conditionals_dict (dict) with `player_position` as keys and the
-                corresponding conditoned valuation `tensors` as dict-values.
-        """
-        batch_size_0 = conditional_observation.shape[0]
-        batch_size_1 = batch_size if batch_size is not None else batch_size_0
+        cv, co = self.sampler.draw_conditional_profiles(
+            conditioned_player, conditioned_observation,
+            inner_batch_size
+        )
 
-        group_idx = [player_position in group for group in self.correlation_groups].index(True)
-        cond_device = self.correlation_devices[group_idx]
-        conditionals_dict = dict()
-
-        for group, device in zip(self.correlation_groups, self.correlation_devices):
-
-            # draw conditional valuations from all agents in same correlation
-            if cond_device == device:
-                conditionals_dict.update(
-                    device.draw_conditionals(
-                        agents = [a for a in self.agents if a.player_position in group],
-                        player_position = player_position,
-                        conditional_observation = conditional_observation,
-                        batch_size = batch_size_1
-                    )
-                )
-
-            # draw independent valuations from all agents in other correlations
-            else:
-                common_component, weights = device.get_component_and_weights()
-                for player_position in group:
-                    agent = [a for a in self.agents if a.player_position == player_position][0]
-                    conditionals_dict[player_position] = agent.draw_valuations_(common_component, weights) \
-                            [:batch_size_1, :].repeat(batch_size_0, 1)
-
-        return conditionals_dict
+        for i, a in enumerate(self.agents):
+            a.valuations = cv[:, i, :]
+            a.observations = co[:,i, :]
