@@ -547,17 +547,6 @@ class PSOLearner(Learner):
                             Particles form a neighborhood based on their position in the population matrix.
                             A particle is connected to its left, right, upper and lower neighbor in the matrix.
                             Neighborhood size = 5
-                    upper_bounds: float, List or Tensor
-                        Upper search space bounds for each dimension
-                        If a float is given, the value will be used for each dim
-                        If bound_handling == False then only used for initialization
-                    lower_bounds: float, List or Tensor
-                        Lower search space bounds for each dimension
-                        If a float is given, this value will be used for each dim
-                        If bound_handling == False then only used for initialization
-                    max_velocity: float
-                        Max step size in each direction during one update step
-                        If velocity_clamping == False then only used for initialization
                 (optional:)
                     The default values for the inertia weight and the cognition & social ratio are commonly used values
                     performing well form most problem settings. Based on: Clerc, M., & Kennedy, J. (2002)
@@ -572,7 +561,7 @@ class PSOLearner(Learner):
                         to prevent false memory introduced by varying batch data
                     pretrain_deviation: float (default: 0)
                         If pretrain_deviation > 0 the positions will be initialized as:
-                        model.parameters + U[-pretrain_deviation, pretrain_deviation]
+                        model.parameters + N(mean=0.0, std=pretrain_deviation)
                         otherwise positions will be initialized randomly over the whole search space
                     bound_handling: bool (default: False)
                         If true will clamp particle's positions in each dim to the interval [-max_position, max_position]
@@ -857,10 +846,7 @@ class PSOLearner(Learner):
         assert torch.isfinite(self.best_fitness.min())
         # assign the parameters of the best particle to the model parameters
         vector_to_parameters(self.best_position[self.best_fitness.argmin(), :], self.model.parameters())
-        #an sich unnötig aber so übernommen von Nils
-        #wenn model sharing = on ist es eh immer 0
-        #prob wenn model sharing = off dann würde sosnt für zweites model einfach angehangen ohne unterscheidung
-        #kann mir für eval egal sein brauch die werte nicht für model sharing
+        # logging
         time_per_step = timer()-start_time
         if self.strat_to_player_kwargs == {'player_position': 0} and self.writer is not None:
             self._log_pso_params(cur_velocity, cur_position, time_per_step)
