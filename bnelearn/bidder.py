@@ -10,7 +10,7 @@ import warnings
 import math
 import torch
 from torch.distributions import Distribution
-from bnelearn.strategy import Strategy, MatrixGameStrategy, FictitiousPlayStrategy, FictitiousNeuralPlayStrategy
+from bnelearn.strategy import Strategy
 
 
 class Player(ABC):
@@ -41,26 +41,6 @@ class Player(ABC):
         """Calculates player's utility based on outcome of a game."""
         raise NotImplementedError
 
-class MatrixGamePlayer(Player):
-    """ A player playing a matrix game"""
-    def __init__(self, strategy, player_position=None, batch_size=1, cuda=True):
-        super().__init__(strategy, player_position=player_position,
-                         batch_size=batch_size, cuda=cuda)
-
-
-    def get_utility(self, *outcome): #pylint: disable=arguments-differ
-        """ get player's utility for a batch of outcomes"""
-        # for now, outcome is (allocation, payment)
-        _, payments = outcome
-        return -payments
-
-    def get_action(self):
-        if (isinstance(self.strategy, MatrixGameStrategy) or isinstance(self.strategy, FictitiousNeuralPlayStrategy)):
-            return self.strategy.play(batch_size=self.batch_size)
-        if isinstance(self.strategy, FictitiousPlayStrategy):
-            return self.strategy.play(self.player_position)
-
-        raise ValueError("Invalid Strategy Type for Matrix game: {}".format(type(self.strategy)))
 
 class Bidder(Player):
     """A player in an auction game. Has a distribution over valuations/types
@@ -249,8 +229,6 @@ class Bidder(Player):
         Returns:
             valuations: torch.tesnor.
         """
-        # TODO Stefan: Does correlation interere with Nils' implementations of
-        # descending valuations or Item interest limits? --> Test!
         if isinstance(weights, float):
             weights = torch.tensor(weights)
 

@@ -272,7 +272,7 @@ class CustomSummaryWriter(SummaryWriter):
             else:
                 raise ValueError('Got list of invalid length.')
 
-
+# cannot use Experiment type explicitly in type hint to avoid circular imports
 def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
     """Write the sampled BNE utilities to disk."""
 

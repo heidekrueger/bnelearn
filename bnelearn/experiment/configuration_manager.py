@@ -2,7 +2,7 @@ import json
 import os
 import time
 import warnings
-from typing import List, Type, Iterable
+from typing import List, Type, Iterable, Tuple
 
 import torch
 import torch.nn as nn
@@ -15,13 +15,10 @@ from bnelearn.experiment.configurations import (SettingConfig,
                                                 RunningConfig, ExperimentConfig, HardwareConfig,
                                                 EnhancedJSONEncoder)
 
-from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
-                                                          LLGFullExperiment,
-                                                          LLLLGGExperiment)
-from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
+from bnelearn.experiment.combinatorial_experiment import LLGExperiment
+from bnelearn.experiment.multi_unit_experiment import MultiUnitExperiment
 
 from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSingleItemExperiment,
-                                                        TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
                                                         AffiliatedObservationsExperiment)
@@ -78,16 +75,6 @@ class ConfigurationManager:
         self.setting.valuation_mean = 15
         self.setting.valuation_std = 5
 
-    def _init_single_item_asymmetric_uniform_overlapping(self):
-        self.learning.model_sharing = False
-        self.setting.u_lo = [5, 5]
-        self.setting.u_hi = [15, 25]
-
-    def _init_single_item_asymmetric_uniform_disjunct(self):
-        self.learning.model_sharing = False
-        self.setting.u_lo = [0, 6]
-        self.setting.u_hi = [5, 7]
-
     def _init_mineral_rights(self):
         self.setting.n_players = 3
         self.setting.correlation_groups = [[0, 1, 2]]
@@ -130,45 +117,6 @@ class ConfigurationManager:
                                     'revenue': True,
                                     'util_loss': True}
 
-    #     self.setting.correlation_types = 'independent'
-    #
-    # def with_correlation(self, gamma, correlation_type='Bernoulli_weights'):
-    #     self.setting.gamma = gamma
-    #     self.setting.correlation_types = correlation_type if gamma > 0.0 else 'independent'
-    #
-    #     if correlation_type == 'constant_weights' and gamma > 0:
-    #         if 'opt' in self.logging.log_metrics.keys():
-    #             del self.logging.log_metrics['opt']
-    #         if 'l2' in self.logging.log_metrics.keys():
-    #             del self.logging.log_metrics['l2']
-    #         print('BNE in constant weights correlation model not approximated.')
-    #
-    #     return self
-
-    def _init_llg_full(self):
-        self.learning.model_sharing = False
-        self.setting.u_lo = [0, 0, 0]
-        self.setting.u_hi = [1, 1, 2]
-        self.setting.n_players = 3
-        self.setting.payment_rule = 'first_price'
-        self.setting.correlation_groups = [[0, 1], [2]]
-        self.setting.gamma = 0.0
-        self.logging.log_metrics = {'opt': True,
-                                    'util_loss': True,
-                                    'efficiency': False,
-                                    'revenue': False}
-
-    def _init_llllgg(self):
-        self.logging.util_loss_batch_size = 2 ** 12
-        self.learning.model_sharing = True
-        self.setting.u_lo = [0, 0, 0, 0, 0, 0]
-        self.setting.u_hi = [1, 1, 1, 1, 2, 2]
-        self.setting.core_solver = 'NoCore'
-        self.setting.parallel = 1
-        self.setting.n_players = 6
-        self.logging.util_loss_frequency = 1000  # Or 100?
-        self.logging.log_metrics = {'opt': False,
-                                    'util_loss': True}
 
     def _init_multiunit(self):
         self.setting.payment_rule = 'vcg'
@@ -185,15 +133,6 @@ class ConfigurationManager:
                                     'util_loss': True,
                                     'efficiency': True,
                                     'revenue': True}
-
-    def _init_splitaward(self):
-        self.setting.n_units = 2
-        self.learning.model_sharing = True
-        self.setting.u_lo = [1]
-        self.setting.u_hi = [1.4]
-        self.setting.constant_marginal_values = False
-        self.setting.efficiency_parameter = 0.3
-        self.logging.log_componentwise_norm = True
 
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
@@ -247,12 +186,6 @@ class ConfigurationManager:
     def _post_init_single_item_gaussian_symmetric(self):
         pass
 
-    def _post_init_single_item_asymmetric_uniform_overlapping(self):
-        pass
-
-    def _post_init_single_item_asymmetric_uniform_disjunct(self):
-        pass
-
     def _post_init_mineral_rights(self):
         pass
 
@@ -277,13 +210,7 @@ class ConfigurationManager:
             self.setting.u_hi.insert(0, self.setting.u_hi[0])
         self.setting.u_hi[-1] = self.setting.n_players - 1
 
-    def _post_init_llllgg(self):
-        pass
-
     def _post_init_multiunit(self):
-        pass
-
-    def _post_init_splitaward(self):
         pass
 
     experiment_types = {
@@ -293,26 +220,14 @@ class ConfigurationManager:
         'single_item_gaussian_symmetric':
             (GaussianSymmetricPriorSingleItemExperiment, _init_single_item_gaussian_symmetric,
              _post_init_single_item_gaussian_symmetric),
-        'single_item_asymmetric_uniform_overlapping':
-            (TwoPlayerAsymmetricUniformPriorSingleItemExperiment, _init_single_item_asymmetric_uniform_overlapping,
-             _post_init_single_item_asymmetric_uniform_overlapping),
-        'single_item_asymmetric_uniform_disjunct':
-            (TwoPlayerAsymmetricUniformPriorSingleItemExperiment, _init_single_item_asymmetric_uniform_disjunct,
-             _post_init_single_item_asymmetric_uniform_disjunct),
         'mineral_rights':
             (MineralRightsExperiment, _init_mineral_rights, _post_init_mineral_rights),
         'affiliated_observations':
             (AffiliatedObservationsExperiment, _init_affiliated_observations, _post_init_affiliated_observations),
         'llg':
             (LLGExperiment, _init_llg, _post_init_llg),
-        'llg_full':
-            (LLGFullExperiment, _init_llg_full, _post_init_llg),
-        'llllgg':
-            (LLLLGGExperiment, _init_llllgg, _post_init_llllgg),
         'multiunit':
-            (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
-        'splitaward':
-            (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)}
+            (MultiUnitExperiment, _init_multiunit, _post_init_multiunit)}
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type
@@ -445,7 +360,7 @@ class ConfigurationManager:
         return ConfigurationManager.experiment_types[experiment_type][0]
 
     @staticmethod
-    def get_default_config_members() -> (RunningConfig, SettingConfig, LearningConfig, LoggingConfig, HardwareConfig):
+    def get_default_config_members() -> Tuple[RunningConfig, SettingConfig, LearningConfig, LoggingConfig, HardwareConfig]:
         """Creates with default (or most common) parameters and returns members of the ExperimentConfig"""
         running = RunningConfig(n_runs=0, n_epochs=0)
         setting = SettingConfig(n_players=2,

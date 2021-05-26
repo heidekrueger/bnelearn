@@ -13,16 +13,13 @@ import os
 from abc import ABC
 from functools import partial
 from typing import Iterable, List
-import math
+
 import warnings
 import numpy as np
-from torch.utils.tensorboard import SummaryWriter
 import torch
 
-from bnelearn.mechanism import (
-    LLGAuction, LLGFullAuction, LLLLGGAuction
-)
-from bnelearn.bidder import Bidder, CombinatorialBidder
+from bnelearn.mechanism import LLGAuction
+from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
 from .experiment import Experiment
@@ -69,6 +66,7 @@ class LocalGlobalExperiment(Experiment, ABC):
                u_hi[self.config.setting.n_local], "local bidders must be weaker than global bidder"
         self.u_hi = [float(h) for h in u_hi]
 
+        # pylint: disable=no-member
         self.positive_output_point = torch.tensor([min(self.u_hi)] * self.input_length)
 
         self.model_sharing = self.config.learning.model_sharing
@@ -94,6 +92,7 @@ class LocalGlobalExperiment(Experiment, ABC):
         else:
             return super()._get_model_names()
 
+    # pylint: disable=no-member
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
@@ -294,235 +293,3 @@ class LLGExperiment(LocalGlobalExperiment):
                               player_position=player_position, batch_size=batch_size,
                               n_items=self.input_length, correlation_type=correlation_type,
                               risk=self.risk, cache_actions=cache_actions, regret=self.regret)
-
-
-class LLGFullExperiment(LocalGlobalExperiment):
-    """A combinatorial experiment with 2 local and 1 global bidder and 2 items.
-
-    Essentially, this is a general CA with 3 bidders and 2 items.
-
-    Each bidders bids on all bundles. Local bidder 1 has only a value for the
-    first item, the second only for the second and global only on both. This
-    experiment is therfore more general than the `LLGExperiment` and includes
-    the specifc payment rule from Beck & Ott, where the 2nd local bidder is
-    favored (pays VCG prices).
-
-    """
-    def __init__(self, config: ExperimentConfig):
-        self.config = config
-        assert self.config.setting.n_players == 3, \
-            "Incorrect number of players specified."
-
-        self.gamma = self.correlation = float(config.setting.gamma)
-        if config.setting.correlation_types != 'independent' or \
-            self.gamma > 0.0:
-            # Should be similar to reduced LLG setting, but we have to consider
-            # asymmetry of local bidders.
-            raise NotImplementedError('Correlation not implemented.')
-
-        self.input_length = 1
-        self.config.setting.n_local = 2
-        self.config.setting.n_items = 3
-        super().__init__(config=config)
-
-    def _setup_mechanism(self):
-        self.mechanism = LLGFullAuction(rule=self.payment_rule,
-                                        cuda=self.hardware.device)
-
-    def _check_and_set_known_bne(self):
-        return self.payment_rule in ['vcg', 'mrcs_favored']
-
-    def _optimal_bid(self, valuation, player_position):  # pylint: disable=method-hidden
-        """Equilibrium bid functions.
-
-        Payment rule `mrcs_favored` is from Beck & Ott (minimum revenue core
-        selecting with one player favored).
-        """
-        if not isinstance(valuation, torch.Tensor):
-            valuation = torch.as_tensor(valuation, device=self.config.hardware.device)
-
-        assert self.risk == 1.0, 'BNE known for risk-neutral only (or in VCG)'
-
-        if self.payment_rule in ['vcg', 'mrcs_favored']:
-            if player_position == 1:
-                return torch.cat([
-                    torch.zeros_like(valuation),  # item A
-                    valuation,  # item B
-                    valuation], axis=1)  # bundle {A, B}
-            if player_position == 2:
-                return torch.cat([
-                    torch.zeros_like(valuation),  # TODO ?
-                    torch.zeros_like(valuation),
-                    valuation], axis=1)
-
-        ### Favored bidder 1:
-        if self.config.setting.correlation_types in ['independent'] and player_position == 0:
-            if self.payment_rule == 'vcg':
-                return torch.cat([
-                    valuation,
-                    torch.zeros_like(valuation),
-                    valuation], axis=1)
-            if self.payment_rule == 'mrcs_favored':
-                # Beck & Ott provide no solution: Here we take real part of
-                # complex solution (sqrt of negative values), see
-                # https://www.wolframalpha.com/input/?i=0+%3D+12*v-+15*z+-+1+%2B+%289*z+-+1+-+3*v%29*sqrt%281+-+6*z%2B+6*v%29+solve+for+z
-                v = torch.as_tensor(valuation, device=valuation.device,
-                                    dtype=torch.cfloat)
-                sqrt = torch.sqrt(
-                    - 254016 * torch.pow(v, 5) - 45045 * torch.pow(v, 4) \
-                    + 47892 * torch.pow(v, 3) + 118676 * torch.pow(v, 2) \
-                    - 74560 * v + 11520
-                )
-                outer = torch.pow(
-                    + 23328 * torch.pow(v, 3) - 47871 * torch.pow(v, 2) \
-                    + 81 * np.sqrt(3) * sqrt + 6534 * v + 2884,
-                    1./3.
-                )
-                z = torch.real(outer / (81* 2**(2./3.)) \
-                    - (-1296* torch.pow(v, 2) - 2196 * v + 956) \
-                    / (162 * 2**(1./3.) * outer) + (1./81.) * (45 * v - 2))
-
-                b_A = torch.zeros_like(valuation)
-                mask = 2 - 2 * math.sqrt(6.) / 3. < valuation
-                b_A[mask] = z[mask] \
-                    - (2 - torch.sqrt(1 - 6 * z[mask] + 6 * valuation[mask])) \
-                    / 3.
-                b_AB = 0.5 * valuation.detach().clone()
-                b_AB[mask] = z[mask]
-                bids = torch.cat([b_A, torch.zeros_like(valuation), b_AB], axis=1)
-                return bids
-
-            warnings.warn('optimal bid not implemented for this payment rule')
-        else:
-            warnings.warn('optimal bid not implemented for this correlation type')
-
-        self.known_bne = False
-
-    def relevant_actions(self):
-        if self.config.setting.correlation_types in ['independent'] and \
-            self.payment_rule in ['vcg', 'mrcs_favored']:
-            return torch.tensor(
-                [[1, 0, 0], [0, 1, 0], [0, 0, 1]], # TODO rather: [[1, 0, 1], [0, 1, 1], [0, 0, 1]]
-                device=self.config.hardware.device,
-                dtype=torch.bool
-            )
-        return super().relevant_actions()
-
-    def _evaluate_and_log_epoch(self, epoch: int) -> float:
-        # TODO keep track of time as in super()
-        for name, agent in zip(['local 1', 'local 2', 'global'], self.env.agents):
-            self.writer.add_histogram(
-                tag="allocations/" + name,
-                values=self.env.get_allocation(agent),
-                bins=2*self.n_items-1,
-                global_step=epoch
-            )
-        return super()._evaluate_and_log_epoch(epoch)
-
-    def _setup_eval_environment(self):
-        assert self.known_bne
-        assert hasattr(self, '_optimal_bid')
-
-        bne_strategies = [
-            ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
-            for i in range(self.n_players)]
-
-        self.known_bne = True
-        self.bne_env = AuctionEnvironment(
-            mechanism=self.mechanism,
-            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                          batch_size=self.config.logging.eval_batch_size)
-                    for i in range(self.n_players)],
-            n_players=self.n_players,
-            batch_size=self.config.logging.eval_batch_size,
-            strategy_to_player_closure=self._strat_to_bidder
-        )
-        self.bne_utilities = torch.tensor(
-            [self.bne_env.get_reward(a, draw_valuations=True) for a in self.bne_env.agents])
-
-        # Compare estimated util to that of Beck & Ott table 2
-        if self.payment_rule == 'mrcs_favored':
-            max_diff_to_estimate = float(max(
-                torch.abs(self.bne_utilities - torch.tensor([0.154, 0.093, 0.418]))
-            ))
-            print(f'Max difference to BNE estimate is {round(max_diff_to_estimate, 4)}.')
-
-    def _get_logdir_hierarchy(self):
-        name = ['LLGFull', self.payment_rule]
-        if self.gamma > 0:
-            name += [self.config.setting.correlation_types,
-                     f"gamma_{self.gamma:.3}"]
-        else:
-            name += ['independent']
-        if self.risk != 1.0:
-            name += ['risk_{}'.format(self.risk)]
-        return os.path.join(*name)
-
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0,
-                         cache_actions=False):
-        correlation_type = 'additive' if (hasattr(self, 'correlation_groups') \
-            and self.config.setting.correlation_types != 'independent') else None
-        return CombinatorialBidder.uniform(
-            self.u_lo[player_position],
-            self.u_hi[player_position],
-            strategy=strategy,
-            player_position=player_position,
-            batch_size=batch_size,
-            n_items=self.input_length,
-            correlation_type=correlation_type,
-            risk=self.risk,
-            cache_actions=cache_actions
-        )
-
-    def _plot(self, **kwargs):  # pylint: disable=arguments-differ
-        kwargs['x_label'] = ['item A', 'item B', 'bundle']
-        kwargs['labels'] = ['local 1', 'local 2', 'global']
-
-        # handle dim-missmatch that agents only value 1 bundle but bid for 3
-        plot_data = list(kwargs['plot_data'])
-        if plot_data[0].shape != plot_data[1].shape:
-            plot_data[0] = plot_data[0].repeat(1, 1, self.n_items)
-            kwargs['plot_data'] = plot_data
-
-        super()._plot(**kwargs)
-
-
-class LLLLGGExperiment(LocalGlobalExperiment):
-    """
-    A combinatorial experiment with 4 local and 2 global bidder and 6 items; but each bidders bids on 2 bundles only.
-        Local bidder 1 bids on the bundles {(item_1,item_2),(item_2,item_3)}
-        Local bidder 2 bids on the bundles {(item_3,item_4),(item_4,item_5)}
-        ...
-        Gloabl bidder 1 bids on the bundles {(item_1,item_2,item_3,item_4), (item_5,item_6,item_7,item_8)}
-        Gloabl bidder 1 bids on the bundles {(item_3,item_4,item_5,item_6), (item_1,item_2,item_7,item_8)}
-    No BNE are known (but VCG).
-    Bosshard et al. (2018) consider this setting with nearest-vcg and first-price payments.
-
-    TODO:
-        - Implement eval_env for VCG
-    """
-
-    def __init__(self, config: ExperimentConfig):
-        self.config = config
-        assert self.config.setting.n_players == 6, "not right number of players for setting"
-        self.input_length = 2
-
-        self.config.running.n_players = 6
-        self.config.setting.n_local = 4
-        self.config.setting.n_items = 2
-        super().__init__(config=config)
-
-    def _setup_mechanism(self):
-        self.mechanism = LLLLGGAuction(rule=self.payment_rule, core_solver=self.setting.core_solver,
-                                       parallel=self.hardware.max_cpu_threads, cuda=self.hardware.cuda)
-
-    def _get_logdir_hierarchy(self):
-        name = ['LLLLGG', self.payment_rule, str(self.n_players) + 'p']
-        return os.path.join(*name)
-
-    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
-              fmts=['o'], **kwargs):
-        super()._plot(plot_data=plot_data, writer=writer, epoch=epoch,
-                      fmts=fmts, **kwargs)
-        super()._plot_3d(plot_data=plot_data, writer=writer, epoch=epoch,
-                         figure_name=kwargs['figure_name'])

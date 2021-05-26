@@ -15,12 +15,10 @@
 
 import pytest
 import torch
-from bnelearn.mechanism import LLLLGGAuction, FirstPriceSealedBidAuction
-from bnelearn.mechanism.auctions_multiunit import FPSBSplitAwardAuction
+from bnelearn.mechanism import FirstPriceSealedBidAuction
 from bnelearn.strategy import TruthfulStrategy, ClosureStrategy
 import bnelearn.util.metrics as metrics
-from bnelearn.bidder import Bidder, ReverseBidder
-from bnelearn.experiment.multi_unit_experiment import _optimal_bid_splitaward2x2_1
+from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 
 
@@ -106,18 +104,14 @@ ids_ex_post, testdata_ex_post = zip(*[
     ['fpsb - 2 batches, 3 bidders, 1 item, steps of sixths',
         ('first_price', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_post_util_loss_2_3_1_sixths)],
     ['fpsb - 2 batches, 3 bidders, 1 item, steps of tenths',
-        ('first_price', FirstPriceSealedBidAuction(), valuations_2_3_1, b_i_tenths, expected_ex_post_util_loss_2_3_1_tenths)],
-    ['fpsb - 1 batch, 6 bidders, 2 item',
-        ('first_price', LLLLGGAuction(), valuations_1_6_2, bids_i_comb, expected_util_loss_1_6_2)]
+        ('first_price', FirstPriceSealedBidAuction(), valuations_2_3_1, b_i_tenths, expected_ex_post_util_loss_2_3_1_tenths)]
     ])
 
 ids_ex_interim, testdata_ex_interim = zip(*[
     ['fpsb - 1 batch, 2 bidders, 1 item',
         ('first_price', FirstPriceSealedBidAuction(), valuations_1_2_1, bids_i, expected_util_loss_1_2_1)],
     ['fpsb - 2 batches, 3 bidders, 1 item, steps of sixths',
-        ('fpfirst_pricesb', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_interim_util_loss_2_3_1_sixths)],
-    ['fpsb - 1 batch, 6 bidders, 2 item',
-        ('first_price', LLLLGGAuction(), valuations_1_6_2, bids_i_comb, expected_util_loss_1_6_2)]
+        ('fpfirst_pricesb', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_interim_util_loss_2_3_1_sixths)]
     ])
 
 @pytest.mark.parametrize("rule, mechanism, bid_profile, bids_i, expected_util_loss", testdata_ex_post, ids=ids_ex_post)
@@ -217,45 +211,3 @@ def test_ex_interim_util_loss_estimator_fpsb_bne():
 
     assert mean_util_loss < 0.02, "Util_loss {} in BNE should be (close to) zero!".format(util_loss.mean())
     assert max_util_loss < 0.05, "Util_loss {} in BNE should be (close to) zero!".format(util_loss.max())
-
-def test_ex_interim_util_loss_estimator_splitaward_bne():
-    """Test the util_loss in BNE of fpsb split-award auction. - ex interim util_loss should be close to zero"""
-    n_players = 2
-    grid_size = 2**5
-    batch_size = 2**9
-    n_items = 2
-
-    class SpltAwardConfig:
-        """Data class for split-award setting"""
-        u_lo = [1, 1]
-        u_hi = [1.4, 1.4]
-        efficiency_parameter = .3
-    config = SpltAwardConfig()
-
-    mechanism = FPSBSplitAwardAuction()
-    strat = ClosureStrategy(_optimal_bid_splitaward2x2_1(config))
-
-    agents = [
-        ReverseBidder.uniform(config.u_lo[0], config.u_hi[0], strat,
-                              n_items=n_items, efficiency_parameter=config.efficiency_parameter,
-                              player_position=i, batch_size=batch_size)
-        for i in range(n_players)
-    ]
-
-    env = AuctionEnvironment(
-        mechanism = mechanism,
-        agents = agents,
-        batch_size = batch_size,
-        n_players = n_players
-    )
-
-    # assert first player has (near) zero util_loss
-    util_loss = metrics.ex_interim_util_loss(env, 0, batch_size, grid_size)
-
-    mean_util_loss = util_loss.mean()
-    max_util_loss = util_loss.max()
-
-    assert mean_util_loss < 0.02, "util_loss in BNE should be (close to) zero " \
-        + "but is {}!".format(mean_util_loss)
-    assert max_util_loss < 0.07, "util_loss in BNE should be (close to) zero " \
-        + "but is {}!".format(max_util_loss)

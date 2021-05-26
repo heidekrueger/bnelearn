@@ -7,7 +7,7 @@ from bnelearn.strategy import NeuralNetStrategy
 from bnelearn.mechanism import StaticMechanism, StaticFunctionMechanism
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.learner import ESPGLearner, PGLearner, AESPGLearner
+from bnelearn.learner import ESPGLearner, PGLearner
 
 # Shared objects
 cuda = torch.cuda.is_available()
@@ -135,41 +135,3 @@ def test_PG_learner_SGD():
     print(utility)
     assert utility > 2.3, "optimizer did not learn sufficiently (2.2), got {:.2f}".format(utility)
 
-
-def test_AESPG_learner_SGD():
-    """Tests the standard policy gradient learner in static env.
-    This does not test complete convergence but 'running in the right direction'.
-    """
-    pytest.skip("AESPG is still experimental")
-    BATCH_SIZE = 2**10
-    epoch = 100
-
-    optimizer_type = torch.optim.SGD
-    optimizer_hyperparams = {'lr': 1e-3, 'momentum': 0.5}
-    learner_hyperparams = {'sigma': .5, 'population_size': 32}
-
-    model = NeuralNetStrategy(
-        input_length,
-        hidden_nodes =hidden_nodes,
-        hidden_activations=hidden_activations,
-        ensure_positive_output=torch.tensor([float(u_hi)])
-        ).to(device)
-
-    bidder = strat_to_bidder(model, BATCH_SIZE, 0)
-    env = AuctionEnvironment(
-        mechanism_auction, agents = [bidder],
-        strategy_to_player_closure=strat_to_bidder,
-        batch_size = BATCH_SIZE, n_players=1)
-
-    learner = AESPGLearner(
-        model = model,
-        environment=env,
-        hyperparams=learner_hyperparams,
-        optimizer_type=optimizer_type,
-        optimizer_hyperparams=optimizer_hyperparams
-    )
-
-    for _ in range(epoch+1):
-        utility = learner.update_strategy_and_evaluate_utility()
-
-    assert utility > 1.4, "optimizer did not learn sufficiently (1.4), got {:.2f}".format(utility)
