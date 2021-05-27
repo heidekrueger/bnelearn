@@ -1,13 +1,4 @@
-import os
-import sys
 from BayesianOptimization.bayes_opt import BayesianOptimization
-
-# put bnelearn imports after this.
-# pylint: disable=wrong-import-position
-sys.path.append(os.path.realpath('.'))
-sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
-from bnelearn.experiment.configurations import ExperimentConfig # pylint: disable=import-error
-from bnelearn.experiment.configuration_manager import ConfigurationManager  # pylint: disable=import-error
 
 def black_box_function(x, y):
     """Function with unknown internals we wish to maximize.
@@ -41,3 +32,17 @@ optimizer.maximize(init_points=5, n_iter=10)
 #    print("Iteration {}: \n\t{}".format(i, res))
 
 print(optimizer.max)
+
+
+
+#changing bounds
+optimizer.set_bounds(new_bounds={"x": (-2, 3)})
+
+#probe specific points before gp starts 
+#Beware that the order has to be alphabetical. You can usee optimizer.space.keys for guidance
+optimizer.probe(
+    params={"x": 0.5, "y": 0.7},
+    lazy=True, #meaning these points will be evaluated only the next time you call maximize
+)
+
+# %%
