@@ -1,13 +1,5 @@
 """
-Runs predefined experiments with individual parameters
-fire.Fire() asks you to decide for one of the experiments defined above
-by writing its name and define the required (and optional) parameters
-e.g.:
-    experiment.py single_item_uniform_symmetric 1 20 [2,3] 'first_price'
-
-alternatively instead of fire.Fire() use, e.g.:
-    single_item_uniform_symmetric(1,20,[2,3],'first_price')
-
+Runs predefined experiments with individual parameters.
 """
 import os
 import sys

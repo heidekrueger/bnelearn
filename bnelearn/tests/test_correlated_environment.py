@@ -92,11 +92,11 @@ def test_correlated_valuation_draw_constant_weights():
                                         bidder2.valuations.flatten().cpu())
                            ))
         
-        assert abs(corr[0,1]**2 - gamma) < 0.01, \
+        assert abs(corr[0,1]**2 - gamma) < 0.02, \
             f'Wrong cor between common and bidder 1, got {corr[0,1]:.3f}, exp. {gamma.sqrt():.3f}!'
-        assert abs(corr[0,2]**2 - gamma) < 0.01, \
+        assert abs(corr[0,2]**2 - gamma) < 0.02, \
             f'Wrong cor between common and bidder 2, got {corr[0,2]:.3f}, exp. {gamma.sqrt():.3f}!'
-        assert abs(corr[1,2] - gamma) < 0.01, \
+        assert abs(corr[1,2] - gamma) < 0.02, \
             f'Wrong cor between bidder 1 and bidder 2, got {corr[1,2]:.3f}, exp. {gamma:.3f}!'
 
 def test_correlated_valuation_draw_Bernoulli_weights():
@@ -125,11 +125,11 @@ def test_correlated_valuation_draw_Bernoulli_weights():
                                         bidder2.valuations.flatten().cpu())
                            ))
         
-        assert abs(corr[0,1] - gamma) < 0.01, \
+        assert abs(corr[0,1] - gamma) < 0.02, \
             f'Wrong cor between common and bidder 1, got {corr[0,1]:.3f}, exp. {gamma:.3f}!'
-        assert abs(corr[0,2] - gamma) < 0.01, \
+        assert abs(corr[0,2] - gamma) < 0.02, \
             f'Wrong cor between common and bidder 2, got {corr[0,2]:.3f}, exp. {gamma:.3f}!'
-        assert abs(corr[1,2] - gamma) < 0.01, \
+        assert abs(corr[1,2] - gamma) < 0.02, \
             f'Wrong cor between bidders 1 and 2, got {corr[1,2]:.3f}, exp. {gamma:.3f}!'
 
 def test_correlated_drawing_in_environment():

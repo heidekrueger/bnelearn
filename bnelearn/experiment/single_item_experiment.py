@@ -398,7 +398,7 @@ class MineralRightsExperiment(SingleItemExperiment):
                 self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
 
             print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities))
-            self.bne_utility = torch.tensor(self.bne_utilities).mean() #Stefan: Update to pytorch 1.7 will move this from 'cpu' to self.config.hardware.device. Will this cause problems? What behavior do we want?
+            self.bne_utility = torch.tensor(self.bne_utilities).mean()
         else:
             self.known_bne = False
 

@@ -84,7 +84,3 @@ def test_action_caching_with_manual_valuation_change():
     
     bidder.valuations = zeros
     assert torch.allclose(bidder.get_action(), zeros), "Bidder returned incorrect actions!"
-
-def test_parallel_closure_evaluation():
-    """Parallelism of closure evaluation should work as expected."""
-    pytest.skip("Test not implemented.")

@@ -1,5 +1,8 @@
 """
 Script for reproducing the reported experiments
+
+NOTE: if you haven't installed bnelearn via pip, this script needs to be called
+      from the bnelearn root directory, rather than from /scripts/
 """
 import os
 import sys
