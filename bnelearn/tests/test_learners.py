@@ -134,4 +134,3 @@ def test_PG_learner_SGD():
         utility = learner.update_strategy_and_evaluate_utility()
     print(utility)
     assert utility > 2.3, "optimizer did not learn sufficiently (2.2), got {:.2f}".format(utility)
-

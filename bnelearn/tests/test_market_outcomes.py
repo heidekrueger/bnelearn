@@ -1,9 +1,5 @@
 """This module tests the calculation of market outcomes."""
-import warnings
-import pytest
 import torch
-# from bnelearn.experiment.configuration_manager import ConfigurationManager
-# from bnelearn.environment import AuctionEnvironment
 from bnelearn.mechanism.auctions_single_item import FirstPriceSealedBidAuction
 from bnelearn.mechanism.auctions_combinatorial import LLGAuction
 
@@ -48,7 +44,7 @@ def test_efficiency():
     efficiency = mechanism.get_efficiency(env)
     # Average efficiency should be the ratio of a 50-50 chance (actual_welfare)
     # and the max of two uniform RVs = 2/3 (maximum_welfare)
-    assert abs(efficiency.item() - (0.5 / (2./3.))) < 1e-2
+    assert abs(efficiency.item() - (0.5 / (2./3.))) < 2e-2
 
 def test_llg_efficiency():
     """Test the calculation of efficiency for the specific LLG market"""
