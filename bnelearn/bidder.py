@@ -72,7 +72,6 @@ class Bidder(Player):
                  item_interest_limit: int = None,
                  constant_marginal_values: bool = False,
                  correlation_type: str = None,
-                 regret: float = 0.0,
                  ):
 
         super().__init__(strategy, player_position, batch_size, cuda)
@@ -93,7 +92,6 @@ class Bidder(Player):
 
         self.welfare_reference = None
         self.payments_reference = None
-        self.regret = regret
 
         # Compute lower and upper bounds for grid computation
         self._grid_lb = self.value_distribution.support.lower_bound \
@@ -305,70 +303,6 @@ class Bidder(Player):
         else:
             valuations = self.valuations
 
-        if self.regret > 0:
-            welfare = self.get_welfare(allocations[:, self.player_position, :], valuations)
-            payoff = welfare - payments[:, self.player_position]
-
-            # TODO: Only implemented for LLG
-            if valuations.shape[1] > 1:
-                raise NotImplementedError('Regret not implemented for this setting.')
-
-            alpha = beta = self.regret
-            win_mask = torch.any(allocations[:, self.player_position, :].bool(), axis=1)
-            if self.player_position < bids.shape[1] - 1:  # local
-                highest_opponent_bids = bids[:, -1, 0]
-
-                # winner's regret
-                #   how much have the locals overbidden the global
-                #   -> distribute that regret among them according to their relative
-                #   payment attribution
-                #   should be zero in core-selecting payment rule
-                total_payments = payments[:, :-1].sum(axis=1)[win_mask]
-                relative_payment = (
-                    payments[:, self.player_position][win_mask] / total_payments
-                )
-                relative_payment[relative_payment != relative_payment] = 0  # set nan to 0
-
-                payoff[win_mask] -= alpha * (
-                    total_payments - highest_opponent_bids[win_mask]
-                ).relu() * relative_payment
-
-                # loser's regret
-                #   when the sum of the bids of the opponents of my coalition and
-                #   my own valuation exceeds the global bid, the local has that
-                #   difference as regret
-
-                # option a: use own value and other local's bid
-                coalition_bids = bids[~win_mask, :-1, 0].sum(axis=1) - bids[~win_mask, self.player_position, 0]
-
-                # option b: use all local's valuations and distribute attribution
-                # coaltion_value = torch.zeros_like(highest_opponent_bids[~win_mask])
-                # for a in env.agents[:-1]:
-                #     coaltion_value += a.valuations[~win_mask, 0]
-                # relative_value = (
-                #     valuations[~win_mask, 0] / coaltion_value
-                # )
-                # relative_value[relative_value != relative_value] = 0  # set nan to 0
-
-                payoff[~win_mask] -= beta * (
-                    valuations[~win_mask, 0] + coalition_bids - highest_opponent_bids[~win_mask]
-                ).relu()
-
-            else:  # global
-                highest_opponent_bids = bids[:, :-1, 0].sum(axis=1)
-
-                # winner's regret
-                payoff[win_mask] -= alpha * (
-                    payments[win_mask, -1] - highest_opponent_bids[win_mask]
-                ).relu()
-
-                # loser's regret
-                payoff[~win_mask] -= beta * (
-                    valuations[~win_mask, 0] - highest_opponent_bids[~win_mask]
-                ).relu()
-
-            return payoff
-
         return self.get_counterfactual_utility(
             allocations[:, self.player_position, :],
             payments[:, self.player_position],
@@ -433,56 +367,6 @@ class Bidder(Player):
             self.actions = actions
 
         return actions
-
-
-class ReverseBidder(Bidder):
-    """
-    Bidder that has reversed utility (*(-1)) as valuations correspond to
-    their costs and payments to what they get payed.
-    """
-    def __init__(self, efficiency_parameter=None, **kwargs):
-        self.efficiency_parameter = efficiency_parameter
-        super().__init__(**kwargs)
-        self._grid_lb_util_loss = 0
-        self._grid_ub_util_loss = float(2 * self._grid_ub)
-
-    # pylint: disable=arguments-differ
-    def get_valuation_grid(self, n_points, extended_valuation_grid=False):
-        """ Extends `Bidder.draw_values_grid` with efficiency parameter
-
-        Args
-        ----
-            extended_valuation_grid: bool, if True returns legitimate valuations, otherwise it returns
-                a larger grid, which can be used as ``all reasonable bids`` as needed for
-                estiamtion of regret.
-        """
-
-        grid_values = torch.zeros(n_points, self.n_items, device=self.device)
-
-        if extended_valuation_grid:
-            grid_values = super().get_valuation_grid(n_points, extended_valuation_grid)
-        else:
-            grid_values[:, 0] = torch.linspace(self._grid_lb, self._grid_ub, n_points,
-                                               device=self.device)
-            grid_values[:, 1] = self.efficiency_parameter * grid_values[:, 0]
-
-        return grid_values
-
-    def draw_valuations_(self, common_component = None, weights: torch.Tensor or float = 0.0):
-        """ Extends `Bidder.draw_valuations_` with efiiciency parameter
-        """
-        _ = super().draw_valuations_(common_component, weights)
-
-        assert self.valuations.shape[1] == 2, \
-            'linear valuations are only defined for two items.'
-        self.valuations[:, 1] = self.efficiency_parameter * self.valuations[:, 0]
-
-        return self.valuations
-
-    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
-        """For reverse bidders, returns are inverted.
-        """
-        return - super().get_counterfactual_utility(allocations, payments, counterfactual_valuations)
 
 
 class CombinatorialBidder(Bidder):

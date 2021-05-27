@@ -116,11 +116,6 @@ class LLGExperiment(LocalGlobalExperiment):
 
         self.gamma = self.correlation = float(config.setting.gamma)
 
-        if hasattr(config.setting, 'regret'):
-            self.regret = float(config.setting.regret)
-        else:
-            self.regret = 0  # default quasi-linear utility
-
         if config.setting.correlation_types == 'Bernoulli_weights':
             self.CorrelationDevice = BernoulliWeightsCorrelationDevice
         elif config.setting.correlation_types == 'constant_weights':
@@ -210,8 +205,6 @@ class LLGExperiment(LocalGlobalExperiment):
             known_bne = False
         elif self.risk != 1.0:
             known_bne = False
-        elif self.regret != 0.0:
-            known_bne = False
         elif self.config.setting.payment_rule in \
             ['nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
             if self.config.setting.correlation_types in ['Bernoulli_weights', 'independent'] or \
@@ -283,8 +276,6 @@ class LLGExperiment(LocalGlobalExperiment):
             name += ['independent']
         if self.risk != 1.0:
             name += ['risk_{}'.format(self.risk)]
-        if self.regret != 0.0:
-            name += ['regret_{}'.format(self.regret)]
         return os.path.join(*name)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
@@ -292,4 +283,4 @@ class LLGExperiment(LocalGlobalExperiment):
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
                               player_position=player_position, batch_size=batch_size,
                               n_items=self.input_length, correlation_type=correlation_type,
-                              risk=self.risk, cache_actions=cache_actions, regret=self.regret)
+                              risk=self.risk, cache_actions=cache_actions)

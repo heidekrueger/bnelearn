@@ -56,13 +56,6 @@ class SettingConfig:
     constant_marginal_values: bool = False
     item_interest_limit: int = None
 
-    # Split-Award
-    efficiency_parameter: float = None
-
-    # LLLLGG
-    core_solver: str = None
-    # parallel: int = 1 in hardware config now
-
 
 @dataclass
 class LearningConfig:

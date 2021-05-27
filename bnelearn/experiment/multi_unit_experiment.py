@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 from scipy import integrate, interpolate
 
-from bnelearn.bidder import Bidder, ReverseBidder
+from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from .experiment import  Experiment
 from bnelearn.experiment.configurations import ExperimentConfig

@@ -110,7 +110,6 @@ class ConfigurationManager:
         self.setting.n_players = 3
         self.setting.payment_rule = 'nearest_zero'
         self.setting.correlation_groups = [[0, 1], [2]]
-        self.setting.regret = 0.0
         self.setting.gamma = 0.0
         self.logging.log_metrics = {'opt': True,
                                     'efficiency': True,
@@ -250,8 +249,7 @@ class ConfigurationManager:
                     correlation_types: str = 'None', correlation_groups: List[List[int]] = 'None',
                     correlation_coefficients: List[float] = 'None', n_units: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
-                    item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None', regret: float = 'None',):
+                    item_interest_limit: int = 'None'):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
@@ -280,9 +278,6 @@ class ConfigurationManager:
                 given neural net inputs. Defaults to identity, i.e. truthful bidding.
             constant_marginal_values: TODO @Nils
             item_interest_limit: TODO @Nils
-            efficiency_parameters: TODO @Nils
-            core_solver: Specifies which solver should be used to calculate core prices.
-                Should be one of 'NoCore', 'mpc', 'gurobi', 'cvxpy' (Relevant settings: LLLLGG)
 
         Returns:
             ``self`` with updated parameters.
