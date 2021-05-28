@@ -9,7 +9,8 @@ Over the next months, we will release the entire framework, so stay tuned.
 ## Suggested Citation
 If you find `bnelearn` helpful and use it in your work, please consider using the following citation:
 
-```@misc{Heidekrueger2021,
+```
+@misc{Heidekrueger2021,
   author = {Heidekr\"uger, Stefan and Kohring, Nils and Sutterer, Paul and Bichler, Martin},
   title = {{bnelearn}: A Framework for Equilibrium Learning in Sealed-Bid Auctions},
   year = {2021},
@@ -45,6 +46,15 @@ Everything should likewise run on Windows, but you may need to change the output
 You can then run the experiments underlying the tables and figures in the main paper via `python run_experiments.py`. The standard configuration of the file reruns the experiments behind Figure 3, i.e. one run each for all combinations of the correlation strength and the risk parameter. To run the other experiments reported in the paper, make the following changes in lines 17 to 34:
 
 * For the experiments underlying Figure 2, set `n_runs = 10`, `gammas = [0.5]`, `payment_rules = ['nearest_vcg']`.
-* For the experiments underlying Table 1, set `n_runs = 10`, `risks=[1.0]`, `gammas = [0.5]`, `payment_rules = ['vcg', 'nearest_bid', 'nearest_zero', 'nearest_vcg', 'first_price']`
+* For the experiments underlying Table 1, set `n_runs = 10`, `risks = [1.0]`, `gammas = [0.5]`, `payment_rules = ['vcg', 'nearest_bid', 'nearest_zero', 'nearest_vcg', 'first_price']`.
+
+To run the other experiments reported in the Supplementary Information, make the following changes:
+* For the experiments underlying Table S.1, set `n_runs = 10`, `risks = [1.0]` or `[0.5]`, `gammas = [0.0]`, `payment_rules = ['first_price']`, `corr_models = ['independent']`, `experiment_type = 'single_item_uniform_symmetric'` or `'single_item_gaussian_symmetric'` and additionally supply the corresponding number of bidders via the `n_players` parameter to the `set_setting()` call.
+* For the experiments underlying Figure S.1, set `n_runs = 10`, `risks = [1.0]`, `gammas = [0.0]`, `payment_rules = ['first_price']`, `corr_models = ['independent']`, `experiment_type = 'single_item_gaussian_symmetric` and additionally supply the number of bidders via `n_players = 10` within the `set_setting()` call.
+* For the experiments underlying Table S.2, set `n_runs = 10`, `risks = [1.0]`, `gammas = [None]` (fallback to default), `payment_rules = ['first_price']` for the Affiliated values setting and `'second_price'` for the Common value settings, `corr_models = [None]` (fallback to default), `experiment_type = 'affiliated_observations'` or `'mineral_rights'` and additionally supply the corresponding number of bidders via the `n_players` parameter to the `set_setting()` call.
+* For the experiments underlying Table S.3, set `n_runs = 10`, `risks = [1.0]`, `gammas = [0.0]`, `payment_rules = ['first_price', 'uniform', 'vcg']`, `corr_models = ['independent']`, `experiment_type = 'multiunit'` and additionally supply the corresponding number of bidders via the `n_players` parameter and the number of units via the `n_units` parameter to the `set_setting()` call.
+* For the experiments underlying Figure S.2, make the corresponding changes to the previous experiments.
+* For the experiments underlying Figure S.3, make the corresponding changes to the previous experiments and set `corr_models = ['additive']`.
+* For the experiments underlying Figure S.2, make the corresponding changes to the previous experiments.
 
 Logs will be written into the `experiments` subdirectory. While the experiments are running, you can examine the training progress via `tensorboard --logdir experiments`.
