@@ -42,8 +42,9 @@ Everything should likewise run on Windows, but you may need to change the output
 
 ### Running the experiments
 
-@Nils: what's the easiest way? we should ideally provide scripts that run everything behind the tables and figures?
+You can then run the experiments underlying the tables and figures in the main paper via `python run_experiments.py`. The standard configuration of the file reruns the experiments behind Figure 3, i.e. one run each for all combinations of the correlation strength and the risk parameter. To run the other experiments reported in the paper, make the following changes in lines 17 to 34:
 
-You can then run the experiments via `python ./scripts/run_inderdependent.py` (from the root directory).
+* For the experiments underlying Figure 2, set `n_runs = 10`, `gammas = [0.5]`, `payment_rules = ['nearest_vcg']`.
+* For the experiments underlying Table 1, set `n_runs = 10`, `risks=[1.0]`, `gammas = [0.5]`, `payment_rules = ['vcg', 'nearest_bid', 'nearest_zero', 'nearest_vcg', 'first_price']`
 
 Logs will be written into the `experiments` subdirectory. While the experiments are running, you can examine the training progress via `tensorboard --logdir experiments`.
