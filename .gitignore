@@ -1,0 +1,69 @@
+## Python
+# Compiled Python Stuff
+__pycache__
+*.pyc
+# Setuptools distribution folder (created during build)
+/dist/
+# Python egg metadata, (created during build)
+/*.egg-info
+# Python Testing Logs
+.pytest_cache
+.coverage
+
+# Pylint output
+pylint.txt
+
+# notebook checkpoints
+*-checkpoint.ipynb
+
+## Local VSCode project settings
+/.vscode/
+"vscode - bnelearn.Ink"
+
+# experiment logs, tensorboard files, figures, parsed tabular data and model checkpoints
+/**/events.out.*
+/**/*.npz
+/runs
+/notebooks/runs
+/notebooks/**/*.png
+/notebooks/**/*.svg
+/notebooks/**/*.gif
+/notebooks/**/*.csv
+# no typo: matched both Untitled and Untitled_2
+/notebooks/Untitle*.ipynb
+/temp/*
+/scripts/temp
+
+# dont check in figures created from R -- only keep the source code
+/R/figures/*.eps
+
+# R and Rstudio project files
+.Rproj.user
+.Rhistory
+
+# ignore experiments subdirectory used for logging
+/experiments/*
+
+# gurobi log files
+/GurobiSol/*
+**/gurobi.log
+
+# PyCharm
+/.idea/*
+
+# Running script
+#bnelearn/experiment/run_experiment.py
+
+# auto generated tex-files
+#.tex #already captured by /experiments/
+
+# Sphinx autodoc
+# ignore everything except templates, static content and basic config files
+/docs/*
+!/docs/_static
+!/docs/_templates
+!/docs/readme.md
+!/docs/index.rst
+!/docs/make.bat
+!/docs/Makefile
+!/docs/conf.py

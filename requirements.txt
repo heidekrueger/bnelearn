@@ -1,0 +1,12 @@
+numpy
+#pytorch # conda install -c pytorch
+torch
+tensorboard
+matplotlib
+pandas
+pytest
+pytest-cov
+pylint
+scipy
+tqdm
+tabulate
