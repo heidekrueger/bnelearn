@@ -1,7 +1,7 @@
 import os
 import sys
 import numpy as np
-from BayesianOptimization.bayes_opt import BayesianOptimization
+import torch
 
 # put bnelearn imports after this.
 # pylint: disable=wrong-import-position
@@ -14,48 +14,61 @@ from bnelearn.experiment.configuration_manager import (
     ConfigurationManager,
 )  # pylint: disable=import-error
 
+from BayesianOptimization.bayes_opt import BayesianOptimization
+from BayesianOptimization.bayes_opt.logger import JSONLogger
+from BayesianOptimization.bayes_opt.event import Events
+
 
 class OptimizableExperiment:
     """
-    Optimize hp's using bayes_opt    
+    Optimize hyperparameters of the experiment using bayes_opt    
     """
 
     def __init__(
         self,
         experiment_class,
         experiment_config: ExperimentConfig,
+        minimize: bool,  # should we min or max the given metric?
         hp_bounds: dict,
-        n_runs_budget=5,
-        save_log: bool = True,
         metric_name: str = "epsilon_relative",
+        n_runs_budget=5,
+        verbose: bool = True,
+        log: bool = True,
     ):
         """
         Format for the hp_bounds: {'x': (2, 4), 'y': (-3, 3)}, where x and y are some hp's
         n_runs_budget is the number of effective hp configurations to check, to get the full number of runs, 
         multiply by the number of seeds per run
         """
-        print(type(experiment_class))
         self.experiment_class = experiment_class
         self.experiment_config = experiment_config
         self.hp_bounds = hp_bounds
         self.n_runs_budget = n_runs_budget
         self.metric_name = metric_name
+        self.verbose = verbose
 
-    # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
-    def optimize(self, init_points: int = 3, minimize: bool = True):
-        optimizer = BayesianOptimization(
+        self.optimizer = BayesianOptimization(
             f=self._get_optimizable_function(minimize=minimize),
             pbounds=self.hp_bounds,
-            verbose=2,
+            verbose=2
+            if verbose
+            else 0,  # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
             random_state=1,
         )
-        optimizer.maximize(init_points=init_points, n_iter=self.n_runs_budget)
 
-        for i, res in enumerate(optimizer.res):
-            print("Iteration {}: \n\t{}".format(i, res))
+        if log:
+            logger = JSONLogger(path="./logs.json")
+            self.optimizer.subscribe(Events.OPTIMIZATION_STEP, logger)
 
-        print(optimizer.max)
+    def optimize(self, init_points: int = 3):
+        self.optimizer.maximize(init_points=init_points, n_iter=self.n_runs_budget)
 
+        if self.verbose:
+            for i, res in enumerate(self.optimizer.res):
+                print("Iteration {}: \n\t{}".format(i, res))
+            print(self.optimizer.max)
+
+    # maybe population size should be described as 2 ** k, where k varies from 1 to 7
     def _get_optimizable_function(self, minimize: bool):
         # only those hp's which are specified in the hp_bounds would be passed, parameter names should match exactly
         def optimizable_function(
@@ -75,16 +88,20 @@ class OptimizableExperiment:
             activation_function = self.experiment_config.learning.hidden_activations[0]
 
             # Just a hack, basically, but do we really want to handle different actiavations for each layer?
-            self.experiment_config.learning.hidden_activations = [activation_function] * hidden_layers
+            self.experiment_config.learning.hidden_activations = [
+                activation_function
+            ] * hidden_layers
             self.experiment_config.learning.optimizer_hyperparams["lr"] = lr
-            self.experiment_config.learning.learner_hyperparams['population_size'] = population_size
-            self.experiment_config.learning.learner_hyperparams['sigma'] = sigma
+            self.experiment_config.learning.learner_hyperparams[
+                "population_size"
+            ] = population_size
+            self.experiment_config.learning.learner_hyperparams["sigma"] = sigma
 
-            
             experiment = self.experiment_class(self.experiment_config)
-            res = experiment.run()
-            res = res.to_numpy()
-            specific_metric = self._get_specific_metric(result=res)
+            res = experiment.run()            
+            specific_metric = self._get_specific_metric(result=res.to_numpy())
+
+            torch.cuda.empty_cache()            
             # save metric/result
             if minimize == True:
                 return -specific_metric
@@ -92,6 +109,23 @@ class OptimizableExperiment:
                 return specific_metric
 
         return optimizable_function
+
+    def set_new_bounds(self, new_bounds: dict):
+        """
+        During the optimization process you may realize the bounds chosen for some parameters are not adequate. For these situations you can 
+        invoke the method to alter them. You can pass any combination of existing parameters and their associated new bounds.
+        """
+        self.optimizer.set_bounds(new_bounds=new_bounds)
+
+    def probe_point(self, params: dict, lazy: bool = True):
+        """
+        Checks a specific point (hyperparameter set)
+        (lazy=True), means these point will be evaluated only the next time you call maximize. (immediately otherwise)
+        This probing process happens before the gaussian process takes over.
+        """
+        self.optimizer.probe(
+            params=params, lazy=lazy,
+        )
 
     def _get_specific_metric(self, result: np.ndarray) -> float:
         """
@@ -113,12 +147,13 @@ class OptimizableExperiment:
 
 
 try:
+    #the full logs for the experiments, not the bayes_opt log
     log_root_dir = os.path.join(os.path.expanduser("~"), "bnelearn", "experiments")
 
     # n_runs here means # of seeds
     experiment_config, experiment_class = (
         ConfigurationManager(
-            experiment_type="single_item_uniform_symmetric", n_runs=3, n_epochs=100
+            experiment_type="single_item_uniform_symmetric", n_runs=1, n_epochs=10
         )
         .set_setting(risk=1.1)
         .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)
@@ -132,11 +167,14 @@ try:
         experiment_class=experiment_class,
         experiment_config=experiment_config,
         hp_bounds={"lr": (0.0001, 0.01)},
+        metric_name = "epsilon_relative",
         n_runs_budget=10,
+        minimize=True,
+        verbose=True,
+        log=True
     )
-    experiment.optimize()
+    experiment.optimize(init_points=3)
 
 except KeyboardInterrupt:
     print("\nKeyboardInterrupt: released memory after interruption")
     torch.cuda.empty_cache()
-
