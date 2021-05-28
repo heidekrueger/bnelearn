@@ -1,5 +1,5 @@
 # bnelearn: A Framework for Equilibrium Learning in Sealed-Bid Auctions
-Authors: Stefan Heidekrüger, Paul Sutterer, Nils Kohring, Martin Bichler
+Authors: Stefan Heidekrüger ([@heidekrueger](https://github.com/heidekrueger)), Paul Sutterer, Nils Kohring ([@kohring](https://github.com/kohring)), Martin Bichler
 
 Currently, this repository contains minimal code to reproduce the experiments in our forthcoming paper: "Learning Equilibria in Symmetric Auction Games using
 Artificial Neural Networks".
