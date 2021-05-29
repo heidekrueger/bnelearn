@@ -88,7 +88,7 @@ class OptimizableExperiment:
             activation_function = self.experiment_config.learning.hidden_activations[0]
 
             # Just a hack, basically, but do we really want to handle different actiavations for each layer?
-            self.experiment_config.learning.hidden_activations = [
+            self.experiment_config.learning.hidden_activations = [g
                 activation_function
             ] * hidden_layers
             self.experiment_config.learning.optimizer_hyperparams["lr"] = lr
