@@ -40,8 +40,9 @@ class OptimizableExperiment:
         n_runs_budget is the number of effective hp configurations to check, to get the full number of runs, 
         multiply by the number of seeds per run
         """
-        self.experiment_class = experiment_class
-        self.experiment_config = experiment_config
+        self.experiment = experiment_class(experiment_config)
+        #self.experiment_class = experiment_class
+        #self.experiment_config = experiment_config
         self.hp_bounds = hp_bounds
         self.n_runs_budget = n_runs_budget
         self.metric_name = metric_name
@@ -85,23 +86,23 @@ class OptimizableExperiment:
             hidden_nodes = [
                 hidden_nodes
             ] * hidden_layers  # that's the real parameter format we use
-            activation_function = self.experiment_config.learning.hidden_activations[0]
-
+            activation_function = self.experiment.learning.hidden_activations[0]
+            
             # Just a hack, basically, but do we really want to handle different actiavations for each layer?
-            self.experiment_config.learning.hidden_activations = [g
+            self.experiment.learning.hidden_activations = [
                 activation_function
             ] * hidden_layers
-            self.experiment_config.learning.optimizer_hyperparams["lr"] = lr
-            self.experiment_config.learning.learner_hyperparams[
+            self.experiment.learning.optimizer_hyperparams["lr"] = lr
+            self.experiment.learning.learner_hyperparams[
                 "population_size"
             ] = population_size
-            self.experiment_config.learning.learner_hyperparams["sigma"] = sigma
-
-            experiment = self.experiment_class(self.experiment_config)
-            res = experiment.run()            
+            self.experiment.learning.learner_hyperparams["sigma"] = sigma
+            
+            #experiment = self.experiment_class(self.experiment_config)
+            res = self.experiment.run()
             specific_metric = self._get_specific_metric(result=res.to_numpy())
 
-            torch.cuda.empty_cache()            
+            torch.cuda.empty_cache()
             # save metric/result
             if minimize == True:
                 return -specific_metric
@@ -137,17 +138,17 @@ class OptimizableExperiment:
         for metric_entry in result:
             if metric_entry[2] == "eval/{}".format(self.metric_name):
                 eps_rel.append(metric_entry[4])
-                print(metric_entry)
+                #print(metric_entry)
 
         np.array(eps_rel)
         averaged_metric = np.average(eps_rel)
-        print("Averaged:" + str(averaged_metric))
+        print("Averaged metric: " + str(averaged_metric))
 
         return averaged_metric
 
 
 try:
-    #the full logs for the experiments, not the bayes_opt log
+    # the full logs for the experiments, not the bayes_opt log
     log_root_dir = os.path.join(os.path.expanduser("~"), "bnelearn", "experiments")
 
     # n_runs here means # of seeds
@@ -167,11 +168,11 @@ try:
         experiment_class=experiment_class,
         experiment_config=experiment_config,
         hp_bounds={"lr": (0.0001, 0.01)},
-        metric_name = "epsilon_relative",
-        n_runs_budget=10,
+        metric_name="epsilon_relative",
+        n_runs_budget=20,
         minimize=True,
         verbose=True,
-        log=True
+        log=True,
     )
     experiment.optimize(init_points=3)
 

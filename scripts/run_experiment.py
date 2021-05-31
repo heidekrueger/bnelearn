@@ -38,7 +38,7 @@ if __name__ == '__main__':
 
     ### SINGLE ITEM EXPERIMENTS ###
     experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
-                                                               n_epochs=5000) \
+                                                               n_epochs=100) \
         .set_setting(risk=1.1)\
         .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
         .set_learning(pretrain_iters=5) \
@@ -157,6 +157,7 @@ if __name__ == '__main__':
         # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
         if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
             experiment.run()
+            pass
         else:
             raise Exception('Unable to perform the correct serialization')
 
