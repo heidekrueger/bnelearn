@@ -695,19 +695,19 @@ class Experiment(ABC):
             redraw_bne_vals = not self.logging.cache_eval_actions
             # length: n_models
             utility_vs_bne[bne_idx] = torch.tensor([
-                bne_env.get_strategy_reward(
+                float(bne_env.get_strategy_reward(
                     strategy=model,
                     player_position=m2b(m),
                     draw_valuations=redraw_bne_vals,
                     use_env_valuations= not redraw_bne_vals
-                ) for m, model in enumerate(self.models)
+                )) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(
-                [1 - utility_vs_bne[bne_idx][i] / self.bne_utilities[bne_idx][m2b(i)]
+                [1 - utility_vs_bne[bne_idx][i] / float(self.bne_utilities[bne_idx][m2b(i)])
                  for i, model in enumerate(self.models)]
             )
             epsilon_absolute[bne_idx] = torch.tensor(
-                [self.bne_utilities[bne_idx][m2b(i)] - utility_vs_bne[bne_idx][i]
+                [float(self.bne_utilities[bne_idx][m2b(i)]) - utility_vs_bne[bne_idx][i]
                  for i, model in enumerate(self.models)]
             )
 
@@ -751,19 +751,19 @@ class Experiment(ABC):
             m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
 
             L_2[bne_idx] = [
-                metrics.norm_strategy_and_actions(
+                float(metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, 2,
                     componentwise=self.logging.log_componentwise_norm,
                     component_selection=self.relevant_actions()[i, :]
-                )
+                ))
                 for i, model in enumerate(self.models)
             ]
             L_inf[bne_idx] = [
-                metrics.norm_strategy_and_actions(
+                float(metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, float('inf'),
                     componentwise=self.logging.log_componentwise_norm,
                     component_selection=self.relevant_actions()[i, :]
-                )
+                ))
                 for i, model in enumerate(self.models)
             ]
         return L_2, L_inf
