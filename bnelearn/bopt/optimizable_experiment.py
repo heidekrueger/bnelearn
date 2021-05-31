@@ -2,28 +2,34 @@ import os
 import sys
 import numpy as np
 import torch
+import json
 
-# put bnelearn imports after this.
 # pylint: disable=wrong-import-position
 sys.path.append(os.path.realpath("."))
 sys.path.append(os.path.join(os.path.expanduser("~"), "bnelearn"))
-from bnelearn.experiment.configurations import (
-    ExperimentConfig,
-)  # pylint: disable=import-error
-from bnelearn.experiment.configuration_manager import (
-    ConfigurationManager,
-)  # pylint: disable=import-error
 
-from BayesianOptimization.bayes_opt import BayesianOptimization
-from BayesianOptimization.bayes_opt.logger import JSONLogger
-from BayesianOptimization.bayes_opt.event import Events
+# pylint: disable=import-error
+from bnelearn.experiment.configurations import ExperimentConfig
+
+from BayesianOptimization.bayes_opt.observer import _Tracker
+from BayesianOptimization.bayes_opt import (
+    BayesianOptimization,
+    JSONLogger,
+    Events,
+    ScreenLogger,
+)
+
+# from BayesianOptimization.bayes_opt.logger import JSONLogger
+# from BayesianOptimization.bayes_opt.event import Events
+
+
 
 
 class OptimizableExperiment:
     """
     Optimize hyperparameters of the experiment using bayes_opt    
     """
-
+    
     def __init__(
         self,
         experiment_class,
@@ -40,9 +46,8 @@ class OptimizableExperiment:
         n_runs_budget is the number of effective hp configurations to check, to get the full number of runs, 
         multiply by the number of seeds per run
         """
-        self.experiment = experiment_class(experiment_config)
-        #self.experiment_class = experiment_class
-        #self.experiment_config = experiment_config
+        self.experiment_class = experiment_class
+        self.experiment_config = experiment_config
         self.hp_bounds = hp_bounds
         self.n_runs_budget = n_runs_budget
         self.metric_name = metric_name
@@ -58,8 +63,11 @@ class OptimizableExperiment:
         )
 
         if log:
-            logger = JSONLogger(path="./logs.json")
+            #logger = JSONLogger(path="./logs.json")
+            logger = self.Observer(path="bnelearn/bopt/logs/logs.json")
             self.optimizer.subscribe(Events.OPTIMIZATION_STEP, logger)
+            # self.optimizer.subscribe(Events.OPTIMIZATION_START, logger)
+            # self.optimizer.subscribe(Events.OPTIMIZATION_END, logger)
 
     def optimize(self, init_points: int = 3):
         self.optimizer.maximize(init_points=init_points, n_iter=self.n_runs_budget)
@@ -86,26 +94,26 @@ class OptimizableExperiment:
             hidden_nodes = [
                 hidden_nodes
             ] * hidden_layers  # that's the real parameter format we use
-            activation_function = self.experiment.learning.hidden_activations[0]
-            
+            activation_function = self.experiment_config.learning.hidden_activations[0]
+
             # Just a hack, basically, but do we really want to handle different actiavations for each layer?
-            self.experiment.learning.hidden_activations = [
+            self.experiment_config.learning.hidden_activations = [
                 activation_function
             ] * hidden_layers
-            self.experiment.learning.optimizer_hyperparams["lr"] = lr
-            self.experiment.learning.learner_hyperparams[
+            self.experiment_config.learning.optimizer_hyperparams["lr"] = lr
+            self.experiment_config.learning.learner_hyperparams[
                 "population_size"
             ] = population_size
-            self.experiment.learning.learner_hyperparams["sigma"] = sigma
-            
-            #experiment = self.experiment_class(self.experiment_config)
-            res = self.experiment.run()
+            self.experiment_config.learning.learner_hyperparams["sigma"] = sigma
+
+            experiment = self.experiment_class(self.experiment_config)
+            res = experiment.run()
             specific_metric = self._get_specific_metric(result=res.to_numpy())
 
             torch.cuda.empty_cache()
             # save metric/result
-            if minimize == True:
-                return -specific_metric
+            if minimize:
+                return -1 * specific_metric
             else:
                 return specific_metric
 
@@ -138,7 +146,7 @@ class OptimizableExperiment:
         for metric_entry in result:
             if metric_entry[2] == "eval/{}".format(self.metric_name):
                 eps_rel.append(metric_entry[4])
-                #print(metric_entry)
+                # print(metric_entry)
 
         np.array(eps_rel)
         averaged_metric = np.average(eps_rel)
@@ -147,35 +155,41 @@ class OptimizableExperiment:
         return averaged_metric
 
 
-try:
-    # the full logs for the experiments, not the bayes_opt log
-    log_root_dir = os.path.join(os.path.expanduser("~"), "bnelearn", "experiments")
+    class Observer(_Tracker):
+        """
+        """
 
-    # n_runs here means # of seeds
-    experiment_config, experiment_class = (
-        ConfigurationManager(
-            experiment_type="single_item_uniform_symmetric", n_runs=1, n_epochs=10
-        )
-        .set_setting(risk=1.1)
-        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)
-        .set_learning(pretrain_iters=5)
-        .set_logging(eval_batch_size=2 ** 22)
-        .set_hardware(specific_gpu=7)
-        .get_config()
-    )
+        def __init__(self, path):
+            self.path = path
+            super(type(self), self).__init__()
 
-    experiment = OptimizableExperiment(
-        experiment_class=experiment_class,
-        experiment_config=experiment_config,
-        hp_bounds={"lr": (0.0001, 0.01)},
-        metric_name="epsilon_relative",
-        n_runs_budget=20,
-        minimize=True,
-        verbose=True,
-        log=True,
-    )
-    experiment.optimize(init_points=3)
+        def update(self, event, instance):  
+            self.event = event
+            self.instance = instance                      
+            if event == Events.OPTIMIZATION_START:
+                self._on_opt_start()
+            if event == Events.OPTIMIZATION_STEP:
+                self._on_opt_step()
+            if event == Events.OPTIMIZATION_END:
+                self._on_opt_end()
 
-except KeyboardInterrupt:
-    print("\nKeyboardInterrupt: released memory after interruption")
-    torch.cuda.empty_cache()
+        def _on_opt_start(self):
+            pass
+
+        def _on_opt_step(self):
+            print('_on_opt_step')
+            data = dict(self.instance.res[-1])
+            now, time_elapsed, time_delta = self._time_metrics()
+            data["datetime"] = {
+               "datetime": now,
+               "elapsed": time_elapsed,
+               "delta": time_delta,
+            }
+
+            with open(self.path, "a+") as f:
+                f.write(json.dumps(data) + "\n")
+
+            self._update_tracker(self.event, self.instance)
+
+        def _on_opt_end(self):
+            pass
