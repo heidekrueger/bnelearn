@@ -12,6 +12,8 @@ sys.path.append(os.path.join(os.path.expanduser("~"), "bnelearn"))
 from bnelearn.experiment.configurations import ExperimentConfig
 
 from BayesianOptimization.bayes_opt.observer import _Tracker
+from bayes_opt.util import load_logs
+
 from BayesianOptimization.bayes_opt import (
     BayesianOptimization,
     JSONLogger,
@@ -40,6 +42,7 @@ class OptimizableExperiment:
         n_runs_budget=5,
         verbose: bool = True,
         log: bool = True,
+        seed: int = 1
     ):
         """
         Format for the hp_bounds: {'x': (2, 4), 'y': (-3, 3)}, where x and y are some hp's
@@ -59,11 +62,11 @@ class OptimizableExperiment:
             verbose=2
             if verbose
             else 0,  # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
-            random_state=1,
+            random_state=seed,
         )
 
-        if log:
-            #logger = JSONLogger(path="./logs.json")
+        #TODO make flexible, check not to override old logs, test with runing and restarting 
+        if log:            
             logger = self.Observer(path="bnelearn/bopt/logs/logs.json")
             self.optimizer.subscribe(Events.OPTIMIZATION_STEP, logger)
             # self.optimizer.subscribe(Events.OPTIMIZATION_START, logger)
@@ -77,9 +80,30 @@ class OptimizableExperiment:
                 print("Iteration {}: \n\t{}".format(i, res))
             print(self.optimizer.max)
 
+    def load_from_logs(self, path: str):
+        load_logs(self.optimizer, logs=[path]) #TODO test
+
+    def set_new_bounds(self, new_bounds: dict):
+        """
+        During the optimization process you may realize the bounds chosen for some parameters are not adequate. For these situations you can 
+        invoke the method to alter them. You can pass any combination of existing parameters and their associated new bounds.
+        """
+        self.optimizer.set_bounds(new_bounds=new_bounds)
+
+    def probe_point(self, params: dict, lazy: bool = True):
+        """
+        Checks a specific point (hyperparameter set)
+        (lazy=True), means these point will be evaluated only the next time you call maximize. (immediately otherwise)
+        This probing process happens before the gaussian process takes over.
+        """
+        self.optimizer.probe(
+            params=params, lazy=lazy,
+        )
+
     # maybe population size should be described as 2 ** k, where k varies from 1 to 7
     def _get_optimizable_function(self, minimize: bool):
         # only those hp's which are specified in the hp_bounds would be passed, parameter names should match exactly
+        #TODO extend for all the possible hp's
         def optimizable_function(
             lr: float = 1e-3,  # learning rate
             population_size: int = 64,  # from 2 to 128 is reasonable (>128 will run really long), this is the # of perturbations in the ES
@@ -118,23 +142,6 @@ class OptimizableExperiment:
                 return specific_metric
 
         return optimizable_function
-
-    def set_new_bounds(self, new_bounds: dict):
-        """
-        During the optimization process you may realize the bounds chosen for some parameters are not adequate. For these situations you can 
-        invoke the method to alter them. You can pass any combination of existing parameters and their associated new bounds.
-        """
-        self.optimizer.set_bounds(new_bounds=new_bounds)
-
-    def probe_point(self, params: dict, lazy: bool = True):
-        """
-        Checks a specific point (hyperparameter set)
-        (lazy=True), means these point will be evaluated only the next time you call maximize. (immediately otherwise)
-        This probing process happens before the gaussian process takes over.
-        """
-        self.optimizer.probe(
-            params=params, lazy=lazy,
-        )
 
     def _get_specific_metric(self, result: np.ndarray) -> float:
         """
