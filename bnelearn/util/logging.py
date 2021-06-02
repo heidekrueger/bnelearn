@@ -157,6 +157,9 @@ def process_figure(fig, epoch=None, figure_name='plot', tb_group='eval',
                    output_dir=None, save_png=False, save_svg=False):
     """displays, logs and/or saves a figure"""
 
+    # Markus - add interactive mode to show in macos
+    plt.ion()
+
     if save_png and output_dir:
         plt.savefig(os.path.join(output_dir, 'png', f'{figure_name}_{epoch:05}.png'))
 

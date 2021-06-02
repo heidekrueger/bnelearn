@@ -26,6 +26,8 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         MineralRightsExperiment,
                                                         AffiliatedObservationsExperiment)
 
+from bnelearn.experiment.general_blotto_experiment import (GeneralBlottoExperiment)
+
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
 # pylint: disable = dangerous-default-value
@@ -195,6 +197,10 @@ class ConfigurationManager:
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
 
+    def _init_standard_blotto(self):
+        self.setting.u_lo = 0 # TODO - check if param is reasonable
+        self.setting.u_hi = 1 # TODO - check if param is reasonable
+
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
         # Learning
@@ -286,6 +292,9 @@ class ConfigurationManager:
     def _post_init_splitaward(self):
         pass
 
+    def _post_init_standard_blotto(self):
+        pass
+
     experiment_types = {
         'single_item_uniform_symmetric':
             (UniformSymmetricPriorSingleItemExperiment, _init_single_item_uniform_symmetric,
@@ -312,7 +321,9 @@ class ConfigurationManager:
         'multiunit':
             (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
-            (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)}
+            (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
+        'standard_blotto':
+            (GeneralBlottoExperiment, _init_standard_blotto, _post_init_standard_blotto)}
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type
