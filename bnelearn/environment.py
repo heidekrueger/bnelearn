@@ -273,10 +273,6 @@ class AuctionEnvironment(Environment):
             # Get actions for all players in the environment except the one at player_position
             # which is overwritten by the active agent instead.
 
-            # the counter thing is an ugly af hack: if environment is dynamic,
-            # all player positions will be none. so simply start at 1 for
-            # the first opponent and count up
-
             # ugly af hack: if environment is dynamic, all player positions will be
             # none. simply start at 1 for the first opponent and count up
             # TODO: clean this up 🤷 ¯\_(ツ)_/¯

@@ -303,7 +303,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
             agents=[self._strat_to_bidder(bne_strategy,
                                             player_position=i,
                                             batch_size=self.logging.eval_batch_size,
-                                            cache_actions=self.logging.cache_eval_actions)
+                                            enable_action_caching=self.logging.cache_eval_actions)
                     for i in range(self.n_players)],
             batch_size=self.logging.eval_batch_size,
             n_players=self.n_players,
@@ -328,8 +328,8 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.bne_utility = bne_utility_analytical
         self.bne_utilities = [self.bne_utility] * self.n_models
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
-        return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions,
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+        return Bidder(self.common_prior, strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
                       risk=self.risk)
 
     def _get_logdir_hierarchy(self):
@@ -500,7 +500,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                 mechanism=self.mechanism,
                 agents=[self._strat_to_bidder(bne_strategies[i][p], player_position=p,
                                               batch_size=self.logging.eval_batch_size,
-                                              cache_actions=self.config.logging.cache_eval_actions)
+                                              enable_action_caching=self.config.logging.cache_eval_actions)
                         for p in range(self.n_players)],
                 n_players=self.n_players,
                 batch_size=self.logging.eval_batch_size,
@@ -597,7 +597,7 @@ class MineralRightsExperiment(SingleItemExperiment):
                     bne_strategy,
                     player_position = i,
                     batch_size = self.config.logging.eval_batch_size,
-                    cache_actions = self.config.logging.cache_eval_actions
+                    enable_action_caching = self.config.logging.cache_eval_actions
                 )
                 for i in range(self.n_players)
             ]
@@ -630,9 +630,9 @@ class MineralRightsExperiment(SingleItemExperiment):
         else:
             self.known_bne = False
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         correlation_type = 'multiplicative'
-        return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions,
+        return Bidder(self.common_prior, strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
                       risk=self.risk, correlation_type=correlation_type)
 
     def _get_logdir_hierarchy(self):
@@ -709,7 +709,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
                 strategy = bne_strategy,
                 player_position = i,
                 batch_size = self.config.logging.eval_batch_size,
-                cache_actions = self.config.logging.cache_eval_actions
+                enable_action_caching = self.config.logging.cache_eval_actions
             )
             for i in range(self.n_players)
         ]

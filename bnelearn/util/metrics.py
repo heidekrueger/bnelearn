@@ -224,7 +224,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     observation = agent.valuations[:batch_size, ...].detach().clone()
     action_actual = agent.get_action()[:batch_size, ...].detach().clone()
     # TODO Nils: Generally, we don't need `clone()` but in some rare instances we do.
-    #            Side effects? Relation to `cache_actions`? ...
+    #            Side effects? Relation to `enable_action_caching`? ...
     input_length = observation.shape[-1]
     output_length = action_actual.shape[-1]
 

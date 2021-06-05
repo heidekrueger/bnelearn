@@ -94,12 +94,12 @@ class LocalGlobalExperiment(Experiment, ABC):
         else:
             return super()._get_model_names()
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
                               player_position=player_position, batch_size=batch_size,
                               n_items=self.input_length, correlation_type=correlation_type,
-                              risk=self.risk, cache_actions=cache_actions)
+                              risk=self.risk, enable_action_caching=enable_action_caching)
 
 
 class LLGExperiment(LocalGlobalExperiment):
@@ -288,12 +288,12 @@ class LLGExperiment(LocalGlobalExperiment):
             name += ['regret_{}'.format(self.regret)]
         return os.path.join(*name)
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
                               player_position=player_position, batch_size=batch_size,
                               n_items=self.input_length, correlation_type=correlation_type,
-                              risk=self.risk, cache_actions=cache_actions, regret=self.regret)
+                              risk=self.risk, enable_action_caching=enable_action_caching, regret=self.regret)
 
 
 class LLGFullExperiment(LocalGlobalExperiment):
@@ -459,7 +459,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
         return os.path.join(*name)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0,
-                         cache_actions=False):
+                         enable_action_caching=False):
         correlation_type = 'additive' if (hasattr(self, 'correlation_groups') \
             and self.config.setting.correlation_types != 'independent') else None
         return CombinatorialBidder.uniform(
@@ -471,7 +471,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
             n_items=self.input_length,
             correlation_type=correlation_type,
             risk=self.risk,
-            cache_actions=cache_actions
+            enable_action_caching=enable_action_caching
         )
 
     def _plot(self, **kwargs):  # pylint: disable=arguments-differ

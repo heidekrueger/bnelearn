@@ -347,7 +347,7 @@ class MultiUnitExperiment(Experiment, ABC):
 
         super().__init__(config=config)
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         """
         Standard strat_to_bidder method.
         """
@@ -362,7 +362,7 @@ class MultiUnitExperiment(Experiment, ABC):
             constant_marginal_values=self.constant_marginal_values,
             player_position=player_position,
             batch_size=batch_size,
-            cache_actions=cache_actions,
+            enable_action_caching=enable_action_caching,
             correlation_type=correlation_type
         )
 
@@ -406,7 +406,7 @@ class MultiUnitExperiment(Experiment, ABC):
                 mechanism=self.mechanism,
                 agents=[
                     self._strat_to_bidder(bne_strategy, self.logging.eval_batch_size, j,
-                                          cache_actions=self.config.logging.cache_eval_actions)
+                                          enable_action_caching=self.config.logging.cache_eval_actions)
                     for j, bne_strategy in enumerate(bne_strategies)
                 ],
                 n_players=self.n_players,
@@ -497,7 +497,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
     #         output_tensor = temp
     #     return output_tensor
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=False):
         """Standard strat_to_bidder method, but with ReverseBidder"""
         return ReverseBidder.uniform(
             lower=self.u_lo[0], upper=self.u_hi[0],
@@ -509,7 +509,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
             player_position=player_position,
             efficiency_parameter=self.efficiency_parameter,
             batch_size=batch_size,
-            cache_actions=cache_actions
+            enable_action_caching=enable_action_caching
         )
 
     def _get_logdir_hierarchy(self):

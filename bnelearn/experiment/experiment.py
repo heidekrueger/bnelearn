@@ -154,7 +154,7 @@ class Experiment(ABC):
                 for bidders in self._model2bidder]
 
     @abstractmethod
-    def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=False):
         pass
 
     def _setup_learners(self):

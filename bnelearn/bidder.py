@@ -36,7 +36,7 @@ class Player(ABC):
     #     pass #pylint: disable=unnecessary-pass
 
     @abstractmethod
-    def get_utility(self, **kwargs):
+    def get_utility(self, *args, **kwargs):
         """Calculates player's utility based on outcome of a game."""
         raise NotImplementedError
 
@@ -70,7 +70,7 @@ class Bidder(Player):
         batch_size: corresponds to the number of individual auctions.
         descending_valuations: if is true, the valuations will be returned
             in decreasing order.
-        cache_actions: determines whether actions should be cached and
+        enable_action_caching: determines whether actions should be cached and
             retrieved from memory, rather than recomputed as long as valuations
             haven't changed.
         TODO ...
@@ -86,9 +86,8 @@ class Bidder(Player):
                  observation_size: int =1,
                  bid_size: int = 1,
                  cuda: str = True,
-                 cache_actions: bool = False,
-                 risk: float = 1.0,
-                 regret: float = 0.0,
+                 enable_action_caching: bool = False,
+                 risk: float = 1.0
                  ):
 
         super().__init__(strategy, player_position, batch_size, cuda)
@@ -96,158 +95,83 @@ class Bidder(Player):
         self.valuation_size = valuation_size
         self.observation_size = observation_size
         self.bid_size = bid_size,
-        
+
         self.risk = risk
-        self._cache_actions = cache_actions
-        self._valuations_changed = False # true if new valuation drawn since actions calculated
-        self._valuations = torch.zeros(batch_size, valuation_size, device=self.device)
-        self._observations_changed = False # true if new observations drawn since actions calculated
-        self._observations = torch.zeros(batch_size, observation_size, device=self.device)
-        if self._cache_actions:
-            self.actions = torch.zeros(batch_size, bid_size, device=self.device)
+        self._enable_action_caching = enable_action_caching
+        self._cached_observations_changed = False # true if new observations drawn since actions calculated
+        self._cached_observations = None
+        self._cached_valuations_changed = False # true if new observations drawn since actions calculated
+        self._cached_valuations = None
+        if self._enable_action_caching:
+            self._cached_valuations   = torch.zeros(batch_size, valuation_size, device=self.device)
+            self._cached_observations = torch.zeros(batch_size, observation_size, device=self.device)
+            self._cached_actions      = torch.zeros(batch_size, bid_size, device=self.device)
 
-        # TODO: what are these, should these really be parts of bidder state?
-        self.welfare_reference = None
-        self.payments_reference = None
-        self.regret = regret
 
 
     @property
-    def valuations(self):
-        return self._valuations
+    def cached_observations(self):
+        return self._cached_observations
 
-    @property
-    def observations(self):
-        return self._observations
-
-    @valuations.setter
-    def valuations(self, new_value: torch.Tensor):
-        """When manually setting valuations, make sure that the _valuations_changed flag is set correctly."""
-        if new_value.shape != self._valuations.shape:
-            warnings.warn("New valuations have different shape than specified in Bidder object!")
-        if (new_value.dtype, new_value.device) != (self._valuations.dtype, self._valuations.device):
-            warnings.warn(
-                "New valuations have different dtype and/or device than bidder. Converting to {},{}".format(
-                    self._valuations.device, self._valuations.dtype)
-                )
-
-        if not new_value.equal(self._valuations):
-            self._valuations = new_value.to(self._valuations.device, self._valuations.dtype)
-            self._valuations_changed = True
-
-    @observations.setter
-    def observations(self, new_value: torch.Tensor):
+    @cached_observations.setter
+    def cached_observations(self, new_value: torch.Tensor):
         """When manually setting observations, make sure that the _observations_changed flag is set correctly."""
-        if new_value.shape != self._observations.shape:
+        if new_value.shape != self._cached_observations.shape:
             warnings.warn("New observations have different shape than specified in Bidder object!")
-        if (new_value.dtype, new_value.device) != (self._observations.dtype, self._observations.device):
+        if (new_value.dtype, new_value.device) != (self._cached_observations.dtype, self._cached_observations.device):
             warnings.warn(
                 "New observations have different dtype and/or device than bidder. Converting to {},{}".format(
-                    self._observations.device, self._observations.dtype)
+                    self._cached_observations.device, self._cached_observations.dtype)
                 )
 
-        if not new_value.equal(self._observations):
-            self._observations = new_value.to(self._observations.device, self._observations.dtype)
-            self._observations_changed = True 
+        if not new_value.equal(self._cached_observations):
+            self._cached_observations = new_value.to(self._cached_observations.device, self._cached_observations.dtype)
+            self._cached_observations_changed = True
 
+    @property
+    def cached_valuations(self):
+        return self._cached_valuations
 
-
-    def get_utility(self, allocations, payments, bids): #pylint: disable=arguments-differ
-        """
-        For a batch of allocations and payments return the player's utilities at
-        current valuations.
-        """
-        valuations = self.valuations
-
-        if self.regret > 0:
-            welfare = self.get_welfare(allocations[:, self.player_position, :], valuations)
-            payoff = welfare - payments[:, self.player_position]
-
-            # TODO: Only implemented for LLG
-            if self.valuation_size > 1:
-                raise NotImplementedError('Regret not implemented for this setting.')
-
-            alpha = beta = self.regret
-            win_mask = torch.any(allocations[:, self.player_position, :].bool(), axis=1)
-            if self.player_position < bids.shape[1] - 1:  # local
-                highest_opponent_bids = bids[:, -1, 0]
-
-                # winner's regret
-                #   how much have the locals overbidden the global
-                #   -> distribute that regret among them according to their relative
-                #   payment attribution
-                #   should be zero in core-selecting payment rule
-                total_payments = payments[:, :-1].sum(axis=1)[win_mask]
-                relative_payment = (
-                    payments[:, self.player_position][win_mask] / total_payments
+    @cached_valuations.setter
+    def cached_valuations(self, new_value: torch.Tensor):
+        """When manually setting valuations, make sure that the _valuations_changed flag is set correctly."""
+        if new_value.shape != self._cached_valuations.shape:
+            warnings.warn("New valuations have different shape than specified in Bidder object!")
+        if (new_value.dtype, new_value.device) != (self._cached_valuations.dtype, self._cached_valuations.device):
+            warnings.warn(
+                "New valuations have different dtype and/or device than bidder. Converting to {},{}".format(
+                    self._cached_valuations.device, self._cached_valuations.dtype)
                 )
-                relative_payment[relative_payment != relative_payment] = 0  # set nan to 0
 
-                payoff[win_mask] -= alpha * (
-                    total_payments - highest_opponent_bids[win_mask]
-                ).relu() * relative_payment
+        if not new_value.equal(self._cached_valuations):
+            self._cached_valuations = new_value.to(self._cached_valuations.device, self._cached_valuations.dtype)
+            self._cached_valuations_changed = True
 
-                # loser's regret
-                #   when the sum of the bids of the opponents of my coalition and
-                #   my own valuation exceeds the global bid, the local has that
-                #   difference as regret
 
-                # option a: use own value and other local's bid
-                coalition_bids = bids[~win_mask, :-1, 0].sum(axis=1) - bids[~win_mask, self.player_position, 0]
 
-                # option b: use all local's valuations and distribute attribution
-                # coaltion_value = torch.zeros_like(highest_opponent_bids[~win_mask])
-                # for a in env.agents[:-1]:
-                #     coaltion_value += a.valuations[~win_mask, 0]
-                # relative_value = (
-                #     valuations[~win_mask, 0] / coaltion_value
-                # )
-                # relative_value[relative_value != relative_value] = 0  # set nan to 0
-
-                payoff[~win_mask] -= beta * (
-                    valuations[~win_mask, 0] + coalition_bids - highest_opponent_bids[~win_mask]
-                ).relu()
-
-            else:  # global
-                highest_opponent_bids = bids[:, :-1, 0].sum(axis=1)
-
-                # winner's regret
-                payoff[win_mask] -= alpha * (
-                    payments[win_mask, -1] - highest_opponent_bids[win_mask]
-                ).relu()
-
-                # loser's regret
-                payoff[~win_mask] -= beta * (
-                    valuations[~win_mask, 0] - highest_opponent_bids[~win_mask]
-                ).relu()
-
-            return payoff
-
-        return self.get_counterfactual_utility(
-            allocations[:, self.player_position, :],
-            payments[:, self.player_position],
-            valuations
-        )
-
-    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
+    def get_utility(self, allocations, payments, valuations=None):
         """
-        For a batch of allocations, payments and counterfactual valuations return the
-        player's utilities.
+        For a batch of valuations, allocations, and payments of the bidder,
+        return their utility.
 
         Can handle multiple batch dimensions, e.g. for allocations a shape of
-        (..., batch_size, n_items). These batch dimensions are kept in returned
+        ( outer_batch_size, inner_batch_size, n_items). These batch dimensions are kept in returned
         payoff.
         """
-        welfare = self.get_welfare(allocations, counterfactual_valuations)
+
+        if valuations is None:
+            valuations = self._cached_valuations
+
+        welfare = self.get_welfare(allocations, valuations)
         payoff = welfare - payments
 
         if self.risk == 1.0:
             return payoff
-        else:
-            # payoff^alpha not well defined in negative domain for risk averse agents
-            # the following is a memory-saving implementation of
-            #return payoff.relu()**self.risk - (-payoff).relu()**self.risk
-            return payoff.relu().pow_(self.risk).sub_(payoff.neg_().relu_().pow_(self.risk))
+
+        # payoff^alpha not well defined in negative domain for risk averse agents
+        # the following is a memory-saving implementation of
+        #return payoff.relu()**self.risk - (-payoff).relu()**self.risk
+        return payoff.relu().pow_(self.risk).sub_(payoff.neg_().relu_().pow_(self.risk))
 
     def get_welfare(self, allocations, valuations=None):
         """For a batch of allocations return the player's welfare.
@@ -259,32 +183,44 @@ class Bidder(Player):
         (..., batch_size, n_items). These batch dimensions are kept in returned
         welfare.
         """
-        assert allocations.dim() == 2 # batch_size x items
+        assert allocations.dim() >= 2 # [batch_sizes] x items
         if valuations is None:
-            valuations = self.valuations
+            valuations = self._cached_valuations
 
         item_dimension = valuations.dim() - 1
         welfare = (valuations * allocations).sum(dim=item_dimension)
 
         return welfare
 
-    def get_action(self):
+    def get_action(self, observations):
         """Calculate action from current valuations, or retrieve from cache"""
-        if self._cache_actions and not self._valuations_changed:
-            return self.actions
-        inputs = self.valuations.view(self.batch_size, -1)
+
+        if self._enable_action_caching and not self._cached_observations_changed:
+            if observations is None or \
+                torch.equal(observations, self._cached_observations):
+
+                return self._cached_actions
+
+        if observations is None:
+            assert self._enable_action_caching, \
+                "Action caching is disabled but no observation argument was provided to get_actions."
+            # No observations have been given, but _cached_observations_changed
+            # use cached observations but recompute actions
+            observations = self._cached_observations
+        inputs = observations.view(self.batch_size, -1)
         # for cases when n_observations != input_length (e.g. Split-Award Auctions, combinatorial auctions with bid languages)
         # TODO: generalize this, see #82. https://gitlab.lrz.de/heidekrueger/bnelearn/issues/82
         if hasattr(self.strategy, 'input_length') and self.strategy.input_length != self.observation_size:
-            warnings.warn("Strategy expects shorter input_length than n_items. Truncating valuations...")
+            warnings.warn("Strategy expects shorter input_length than n_items. Truncating observations...")
             dim = self.strategy.input_length
             inputs = inputs[:,:dim]
 
         actions = self.strategy.play(inputs)
-        self._valuations_changed = False
 
-        if self._cache_actions:
-            self.actions = actions
+        if self._enable_action_caching:
+            self.cached_observations = observations
+            self._cached_actions = actions
+            self._cached_observations_changed = False
 
         return actions
 
@@ -332,10 +268,10 @@ class ReverseBidder(Bidder):
 
     #     return self.valuations
 
-    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
+    def get_utility(self, allocations, payments, valuations):
         """For reverse bidders, returns are inverted.
         """
-        return - super().get_counterfactual_utility(allocations, payments, counterfactual_valuations)
+        return - super().get_utility(allocations, payments, valuations)
 
 
 class CombinatorialBidder(Bidder):
@@ -362,7 +298,7 @@ class CombinatorialBidder(Bidder):
     def get_welfare(self, allocations, valuations: torch.Tensor=None) -> torch.Tensor:
         assert allocations.dim() == 2  # batch_size x items
         if valuations is None:
-            valuations = self.valuations
+            valuations = self._cached_valuations
 
         item_dimension = valuations.dim() - 1
         # 0: item A | 1: item B | 2: bundle {A, B}
