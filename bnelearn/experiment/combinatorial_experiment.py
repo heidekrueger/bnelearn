@@ -264,7 +264,7 @@ class LLGExperiment(LocalGlobalExperiment):
 
         self.bne_env = bne_env
         self.bne_utilities_new_sample = torch.tensor(
-            [bne_env.get_reward(a, draw_valuations=True) for a in bne_env.agents])
+            [bne_env.get_reward(a, redraw_valuations=True) for a in bne_env.agents])
 
         bne_utilities_database = logging_utils.access_bne_utility_database(self, self.bne_utilities_new_sample)
         if bne_utilities_database:
@@ -438,7 +438,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
             strategy_to_player_closure=self._strat_to_bidder
         )
         self.bne_utilities = torch.tensor(
-            [self.bne_env.get_reward(a, draw_valuations=True) for a in self.bne_env.agents])
+            [self.bne_env.get_reward(a, redraw_valuations=True) for a in self.bne_env.agents])
 
         # Compare estimated util to that of Beck & Ott table 2
         if self.payment_rule == 'mrcs_favored':

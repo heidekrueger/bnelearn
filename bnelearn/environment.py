@@ -55,8 +55,8 @@ class Environment(ABC):
         pass #pylint: disable=unnecessary-pass
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
-                            draw_valuations=False, aggregate_batch=True,
-                            use_env_valuations=True, regularize: float=0,
+                            redraw_valuations=False, aggregate_batch=True,
+                            regularize: float=0,
                             **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
@@ -64,12 +64,9 @@ class Environment(ABC):
         Args:
             strategy: the strategy to be evaluated
             player_position: the player position at which the agent will be evaluated
-            draw_valuation: whether to redraw valuations (default false)
+            redraw_valuation: whether to redraw valuations (default false)
             aggregate_batch: whether to aggregate rewards into a single scalar (True),
                 or return batch_size many rewards (one for each sample). Default True
-            use_env_valuations: if True, strategy will be evaluated using the valuations
-                of self.agents[player_position] (default True), if false will use those of
-                temporarily created bidder object
             strat_to_player_kwargs: further arguments needed for agent creation
             regularize: paramter that penalizes high action values (e.g. if we
                 get the same utility with different actions, we prefer the loweer
@@ -82,16 +79,11 @@ class Environment(ABC):
         agent = self._strategy_to_player(strategy=strategy, batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
         # TODO: this should rally be in AuctionEnv subclass
-        env_agent = self.agents[player_position]
-        if use_env_valuations and hasattr(env_agent, 'valuations'):
-            agent.valuations = env_agent.valuations
-        if use_env_valuations and hasattr(env_agent, '_unkown_valuation'):
-            agent._unkown_valuation = env_agent._unkown_valuation
-        return self.get_reward(agent, draw_valuations=draw_valuations,
+        return self.get_reward(agent, redraw_valuations=redraw_valuations,
                                aggregate=aggregate_batch, regularize=regularize)
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
-                                       draw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
+                                       redraw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
         """
@@ -101,8 +93,8 @@ class Environment(ABC):
         agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
 
-        # NOTE: Order matters! if draw_valuations, then action must be calculated AFTER reward
-        reward = self.get_reward(agent, draw_valuations = draw_valuations, aggregate = False)
+        # NOTE: Order matters! if redraw_valuations, then action must be calculated AFTER reward
+        reward = self.get_reward(agent, redraw_valuations = redraw_valuations, aggregate = False)
         action = agent.get_action()
 
         return action, reward
@@ -193,10 +185,6 @@ class AuctionEnvironment(Environment):
     """
     An environment of agents to play against and evaluate strategies.
 
-    In particular this means:
-        - an iterable of sets of -i players that a strategy of a single player can be tested against
-        - accept strategy as argument, then play batch_size rounds and return the reward
-
     Args:
         ... (TODO: document)
         correlation_structure
@@ -212,7 +200,8 @@ class AuctionEnvironment(Environment):
             valuation_observation_sampler: ValuationObservationSampler,
             batch_size = 100,
             n_players = None,
-            strategy_to_player_closure: Callable[[Strategy], Bidder] = None            
+            strategy_to_player_closure: Callable[[Strategy], Bidder] = None,
+            redraw_every_iteration: bool = False
         ):
 
         assert isinstance(valuation_observation_sampler, ValuationObservationSampler)
@@ -230,11 +219,17 @@ class AuctionEnvironment(Environment):
         self.mechanism = mechanism
         self.sampler = valuation_observation_sampler
 
+        self._redraw_every_iteration = redraw_every_iteration
+        # draw initial observations and iterations
+        self._observations: torch.Tensor = None
+        self._valuations: torch.Tensor = None
+        self.draw_valuations()
+
 
     def get_reward(
             self,
             agent: Bidder,
-            draw_valuations: bool = False,
+            redraw_valuations: bool = False,
             aggregate: bool = True,
             regularize: float = 0.0,
             return_allocation: bool = False
@@ -251,22 +246,24 @@ class AuctionEnvironment(Environment):
 
         player_position = agent.player_position if agent.player_position else 0
 
-        # draw valuations
-        if draw_valuations:
-            self.draw_valuations_()
+        # draw valuations if desired
+        if redraw_valuations:
+            self.draw_valuations()
+
+        agent_observation = self._observations[:, player_position, :]
+        agent_valuation = self._valuations[:, player_position, :]
 
         # get agent_bid
-        agent_bid = agent.get_action()
+        agent_bid = agent.get_action(agent_observation)
         action_length = agent_bid.shape[1]
 
         if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
-            allocation, payments = self.mechanism.play(
+            allocations, payments = self.mechanism.play(
                 agent_bid.view(agent.batch_size, 1, action_length)
             )
-            utility = agent.get_utility(allocation, payments, agent_bid.view(agent.batch_size, 1, action_length))
         else: # at least 2 environment agent --> build bid_profile, then play
             # get bid profile
-            bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
+            bid_profile = torch.empty(self.batch_size, self.n_players, action_length,
                                       dtype=agent_bid.dtype, device=self.mechanism.device)
             bid_profile[:, player_position, :] = agent_bid
 
@@ -286,43 +283,45 @@ class AuctionEnvironment(Environment):
 
             allocations, payments = self.mechanism.play(bid_profile)
 
-            allocation = allocations[:, player_position, :]
+        agent_allocation = allocations[:, player_position, :]
+        agent_payment = payments[:,player_position]
 
-            # average over batch against this opponent
-            utility = agent.get_utility(allocations, payments, bid_profile)
+        # average over batch against this opponent
+        agent_utility = agent.get_utility(agent_allocation, agent_payment, agent_valuation)
 
-            # regularize
-            utility -= regularize * agent_bid.mean()
+        # regularize
+        agent_utility -= regularize * agent_bid.mean()
 
         if aggregate:
-            utility = utility.mean()
+            agent_utility = agent_utility.mean()
 
             if return_allocation:
-                # Returns flat tensor with int entries `i` for a allocation of `i`th item
-                allocation = torch.einsum(
-                    'bi,i->bi', allocation,
-                    torch.arange(1, action_length + 1, device=allocation.device)
+                # Returns flat tensor with int entries `i` for an allocation of `i`th item
+                agent_allocation = torch.einsum(
+                    'bi,i->bi', agent_allocation,
+                    torch.arange(1, action_length + 1, device=agent_allocation.device)
                 ).view(1, -1)
-                allocation = allocation[allocation > 0].to(torch.int8)
+                agent_allocation = agent_allocation[agent_allocation > 0].to(torch.int8)
 
-        return utility if not return_allocation else (utility, allocation)
+        return agent_utility if not return_allocation else (agent_utility, agent_allocation)
 
     def get_allocation(
             self,
             agent,
-            draw_valuations: bool = False,
+            redraw_valuations: bool = False,
             aggregate: bool = True,
         ) -> torch.Tensor:
         """Returns allocation of a single player against the environment.
         """
         return self.get_reward(
-            agent, draw_valuations, aggregate, return_allocation=True
+            agent, redraw_valuations, aggregate, return_allocation=True
             )[1]
 
     def prepare_iteration(self):
-        self.draw_valuations_()
+        if self._redraw_every_iteration:
+            self.draw_valuations()
 
-    def draw_valuations_(self):
+    def draw_valuations(self):
         """
         Draws a new valuation and observation profile
 
@@ -333,11 +332,8 @@ class AuctionEnvironment(Environment):
             updates agent's valuations and observation states
         """
 
-        v, o = self.sampler.draw_profiles(batch_size=self.batch_size)
-
-        for i, a in enumerate(self.agents):
-            a.valuations = v[:, i, :]
-            a.observations = o[:,i, :]
+        self._valuations, self._observations = \
+            self.sampler.draw_profiles(batch_size=self.batch_size)
 
 
     def draw_conditionals(
@@ -357,6 +353,4 @@ class AuctionEnvironment(Environment):
             inner_batch_size
         )
 
-        for i, a in enumerate(self.agents):
-            a.valuations = cv[:, i, :]
-            a.observations = co[:,i, :]
+        return cv, co

@@ -414,7 +414,7 @@ class MultiUnitExperiment(Experiment, ABC):
                 strategy_to_player_closure=self._strat_to_bidder
             )
 
-            self.bne_utilities[i] = [self.bne_env[i].get_reward(agent, draw_valuations=True)
+            self.bne_utilities[i] = [self.bne_env[i].get_reward(agent, redraw_valuations=True)
                                      for agent in self.bne_env[i].agents]
 
         print('BNE envs have been set up.')

@@ -312,7 +312,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
         # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
         # TODO: This is not very precise. Instead we should consider taking the mean over all agents
-        bne_utility_sampled = self.bne_env.get_reward(self.bne_env.agents[0], draw_valuations=True)
+        bne_utility_sampled = self.bne_env.get_reward(self.bne_env.agents[0], redraw_valuations=True)
         bne_utility_analytical = self._get_analytical_bne_utility()
 
         print('Utility in BNE (sampled): \t{:.5f}'.format(bne_utility_sampled))
@@ -508,7 +508,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
             )
 
             bne_utilities_sampled[i] = torch.tensor(
-                [self.bne_env[i].get_reward(a, draw_valuations=True) for a in self.bne_env[i].agents])
+                [self.bne_env[i].get_reward(a, redraw_valuations=True) for a in self.bne_env[i].agents])
 
             print(('Utilities in BNE{} (sampled):' + '\t{:.5f}' * self.n_players + '.') \
                 .format(i + 1,*bne_utilities_sampled[i]))
@@ -623,7 +623,7 @@ class MineralRightsExperiment(SingleItemExperiment):
             # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
             self.bne_utilities = torch.zeros((self.n_players,), device=self.config.hardware.device)
             for i, a in enumerate(self.bne_env.agents):
-                self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
+                self.bne_utilities[i] = self.bne_env.get_reward(agent=a, redraw_valuations=True)
 
             print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities))
             self.bne_utility = torch.tensor(self.bne_utilities).mean() #Stefan: Update to pytorch 1.7 will move this from 'cpu' to self.config.hardware.device. Will this cause problems? What behavior do we want?
@@ -735,7 +735,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
         self.bne_utilities = torch.zeros((3,), device=self.config.hardware.device)
         for i, a in enumerate(self.bne_env.agents):
-            self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
+            self.bne_utilities[i] = self.bne_env.get_reward(agent=a, redraw_valuations=True)
 
         print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities.tolist()))
         self.bne_utility = self.bne_utilities.mean()

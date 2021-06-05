@@ -8,6 +8,7 @@ from bnelearn.mechanism import StaticMechanism, StaticFunctionMechanism
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.learner import ESPGLearner, PGLearner, AESPGLearner
+from bnelearn.valuation_sampler import UniformSymmetricIPVSampler
 
 # Shared objects
 cuda = torch.cuda.is_available()
@@ -16,13 +17,12 @@ device = 'cuda' if cuda else 'cpu'
 hidden_nodes = [5,5]
 hidden_activations = [nn.SELU(), nn.SELU()]
 input_length = 1
-u_lo = 0
-u_hi = 10
+u_lo = 0.0
+u_hi = 10.0
 
 def strat_to_bidder(strategy, batch_size, player_position=0):
     """creates a bidder from a strategy"""
-    return Bidder.uniform(u_lo,u_hi, strategy, batch_size = batch_size, player_position=player_position)
-
+    return Bidder(strategy, player_position, batch_size)
 mechanism_auction = StaticMechanism(cuda=cuda)
 mechanism_function = StaticFunctionMechanism(cuda=cuda)
 
@@ -43,13 +43,14 @@ def test_static_mechanism():
 
     bidder = strat_to_bidder(model, BATCH_SIZE)
 
-    bidder.valuations.zero_().add_(10)
-    bids = bidder.valuations.clone().detach().view(-1,1,1)
+    valuations = torch.zeros(BATCH_SIZE, 1, device=device).add_(10)
+    bids = valuations.clone().detach().view(-1,1,1)
     bids.zero_().add_(10)
 
     allocations, payments = mechanism_auction.run(bids)
     # subset for single player
-    utilities = bidder.get_utility(allocations=allocations, payments=payments, bids=bids)
+    utilities = bidder.get_utility(
+        allocations=allocations[:,0,:], payments=payments[:,0], valuations=valuations)
 
     assert torch.isclose(utilities.mean(), torch.tensor(5., device=device), atol=1e-2), \
         "StaticMechanism returned unexpected rewards."
@@ -57,7 +58,8 @@ def test_static_mechanism():
     bids.add_(-5)
     allocations, payments = mechanism_auction.run(bids)
     # subset for single player
-    utilities = bidder.get_utility(allocations=allocations, payments=payments, bids=bids)
+    utilities = bidder.get_utility(
+        allocations=allocations[:,0,:], payments=payments[:,0], valuations=valuations)
     assert torch.isclose(utilities.mean(), torch.tensor(3.75, device=device), atol=3e-2), \
         "StaticMechanism returned unexpected rewards."
 
@@ -80,10 +82,15 @@ def test_ES_learner_SGD():
         ).to(device)
 
     bidder = strat_to_bidder(model, BATCH_SIZE, 0)
+
+
     env = AuctionEnvironment(
         mechanism_auction, agents = [bidder],
+        valuation_observation_sampler= UniformSymmetricIPVSampler(u_lo, u_hi, 1, 1, BATCH_SIZE, device),
         strategy_to_player_closure=strat_to_bidder,
         batch_size = BATCH_SIZE, n_players=1)
+    
+    env.draw_valuations()
 
     learner = ESPGLearner(
         model = model,
@@ -119,6 +126,7 @@ def test_PG_learner_SGD():
     bidder = strat_to_bidder(model, BATCH_SIZE, 0)
     env = AuctionEnvironment(
         mechanism_function, agents = [bidder],
+        valuation_observation_sampler= UniformSymmetricIPVSampler(u_lo, u_hi, 1, 1, BATCH_SIZE, device),
         strategy_to_player_closure=strat_to_bidder,
         batch_size = BATCH_SIZE, n_players=1)
 

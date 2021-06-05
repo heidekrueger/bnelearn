@@ -284,14 +284,14 @@ class LLGAuction(Mechanism):
 
         return (allocations.unsqueeze(-1), payments)  # payments: batches x players, allocation: batch x players x items
 
-    def get_efficiency(self, env, draw_valuations: bool = False) -> float:
+    def get_efficiency(self, env, redraw_valuations: bool = False) -> float:
         """LLG auction specific efficiency that uses fact of single-minded
         bidders.
         """
         batch_size = min(env.agents[0].valuations.shape[0], 2 ** 12)
 
-        if draw_valuations:
-            env.draw_valuations_()
+        if redraw_valuations:
+            env.draw_valuations()
 
         bid_profile = torch.zeros(batch_size, env.n_players, 1,
                                   device=self.device)

@@ -111,7 +111,6 @@ if __name__ == '__main__':
     #         util_loss_grid_size=2**10,
     #         util_loss_frequency=1000,
     #         plot_frequency=10,
-    #         cache_eval_actions=False,
     #         stopping_criterion_frequency=100000) \
     #     .set_hardware(specific_gpu=3) \
     #     .get_config()

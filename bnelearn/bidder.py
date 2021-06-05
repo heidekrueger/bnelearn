@@ -7,9 +7,9 @@ This module implements players / bidders / agents in games.
 
 from abc import ABC, abstractmethod
 import warnings
-import math
 import torch
-from bnelearn.strategy import Strategy, MatrixGameStrategy, FictitiousPlayStrategy, FictitiousNeuralPlayStrategy
+from bnelearn.strategy import (Strategy, MatrixGameStrategy,
+                               FictitiousPlayStrategy, FictitiousNeuralPlayStrategy)
 
 
 class Player(ABC):
@@ -30,10 +30,6 @@ class Player(ABC):
     def get_action(self):
         """Chooses an action according to the player's strategy."""
         raise NotImplementedError
-
-    # def prepare_iteration(self):
-    #     """ Prepares one iteration of environment-observation."""
-    #     pass #pylint: disable=unnecessary-pass
 
     @abstractmethod
     def get_utility(self, *args, **kwargs):
@@ -192,8 +188,8 @@ class Bidder(Player):
 
         return welfare
 
-    def get_action(self, observations):
-        """Calculate action from current valuations, or retrieve from cache"""
+    def get_action(self, observations = None):
+        """Calculate action from given observations, or retrieve from cache"""
 
         if self._enable_action_caching and not self._cached_observations_changed:
             if observations is None or \
@@ -255,18 +251,6 @@ class ReverseBidder(Bidder):
     #         grid_values[:, 1] = self.efficiency_parameter * grid_values[:, 0]
 
     #     return grid_values
-
-    ### TODO: what's efficiency parameter? what do we do with this?
-    # def draw_valuations_(self, common_component = None, weights: torch.Tensor or float = 0.0):
-    #     """ Extends `Bidder.draw_valuations_` with efiiciency parameter
-    #     """
-    #     _ = super().draw_valuations_(common_component, weights)
-
-    #     assert self.valuations.shape[1] == 2, \
-    #         'linear valuations are only defined for two items.'
-    #     self.valuations[:, 1] = self.efficiency_parameter * self.valuations[:, 0]
-
-    #     return self.valuations
 
     def get_utility(self, allocations, payments, valuations):
         """For reverse bidders, returns are inverted.

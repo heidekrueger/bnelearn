@@ -89,6 +89,27 @@ class PVSampler(ValuationObservationSampler, ABC):
         profile = self._sample(batch_size, device)
         return profile, profile
 
+
+class FixedManualIPVSampler(PVSampler):
+    """For testing purposes:
+    A sampler that returns a fixed tensor as valuations/observations.
+    """
+    def __init__(self, valuation_tensor: torch.Tensor):
+        
+        assert valuation_tensor.dim() == 3, "invalid input tensor"
+
+        self._profile = valuation_tensor
+
+        batch_size, n_players, valuation_size = valuation_tensor.shape
+        device = valuation_tensor.device
+        super.__init__(n_players, valuation_size, batch_size, device)
+
+        self.draw_conditional_profiles = SymmetricIPVSampler.draw_conditional_profiles
+    
+    def _sample(self, batch_size, device):
+        return self._profile, self._profile
+
+
 #TODO: change name to express that this is symmetric also along items, not just players?
 class SymmetricIPVSampler(PVSampler):
     """A Valuation Oracle that draws valuations independently and symmetrically
@@ -123,8 +144,6 @@ class SymmetricIPVSampler(PVSampler):
         device = device or self.default_device
 
         return self.distribution.sample([batch_size]).to(device)
-
-
 
     def draw_conditional_profiles(self,
                                   conditioned_player: int,
