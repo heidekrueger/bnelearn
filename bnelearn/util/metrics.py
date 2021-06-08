@@ -177,7 +177,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                          return_best_response: bool = False):
     """Estimates a bidder's utility loss in the current state of the
     environment, i.e. the     potential benefit of deviating from the current
-    strategy, evaluated at each point of     the agent_valuations. therfore, we
+    strategy, evaluated at each point of the agent_valuations. therfore, we
     calculate
         $$\max_{v_i \in V_i} \max_{b_i^* \in A_i}
             + E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i}))

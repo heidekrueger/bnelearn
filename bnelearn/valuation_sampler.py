@@ -1,7 +1,7 @@
 """This class implements drawing of valuation and observation profiles."""
 
 from abc import ABC, abstractmethod
-from math import sqrt
+from math import sqrt, ceil
 from typing import List, Tuple
 import warnings
 
@@ -14,13 +14,20 @@ from torch.overrides import is_tensor_like
 class ValuationObservationSampler(ABC):
     """Provides functionality to draw valuation and observation profiles."""
 
+    
+
     def __init__(self, n_players, valuation_size, observation_size,
+                 support_bounds,
                  default_batch_size = 1, default_device = None):
         self.n_players: int = n_players # The number of players in the valuation profile
         self.valuation_size: int = valuation_size # The dimensionality / length of a single valuation vector
         self.observation_size: int = observation_size # The dimensionality / length of a single observation vector
         self.default_batch_size: int = default_batch_size # a default batch size
         self.default_device: Device = (default_device or 'cuda') if torch.cuda.is_available() else 'cpu'
+        
+        assert support_bounds.size() == torch.Size([n_players, valuation_size, 2]), \
+            "invalid support bounds."
+        self.support_bounds: torch.FloatTensor = support_bounds.to(self.default_device)
 
     @abstractmethod
     def draw_profiles(self, batch_size: int = None, device=None) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -66,15 +73,49 @@ class ValuationObservationSampler(ABC):
                 observations[:,conditioned_observation,:] will be equal to
                 `conditioned_observation` repeated `batch_size` times
         """
+        pass
 
+    def generate_valuation_grid(self, player_position: int, n_grid_points: int,
+                                dtype=torch.float, device = None) -> torch.Tensor:
+        """Generates an evenly spaced grid of (approximately) n_grid_points
+        valuations covering the support of the valuation space for the given
+        player. These are meant as rational actions for the player to evaluate,
+        e.g. in the util_loss estimator.
+
+        The default reference implementation returns a rectangular grid on
+        [0, upper_bound] x valuation_size.
+
+        TODO: There are settings (e.g. ReverseBidder), where it may be rational
+        to overbid, this still needs to be implemented.
+        """
+
+        device = device or self.default_device
+
+        bounds = self.support_bounds[player_position]
+
+        # dimensionality
+        dims = self.valuation_size
+
+        # use equal density in each dimension of the valuation, such that
+        # the total number of points is at least as high as the specified one
+        n_points_per_dim = ceil(n_grid_points**(1/dims))
+
+        # create equidistant lines along the support in each dimension
+        lines = [torch.linspace(bounds[d][0], bounds[d][1], n_points_per_dim,
+                                device=device, dtype=dtype)
+                 for d in range(dims)]
+        grid = torch.stack(torch.meshgrid(lines), dim=-1).view(-1, dims)
+
+        return grid
 
 class PVSampler(ValuationObservationSampler, ABC):
     """A sampler for Private Value settings, i.e. when observations and
      valuations are identical
     """
-    def __init__(self, n_players: int, valuation_size: int,
+
+    def __init__(self, n_players: int, valuation_size: int, support_bounds,
                  default_batch_size: int = 1, default_device: Device = None):
-        super().__init__(n_players, valuation_size, valuation_size,
+        super().__init__(n_players, valuation_size, valuation_size, support_bounds,
                          default_batch_size, default_device)
 
     @abstractmethod
@@ -102,7 +143,15 @@ class FixedManualIPVSampler(PVSampler):
 
         batch_size, n_players, valuation_size = valuation_tensor.shape
         device = valuation_tensor.device
-        super.__init__(n_players, valuation_size, batch_size, device)
+
+        support_low = valuation_tensor.min(dim=0).values
+        support_hi = valuation_tensor.max(dim=0).values
+
+        support_bounds = torch.stack([support_low, support_hi], dim=-1)
+
+
+        super.__init__(n_players, valuation_size, support_bounds,
+                       batch_size, device)
 
         self.draw_conditional_profiles = SymmetricIPVSampler.draw_conditional_profiles
     
@@ -119,7 +168,11 @@ class SymmetricIPVSampler(PVSampler):
     This base class works with all torch.distributions but requires sampling on
     cpu then moving to the device. When using cuda, use the faster,
     distribution-specific subclasses instead where provided.
+
     """
+
+    UPPER_BOUND_QUARTILE_IF_UNBOUNDED = .999
+
     def __init__(self, distribution: Distribution,
                  n_players: int, valuation_size: int = 1,
                  default_batch_size: int = 1, default_device: Device = None
@@ -135,7 +188,20 @@ class SymmetricIPVSampler(PVSampler):
         """
         self.base_distribution = distribution
         self.distribution = self.base_distribution.expand([n_players, valuation_size])
-        super().__init__(n_players, valuation_size, default_batch_size, #pylint: disable=arguments-out-of-order
+
+        # bounds: use real support, unless unbounded:
+        lower_bound = self.base_distribution.icdf(torch.tensor(0.)).relu()
+        upper_bound = self.base_distribution.icdf(torch.tensor(1.))
+        if upper_bound.isinf().item():
+            upper_bound = self.base_distribution.icdf(
+                torch.tensor(self.UPPER_BOUND_QUARTILE_IF_UNBOUNDED))
+        
+        assert upper_bound >= lower_bound
+
+        # repeat support bounds across all players and valuation dimensions
+        support_bounds = torch.stack([lower_bound, upper_bound]).repeat([n_players, valuation_size, 1])
+
+        super().__init__(n_players, valuation_size, support_bounds, default_batch_size, #pylint: disable=arguments-out-of-order
                          default_device)
 
     def _sample(self, batch_size: int, device: Device) -> torch.Tensor:
@@ -241,6 +307,8 @@ class CorrelatedSymmetricUniformPVSampler(PVSampler, ABC):
             default_device: the default device to draw valuations. If none given,
                 uses 'cuda' if available, 'cpu' otherwise
         """
+
+        assert u_lo >= 0, "Negative valuations currently not supported!"
         self.u_lo = u_lo
         self.u_hi = u_hi
         self.gamma = correlation
@@ -248,8 +316,10 @@ class CorrelatedSymmetricUniformPVSampler(PVSampler, ABC):
             self.method = weight_method
         else:
             raise ValueError('Unknown method, must be one of "Bernoulli", "constant"')
+        
+        support_bounds = torch.tensor([u_lo, u_hi]).repeat([n_players, valuation_size, 1])
 
-        super().__init__(n_players, valuation_size,
+        super().__init__(n_players, valuation_size, support_bounds,
                          default_batch_size, default_device)
 
     @abstractmethod
@@ -471,19 +541,23 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
         """
         observation_size = valuation_size
 
-        super().__init__(
-            n_players,
-            valuation_size,
-            observation_size,
-            default_batch_size=default_batch_size,
-            default_device=default_device)
-
         assert common_value_lo >= 0, "valuations must be nonnegative"
         assert common_value_hi >= common_value_lo, "upper bound must larger than lower bound"
 
         self._common_value_lo = common_value_lo
         self._common_value_hi = common_value_hi
 
+        support_bounds = torch.tensor(
+            [common_value_lo, common_value_hi]
+            ).repeat([n_players, valuation_size, 1])
+
+        super().__init__(
+            n_players,
+            valuation_size,
+            observation_size,
+            support_bounds,
+            default_batch_size=default_batch_size,
+            default_device=default_device)
 
     def draw_profiles(self, batch_size: int = None, device = None) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_size = batch_size or self.default_batch_size
@@ -603,18 +677,24 @@ class AffiliatedValuationObservationSampler(ValuationObservationSampler):
         """
         observation_size = valuation_size
 
-        super().__init__(
-            n_players,
-            valuation_size,
-            observation_size,
-            default_batch_size=default_batch_size,
-            default_device=default_device)
-
         assert u_lo >= 0, "valuations must be nonnegative"
         assert u_hi > u_lo, "upper bound must larger than lower bound"
 
         self._u_lo = u_lo
         self._u_hi = u_hi
+
+        support_bounds = torch.tensor(
+            [u_lo, 2*u_hi]
+            ).repeat([n_players, valuation_size, 1])
+
+
+        super().__init__(
+            n_players,
+            valuation_size,
+            observation_size,
+            support_bounds,
+            default_batch_size=default_batch_size,
+            default_device=default_device)
 
 
     def draw_profiles(self, batch_size: int = None, device = None) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -686,6 +766,9 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
 
     """
 
+    ## TODO Stefan: We may want to override grid sampling in this class in
+    ## order to sample only from 'triangle' rather than rectangle?
+
     def __init__(self, n_players: int, n_items: int = 1,
                  max_demand: int = None,
                  u_lo: float = 0.0, u_hi: float = 1.0,
@@ -701,17 +784,11 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
             default_device
         """
 
-        super().__init__(u_lo, u_hi,
-                         n_players, n_items,
-                         default_batch_size=default_batch_size,
-                         default_device=default_device)
-
-        self.n_items = self.valuation_size
-        # if no demand limit is given, assume it is the total number of items
-        self.max_demand: int = max_demand or self.valuation_size
+        # if no demand limit is given, assume it is the total number of items        
+        self.max_demand: int = max_demand or n_items
         assert isinstance(self.max_demand, int), "maximum demand must be integer or none."
         assert self.max_demand > 0, "invalid max demand"
-        assert self.max_demand <= self.valuation_size, "invalid max demand"
+        assert self.max_demand <= n_items, "invalid max demand"
 
         assert u_lo >= 0, "valuations must be nonnegative"
         assert u_hi > u_lo, "upper bound must larger than lower bound"
@@ -719,6 +796,13 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         self._u_lo = u_lo
         self._u_hi = u_hi
 
+        super().__init__(u_lo, u_hi,
+                         n_players, n_items,
+                         default_batch_size=default_batch_size,
+                         default_device=default_device)
+
+        # define alias AFTER super init such that both point to same memory address
+        self.n_items = self.valuation_size
 
     def _sample(self, batch_size, device) -> torch.Tensor:
         """Draws a batch of uniform valuations, sorts them,
@@ -760,7 +844,11 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
             for i in range(self.n_groups)
         ]
 
-        super().__init__(n_players, valuation_size, observation_size, default_batch_size, default_device)
+        ## concatenate bounds in player dimension
+        support_bounds = torch.vstack([s.support_bounds for s in self.group_samplers])
+
+        super().__init__(n_players, valuation_size, observation_size, support_bounds, 
+                         default_batch_size, default_device)
 
 
 
@@ -879,13 +967,13 @@ class LocalGlobalCompositePVSampler(CompositeValuationObservationSampler):
         # setup local sampler
         if correlation_locals > 0.0:
             if correlation_method_locals == 'Bernoulli':
-                LocalSamplerClass = BernoulliWeightsCorrelatedSymmetricUniformPVSampler
+                local_sampler_class = BernoulliWeightsCorrelatedSymmetricUniformPVSampler
             elif correlation_method_locals == 'constant':
-                LocalSamplerClass = ConstantWeightCorrelatedSymmetricUniformPVSampler
+                local_sampler_class = ConstantWeightCorrelatedSymmetricUniformPVSampler
             else:
                 raise ValueError('Only "Bernoulli" and "constant" correlation methods are implemented for LocalGlobal samplers')
 
-            sampler_locals = LocalSamplerClass(
+            sampler_locals = local_sampler_class(
                 n_players=n_locals, valuation_size = valuation_size,
                 correlation = correlation_locals, u_lo = 0.0, u_hi = 1.0,
                 default_batch_size=default_batch_size, default_device=default_device)
@@ -899,13 +987,13 @@ class LocalGlobalCompositePVSampler(CompositeValuationObservationSampler):
         # setup global sampler
         if correlation_globals > 0.0:
             if correlation_method_globals == 'Bernoulli':
-                GlobalSamplerClass = BernoulliWeightsCorrelatedSymmetricUniformPVSampler
+                global_sampler_class = BernoulliWeightsCorrelatedSymmetricUniformPVSampler
             elif correlation_method_globals == 'constant':
-                GlobalSamplerClass = ConstantWeightCorrelatedSymmetricUniformPVSampler
+                global_sampler_class = ConstantWeightCorrelatedSymmetricUniformPVSampler
             else:
                 raise ValueError('Only "Bernoulli" and "constant" correlation methods are implemented for LocalGlobal samplers')
 
-            sampler_globals = LocalSamplerClass(
+            sampler_globals = global_sampler_class(
                 n_players=n_globals, valuation_size = valuation_size,
                 correlation = correlation_globals, u_lo = 0.0, u_hi = 2.0,
                 default_batch_size=default_batch_size, default_device=default_device)

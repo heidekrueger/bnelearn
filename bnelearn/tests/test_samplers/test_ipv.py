@@ -84,6 +84,7 @@ def test_uniform_symmetric_ipv():
     v,o = s.draw_profiles(device='cpu')
     assert v.device.type == 'cpu', "sampling didn't respect device parameter."
 
+
     ### test with valuation size 4.
     valuation_size = 4
     s = vs.UniformSymmetricIPVSampler(u_lo, u_hi, n_players, valuation_size, batch_size)
@@ -95,6 +96,11 @@ def test_uniform_symmetric_ipv():
                    expected_mean = torch.tensor(u_mean).repeat([n_players, valuation_size]),
                    expected_std = torch.tensor(u_std).repeat([n_players, valuation_size]),
                    )
+
+    n_grid_points = 2**valuation_size
+    grid = s.generate_valuation_grid(0, 2**valuation_size)
+    assert grid.size() == torch.Size([n_grid_points, valuation_size]), "Unexpected Grid"
+
 
 def test_gaussian_symmetric_ipv():
     """Test the GaussianSymmetricIPVSampler."""

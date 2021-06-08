@@ -6,7 +6,7 @@ implements reward allocation to agents.
 """
 
 from abc import ABC, abstractmethod
-from typing import Callable, Set, List, Iterable, Tuple
+from typing import Callable, Set, Iterable, Tuple
 
 import torch
 
@@ -37,11 +37,10 @@ class Environment(ABC):
         self.n_players = n_players
 
         # transform agents into players, if specified as Strategies:
-        agents = [
+        self.agents: Iterable[Player] = [
             self._strategy_to_player(agent, batch_size, player_position) if isinstance(agent, Strategy) else agent
             for player_position, agent in enumerate(agents)
         ]
-        self.agents: Iterable[Player] = agents
         self.__len__ = self.agents.__len__
 
         # test whether all provided agents implement correct batch_size
@@ -228,7 +227,7 @@ class AuctionEnvironment(Environment):
     def _generate_agent_actions(self, exclude: Set[int] or None = None):
         """
         Generator function yielding batches of bids for each environment agent
-        that is not excluded. Overwrites because in auction_environment, this needs 
+        that is not excluded. Overwrites because in auction_environment, this needs
         access to observations
 
         args:

@@ -17,8 +17,11 @@ conditional_outer_batch_size = 2**15
 # for second test: few x inner
 conditional_inner_batch_size = 2**18
 
-local_means = 0.5
-global_means = 1.
+local_min = global_min = 0.
+local_mean = 0.5
+global_mean = 1.
+local_max = 1.
+global_max = 2.0
 
 ids, test_cases = zip(*[
     #                                          setting,         method,     gamma
@@ -63,12 +66,12 @@ def test_local_global_samplers(setting, method, gamma):
     assert torch.equal(o, v), "observations and valuations should be identical in IPV"
 
 
-    assert torch.allclose(v[:, local_indices, :].mean(dim=0) - local_means,
+    assert torch.allclose(v[:, local_indices, :].mean(dim=0) - local_mean,
                           torch.zeros([2],device=device),
                           atol= 2e-3), \
         "unexpected means for locals"
 
-    assert torch.allclose(v[:, global_indices, :].mean(dim=0) - global_means,
+    assert torch.allclose(v[:, global_indices, :].mean(dim=0) - global_mean,
                           torch.zeros([1],device=device),
                           atol= 2e-3), \
         "unexpected means for global player"
@@ -86,14 +89,38 @@ def test_local_global_samplers(setting, method, gamma):
 
     assert cv.shape == torch.Size([batch_size, n_players, valuation_size]), 'invalid shape!'
 
-    assert torch.allclose(v[:, local_indices, :].mean(dim=0) - local_means,
+    assert torch.allclose(v[:, local_indices, :].mean(dim=0) - local_mean,
                           torch.zeros([2],device=device),
                           atol= 2e-3), \
         "unexpected means for locals"
 
     assert torch.allclose(cv[:,conditioned_player, :] - 0.5, torch.zeros([batch_size, valuation_size], device=device))
 
-    assert torch.allclose(v[:, global_indices, :].mean(dim=0) - global_means,
+    assert torch.allclose(v[:, global_indices, :].mean(dim=0) - global_mean,
                           torch.zeros([1],device=device),
                           atol= 2e-3), \
         "unexpected means for global player"
+
+
+    ## test grids
+    ## choose n_points such that we get 2 points (min/max) along each dimension,
+    ## then check that they match for a local and a global player:
+
+    n_points = 2**valuation_size
+    grid_local = s.generate_valuation_grid(local_indices[0], n_points)
+
+    assert torch.equal(grid_local.min(dim=0).values,
+                       torch.tensor([local_min]*valuation_size, device=device)), \
+                           "unexpected grid for local bidder."
+    assert torch.equal(grid_local.max(dim=0).values,
+                       torch.tensor([local_max]*valuation_size, device=device)), \
+                           "unexpected grid for local bidder."
+
+    grid_global = s.generate_valuation_grid(global_indices[0], n_points)
+
+    assert torch.equal(grid_global.min(dim=0).values,
+                       torch.tensor([global_min]*valuation_size, device=device)), \
+                           "unexpected grid for local bidder."
+    assert torch.equal(grid_global.max(dim=0).values,
+                       torch.tensor([global_max]*valuation_size, device=device)), \
+                           "unexpected grid for local bidder."
