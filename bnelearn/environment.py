@@ -225,6 +225,28 @@ class AuctionEnvironment(Environment):
         self._valuations: torch.Tensor = None
         self.draw_valuations()
 
+    def _generate_agent_actions(self, exclude: Set[int] or None = None):
+        """
+        Generator function yielding batches of bids for each environment agent
+        that is not excluded. Overwrites because in auction_environment, this needs 
+        access to observations
+
+        args:
+            exclude:
+                A set of player positions to exclude.
+                Used e.g. to generate action profile of all but currently learning player.
+
+        yields:
+            tuple(player_position, action) for each relevant bidder
+        """
+
+        if exclude is None:
+            exclude = set()
+
+        for agent in (a for a in self.agents if a.player_position not in exclude):
+            yield (agent.player_position,
+                   agent.get_action(self._observations[:, agent.player_position, :]))
+
 
     def get_reward(
             self,
@@ -341,7 +363,7 @@ class AuctionEnvironment(Environment):
             conditioned_player: int,
             conditioned_observation: torch.Tensor,
             inner_batch_size: int = None
-        ) -> dict:
+        ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws a conditional valuation / observation profile based on a (vector of)
         fixed observations for one player.
 

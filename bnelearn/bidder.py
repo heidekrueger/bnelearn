@@ -72,8 +72,7 @@ class Bidder(Player):
         TODO ...
 
     """
-    # TODO Nils: clearly distinguish observation and type! (Nedded for
-    # correlation, splt-award, etc.)
+
     def __init__(self,
                  strategy: Strategy,
                  player_position: torch.Tensor = None,
@@ -191,11 +190,10 @@ class Bidder(Player):
     def get_action(self, observations = None):
         """Calculate action from given observations, or retrieve from cache"""
 
-        if self._enable_action_caching and not self._cached_observations_changed:
-            if observations is None or \
-                torch.equal(observations, self._cached_observations):
+        if self._enable_action_caching and not self._cached_observations_changed and \
+            (observations is None or torch.equal(observations, self._cached_observations)):
 
-                return self._cached_actions
+            return self._cached_actions
 
         if observations is None:
             assert self._enable_action_caching, \
@@ -203,6 +201,7 @@ class Bidder(Player):
             # No observations have been given, but _cached_observations_changed
             # use cached observations but recompute actions
             observations = self._cached_observations
+
         inputs = observations.view(self.batch_size, -1)
         # for cases when n_observations != input_length (e.g. Split-Award Auctions, combinatorial auctions with bid languages)
         # TODO: generalize this, see #82. https://gitlab.lrz.de/heidekrueger/bnelearn/issues/82
@@ -216,6 +215,8 @@ class Bidder(Player):
         if self._enable_action_caching:
             self.cached_observations = observations
             self._cached_actions = actions
+            # we have updated the cached actions, so we can disable the
+            # flag that they need to be recomputed.
             self._cached_observations_changed = False
 
         return actions
@@ -252,7 +253,7 @@ class ReverseBidder(Bidder):
 
     #     return grid_values
 
-    def get_utility(self, allocations, payments, valuations):
+    def get_utility(self, allocations, payments, valuations = None):
         """For reverse bidders, returns are inverted.
         """
         return - super().get_utility(allocations, payments, valuations)
@@ -272,12 +273,6 @@ class CombinatorialBidder(Bidder):
         else:
             self.input_length = self.valuation_size
             self.output_length = self.bid_size
-
-    # def get_valuation_grid(self, **kwargs):  # pylint: disable=arguments-differ
-    #     return super().get_valuation_grid(
-    #         dimension=self.output_length,
-    #         **kwargs
-    #     )
 
     def get_welfare(self, allocations, valuations: torch.Tensor=None) -> torch.Tensor:
         assert allocations.dim() == 2  # batch_size x items

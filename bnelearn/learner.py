@@ -55,7 +55,7 @@ class GradientBasedLearner(Learner):
     def _set_gradients(self):
         """Calculate current (pseudo)gradient for all params."""
 
-    def update_strategy(self, closure: Callable=None) -> None or torch.Tensor: # pylint: disable=arguments-differ
+    def update_strategy(self, closure: Callable=None) -> torch.Tensor or None: # pylint: disable=arguments-differ
         """Performs one model-update to the player's strategy.
 
         Params:
@@ -219,14 +219,15 @@ class ESPGLearner(GradientBasedLearner):
         ### 4. calculate the ES-pseuogradients   ####
         # See ES_Analysis notebook in repository for more information about where
         # these choices come from.
-        baseline = \
-            self.environment.get_strategy_reward(
+        if self.baseline == 'current_reward':
+            baseline = self.environment.get_strategy_reward(
                 self.model, regularize=self.regularize,
                 **self.strat_to_player_kwargs
-            ).detach().view(1) \
-            if self.baseline == 'current_reward' \
-            else rewards.mean(dim=0) if self.baseline == 'mean_reward' \
-            else self.baseline # a float
+            ).detach().view(1)
+        elif self.baseline == 'mean_reward':
+            baseline = rewards.mean(dim=0)
+        else: # baseline is a float
+            baseline = self.baseline
 
         denominator = self.sigma * rewards.std() if self.normalize_gradients else self.sigma**2
 
@@ -299,7 +300,7 @@ class PGLearner(GradientBasedLearner):
                 self.baseline = self.baseline_method
                 self.baseline_method = 'manual'
             else:
-                 self.baseline = 0 # initial baseline
+                self.baseline = 0 # initial baseline
 
         else:
             # standard baseline
@@ -504,4 +505,5 @@ class DummyNonLearner(GradientBasedLearner):
                          strat_to_player_kwargs)
 
     def _set_gradients(self):
+        # This "Learner" doesn't learn.
         pass

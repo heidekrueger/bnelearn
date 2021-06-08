@@ -19,6 +19,7 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.mechanism import FirstPriceSealedBidAuction
 from bnelearn.learner import ESPGLearner
 from bnelearn.strategy import NeuralNetStrategy
+from bnelearn.valuation_sampler import UniformSymmetricIPVSampler
 
 cuda = torch.cuda.is_available()
 device = 'cuda' if cuda else 'cpu'
@@ -50,10 +51,10 @@ optimizer_hyperparams = {
 }
 
 mechanism = FirstPriceSealedBidAuction(cuda = True)
+sampler = UniformSymmetricIPVSampler(u_lo, u_hi, n_players, n_items, batch_size, device)
 
 def strat_to_bidder(strategy, batch_size, player_position=None): #pylint: disable=redefined-outer-name,missing-docstring
-    return Bidder.uniform(
-        u_lo, u_hi, strategy,
+    return Bidder(strategy,
         batch_size = batch_size,
         player_position=player_position
         )
@@ -73,6 +74,7 @@ def test_learning_in_fpsb_environment():
 
     env = AuctionEnvironment(mechanism,
                              agents = [bidder1, bidder2],
+                             valuation_observation_sampler = sampler,
                              batch_size = batch_size,
                              n_players =n_players,
                              strategy_to_player_closure = strat_to_bidder)
