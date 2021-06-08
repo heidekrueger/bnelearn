@@ -101,7 +101,7 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.tensor, bid_prof
 
     return bid_profile #bid_eval_size*batch, 1,n_items
 
-def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidder,
+def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid_profile: torch.Tensor, bidder: Bidder,
                       grid: torch.Tensor, half_precision = False, player_position: int = None):
     """
     # TODO: do we really need this or can we delete it in general?
@@ -112,6 +112,7 @@ def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: B
         util_loss = max(0, BR(v_i, b_-i) - u_i(b_i, b_-i))
     Input:
         mechanism
+        player_valuations: the valuations of the player that is to be evaluated
         bid_profile: (batch_size x n_player x n_items)
         bidder: a Bidder (used to retrieve valuations and utilities)
         grid:
@@ -129,12 +130,11 @@ def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: B
     """
 
     player_position = bidder.player_position
-    agent_valuation = bidder.valuations # batch_size x n_items
 
     ## Use smaller dtypes to save memory
     if half_precision:
         bid_profile = bid_profile.half()
-        agent_valuation = agent_valuation.half()
+        bidder_valuations = bidder_valuations.half()
         grid = grid.half()
 
     #Generalize these dimensions
@@ -158,15 +158,18 @@ def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: B
     # we only need the specific player's allocation and can get rid of the rest.
     a_i = allocation[:,player_position,:]
     p_i = payments[:,player_position] # 1D tensor of length (grid * batch)
-
-    counterfactual_valuations = bidder.valuations.repeat(grid_size, 1) # grid*batch x n_items
-    utility_grid = bidder.get_counterfactual_utility(a_i, p_i, counterfactual_valuations).view(grid_size, batch_size)
+ 
+    utility_grid = bidder.get_utility(
+        a_i, p_i, bidder_valuations.repeat_interleave(grid_size, dim=0)
+        ).view(grid_size, batch_size)
     best_response_utility, best_response = utility_grid.max(0)
 
     ## Evaluate actual bids
     allocation, payments = mechanism.play(bid_profile)
+    a_i = allocation[:,player_position,:]
+    p_i = payments[:,player_position]
 
-    actual_utility = bidder.get_utility(allocation, payments, bid_profile)
+    actual_utility = bidder.get_utility(a_i, p_i, bidder_valuations)
 
     return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
 
@@ -281,9 +284,9 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     utility_actual = torch.mean(utility_actual, axis=1) #dim: batch_size
 
     """2. CALCULATE EXPECTED UTILITY FOR EACH SAMPLE WITH ALTERNATIVE ACTIONS ON GRID"""
-    action_alternative = agent.get_valuation_grid(
-        n_points=grid_size,
-        extended_valuation_grid=True
+    action_alternative = env.sampler.get_valuation_grid(
+        player_position,
+        n_points=grid_size
     )
     grid_size = action_alternative.shape[0] # grid is not always the requested size
 
