@@ -33,6 +33,18 @@ def run_llg_test(rule, device, expected_payments):
     assert torch.equal(allocation, expected_allocation.to(device))
     assert torch.equal(payments, expected_payments.to(device))
 
+    # Test whether the auction also accepts multiple batch dimensions
+    def add_dim(tensor):
+        repititions = 2
+        return tensor.clone().unsqueeze(0).repeat_interleave(repititions,0)
+
+    allocation, payments = game.run(add_dim(bids.to(device)))
+
+    assert torch.equal(allocation, add_dim(expected_allocation.to(device))), \
+        """auction did not handle multiple batch dims correctly!"""
+    assert torch.equal(payments, add_dim(expected_payments.to(device))), \
+        """auction did not handle multiple batch dims correctly!"""
+
 
 def test_LLG_first_price():
     """FP should run on CPU and GPU and return expected results."""

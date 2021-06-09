@@ -4,10 +4,11 @@ gurobi # conda -c gurobi
 numpy
 future
 jupyterlab
-pytorch # conda install -c pytorch
+pytorch >= 1.8# conda install -c pytorch
 tensorboard
 matplotlib
 pynvml #for accessing GPU statistics. conda install -c fastai pynvml
+python >= 3.8
 pytest
 pytest-cov
 pytest-xdist #parallel tests
