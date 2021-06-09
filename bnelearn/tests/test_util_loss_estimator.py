@@ -21,7 +21,7 @@ from bnelearn.mechanism.auctions_multiunit import FPSBSplitAwardAuction
 from bnelearn.strategy import TruthfulStrategy, ClosureStrategy
 import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder, ReverseBidder
-from bnelearn.experiment.multi_unit_experiment import _optimal_bid_splitaward2x2_1
+#from bnelearn.experiment.multi_unit_experiment import _optimal_bid_splitaward2x2_1
 from bnelearn.environment import AuctionEnvironment
 import bnelearn.valuation_sampler as samplers
 
