@@ -354,7 +354,7 @@ class AuctionEnvironment(Environment):
         """
 
         self._valuations, self._observations = \
-            self.sampler.draw_profiles(batch_size=self.batch_size)
+            self.sampler.draw_profiles(batch_sizes=self.batch_size)
 
 
     def draw_conditionals(
