@@ -22,9 +22,6 @@ from bnelearn.mechanism import (
     MultiUnitDiscriminatoryAuction, FPSBSplitAwardAuction
 )
 from bnelearn.strategy import ClosureStrategy
-from bnelearn.correlation_device import (
-    IndependentValuationDevice, MultiUnitDevice
-)
 
 
 ###############################################################################

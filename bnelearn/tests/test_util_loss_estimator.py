@@ -15,12 +15,13 @@
 
 import pytest
 import torch
+from torch.cuda import device
 from bnelearn.mechanism import LLLLGGAuction, FirstPriceSealedBidAuction
 from bnelearn.mechanism.auctions_multiunit import FPSBSplitAwardAuction
 from bnelearn.strategy import TruthfulStrategy, ClosureStrategy
 import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder, ReverseBidder
-#from bnelearn.experiment.multi_unit_experiment import _optimal_bid_splitaward2x2_1
+from bnelearn.experiment.multi_unit_experiment import _optimal_bid_splitaward2x2_1
 from bnelearn.environment import AuctionEnvironment
 import bnelearn.valuation_sampler as samplers
 
@@ -125,6 +126,7 @@ ids_ex_interim, testdata_ex_interim = zip(*[
         ('first_price', LLLLGGAuction(), valuations_1_6_2, bids_i_comb, expected_util_loss_1_6_2)]
     ])
 
+
 @pytest.mark.parametrize("rule, mechanism, bid_profile, bids_i, expected_util_loss", testdata_ex_post, ids=ids_ex_post)
 def test_ex_post_util_loss_estimator_truthful(rule, mechanism, bid_profile, bids_i, expected_util_loss):
     """Check ex-post util loss"""
@@ -147,15 +149,11 @@ def test_ex_post_util_loss_estimator_truthful(rule, mechanism, bid_profile, bids
         assert torch.allclose(util_loss.mean(), expected_util_loss[i,0], atol = 0.001), "Unexpected avg util_loss"
         assert torch.allclose(util_loss.max(),  expected_util_loss[i,1], atol = 0.001), "Unexpected max util_loss"
 
+## Stefan TODO: @Nils, this was already commented out, please fix.
 # @pytest.mark.parametrize("rule, mechanism, bid_profile, bids_i, expected_util_loss",
 #                          testdata_ex_interim, ids=ids_ex_interim)
 # def test_ex_interim_util_loss_estimator_truthful(rule, mechanism, bid_profile, bids_i, expected_util_loss):
 #     """Run correctness test for a given LLLLGG rule"""
-#     # TODO Nils @Stefan:
-#     #   (1) bids_i obsolete
-#     #   (2) do we want utility_actual to be against this hard coded grid or the expectation against the
-#     #       actual opponenents? (Only the later is supported by `ex_interim_util_loss`.)
-#     #   (3) ex_interim_util_loss: mean=max for batch_size of 1
 
 #     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -189,44 +187,58 @@ def test_ex_post_util_loss_estimator_truthful(rule, mechanism, bid_profile, bids
 #         # assert torch.allclose(util_loss.max(), expected_util_loss[i, 1], atol = 1), \
 #         #     "Unexpected max util_loss {}".format(util_loss.max() - expected_util_loss[i, 1])
 
-# def test_ex_interim_util_loss_estimator_fpsb_bne():
-#     """Test the util_loss in BNE of fpsb. - ex interim util_loss should be close to zero"""
-#     n_players = 3
-#     grid_size = 2**10
-#     batch_size = 2**10
-#     n_items = 1
-#     risk = 1
+def test_ex_interim_util_loss_estimator_fpsb_bne():
+    """Test the util_loss in BNE of fpsb. - ex interim util_loss should be close to zero"""
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    n_players = 3
+    grid_size = 4
+    batch_size = 2
+    opponent_batch_size = 2**10
+    n_items = 1
+    valuation_size = observation_size = action_size = 1
+    risk = 1
+
+    # the agent that we will test the estimator for
+    player_position = 0
 
 
+    mechanism = FirstPriceSealedBidAuction()
 
-#     mechanism = FirstPriceSealedBidAuction()
+    def optimal_bid(observation):
+        return u_lo + (observation - u_lo) * (n_players - 1) / (n_players - 1.0 + risk)
 
-#     def optimal_bid(valuation):
-#         return u_lo + (valuation - u_lo) * (n_players - 1) / (n_players - 1.0 + risk)
+    strat = ClosureStrategy(optimal_bid)
 
-#     strat = ClosureStrategy(optimal_bid)
+    sampler = samplers.UniformSymmetricIPVSampler(
+        u_lo,u_hi, n_players, valuation_size, batch_size, device)
 
-#     agents = [
-#         Bidder.uniform(u_lo, u_hi, strat, player_position=i, batch_size=batch_size)
-#         for i in range(n_players)
-#     ]
+    agents = [
+        Bidder(strat, player_position=i, batch_size=batch_size)
+        for i in range(n_players)
+    ]
 
-#     env = AuctionEnvironment(
-#         mechanism = mechanism,
-#         agents = agents,
-#         batch_size = batch_size,
-#         n_players = n_players
-#     )
+    env = AuctionEnvironment(
+        mechanism = mechanism,
+        agents = agents,
+        valuation_observation_sampler=sampler,
+        batch_size = batch_size,
+        n_players = n_players
+    )
 
-#     # assert first player has (near) zero util_loss
-#     util_loss = metrics.ex_interim_util_loss(env, 0, batch_size, grid_size)
+    valuations, observations = sampler.draw_profiles(batch_size, device)
+    player_observations = observations[:,player_position, :]
+    # assert first player has (near) zero util_loss
+    util_loss = metrics.ex_interim_util_loss(env, player_position,
+                                             player_observations, grid_size,
+                                             opponent_batch_size)
 
-#     mean_util_loss = util_loss.mean()
-#     max_util_loss = util_loss.max()
+    mean_util_loss = util_loss.mean()
+    max_util_loss = util_loss.max()
 
-#     assert mean_util_loss < 0.02, "Util_loss {} in BNE should be (close to) zero!".format(util_loss.mean())
-#     assert max_util_loss < 0.05, "Util_loss {} in BNE should be (close to) zero!".format(util_loss.max())
+    assert mean_util_loss < 0.02, "Util_loss {} in BNE should be (close to) zero!".format(util_loss.mean())
+    assert max_util_loss < 0.05, "Util_loss {} in BNE should be (close to) zero!".format(util_loss.max())
 
+## TODO Stefan: @Nils: this test nee
 # def test_ex_interim_util_loss_estimator_splitaward_bne():
 #     """Test the util_loss in BNE of fpsb split-award auction. - ex interim util_loss should be close to zero"""
 #     n_players = 2

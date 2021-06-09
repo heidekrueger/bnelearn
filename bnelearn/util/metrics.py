@@ -1,12 +1,12 @@
 """This module implements metrics that may be interesting."""
 
+
 import torch
-from bnelearn.strategy import Strategy
-from bnelearn.mechanism import Mechanism
-from bnelearn.environment import Environment, AuctionEnvironment
 from bnelearn.bidder import Bidder
+from bnelearn.environment import AuctionEnvironment
+from bnelearn.mechanism import Mechanism
+from bnelearn.strategy import Strategy
 from tqdm import tqdm
-import warnings, traceback
 
 
 def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> float:
@@ -143,12 +143,10 @@ def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid
     # Create multidimensional bid tensor if required
     if n_items == 1:
         grid = grid.view(grid_size, 1).to(bid_profile.device)
-    elif n_items >= 2:
-        if len(grid.shape) == 1:
-            grid = torch.combinations(grid, r=n_items, with_replacement=True).to(bid_profile.device) #grid_size**n_items x n_items
-            # Stefan: this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
+    elif n_items >= 2 and len(grid.shape) == 1:
+        grid = torch.combinations(grid, r=n_items, with_replacement=True).to(bid_profile.device) #grid_size**n_items x n_items
+        # Stefan: this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
     grid_size, _ = grid.shape # this _new_ grid size refers to all combinations, whereas the previous one was 1D only
-
 
     ### Evaluate alternative bids on grid
     grid_bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile) # (grid_size*batch_size) x n_players x n_items
@@ -158,7 +156,7 @@ def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid
     # we only need the specific player's allocation and can get rid of the rest.
     a_i = allocation[:,player_position,:]
     p_i = payments[:,player_position] # 1D tensor of length (grid * batch)
- 
+
     utility_grid = bidder.get_utility(
         a_i, p_i, bidder_valuations.repeat_interleave(grid_size, dim=0)
         ).view(grid_size, batch_size)
@@ -175,9 +173,11 @@ def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid
 
 
 def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
-                         batch_size: int, grid_size: int,
+                         agent_observations: torch.Tensor,
+                         grid_size: int,
                          opponent_batch_size: int = None,
                          return_best_response: bool = False):
+    #pylint: disable = anomalous-backslash-in-string
     """Estimates a bidder's utility loss in the current state of the
     environment, i.e. the     potential benefit of deviating from the current
     strategy, evaluated at each point of the agent_valuations. therfore, we
@@ -194,7 +194,6 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     Args:
         env: bnelearn.Environment.
         player_position: int, position of the player in the environment.
-        batch_size: int, specifing the sample size for agent itself.
         grid_size: int, stating the number of alternative actions sampled via
             env.agents[player_position].get_valuation_grid(grid_size, True).
         opponent_batch_size: int, specifing the sample size for opponents.
@@ -220,175 +219,130 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
 
     agent: Bidder = env.agents[player_position]
 
-    if batch_size > agent.batch_size:
-        warnings.warn("Requested too large batch size in utility loss.")
-        batch_size = agent.batch_size
+    # ensure we are not propagating any gradients (may cause memory leaks)
+    agent_observations = agent_observations.detach().clone()
 
-    observation = agent.valuations[:batch_size, ...].detach().clone()
-    action_actual = agent.get_action()[:batch_size, ...].detach().clone()
-    # TODO Nils: Generally, we don't need `clone()` but in some rare instances we do.
-    #            Side effects? Relation to `enable_action_caching`? ...
-    input_length = observation.shape[-1]
-    output_length = action_actual.shape[-1]
+    agent_batch_size, observation_size = agent_observations.shape
+    opponent_batch_size = opponent_batch_size or agent_batch_size
 
-    agent_batch_size = observation.shape[0]
-    opponent_batch_size = batch_size if opponent_batch_size is None else opponent_batch_size
-
-    # draw opponent observations conditional on `agent`'s observation:
-    # dict with valuations of (batch_size * batch_size, n_items) for each opponent
-
-    conditionals = env.draw_conditionals(
-        player_position, observation, opponent_batch_size
-    )
-
-    # conditioning type on signal - not needed when they're equal
-    if hasattr(agent, '_unkown_valuation'):
-        agent_type = conditionals[agent.player_position]
-    else:
-        agent_type = observation \
-            .repeat_interleave(opponent_batch_size, 0)
+    # draw action for the agent. (required here before the loop because we
+    # need to infer the output dimensions and dtype for memory allocation)
+    agent_action_actual = agent.get_action(agent_observations)
 
     """1. CALCULATE EXPECTED UTILITY FOR EACH SAMPLE WITH ACTUAL STRATEGY"""
-    # actual bid profile and actual utility
-    #   1st dim / batch_size: different agent valuations
-    #   2nd dim / opponent_batch_size: different opponent valuations (-> different actions)
-    action_profile_actual = torch.zeros(
-        agent_batch_size * opponent_batch_size, env.n_players, output_length,
-        dtype=action_actual.dtype, device=device
-    )
-    for a in env.agents:
-        if a.player_position == player_position:
-            action_profile_actual[:, player_position, :] = \
-                action_actual.repeat_interleave(opponent_batch_size, 0) \
-                    .view(agent_batch_size * opponent_batch_size, output_length)
-        else:
-            action_profile_actual[:, a.player_position, :] = \
-                a.strategy.play(conditionals[a.player_position]) \
-                    .detach().requires_grad_(False)
 
-    allocation_actual, payment_actual = mechanism.play(action_profile_actual)
+    utility_actual = ex_interim_utility(
+        env, player_position, agent_observations, agent_action_actual,
+        opponent_batch_size, device)
 
-    # TODO: until here we can just use the real valuations in the player objects to simplify the code.
-    # Nils @Stefan: No, we can't. We want the expected utility for a given valuation over all
-    #               opponents and not just against a single instance of opponents
-
-    allocation_actual = allocation_actual[:, player_position, :].type(torch.bool) \
-        .view(agent_batch_size * opponent_batch_size, output_length)
-    payment_actual = payment_actual[:, player_position] \
-        .view(agent_batch_size * opponent_batch_size)
-    utility_actual = agent.get_counterfactual_utility(
-        allocation_actual, payment_actual, agent_type
-    ).view(agent_batch_size, opponent_batch_size)
-
-    # expectation over opponent batches
-    utility_actual = torch.mean(utility_actual, axis=1) #dim: batch_size
-
-    """2. CALCULATE EXPECTED UTILITY FOR EACH SAMPLE WITH ALTERNATIVE ACTIONS ON GRID"""
-    action_alternative = env.sampler.get_valuation_grid(
+    """2. For each observation, find best response by calculationg
+          ex-i utilities of all candidate actions"""
+    action_alternatives = env.sampler.generate_valuation_grid(
         player_position,
-        n_points=grid_size
+        n_grid_points=grid_size,
+        dtype=agent_action_actual.dtype, device=agent_action_actual.device
     )
-    grid_size = action_alternative.shape[0] # grid is not always the requested size
 
-    print('Calculating utility loss...')
+    # grid may be larger than requested size, due to shape constraints
+    actual_grid_size, action_size = action_alternatives.shape
+    grid_size = actual_grid_size
 
-    # calc adpative (own) batch size `mini_batch_size` based on memory estimate
-    mini_batch_size = batch_size
-    while True:
-        # TODO Nils: does it work like this? Or does a failed iteration have side effects?
-        try:
+    ## grid_size x agent_batch_size x action_size
+    grid_actions = action_alternatives \
+        .view(grid_size, 1, action_size) \
+        .repeat([1, agent_batch_size, 1])
+    ## grid_size x agent_batch_size x observation_size
+    grid_observations = agent_observations.repeat([grid_size, 1, 1])
 
-            if mini_batch_size < batch_size:
-                warnings.warn("Sequential computation of utility loss: mini batches of size {}."
-                              .format(mini_batch_size), ResourceWarning)
-                custom_range = tqdm(range(0, batch_size, mini_batch_size))
-            else:
-                custom_range = range(0, batch_size, mini_batch_size)
+    # grid_size x agent_batch_size
+    grid_utilities = ex_interim_utility(
+        env, player_position, grid_observations,
+        grid_actions, opponent_batch_size, device
+        )
 
-            utility_alternative = torch.zeros_like(utility_actual)
-            if return_best_response:
-                best_response = torch.zeros_like(utility_actual)
+    # for each agent_observation, find the best response
+    # each have shape: [agent_batch_size]
+    br_utility, br_indices = grid_utilities.max(dim=0)
 
-            for b in custom_range:
-
-                conditionals = env.draw_conditionals(
-                    player_position, observation[b:b+mini_batch_size, :], opponent_batch_size
-                )
-
-                if hasattr(agent, '_unkown_valuation'):
-                    agent_type = conditionals[agent.player_position]
-                else:
-                    agent_type = observation[b:b+mini_batch_size, :] \
-                        .repeat_interleave(opponent_batch_size, 0)
-
-                # alternative bid profile and alternative utility
-                #   1st dim: different agent valuations (-> actions should be different for given vals)
-                #   2nd dim: different agent actions
-                #   3rd dim: differnet opponent valuations (-> different actions)
-                action_profile_alternative = torch.zeros(
-                    mini_batch_size * grid_size * opponent_batch_size, env.n_players, output_length,
-                    dtype=action_actual.dtype, device=device
-                )
-                for a in env.agents:
-                    if a.player_position == player_position:
-                        action_profile_alternative[:, player_position, :] = \
-                            action_alternative \
-                                .repeat(mini_batch_size, 1) \
-                                .view(mini_batch_size, grid_size, output_length) \
-                                .repeat_interleave(opponent_batch_size, 1) \
-                                .view(mini_batch_size * grid_size * opponent_batch_size, output_length)
-                    else:
-                        action_profile_alternative[:, a.player_position, :] = \
-                            a.strategy.play(conditionals[a.player_position]) \
-                                .detach().requires_grad_(False) \
-                                .view(mini_batch_size, opponent_batch_size, output_length) \
-                                .repeat(1, grid_size, 1) \
-                                .view(mini_batch_size * grid_size * opponent_batch_size, output_length)
-
-                allocation_alternative, payment_alternative = mechanism.play(action_profile_alternative)
-                allocation_alternative = allocation_alternative[:, player_position, :].type(torch.bool) \
-                    .view(mini_batch_size * grid_size * opponent_batch_size, output_length)
-                payment_alternative = payment_alternative[:, player_position] \
-                    .view(mini_batch_size * grid_size * opponent_batch_size)
-                utility_alternative_batch = agent.get_counterfactual_utility(
-                    allocation_alternative, payment_alternative,
-                    agent_type \
-                        .view(mini_batch_size, opponent_batch_size, input_length) \
-                        .repeat(1, grid_size, 1) \
-                        .view(mini_batch_size * grid_size * opponent_batch_size, input_length)
-                ).view(mini_batch_size, grid_size, opponent_batch_size)
-
-                # expectation over opponent_batch
-                utility_alternative_batch = torch.mean(utility_alternative_batch, axis=2)
-
-                # maximum expected utility over grid of alternative actions
-                if return_best_response:
-                    if output_length > 1:
-                        raise NotImplementedError(
-                            'best responses are only available for 1d setting.'
-                        ) # TODO Nils: shouln't be too much effort to generalize
-                    utility_alternative[b:b+mini_batch_size], idx = torch.max(utility_alternative_batch, axis=1)
-                    best_response[b:b+mini_batch_size] = action_alternative[idx].squeeze()
-                else:
-                    utility_alternative[b:b+mini_batch_size], _ = torch.max(utility_alternative_batch, axis=1)
-
-            break
-
-        except RuntimeError as e:
-            start = "CUDA out of memory. Tried to allocate"
-            if str(e)[:len(start)] != start or mini_batch_size <= 1:
-                traceback.print_exc()
-                raise e
-
-            mini_batch_size = int(mini_batch_size / 2)
-            print("\033[A                             \033[A")  # clear console
-
-
-    """3. COMPARE UTILITY"""
-    # we don't accept a negative loss when the gird is not precise enough: set to 0
-    utility_loss = (utility_alternative - utility_actual).relu()
+    utility_loss = (br_utility - utility_actual).relu()
 
     if return_best_response:
-        return utility_loss, (observation, best_response)
+        actual_was_best = utility_loss == 0
+        br_actions = actual_was_best * agent_action_actual + (1-actual_was_best) * action_alternatives[br_indices]
+
+        return(utility_loss, br_actions)
+
 
     return utility_loss
+
+def ex_interim_utility(
+        env: AuctionEnvironment, player_position: int,
+        agent_observations: torch.Tensor, agent_action: torch.Tensor,
+        opponent_batch_size: int, device) -> torch.Tensor:
+    """
+    Calculates the ex-interim utility of a given agent in the environment,
+    given (batches of) their observations and actions.
+
+    Can handle multiple batch dimensions for the agent.
+
+    Args:
+        env (AuctionEnvironment): The environment from which conditional type 
+            profiles and opponent actions will be sampled.
+        player_position (int): the position of the agent to be evaluated
+        agent_observations (Tensor of dim (*agent_batch_sizes x observation_size))
+        agent_action       (Tensor of dim (*agent_batch_sizes x action_size))
+        opponent_batch_size (int): how many conditional valuations and opponent
+            observations to sample for each agent_batch entry. The expected 
+            ex-interim utility will then be approximated by the sample mean
+            over the opponent_batch_size dimension.
+        device (device):    The output device.
+
+    Returns:
+        utility: (Tensor of dim (*agent_batch_sizes)): the resulting empirical
+            ex-interim utilities.
+    """
+    mechanism = env.mechanism
+    agent = env.agents[player_position]
+
+    *batch_dims, action_dim = range(agent_action.dim())
+    *agent_batch_sizes, action_size = agent_action.shape
+    assert agent_observations.shape[:len(batch_dims)] == torch.Size(agent_batch_sizes), \
+        """observations and actions must have the same batch sizes!"""
+    action_dtype = agent_action.dtype
+    # draw conditional observations conditioned on `agent`'s observation:
+    # co has dimension (*agent_batches , opponent_batch, n_players, observation_size)
+    # each agent_observations is repeated opponent_batch_size times
+    cv, co = env.draw_conditionals(
+        player_position, agent_observations, opponent_batch_size
+        )
+
+    action_profile_actual = torch.zeros(
+        *agent_batch_sizes, opponent_batch_size, env.n_players, action_size,
+        dtype=action_dtype, device=device
+        )
+
+    action_profile_actual[...,:,player_position,:] = \
+        agent_action \
+            .view(*agent_batch_sizes, 1, action_size) \
+            .repeat(*([1]*len(agent_batch_sizes)), opponent_batch_size, 1)
+
+    for a in env.agents:
+        if a.player_position != player_position:
+            action_profile_actual[..., a.player_position, :] = \
+                a.strategy.play(co[..., a.player_position, :])
+
+    # shapes: allocations: *agent_batches x opponent_batch x n_players x n_items
+    #         payments:    *agent_batches x opponent_batch x n_players
+    allocations, payments = mechanism.play(action_profile_actual)
+
+    agent_allocations = allocations[..., player_position, :].type(torch.bool)
+    agent_payments = payments[..., player_position]
+    agent_valuations = cv[..., player_position, :]
+    # shape of utility: *agent_batch_sizes x opponent_batch_size
+    utility = agent.get_utility(
+        agent_allocations, agent_payments, agent_valuations
+        )
+
+    # expectation over opponent batches
+    utility = torch.mean(utility, axis=-1) #dim: agent_batch_size
+    return utility

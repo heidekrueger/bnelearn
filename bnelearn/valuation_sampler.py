@@ -231,12 +231,14 @@ class SymmetricIPVSampler(PVSampler):
 
         device = device or self.default_device
         inner_batch_size = inner_batch_size or self.default_batch_size
-        outer_batch_size = conditioned_observation.shape[0]
+        *outer_batch_sizes , observation_size = conditioned_observation.shape
 
-        profile = self._sample([outer_batch_size, inner_batch_size], device)
+        profile = self._sample([*outer_batch_sizes, inner_batch_size], device)
 
         profile[...,conditioned_player, :] = \
-            conditioned_observation.repeat(inner_batch_size, 1)
+            conditioned_observation \
+                .view(*outer_batch_sizes, 1, observation_size) \
+                .repeat(*([1]*len(outer_batch_sizes)), inner_batch_size, 1)
 
         return profile, profile
 
