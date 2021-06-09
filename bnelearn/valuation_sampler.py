@@ -29,8 +29,17 @@ class ValuationObservationSampler(ABC):
             "invalid support bounds."
         self.support_bounds: torch.FloatTensor = support_bounds.to(self.default_device)
 
+    def _parse_batch_sizes_arg(self, batch_sizes_argument: int or List[int] or None) -> List[int]:
+        """Parses an integer batch_size_argument into a list. If none given,
+           defaults to the list containing the default_batch_size of the instance.
+        """
+        batch_sizes = batch_sizes_argument or self.default_batch_size
+        if isinstance(batch_sizes, int):
+            batch_sizes = [batch_sizes]
+        return batch_sizes
+
     @abstractmethod
-    def draw_profiles(self, batch_size: int = None, device=None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def draw_profiles(self, batch_sizes: int or List[int] = None, device=None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws and returns a batch of valuation and observation profiles.
 
         Kwargs:
@@ -47,7 +56,7 @@ class ValuationObservationSampler(ABC):
     def draw_conditional_profiles(self,
                                   conditioned_player: int,
                                   conditioned_observation: torch.Tensor,
-                                  batch_size: int, device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
+                                  inner_batch_size: int, device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws and returns batches conditional valuation and corresponding observation profile.
         For each entry of `conditioned_observation`, `batch_size` samples will be drawn!
 
@@ -66,9 +75,9 @@ class ValuationObservationSampler(ABC):
             If none provided, will use `self.default_batch_size` of the class.
 
         Returns:
-            valuations: torch.Tensor (batch_size x n_players x valuation_size):
+            valuations: torch.Tensor (outer_batch_size x inner_batch_size x n_players x valuation_size):
                 a conditional valuation profile
-            observations: torch.Tensor ((batch_size * `outer_batch_size`) x n_players x observation_size):
+            observations: torch.Tensor (`outer_batch_size`, inner_batch_size x n_players x observation_size):
                 a corresponding conditional observation profile.
                 observations[:,conditioned_observation,:] will be equal to
                 `conditioned_observation` repeated `batch_size` times
@@ -119,15 +128,15 @@ class PVSampler(ValuationObservationSampler, ABC):
                          default_batch_size, default_device)
 
     @abstractmethod
-    def _sample(self, batch_size: int, device: Device) -> torch.Tensor:
+    def _sample(self, batch_sizes: int or List[int], device: Device) -> torch.Tensor:
         """Returns a batch of profiles (which are both valuations and observations)"""
 
-    def draw_profiles(self, batch_size: int = None,
+    def draw_profiles(self, batch_sizes: int or List[int] = None,
                       device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        batch_size = batch_size or self.default_batch_size
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
         device = device or self.default_device
         # In the PV setting, valuations and observations are identical.
-        profile = self._sample(batch_size, device)
+        profile = self._sample(batch_sizes, device)
         return profile, profile
 
 
@@ -155,7 +164,7 @@ class FixedManualIPVSampler(PVSampler):
 
         self.draw_conditional_profiles = SymmetricIPVSampler.draw_conditional_profiles
     
-    def _sample(self, batch_size, device):
+    def _sample(self, batch_sizes, device):
         return self._profile, self._profile
 
 
@@ -204,29 +213,29 @@ class SymmetricIPVSampler(PVSampler):
         super().__init__(n_players, valuation_size, support_bounds, default_batch_size, #pylint: disable=arguments-out-of-order
                          default_device)
 
-    def _sample(self, batch_size: int, device: Device) -> torch.Tensor:
+    def _sample(self, batch_sizes: int or List[int], device: Device) -> torch.Tensor:
         """Draws a batch of observation/valuation profiles (equivalent in PV)"""
-        batch_size = batch_size or self.default_batch_size
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
         device = device or self.default_device
 
-        return self.distribution.sample([batch_size]).to(device)
+        return self.distribution.sample(batch_sizes).to(device)
 
     def draw_conditional_profiles(self,
                                   conditioned_player: int,
                                   conditioned_observation: torch.Tensor,
-                                  batch_size: int,
+                                  inner_batch_size: int,
                                   device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
         # Due to independence, we can simply draw a full profile and replace the
         # conditioned_observations by their specified value.
         # Due to PV, valuations are equal to the observations
 
         device = device or self.default_device
-        inner_batch_size = batch_size or self.default_batch_size
+        inner_batch_size = inner_batch_size or self.default_batch_size
         outer_batch_size = conditioned_observation.shape[0]
 
-        profile = self._sample(outer_batch_size * inner_batch_size, device)
+        profile = self._sample([outer_batch_size, inner_batch_size], device)
 
-        profile[:,conditioned_player, :] = \
+        profile[...,conditioned_player, :] = \
             conditioned_observation.repeat(inner_batch_size, 1)
 
         return profile, profile
@@ -242,10 +251,12 @@ class UniformSymmetricIPVSampler(SymmetricIPVSampler):
                          n_players, valuation_size,
                          default_batch_size, default_device)
 
-    def _sample(self, batch_size, device) -> torch.Tensor:
+    def _sample(self, batch_sizes, device) -> torch.Tensor:
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
+
         # create an empty tensor on the output device, then sample in-place
         return torch.empty(
-            [batch_size, self.n_players, self.valuation_size],
+            [*batch_sizes, self.n_players, self.valuation_size],
             device=device).uniform_(self.base_distribution.low, self.base_distribution.high)
 
 
@@ -259,9 +270,10 @@ class GaussianSymmetricIPVSampler(SymmetricIPVSampler):
                          n_players, valuation_size,
                          default_batch_size, default_device)
 
-    def _sample(self, batch_size, device) -> torch.Tensor:
+    def _sample(self, batch_sizes, device) -> torch.Tensor:
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
         # create empty tensor, sample in-place, clip
-        return torch.empty([batch_size, self.n_players, self.valuation_size],
+        return torch.empty([*batch_sizes, self.n_players, self.valuation_size],
                            device=device) \
             .normal_(self.base_distribution.loc, self.base_distribution.scale) \
             .relu_()
@@ -323,27 +335,27 @@ class CorrelatedSymmetricUniformPVSampler(PVSampler, ABC):
                          default_batch_size, default_device)
 
     @abstractmethod
-    def _get_weights(self, batch_size: int, device: Device) -> torch.Tensor:
+    def _get_weights(self, batch_sizes: List[int], device: Device) -> torch.Tensor:
         """Returns a batch of weights according to the model
            or a constant weight for use in the entire batch.
         """
 
-    def _sample(self, batch_size: int, device: Device) -> torch.Tensor:
+    def _sample(self, batch_sizes: List[int], device: Device) -> torch.Tensor:
         """Draws a batch of observation/valuation profiles (equivalent in PV)"""
-        batch_size = batch_size or self.default_batch_size
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
         device = device or self.default_device
 
         individual_components = torch.empty(
-            [batch_size, self.n_players, self.valuation_size],
+            [*batch_sizes, self.n_players, self.valuation_size],
             device = device) \
             .uniform_(self.u_lo, self.u_hi)
 
         common_component = torch.empty(
-            [batch_size, 1, self.valuation_size],
+            [*batch_sizes, 1, self.valuation_size],
             device = device) \
             .uniform_(self.u_lo, self.u_hi)
 
-        w = self._get_weights(batch_size, device)
+        w = self._get_weights(batch_sizes, device)
 
         return (1-w) * individual_components + w * common_component
 
@@ -355,24 +367,23 @@ class BernoulliWeightsCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUni
         super().__init__(u_lo, u_hi, n_players, valuation_size, correlation,
                          'Bernoulli', default_batch_size, default_device)
 
-    def _get_weights(self, batch_size: int, device: Device) -> torch.Tensor:
+    def _get_weights(self, batch_sizes: List[int], device: Device) -> torch.Tensor:
         """Draws Bernoulli distributed weights along the batch size.
 
         Returns:
             w: Tensor of shape (batch_size, 1, 1)
         """
-
-        return (torch.empty([batch_size], device=device)
+        # TODO: do we want to handle weights differently in different batch dimensions?
+        return (torch.empty(batch_sizes, device=device)
                 .bernoulli_(self.gamma) # different weight per batch
                 .view(-1, 1, 1)) # same weight across item/bundle in each batch-instance
 
     def draw_conditional_profiles(self, conditioned_player: int,
                                   conditioned_observation: torch.Tensor,
-                                  batch_size: int, device: Device  = None
+                                  inner_batch_size: int, device: Device  = None
                                   ) -> Tuple[torch.Tensor, torch.Tensor]:
         device = device or self.default_device
-        outer_batch_size = conditioned_observation.shape[0]
-        inner_batch_size = batch_size
+        outer_batch_size, observation_size = conditioned_observation.shape
 
         conditioned_observation = conditioned_observation.to(device)
         # let i be the index of the player conditioned on.
@@ -380,7 +391,8 @@ class BernoulliWeightsCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUni
 
         # repeat each entry of conditioned_observation inner_batch_size times.
         v_i = conditioned_observation \
-            .repeat_interleave(inner_batch_size, dim=0)
+            .view(outer_batch_size, 1, observation_size) \
+            .repeat(1,inner_batch_size, 1)
 
 
         # each observation v_i has a probability of self.gamma of being the
@@ -393,11 +405,11 @@ class BernoulliWeightsCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUni
         # Start by sampling these (and overwriting ith entry with actual obs.)
         # (ith's entry is technically incorrect, but the cases
         # where v_i != z_i are disregarded by the weights drawn below.)
-        z = torch.empty([outer_batch_size*inner_batch_size,
+        z = torch.empty([outer_batch_size,inner_batch_size,
                          self.n_players,
                          self.valuation_size], device = device) \
             .uniform_(self.u_lo, self.u_hi)
-        z[:,i,:] = v_i
+        z[...,i,:] = v_i
 
         # NOTE: with our current test (e.g. testing correlation matrix
         # of conditional valuation profile for large outer_batch and
@@ -405,13 +417,13 @@ class BernoulliWeightsCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUni
         # batch, otherwise, we'll always end up perfectly correlated, or not
         # at all, rather than the correct amount.
 
-        w = torch.empty([outer_batch_size * inner_batch_size, 1, 1], device=device) \
-            .bernoulli_(self.gamma) \
+        w = torch.empty([outer_batch_size, inner_batch_size, 1, 1], device=device) \
+            .bernoulli_(self.gamma)
 
         # sample valuations directly:
         # either individual component of each player z_j,
         # or common component s=v_i, which we stored in the ith entry of the z tensor
-        v = (1-w)*z + w * z[:,[i],:]
+        v = (1-w)*z + w * z[...,[i],:]
 
         # private values setting: observations = valuations
         return v, v
@@ -430,7 +442,7 @@ class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUnifo
         self._weight = torch.tensor(self._weight, device = self.default_device)
 
 
-    def _get_weights(self, batch_size: int, device) -> torch.Tensor:
+    def _get_weights(self, batch_sizes: List[int], device) -> torch.Tensor:
         """Draws Bernoulli distributed weights along the batch size.
         """
         # batch size is ignored, we always return a scalar.
@@ -439,11 +451,11 @@ class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUnifo
     def draw_conditional_profiles(self,
                                   conditioned_player: int,
                                   conditioned_observation: torch.Tensor,
-                                  batch_size: int,
+                                  inner_batch_size: int,
                                   device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
 
         device = device or self.default_device
-        inner_batch_size = batch_size or self.default_batch_size
+        inner_batch_size = inner_batch_size or self.default_batch_size
         outer_batch_size = conditioned_observation.shape[0]
 
         conditioned_observation = conditioned_observation.to(device)
@@ -452,27 +464,31 @@ class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUnifo
         i = conditioned_player
 
         # repeat each entry of conditioned_observation inner_batch_size times.
-        v_i = conditioned_observation \
-            .to(device) \
-            .repeat_interleave(inner_batch_size, dim=0)
+        v_i = (conditioned_observation
+               .to(device)
+               # add a dim for inner_batch after outer batch_dim
+               .unsqueeze(1)
+               .repeat(1, inner_batch_size, 1)
+               )
 
         # individual components z_j are conditionally independent of z_i.
         # start by sampling these (and overwriting ith entry with actual obs.)
 
         # create repeated entries for conditioned_player
-        z = torch.empty([outer_batch_size*inner_batch_size,
+        z = torch.empty([outer_batch_size,
+                         inner_batch_size,
                          self.n_players,
                          self.valuation_size], device = device) \
             .uniform_(self.u_lo, self.u_hi)
-        z[:,i,:] = self._draw_z_given_v(v_i)
+        z[...,i,:] = self._draw_z_given_v(v_i)
 
         # we have
         # v_j = w*s + (1-w) z_j
         #     = w*( 1/w*(v_i - (1-w)*z_i) ) + (1-w)z_j
         #     = v_i + (1-w)*(z_j - z_i)
 
-        v =(1 - self._weight)*(z - z[:,[i],:]) + \
-            v_i.view(outer_batch_size*inner_batch_size, 1, self.valuation_size)
+        v =(1 - self._weight)*(z - z[...,[i],:]) + \
+            v_i.view(outer_batch_size, inner_batch_size, 1, self.valuation_size)
 
         # private values setting: observations = valuations
         return v, v
@@ -490,10 +506,10 @@ class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUnifo
         are computed. --> add detailed documentation here.
 
         Args:
-            v (tensor) a tensor of shape (outer_batch_size*inner_batch_size, valuation_size)
+            v (tensor) a tensor of shape (outer_batch_size, inner_batch_size, valuation_size)
 
         Returns:
-            z (tensor) of shape (outer_batch_size * inner_batch_size,
+            z (tensor) of shape (outer_batch_size, inner_batch_size,
                                  valuation_size) on the same device as v
         """
         # TODO: we might want to ensure that we use the same (quasi-)random
@@ -508,7 +524,6 @@ class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUnifo
         # but we still need a separate implementation of the interface to
         # avoid division by 0 (as gama=1 implies w=1).
         if self.gamma == 1.0:
-            #return torch.empty((inner_batch_size, 1), device=device) \
             return torch.empty_like(v) \
                 .uniform_(self.u_lo, self.u_hi)
 
@@ -559,16 +574,16 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
             default_batch_size=default_batch_size,
             default_device=default_device)
 
-    def draw_profiles(self, batch_size: int = None, device = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        batch_size = batch_size or self.default_batch_size
+    def draw_profiles(self, batch_sizes: List[int] = None, device = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
         device = device or self.default_device
 
         common_value = (self._common_value_hi - self._common_value_lo) * \
-            torch.empty([batch_size, 1, self.valuation_size],
+            torch.empty([*batch_sizes, 1, self.valuation_size],
                         device=device).uniform_() + \
             self._common_value_lo
 
-        valuations = common_value.repeat([1, self.n_players, 1])
+        valuations = common_value.repeat([*([1]*len(batch_sizes)), self.n_players, 1])
 
         individual_factors = torch.empty_like(valuations).uniform_()
         observations = 2*individual_factors*common_value
@@ -578,11 +593,11 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
     def draw_conditional_profiles(self,
                                   conditioned_player: int,
                                   conditioned_observation: torch.Tensor,
-                                  batch_size: int,
+                                  inner_batch_size: int,
                                   device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
 
         device = device or self.default_device
-        inner_batch = batch_size or self.default_batch_size
+        inner_batch = inner_batch_size or self.default_batch_size
         outer_batch = conditioned_observation.shape[0]
 
         # shorthands
@@ -591,21 +606,22 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
         v = self._draw_v_given_o(conditioned_observation, inner_batch)
 
         valuations = v.to(device) \
-                      .view(-1, 1, self.valuation_size) \
-                      .repeat([1, self.n_players, 1])
+                      .view(outer_batch, inner_batch, 1, self.valuation_size) \
+                      .repeat([1, 1, self.n_players, 1])
 
         # draw individual factors, then overwrite for i
         x = torch.empty(
-            [outer_batch*inner_batch, self.n_players, self.valuation_size],
+            [outer_batch, inner_batch, self.n_players, self.valuation_size],
             device=device).uniform_()
-        x[:, i, :] = conditioned_observation \
-            .repeat_interleave(inner_batch, dim=0) / (2*v)
+        x[..., i, :] = conditioned_observation \
+            .view(outer_batch, 1, -1) \
+            .repeat(1, inner_batch, 1) / (2*v)
         # previous operation introduces NaNs when cond_observation == 0
         # and u_lo ==0 ==> v == 0, thus x/v = 0/0.
         # in this case, we set x to 0.
         # this should only happen for player i, if it happens somewhere else,
         # we don't overwrite to avoid missing errors downstream.
-        x[:,i,:][x[:,i,:].isnan()] = 0.0
+        x[...,i,:][x[...,i,:].isnan()] = 0.0
 
         observations = 2*valuations*x
 
@@ -621,10 +637,10 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
             o_i: observation of a single player (outer_batch_size x valuation_size)
 
         Returns:
-            common_value: tensor of dim (outer_batch x inner_batch, valuation_size) on same device as o_i
+            common_value: tensor of dim (outer_batch, inner_batch, valuation_size) on same device as o_i
         """
 
-        o_i = o_i.repeat_interleave(inner_batch_size, dim=0)
+        o_i = o_i.unsqueeze(1).repeat(1, inner_batch_size, 1)
 
         # Let o = 2*v*x where v is U[lo,hi], x is U[0,1]. Then
         #  1. f(o|v) ∝ 1/v on [0, 2v]
@@ -697,11 +713,11 @@ class AffiliatedValuationObservationSampler(ValuationObservationSampler):
             default_device=default_device)
 
 
-    def draw_profiles(self, batch_size: int = None, device = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        batch_size = batch_size or self.default_batch_size
+    def draw_profiles(self, batch_sizes: List[int] = None, device = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
         device = device or self.default_device
 
-        z_and_s = torch.empty([batch_size, self.n_players+1, self.valuation_size],
+        z_and_s = torch.empty([*batch_sizes, self.n_players+1, self.valuation_size],
                               device=device).uniform_(self._u_lo, self._u_hi)
 
         weights_v = torch.column_stack([torch.ones([self.n_players]*2, device = device) / self.n_players,
@@ -719,10 +735,10 @@ class AffiliatedValuationObservationSampler(ValuationObservationSampler):
     def draw_conditional_profiles(self,
                                   conditioned_player: int,
                                   conditioned_observation: torch.Tensor,
-                                  batch_size: int,
+                                  inner_batch_size: int,
                                   device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
         device = device or self.default_device
-        inner_batch = batch_size or self.default_batch_size
+        inner_batch = inner_batch_size or self.default_batch_size
         outer_batch = conditioned_observation.shape[0]
 
         i = conditioned_player
@@ -804,15 +820,16 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         # define alias AFTER super init such that both point to same memory address
         self.n_items = self.valuation_size
 
-    def _sample(self, batch_size, device) -> torch.Tensor:
+    def _sample(self, batch_sizes, device) -> torch.Tensor:
         """Draws a batch of uniform valuations, sorts them,
         and masks them out if necessary"""
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
         # profile is batch x player x items
-        profile =  super()._sample(batch_size, device)
+        profile =  super()._sample(batch_sizes, device)
         # sort by item
-        profile, _ = profile.sort(dim=2, descending=True)
+        profile, _ = profile.sort(dim=-1, descending=True)
         # valuations beyond the limit are 0
-        profile[:, :, self.max_demand:self.n_items] = 0.0
+        profile[..., self.max_demand:self.n_items] = 0.0
 
         return profile
 
@@ -852,7 +869,7 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
 
 
 
-    def draw_profiles(self, batch_size: int = None, device=None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def draw_profiles(self, batch_sizes: int or List[int] = None, device=None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws and returns a batch of valuation and observation profiles.
 
         Kwargs:
@@ -865,17 +882,17 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
             observations: torch.Tensor (batch_size x n_players x observation_size): an observation profile
         """
         device = device or self.default_device
-        batch_size = batch_size or self.default_batch_size
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
 
-        v = torch.empty([batch_size, self.n_players, self.valuation_size], device=device)
-        o = torch.empty([batch_size, self.n_players, self.observation_size], device=device)
+        v = torch.empty([*batch_sizes, self.n_players, self.valuation_size], device=device)
+        o = torch.empty([*batch_sizes, self.n_players, self.observation_size], device=device)
 
         ## Draw independently for each group.
 
         for g in range(self.n_groups):
             # player indices in the group
             players = self.group_indices[g]
-            v[:, players, :], o[:, players, :] = self.group_samplers[g].draw_profiles(batch_size, device)
+            v[:, players, :], o[:, players, :] = self.group_samplers[g].draw_profiles(batch_sizes, device)
 
         return v,o
 
@@ -883,7 +900,8 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
     def draw_conditional_profiles(self,
                                   conditioned_player: int,
                                   conditioned_observation: torch.Tensor,
-                                  batch_size: int, device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
+                                  inner_batch_size: int,
+                                  device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws and returns batches conditional valuation and corresponding observation profile.
         For each entry of `conditioned_observation`, `batch_size` samples will be drawn!
 
@@ -911,15 +929,15 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
         """
 
         device = device or self.default_device
-        inner_batch = batch_size or self.default_batch_size
+        inner_batch = inner_batch_size or self.default_batch_size
         outer_batch = conditioned_observation.shape[0]
         full_batch = inner_batch * outer_batch
 
         i = conditioned_player
         o_i = conditioned_observation.repeat_interleave(inner_batch, dim=0)
 
-        cv = torch.empty([batch_size, self.n_players, self.valuation_size], device=device)
-        co = torch.empty([batch_size, self.n_players, self.observation_size], device=device)
+        cv = torch.empty([inner_batch_size, self.n_players, self.valuation_size], device=device)
+        co = torch.empty([inner_batch_size, self.n_players, self.observation_size], device=device)
 
         ## Draw independently for each group.
 
@@ -938,7 +956,7 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
                     self.group_samplers[g].draw_conditional_profiles(
                         conditioned_player= sub_i,
                         conditioned_observation= conditioned_observation,
-                        batch_size = inner_batch,
+                        inner_batch_size = inner_batch,
                         device = device
                     )
             else:

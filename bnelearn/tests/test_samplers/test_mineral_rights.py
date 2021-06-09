@@ -85,7 +85,7 @@ def test_mineral_rights(n_players, valuation_size, u_lo, u_hi):
 
 
     # draw alternative batch size
-    v,o = s.draw_profiles(batch_size = conditional_outer_batch_size)
+    v,o = s.draw_profiles(batch_sizes = conditional_outer_batch_size)
     assert v.shape[0] == conditional_outer_batch_size and  \
         o.shape[0] == conditional_outer_batch_size, \
         "explicit batch_size was not respected!"
@@ -94,10 +94,10 @@ def test_mineral_rights(n_players, valuation_size, u_lo, u_hi):
     # reuse these sample for some do some conditional sampling
 
     # Conditional test 1: outer according to true distribtuion, inner_batch_size = 1
-
+    inner_batch_size = 1
     for i in range(n_players):
-        cv, co = s.draw_conditional_profiles(i, o[:,i,:], 1)
-        assert torch.allclose(o[:,i,:], co[:,i,:]), \
+        cv, co = s.draw_conditional_profiles(i, o[:,i,:], inner_batch_size)
+        assert torch.allclose(o[:,i,:], co[:, 0,i,:]), \
             "conditional sample did not respect inputs!"
 
         assert  torch.allclose(o.mean(dim=0), co.mean(dim=0), rtol = 0.02) \

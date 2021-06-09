@@ -15,7 +15,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 batch_size = 2**20
 alternative_batch_size = 2**15
-conditioned_inner_batch_size = 2**18
+conditioned_inner_batch_size = 2**17
 
 
 # helper functions
@@ -24,7 +24,11 @@ def correlation(valuation_profile):
 
     valuation_profile should be (batch x n_players x 1)
     """
-    assert valuation_profile.dim() == 3, "invalid valuation profile."
+    assert valuation_profile.dim() >= 3, "invalid valuation profile."
+    if valuation_profile.dim() > 3:
+        # collapse batch dimensions
+        *batch_sizes, n_players, valuation_size = valuation_profile.shape
+        valuation_profile = valuation_profile.view(-1, n_players, valuation_size)
     assert valuation_profile.shape[2] == 1, "correlation matrix only valid for 1-d valuations"
 
     return torch.from_numpy(
@@ -57,10 +61,13 @@ def check_validity_of_conditional_sampler(sampler: vs.CorrelatedSymmetricUniform
     """
 
     conditioned_observation = \
-            torch.tensor([[u_lo], [u_hi],
+            torch.tensor([[u_lo],
+                          [u_hi],
                           [u_lo + 0.5*(u_hi-u_lo)],
                           [u_lo + 0.25*(u_hi-u_lo)]]) \
                 .repeat(1, valuation_size)
+    
+    outer_batch, observation_size = conditioned_observation.shape
 
     #### test conditional sampling for different players (first and last)
     for i in [0, n_players-1]:
@@ -74,10 +81,11 @@ def check_validity_of_conditional_sampler(sampler: vs.CorrelatedSymmetricUniform
         assert co.device.type == device, "Output is not on excpected standard device!"
 
         assert torch.equal(
-            co[:,i,:],
+            co[...,i,:],
             conditioned_observation \
                 .to(sampler.default_device) \
-                .repeat_interleave(conditioned_inner_batch_size, dim=0)
+                .view(outer_batch, 1, observation_size)
+                .repeat(1, conditioned_inner_batch_size, 1)
         ), "conditioned sample must respect conditioned_observation input!"
 
     # When outer batch is drawn from real distribution and inner_batch size is
@@ -91,7 +99,7 @@ def check_validity_of_conditional_sampler(sampler: vs.CorrelatedSymmetricUniform
         _, co = sampler.draw_conditional_profiles(
             conditioned_player=i,
             conditioned_observation=o[:,i,:],
-            batch_size=1
+            inner_batch_size=1
         )
 
         # with batch_size = 1 (no repitition of inputs),
@@ -101,7 +109,7 @@ def check_validity_of_conditional_sampler(sampler: vs.CorrelatedSymmetricUniform
         for k in range(valuation_size):
             assert torch.allclose(
                 correlation( o[:,:,[k]]),
-                correlation(co[:,:,[k]]),
+                correlation(co[...,:,[k]]),
                 atol=0.01), "Unexpected correlation matrix encountered!"
 
 

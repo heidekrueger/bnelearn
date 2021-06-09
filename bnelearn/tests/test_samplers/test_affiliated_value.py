@@ -91,7 +91,7 @@ def test_affiliated_values(n_players, valuation_size, u_lo, u_hi):
 
 
     # draw alternative batch size
-    v,o = s.draw_profiles(batch_size = conditional_outer_batch_size)
+    v,o = s.draw_profiles(batch_sizes = conditional_outer_batch_size)
     assert v.shape[0] == conditional_outer_batch_size and  \
         o.shape[0] == conditional_outer_batch_size, \
         "explicit batch_size was not respected!"
