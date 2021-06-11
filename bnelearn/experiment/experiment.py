@@ -786,17 +786,17 @@ class Experiment(ABC):
             "Util_loss for larger than actual batch size not implemented."
 
         torch.cuda.empty_cache()
-        util_loss = [
-            metrics.ex_interim_util_loss(env, player_positions[0], batch_size, grid_size,
-                                         return_best_response=self.logging.best_response)
+        util_losses, best_responses = zip(*[
+            metrics.ex_interim_util_loss(env, player_positions[0], batch_size, grid_size)
             for player_positions in self._model2bidder
-        ]
+        ])
         if self.logging.best_response:
+            # TODO: Stefan@ Nils: I don't understand what's happening here. what are the 0 and 1 indices?
+            # is this explicitly only for 2 players/modles??
             best_responses = (
-                torch.stack([r[1][0] for r in util_loss], dim=1)[:, :, None],
-                torch.stack([r[1][1] for r in util_loss], dim=1)[:, :, None]
+                torch.stack([br[0] for br in best_responses], dim=1)[:, :, None],
+                torch.stack([br[1] for br in best_responses], dim=1)[:, :, None]
             )
-            util_loss = [t[0] for t in util_loss]
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
             self._plot(plot_data=best_responses, writer=self.writer,
@@ -805,8 +805,8 @@ class Experiment(ABC):
                        colors=list(range(len(self.models))), epoch=epoch, labels=labels,
                        fmts=fmts, plot_points=self.plot_points)
 
-        ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_loss]
-        ex_interim_max_util_loss = [util_loss_model.max() for util_loss_model in util_loss]
+        ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_losses]
+        ex_interim_max_util_loss = [util_loss_model.max() for util_loss_model in util_losses]
 
         # TODO Nils @Stefan: check consisteny with journal version
         estimated_relative_ex_ante_util_loss = [
@@ -819,7 +819,7 @@ class Experiment(ABC):
         if create_plot_output:
             # TODO Nils: differentiate models in plot
             # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
-            util_losses = torch.stack([util_loss[r] for r in range(len(util_loss))], dim=1)[:, :, None]
+            util_losses = torch.stack(list(util_losses), dim=1)[:, :, None]
             valuations = torch.stack([self.bidders[player_positions[0]].valuations[:batch_size, ...]
                                       for player_positions in self._model2bidder], dim=1)
             plot_output = (valuations, util_losses)

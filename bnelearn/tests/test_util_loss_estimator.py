@@ -108,22 +108,22 @@ expected_util_loss_1_6_2 = torch.tensor([
 # Each tuple specified here will then be tested for all implemented solvers.
 ids_ex_post, testdata_ex_post = zip(*[
     ['fpsb - 1 batch, 2 bidders, 1 item',
-        ('first_price', FirstPriceSealedBidAuction(), valuations_1_2_1, bids_i, expected_util_loss_1_2_1)],
+     ('first_price', FirstPriceSealedBidAuction(),valuations_1_2_1, bids_i, expected_util_loss_1_2_1)],
     ['fpsb - 2 batches, 3 bidders, 1 item, steps of sixths',
-        ('first_price', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_post_util_loss_2_3_1_sixths)],
+     ('first_price', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_post_util_loss_2_3_1_sixths)],
     ['fpsb - 2 batches, 3 bidders, 1 item, steps of tenths',
-        ('first_price', FirstPriceSealedBidAuction(), valuations_2_3_1, b_i_tenths, expected_ex_post_util_loss_2_3_1_tenths)],
+     ('first_price', FirstPriceSealedBidAuction(), valuations_2_3_1, b_i_tenths, expected_ex_post_util_loss_2_3_1_tenths)],
     ['LLLLGG - 1 batch, 6 bidders, 2 item',
-        ('first_price', LLLLGGAuction(), valuations_1_6_2, bids_i_comb, expected_util_loss_1_6_2)]
+     ('first_price', LLLLGGAuction(), valuations_1_6_2, bids_i_comb, expected_util_loss_1_6_2)]
     ])
 
 ids_ex_interim, testdata_ex_interim = zip(*[
     ['fpsb - 1 batch, 2 bidders, 1 item',
-        ('first_price', FirstPriceSealedBidAuction(), valuations_1_2_1, bids_i, expected_util_loss_1_2_1)],
+     ('first_price', FirstPriceSealedBidAuction(), valuations_1_2_1, bids_i, expected_util_loss_1_2_1)],
     ['fpsb - 2 batches, 3 bidders, 1 item, steps of sixths',
-        ('fpfirst_pricesb', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_interim_util_loss_2_3_1_sixths)],
+     ('fpfirst_pricesb', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_interim_util_loss_2_3_1_sixths)],
     ['fpsb - 1 batch, 6 bidders, 2 item',
-        ('first_price', LLLLGGAuction(), valuations_1_6_2, bids_i_comb, expected_util_loss_1_6_2)]
+     ('first_price', LLLLGGAuction(), valuations_1_6_2, bids_i_comb, expected_util_loss_1_6_2)]
     ])
 
 
@@ -137,7 +137,6 @@ def test_ex_post_util_loss_estimator_truthful(rule, mechanism, bid_profile, bids
 
     bids = bid_profile.to(device)
 
-    #sampler = samplers.UniformSymmetricIPVSampler(u_lo,u_hi,n_players, valuation_size, batch_size, device)
     agents = [None] * n_players
     for i in range(n_players):
         agents[i] = Bidder(TruthfulStrategy(), i, batch_size, valuation_size, observation_size, action_size)
@@ -181,7 +180,7 @@ def test_ex_post_util_loss_estimator_truthful(rule, mechanism, bid_profile, bids
 #         # TODO current problem: cannot redraw opponents valuations as their batch
 #         #      size is too small: 1.
 #         pass
-#         # util_loss = metrics.ex_interim_util_loss(env, i, batch_size, grid_size, opponent_batch_size)
+#         # util_loss, best_respone = metrics.ex_interim_util_loss(env, i, batch_size, grid_size, opponent_batch_size)
 #         # assert torch.allclose(util_loss.mean(), expected_util_loss[i, 0], atol = 1), \
 #         #     "Unexpected avg util_loss {}".format(util_loss.mean() - expected_util_loss[i, 0])
 #         # assert torch.allclose(util_loss.max(), expected_util_loss[i, 1], atol = 1), \
@@ -191,11 +190,10 @@ def test_ex_interim_util_loss_estimator_fpsb_bne():
     """Test the util_loss in BNE of fpsb. - ex interim util_loss should be close to zero"""
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     n_players = 3
-    grid_size = 4
-    batch_size = 2
+    grid_size = 2**10
+    batch_size = 2**10
     opponent_batch_size = 2**10
-    n_items = 1
-    valuation_size = observation_size = action_size = 1
+    valuation_size = 1
     risk = 1
 
     # the agent that we will test the estimator for
@@ -228,7 +226,7 @@ def test_ex_interim_util_loss_estimator_fpsb_bne():
     valuations, observations = sampler.draw_profiles(batch_size, device)
     player_observations = observations[:,player_position, :]
     # assert first player has (near) zero util_loss
-    util_loss = metrics.ex_interim_util_loss(env, player_position,
+    util_loss, best_response = metrics.ex_interim_util_loss(env, player_position,
                                              player_observations, grid_size,
                                              opponent_batch_size)
 
@@ -271,7 +269,7 @@ def test_ex_interim_util_loss_estimator_fpsb_bne():
 #     )
 
 #     # assert first player has (near) zero util_loss
-#     util_loss = metrics.ex_interim_util_loss(env, 0, batch_size, grid_size)
+#     util_loss, best_response = metrics.ex_interim_util_loss(env, 0, batch_size, grid_size)
 
 #     mean_util_loss = util_loss.mean()
 #     max_util_loss = util_loss.max()

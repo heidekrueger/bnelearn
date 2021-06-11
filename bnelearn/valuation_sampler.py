@@ -14,7 +14,7 @@ from torch.overrides import is_tensor_like
 class ValuationObservationSampler(ABC):
     """Provides functionality to draw valuation and observation profiles."""
 
-    
+
 
     def __init__(self, n_players, valuation_size, observation_size,
                  support_bounds,
@@ -24,7 +24,7 @@ class ValuationObservationSampler(ABC):
         self.observation_size: int = observation_size # The dimensionality / length of a single observation vector
         self.default_batch_size: int = default_batch_size # a default batch size
         self.default_device: Device = (default_device or 'cuda') if torch.cuda.is_available() else 'cpu'
-        
+
         assert support_bounds.size() == torch.Size([n_players, valuation_size, 2]), \
             "invalid support bounds."
         self.support_bounds: torch.FloatTensor = support_bounds.to(self.default_device)
@@ -84,12 +84,12 @@ class ValuationObservationSampler(ABC):
         """
         pass
 
-    def generate_valuation_grid(self, player_position: int, n_grid_points: int,
+    def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
                                 dtype=torch.float, device = None) -> torch.Tensor:
-        """Generates an evenly spaced grid of (approximately) n_grid_points
-        valuations covering the support of the valuation space for the given
-        player. These are meant as rational actions for the player to evaluate,
-        e.g. in the util_loss estimator.
+        """Generates an evenly spaced grid of (approximately and at least)
+        minimum_number_of_points valuations covering the support of the
+        valuation space for the given player. These are meant as rational actions
+        for the player to evaluate, e.g. in the util_loss estimator.
 
         The default reference implementation returns a rectangular grid on
         [0, upper_bound] x valuation_size.
@@ -107,7 +107,7 @@ class ValuationObservationSampler(ABC):
 
         # use equal density in each dimension of the valuation, such that
         # the total number of points is at least as high as the specified one
-        n_points_per_dim = ceil(n_grid_points**(1/dims))
+        n_points_per_dim = ceil(minimum_number_of_points**(1/dims))
 
         # create equidistant lines along the support in each dimension
         lines = [torch.linspace(bounds[d][0], bounds[d][1], n_points_per_dim,
@@ -145,7 +145,7 @@ class FixedManualIPVSampler(PVSampler):
     A sampler that returns a fixed tensor as valuations/observations.
     """
     def __init__(self, valuation_tensor: torch.Tensor):
-        
+
         assert valuation_tensor.dim() == 3, "invalid input tensor"
 
         self._profile = valuation_tensor
@@ -163,7 +163,7 @@ class FixedManualIPVSampler(PVSampler):
                        batch_size, device)
 
         self.draw_conditional_profiles = SymmetricIPVSampler.draw_conditional_profiles
-    
+
     def _sample(self, batch_sizes, device):
         return self._profile, self._profile
 
@@ -204,7 +204,7 @@ class SymmetricIPVSampler(PVSampler):
         if upper_bound.isinf().item():
             upper_bound = self.base_distribution.icdf(
                 torch.tensor(self.UPPER_BOUND_QUARTILE_IF_UNBOUNDED))
-        
+
         assert upper_bound >= lower_bound
 
         # repeat support bounds across all players and valuation dimensions
@@ -330,7 +330,7 @@ class CorrelatedSymmetricUniformPVSampler(PVSampler, ABC):
             self.method = weight_method
         else:
             raise ValueError('Unknown method, must be one of "Bernoulli", "constant"')
-        
+
         support_bounds = torch.tensor([u_lo, u_hi]).repeat([n_players, valuation_size, 1])
 
         super().__init__(n_players, valuation_size, support_bounds,
@@ -802,7 +802,7 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
             default_device
         """
 
-        # if no demand limit is given, assume it is the total number of items        
+        # if no demand limit is given, assume it is the total number of items
         self.max_demand: int = max_demand or n_items
         assert isinstance(self.max_demand, int), "maximum demand must be integer or none."
         assert self.max_demand > 0, "invalid max demand"
@@ -866,7 +866,7 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
         ## concatenate bounds in player dimension
         support_bounds = torch.vstack([s.support_bounds for s in self.group_samplers])
 
-        super().__init__(n_players, valuation_size, observation_size, support_bounds, 
+        super().__init__(n_players, valuation_size, observation_size, support_bounds,
                          default_batch_size, default_device)
 
 
@@ -884,7 +884,7 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
             observations: torch.Tensor (batch_size x n_players x observation_size): an observation profile
         """
         device = device or self.default_device
-        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
+        batch_sizes: List[int] = self._parse_batch_sizes_arg(batch_sizes)
 
         v = torch.empty([*batch_sizes, self.n_players, self.valuation_size], device=device)
         o = torch.empty([*batch_sizes, self.n_players, self.observation_size], device=device)
@@ -936,7 +936,6 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
         full_batch = inner_batch * outer_batch
 
         i = conditioned_player
-        o_i = conditioned_observation.repeat_interleave(inner_batch, dim=0)
 
         cv = torch.empty([inner_batch_size, self.n_players, self.valuation_size], device=device)
         co = torch.empty([inner_batch_size, self.n_players, self.observation_size], device=device)

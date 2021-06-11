@@ -106,21 +106,23 @@ def test_local_global_samplers(setting, method, gamma):
     ## choose n_points such that we get 2 points (min/max) along each dimension,
     ## then check that they match for a local and a global player:
 
+    ASSERTION_ERROR_UNEXPECTED_GRID = "unexpected grid for local bidder."
+
     n_points = 2**valuation_size
     grid_local = s.generate_valuation_grid(local_indices[0], n_points)
 
     assert torch.equal(grid_local.min(dim=0).values,
                        torch.tensor([local_min]*valuation_size, device=device)), \
-                           "unexpected grid for local bidder."
+                           ASSERTION_ERROR_UNEXPECTED_GRID
     assert torch.equal(grid_local.max(dim=0).values,
                        torch.tensor([local_max]*valuation_size, device=device)), \
-                           "unexpected grid for local bidder."
+                           ASSERTION_ERROR_UNEXPECTED_GRID
 
     grid_global = s.generate_valuation_grid(global_indices[0], n_points)
 
     assert torch.equal(grid_global.min(dim=0).values,
                        torch.tensor([global_min]*valuation_size, device=device)), \
-                           "unexpected grid for local bidder."
+                           ASSERTION_ERROR_UNEXPECTED_GRID
     assert torch.equal(grid_global.max(dim=0).values,
                        torch.tensor([global_max]*valuation_size, device=device)), \
-                           "unexpected grid for local bidder."
+                           ASSERTION_ERROR_UNEXPECTED_GRID
