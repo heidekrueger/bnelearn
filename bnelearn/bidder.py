@@ -550,3 +550,74 @@ class CombinatorialBidder(Bidder):
 
         welfare = (valuations * allocations).sum(dim=item_dimension)
         return welfare
+
+
+class BlottoBidder(Bidder):
+    """ 
+    Bidder in Colonel Blotto games
+    """
+
+    def __init__(self, common_prior, strategy, player_position, batch_size, n_items, budget: float = 1, normalize_valuations: bool = True):
+
+        self.budget = budget        
+        self.normalize_valuations = normalize_valuations
+        super().__init__(common_prior, strategy, player_position, batch_size, n_items)
+
+
+    def draw_valuations_(self, common_component = None, weights: torch.Tensor or float = 0.0):
+        """Sample a new batch of valuations from the Bidder's prior. Negative
+        draws will be clipped at 0.0!
+
+        When correlation info is given, valuations are drawn according to a
+        mixture of the individually drawn component and the provided common
+        component according to the provided weights.
+
+        If ´descending_valuations´ is true, the valuations will be returned
+        in decreasing order.
+
+        Args:
+            common_component (optional): torch.tensor (batch_size x n_items)
+                Tensor of (hidden) common component, same dimension as
+                `self.valuation`.
+            weights: (float, [0,1]) or tensor (batch_size x n_items) with
+                values in [0,1] defines how much to weigh the common component.
+                If float, weighs entire tensor. If tensor weighs
+                component-wise.
+
+        Returns:
+            valuations: torch.tesnor.
+        """
+
+        self.valuations = super().draw_valuations_(common_component, weights)
+
+        if self.normalize_valuations:
+            self.valuations = self.valuations
+
+        return self.valuations
+
+    def get_action(self):
+
+        actions = super().get_action()
+        # Scale actions by available budget
+        actions = actions * self.budget
+
+        return actions
+
+    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
+        """
+        For a batch of allocations and counterfactual valuations return the
+        player's utilities.
+    
+        Can handle multiple batch dimensions, e.g. for allocations a shape of
+        (..., batch_size, n_items). These batch dimensions are kept in returned
+        payoff.
+        """
+        welfare = self.get_welfare(allocations, counterfactual_valuations)
+    
+        if self.risk == 1.0:
+            return welfare
+        else:
+            # welfare^alpha not well defined in negative domain for risk averse agents
+            # the following is a memory-saving implementation of
+            #return welfare.relu()**self.risk - (-welfare).relu()**self.risk
+            return welfare.relu().pow_(self.risk).sub_(welfare.neg_().relu_().pow_(self.risk))
