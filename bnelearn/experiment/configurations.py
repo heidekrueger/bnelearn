@@ -63,6 +63,10 @@ class SettingConfig:
     core_solver: str = None
     # parallel: int = 1 in hardware config now
 
+    # Blotto
+    budget_ratio: float = None
+    normalize_valuations: bool  = False
+
 
 @dataclass
 class LearningConfig:

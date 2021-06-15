@@ -8,7 +8,7 @@ import torch
 from bnelearn.experiment.experiment import Experiment
 from bnelearn.experiment.configurations import (ExperimentConfig)
 from bnelearn.mechanism.general_blotto import GeneralBlotto
-from bnelearn.bidder import Bidder
+from bnelearn.bidder import BlottoBidder
 
 class GeneralBlottoExperiment(Experiment):
 
@@ -20,13 +20,15 @@ class GeneralBlottoExperiment(Experiment):
 
         self.config = config
         self.n_players = self.config.setting.n_players
-        self.n_items = 2
-        self.input_length = 2
+        self.n_items = 3
+        self.input_length = 3
         self.positive_output_point = None
         self.u_lo = float(config.setting.u_lo)
         self.u_hi = float(config.setting.u_hi)
         self.common_prior = torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi) # TODO: check meaningful prior
-        
+        self.budget_ratio = config.setting.budget_ratio
+        self.normalize_valuations = config.setting.normalize_valuations
+
         self.model_sharing = self.config.learning.model_sharing
 
         if self.model_sharing:
@@ -35,6 +37,9 @@ class GeneralBlottoExperiment(Experiment):
         else:
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
+
+        # initialize bidders budgets
+        self.budgets = [3, 3 * self.budget_ratio]
 
         super().__init__(config=config)
 
@@ -47,6 +52,12 @@ class GeneralBlottoExperiment(Experiment):
         print('Using General Blotto mechanism')
         self.mechanism = GeneralBlotto(cuda=self.hardware.cuda)
 
+
     def _strat_to_bidder(self, strategy, batch_size, player_position=None):
-        return Bidder(self.common_prior, strategy, player_position, batch_size, self.n_items)
+
+        # Assign each bidder a budget
+        budget = self.budgets[player_position]
+
+        return BlottoBidder(self.common_prior, strategy, player_position, batch_size, self.n_items, budget = budget,
+                            normalize_valuations = self.normalize_valuations)
 

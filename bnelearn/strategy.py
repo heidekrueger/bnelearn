@@ -338,8 +338,11 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         # create output layer
         self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
-        self.layers[str(nn.ReLU()) + '_out'] = nn.ReLU()
-        self.activations.append(self.layers[str(nn.ReLU()) + '_out'])
+        #self.layers[str(nn.ReLU()) + '_out'] = nn.ReLU()
+        #self.activations.append(self.layers[str(nn.ReLU()) + '_out'])
+        # MARKUS - TODO : only test here for softmax output rather than relu for blotto reasons -> extract this strategy into a strategy with budget
+        self.layers[str(nn.Softmax(dim=0)) + '_out'] = nn.Softmax(dim=1)
+        self.activations.append(self.layers[str(nn.Softmax(dim=0)) + '_out'])
 
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization

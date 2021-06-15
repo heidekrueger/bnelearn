@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from typing import Callable, Set, List, Iterable, Tuple
 
 import torch
+import os
 
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism

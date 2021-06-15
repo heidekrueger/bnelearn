@@ -197,9 +197,11 @@ class ConfigurationManager:
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
 
-    def _init_standard_blotto(self):
+    def _init_general_blotto(self):
         self.setting.u_lo = 0 # TODO - check if param is reasonable
         self.setting.u_hi = 1 # TODO - check if param is reasonable
+        self.setting.budget_ratio = 1 # TODO - add assymetric case
+        self.setting.normalize_valuations = True
 
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
@@ -292,7 +294,7 @@ class ConfigurationManager:
     def _post_init_splitaward(self):
         pass
 
-    def _post_init_standard_blotto(self):
+    def _post_init_general_blotto(self):
         pass
 
     experiment_types = {
@@ -322,8 +324,10 @@ class ConfigurationManager:
             (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
             (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
-        'standard_blotto':
-            (GeneralBlottoExperiment, _init_standard_blotto, _post_init_standard_blotto)}
+        'general_symmetric_blotto':
+            (GeneralBlottoExperiment, _init_general_blotto, _post_init_general_blotto),
+        'general_asymmetric_blotto':
+            (GeneralBlottoExperiment, _init_general_blotto, _post_init_general_blotto)}
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type
@@ -347,7 +351,7 @@ class ConfigurationManager:
                     correlation_coefficients: List[float] = 'None', n_units: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None', regret: float = 'None',):
+                    core_solver: str = 'None', regret: float = 'None', budget_ratio: float = 'None',):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.

@@ -37,11 +37,11 @@ if __name__ == '__main__':
         os.path.expanduser('~'), 'bnelearn', 'experiments')
 
     ### BLOTTO EXPERIMENTS ###
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='standard_blotto',
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='general_symmetric_blotto',
                                                                n_runs=1,
                                                                n_epochs=200) \
-        .set_setting(n_players=2) \
-        .set_learning(model_sharing=False, pretrain_iters=0) \
+        .set_setting(n_players=2, budget_ratio = 1) \
+        .set_learning(model_sharing=False, pretrain_iters=0, learner_hyperparams = {'population_size': 64, 'sigma': 1., 'scale_sigma_by_model_size': False}) \
         .set_logging(enable_logging=True).get_config()
 
     ### SINGLE ITEM EXPERIMENTS ###

@@ -1,4 +1,5 @@
 import torch
+import os
 from typing import Tuple
 
 
@@ -39,30 +40,20 @@ class GeneralBlotto(Mechanism):
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
 
+        # assign budgets to relative bids
+        
+
         # name dimensions for readibility
         # pylint: disable=unused-variable
         batch_dim, player_dim, item_dim = 0, 1, 2
         batch_size, n_players, n_items = bids.shape
 
         # allocate return variables
-        payments_per_item = torch.zeros(batch_size, n_players, n_items, device=self.device)
-        allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
+        payments = torch.zeros(batch_size, n_players, device=self.device)
+        allocations = torch.ones(batch_size, n_players, n_items, device=self.device)
 
+        _, loosing_bidders = bids.min(dim = 1, keepdims = True)
 
-        # TODO - identify the maximal bid per field and assign allocaation differently
-        # Determine general allocation
-        bidsT = torch.swapaxes(bids, item_dim, player_dim)
-        highest_bids, winning_bidders = bidsT.max(dim = player_dim, keepdims = True)
-
-        # Correct allocation in tie cases
-        # Opponent (index = 1) obtains the battlefield in these cases
-        ties = (bidsT * torch.ones_like(bids[0]) * torch.tensor([-1, 1])).sum(dim=2, keepdims = True)
-        tieMatrix = torch.swapaxes(ties == torch.zeros_like(ties), 2, 1)
-        winning_bidders[tieMatrix] = 1  
-
-        allocations.scatter_(player_dim, winning_bidders, 1)
-
+        allocations.scatter_(player_dim, loosing_bidders, 0)
         
-        payments = bids.sum(dim = 2) # TODO: use pay-as-bid for the moment
-
         return allocations, payments
