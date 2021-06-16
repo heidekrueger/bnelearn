@@ -196,3 +196,49 @@ class ThirdPriceSealedBidAuction(Mechanism):
         allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
+
+
+class SingleItemAllPayAuction(Mechanism):
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+       
+        """
+        
+        Runs a (batch of) the standard version of the all pay auction.
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, n_items)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches x n_players x n_items),
+                        1 indicating item is allocated to corresponding player
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (n_batches x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+        
+        # name dimensions for readibility
+        # pylint: disable=unused-variable
+        batch_dim, player_dim, item_dim = 0, 1, 2
+        batch_size, n_players, n_items = bids.shape
+
+        # allocate return variables
+        payments = bids.reshape(batch_size, n_players)
+        allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
+
+        # Assign item to the bidder with the highest bid, in case of a tie assign it randomly to one of the winning bidderss
+        highest_bids, winning_bidders = bids.max(dim=player_dim, keepdim=True) 
+        allocations.scatter_(player_dim, winning_bidders, 1)
+
+        return allocations, payments

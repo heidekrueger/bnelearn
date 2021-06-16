@@ -15,7 +15,7 @@ from bnelearn.environment import AuctionEnvironment
 from .experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
+from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, SingleItemAllPayAuction
 from bnelearn.strategy import ClosureStrategy
 from bnelearn.correlation_device import (
     MineralRightsCorrelationDevice, AffiliatedObservationsDevice)
@@ -748,3 +748,37 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         name = ['single_item', self.payment_rule, 'interdependent', self.valuation_prior,
                 'symmetric', str(self.risk) + 'risk', str(self.n_players) + 'players']
         return os.path.join(*name)
+
+
+class SingleItemAllPayExperiment(SingleItemExperiment):
+
+    def __init__(self, config: ExperimentConfig):
+
+        self.config = config
+        self.n_players = self.config.setting.n_players
+        self.n_items = 1
+        self.input_length = 1
+        self.positive_output_point = None
+        self.u_lo = float(config.setting.u_lo)
+        self.u_hi = float(config.setting.u_hi)
+        self.common_prior = torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi) # TODO: check meaningful prior
+        self.model_sharing = self.config.learning.model_sharing
+        self.risk = float(self.config.setting.risk)
+        self.n_models = self.n_players
+        self._bidder2model = list(range(self.n_players))
+
+        super().__init__(config)
+
+    def _get_logdir_hierarchy(self):
+        name = ['all_pay']
+        return os.path.join(*name)
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+        return Bidder.uniform(self.u_lo, self.u_hi, strategy,
+                              player_position=player_position, batch_size=batch_size,
+                              n_items=self.input_length,
+                              risk=self.risk, cache_actions=cache_actions)
+
+    def _setup_mechanism(self):
+        print('Setting up the all pay auction mechanism')
+        self.mechanism = SingleItemAllPayAuction(cuda=self.hardware.cuda)
