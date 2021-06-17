@@ -233,8 +233,6 @@ class Experiment(ABC):
         self._setup_learning_environment()
         self._setup_learners()
 
-        output_dir = self.run_log_dir
-
         if self.logging.log_metrics['opt'] and hasattr(self, 'bne_env'):
 
             if not isinstance(self.bne_env, list):
@@ -277,31 +275,40 @@ class Experiment(ABC):
             from IPython import display  # pylint: disable=unused-import,import-outside-toplevel
         plt.rcParams['figure.figsize'] = [8, 5]
 
+        print('Stating run...')
+        
         if self.logging.enable_logging:
-            os.makedirs(output_dir, exist_ok=False)
-            if self.logging.save_figure_to_disk_png:
-                os.mkdir(os.path.join(output_dir, 'png'))
-            if self.logging.save_figure_to_disk_svg:
-                os.mkdir(os.path.join(output_dir, 'svg'))
-            if self.logging.save_models:
-                os.mkdir(os.path.join(output_dir, 'models'))
-
-            print('Started run. Logging to {}.'.format(output_dir))
+            # Create summary writer object and create output dirs if necessary
+            self._initialize_logging()
             self.fig = plt.figure()
-            self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
             tic = timer()
             # self._log_experiment_params()
             # self._log_hyperparams()
-
             # self._log_experiment_params()
             logging_utils.save_experiment_config(self.experiment_log_dir, self.config)
-            elapsed = timer() - tic
             logging_utils.log_git_commit_hash(self.experiment_log_dir)
+            elapsed = timer() - tic
+
         else:
-            print('Logging disabled.')
+            print('\tLogging disabled.')
             elapsed = 0
         self.overhead += elapsed
+
+    def _initialize_logging(self):
+        """Creates output directories if necessary and 
+        initializes the self.writer object for writing tensorboard logs.
+        """
+        output_dir = self.run_log_dir
+        os.makedirs(output_dir, exist_ok=False)
+        if self.logging.save_figure_to_disk_png:
+            os.mkdir(os.path.join(output_dir, 'png'))
+        if self.logging.save_figure_to_disk_svg:
+            os.mkdir(os.path.join(output_dir, 'svg'))
+        if self.logging.save_models:
+            os.mkdir(os.path.join(output_dir, 'models'))
+        self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
+        print('\tLogging to {}.'.format(output_dir))
 
     def _exit_run(self, global_step=None):
         """Cleans up a run after it is completed"""
@@ -856,19 +863,17 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
         ignored_metrics = ['utilities', 'update_norm', 'overhead_hours']
+        filtered_metrics = filter(lambda elem: elem[0] not in ignored_metrics,
+                                  self._cur_epoch_log_params.items())
         try:
-            for i, (k, v) in enumerate(self._cur_epoch_log_params.items()):
-                if k not in ignored_metrics:
-                    if isinstance(v, list):  # TODO: isn't this the same behavior as in the second case for tensor?
-                        for model_number in range(len(v)):
-                            self._hparams_metrics["metrics/" + k+"_"+str(model_number)] = v[model_number]
-                    elif isinstance(v, torch.Tensor):
-                        for model_number, metric in enumerate(v):
-                            self._hparams_metrics["metrics/" + k+"_"+str(model_number)] = metric
-                    elif isinstance(v, int) or isinstance(v, float):
-                        self._hparams_metrics["metrics/" + k] = v
-                    else:
-                        print("the type ", type(v), " is not supported as a metric")
+            for k, v in filtered_metrics:
+                if isinstance(v, (list, torch.Tensor)):
+                    for model_number, metric in enumerate(v):
+                        self._hparams_metrics["metrics/" + k+"_"+str(model_number)] = metric
+                elif isinstance(v, int) or isinstance(v, float):
+                    self._hparams_metrics["metrics/" + k] = v
+                else:
+                    print("the type ", type(v), " is not supported as a metric")
         except Exception as e:  # pylint: disable=broad-except
             print(e)
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics,

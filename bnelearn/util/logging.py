@@ -4,11 +4,13 @@ import pickle
 import subprocess
 import time
 from typing import List
+import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator, STORE_EVERYTHING_SIZE_GUIDANCE
+from torch._C import T
 from torch.utils.tensorboard.summary import hparams
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
 import pkg_resources
@@ -118,15 +120,18 @@ def print_aggregate_tensorboard_logs(experiment_dir):
 
 
 def log_git_commit_hash(experiment_dir):
-    """Saves the hash of the current git commit"""
+    """Saves the hash of the current git commit into experiment_dir."""
 
     # Will leave it here as a comment in case we'll ever need to log the full dependency tree or the environment.
     # os.system('pipdeptree --json-tree > dependencies.json')
     # os.system('conda env export > environment.yml')
 
-    commit_hash = str(subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip())[2:-1]
-    with open(os.path.join(experiment_dir, f'{_git_commit_hash_file_name}.txt'), "w") as text_file:
-        text_file.write(commit_hash)
+    try:
+        commit_hash = str(subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip())[2:-1]
+        with open(os.path.join(experiment_dir, f'{_git_commit_hash_file_name}.txt'), "w") as text_file:
+            text_file.write(commit_hash)
+    except Exception as e:
+        warnings.warn("Failed to retrieve and log the git commit hash.")
 
 
 def save_experiment_config(experiment_log_dir, experiment_configuration: ExperimentConfig):
