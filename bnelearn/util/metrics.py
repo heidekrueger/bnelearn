@@ -31,7 +31,8 @@ def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> torch.Tens
     # finite p
     n = float(b1.shape[0])
 
-    return torch.dist(b1, b2, p=p)*(1./n)**(1/p)
+    # calc. norm & detach for disregarding any gradient info
+    return (torch.dist(b1, b2, p=p)*(1./n)**(1/p)).detach()
 
 def norm_strategies(strategy1: Strategy, strategy2: Strategy, valuations: torch.Tensor, p: float=2) -> torch.Tensor:
     """
