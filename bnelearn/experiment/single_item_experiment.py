@@ -539,6 +539,128 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         self.bne_utilities = bne_utilities_sampled
 
 
+class TwoPlayerAsymmetricBetaPriorSingleItemExperiment(SingleItemExperiment):
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+
+        if self.config.learning.model_sharing is not None:
+            assert not self.config.learning.model_sharing, "Model sharing not available in this setting!"
+        self.model_sharing = False
+
+        self.payment_rule = 'first_price'
+        self.valuation_prior = 'beta'
+        self.risk = float(self.config.setting.risk)
+        self.risk_profile = self.get_risk_profile(self.risk)
+
+        self.n_players = 2
+        self.n_items = 1
+        self.n_models = self.n_players
+        self._bidder2model: List[int] = list(range(self.n_players))
+
+        self.u_lo = self.config.setting.u_lo
+        self.u_hi = self.config.setting.u_hi
+        self.positive_output_point = torch.tensor([0.5] * self.n_items)
+
+        self.plot_xmin = 0.0
+        self.plot_xmax = 1.0
+        self.plot_ymin = self.plot_xmin * 0.90
+        self.plot_ymax = self.plot_xmax * 1.05
+
+        super().__init__(config)
+
+    def _get_logdir_hierarchy(self):
+        name = ['single_item', self.payment_rule, self.valuation_prior,
+                'asymmetric', self.risk_profile, str(self.n_players) + 'p']
+        return os.path.join(*name)
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=None,
+                         cache_actions=False, **strat_to_player_kwargs):
+        # beta bidder
+        bidder = Bidder.beta(
+            alpha=torch.tensor(self.u_lo[player_position], device=self.hardware.device),
+            beta=torch.tensor(self.u_hi[player_position], device=self.hardware.device),
+            strategy=strategy,
+            player_position=player_position, batch_size=batch_size,
+            cache_actions=cache_actions, **strat_to_player_kwargs
+        )
+        return bidder
+
+    def _check_and_set_known_bne(self):
+        if self.u_lo == [1, 1] and self.u_hi == [1, 1]:  # both agents have uniform prior
+            if self.payment_rule == 'first_price':
+                self._optimal_bid = partial(_optimal_bid_FPSB_UniformSymmetricPriorSingleItem,
+                                            n=self.n_players, r=self.risk, u_lo=self.u_lo[0], u_hi=self.u_hi[0])
+                return True
+            elif self.payment_rule == 'second_price':
+                self._optimal_bid = _truthful_bid
+                return True
+            else:  # no bne found, defer to parent
+                return super()._check_and_set_known_bne()
+        else:
+            return False
+
+    def _setup_eval_environment(self):
+        """Determines whether a bne exists and sets up eval environment."""
+
+        assert self.known_bne
+        assert  hasattr(self, '_optimal_bid')
+
+        # TODO: parallelism should be taken from elsewhere. Should be moved to config. Assigned @Stefan
+        n_processes_optimal_strategy = 44 if self.valuation_prior != 'uniform' and \
+                                                self.payment_rule != 'second_price' else 0
+        bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
+
+        # define bne agents once then use them in all runs
+        self.bne_env = AuctionEnvironment(
+            self.mechanism,
+            agents=[self._strat_to_bidder(bne_strategy,
+                                          player_position=i,
+                                          batch_size=self.logging.eval_batch_size,
+                                          cache_actions=self.logging.cache_eval_actions)
+                    for i in range(self.n_players)],
+            batch_size=self.logging.eval_batch_size,
+            n_players=self.n_players,
+            strategy_to_player_closure=self._strat_to_bidder
+        )
+
+        bne_utility_analytical = self._get_analytical_bne_utility()
+        print('Utility in BNE (analytic): \t{:.5f}'.format(bne_utility_analytical))
+
+        self.bne_utility = bne_utility_analytical
+        self.bne_utilities = [self.bne_utility] * self.n_models
+
+    def _get_analytical_bne_utility(self):
+        """Get bne utility from known closed-form solution for higher precision."""
+        if self.payment_rule == 'first_price':
+            bne_utility = torch.tensor(
+                (self.risk * (self.u_hi[0] - self.u_lo[0]) / (self.n_players - 1 + self.risk)) **
+                self.risk / (self.n_players + self.risk),
+                device=self.hardware.device
+            )
+        elif self.payment_rule == 'second_price':
+            F = self.common_prior.cdf
+            f = lambda x: self.common_prior.log_prob(torch.tensor(x)).exp()
+            f1n = lambda x, n: n * F(x) ** (n - 1) * f(x)
+
+            bne_utility, error_estimate = integrate.dblquad(
+                lambda x, v: (v - x) * f1n(x, self.n_players - 1) * f(v),
+                0, float('inf'),  # outer boundaries
+                lambda v: 0, lambda v: v)  # inner boundaries
+
+            bne_utility = torch.tensor(bne_utility, device=self.hardware.device)
+            if error_estimate > 1e-6:
+                warnings.warn('Error bound on analytical bne utility is not negligible!')
+        else:
+            raise ValueError("Invalid auction mechanism.")
+
+        return bne_utility
+
+    def _get_logdir_hierarchy(self):
+        name = ['single_item', self.payment_rule, 'non-common',
+                str(self.risk) + 'risk', str(self.n_players) + 'players']
+        return os.path.join(*name)
+
+
 class MineralRightsExperiment(SingleItemExperiment):
     """A Single Item Experiment that has the same valuation prior for all participating bidders.
     For risk-neutral agents, a unique BNE is known.

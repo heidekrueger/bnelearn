@@ -137,6 +137,12 @@ class Bidder(Player):
         dist = torch.distributions.normal.Normal(loc = mean, scale = stddev)
         return cls(dist, strategy, **kwargs)
 
+    @classmethod
+    def beta(cls, alpha: float, beta: float, strategy: Strategy, **kwargs):
+        """Constructs a bidder with Beta valuation prior."""
+        dist = torch.distributions.Beta(concentration1=alpha, concentration0=beta)
+        return cls(dist, strategy, **kwargs)
+
     @property
     def valuations(self):
         return self._valuations

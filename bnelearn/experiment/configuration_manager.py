@@ -22,6 +22,7 @@ from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, Spli
 
 from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSingleItemExperiment,
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
+                                                        TwoPlayerAsymmetricBetaPriorSingleItemExperiment,
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
                                                         AffiliatedObservationsExperiment)
@@ -87,6 +88,11 @@ class ConfigurationManager:
         self.learning.model_sharing = False
         self.setting.u_lo = [0, .6]
         self.setting.u_hi = [.5, .7]
+
+    def _init_single_item_asymmetric_beta(self):
+        self.learning.model_sharing = False
+        self.setting.u_lo = [0, 1]
+        self.setting.u_hi = [1, 1]
 
     def _init_mineral_rights(self):
         self.setting.n_players = 3
@@ -253,6 +259,9 @@ class ConfigurationManager:
     def _post_init_single_item_asymmetric_uniform_disjunct(self):
         pass
 
+    def _post_init_single_item_asymmetric_beta(self):
+        pass
+
     def _post_init_mineral_rights(self):
         pass
 
@@ -299,6 +308,9 @@ class ConfigurationManager:
         'single_item_asymmetric_uniform_disjunct':
             (TwoPlayerAsymmetricUniformPriorSingleItemExperiment, _init_single_item_asymmetric_uniform_disjunct,
              _post_init_single_item_asymmetric_uniform_disjunct),
+        'single_item_asymmetric_beta':
+            (TwoPlayerAsymmetricBetaPriorSingleItemExperiment, _init_single_item_asymmetric_beta,
+             _post_init_single_item_asymmetric_beta),
         'mineral_rights':
             (MineralRightsExperiment, _init_mineral_rights, _post_init_mineral_rights),
         'affiliated_observations':
@@ -685,5 +697,9 @@ class ConfigurationManager:
                 return torch.optim.SGD
             if optimizer in ('PSO', 'pso', 'Pso'):
                 return 'PSO'
+            try:
+                return eval(f'torch.optim.{optimizer}')
+            except AttributeError:
+                pass
             # add more optimizers as needed
         raise ValueError('Optimizer type could not be inferred!')

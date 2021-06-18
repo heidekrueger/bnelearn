@@ -412,15 +412,18 @@ class LLGFullExperiment(LocalGlobalExperiment):
 
         self.known_bne = False
 
-    # def relevant_actions(self):
-    #     if self.config.setting.correlation_types in ['independent'] and \
-    #         self.payment_rule in ['vcg', 'mrcs_favored']:
-    #         return torch.tensor(
-    #             [[1, 0, 0], [0, 1, 0], [0, 0, 1]], # TODO rather: [[1, 0, 1], [0, 1, 1], [0, 0, 1]]
-    #             device=self.config.hardware.device,
-    #             dtype=torch.bool
-    #         )
-    #     return super().relevant_actions()
+    def pretrain_transform(self, player_position: int) -> callable:
+        return lambda x: self.relevant_actions()[player_position] * x
+
+    def relevant_actions(self):
+        if self.config.setting.correlation_types in ['independent'] and \
+            self.payment_rule in ['vcg', 'mrcs_favored']:
+            return torch.tensor(
+                [[1, 0, 1], [0, 1, 1], [0, 0, 1]], # TODO rather: [[1, 0, 1], [0, 1, 1], [0, 0, 1]]
+                device=self.config.hardware.device,
+                dtype=torch.bool
+            )
+        return super().relevant_actions()
 
     def _evaluate_and_log_epoch(self, epoch: int) -> float:
         # TODO keep track of time as in super()

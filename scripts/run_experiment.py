@@ -29,70 +29,86 @@ if __name__ == '__main__':
 
     # Path is user-specific
     log_root_dir = os.path.join(
-        os.path.expanduser('~'), 'bnelearn', 'experiments', 'pso_new-c')
+        os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
 
     experiment_types = [
-        'single_item_asymmetric_uniform_overlapping',
-        'single_item_asymmetric_uniform_disjunct',
-        'splitaward',
-        'llg_full',
+        # 'single_item_uniform_symmetric'
+        # 'single_item_asymmetric_beta'
+        # 'single_item_asymmetric_uniform_overlapping',
+        # 'single_item_asymmetric_uniform_disjunct',
+        # 'splitaward',
+        # 'llg_full',
+        'llllgg',
     ]
+    payment_rules = [
+        # 'first_price',
+        # 'nearest_vcg',
+    ]
+    u_los = [[0.8, 1.2]]
+    u_his = [[1.2, 0.8]]
 
     for experiment_type in experiment_types:
-    # Set up experiment
-        experiment_config, experiment_class = \
-            ConfigurationManager(
-                experiment_type=experiment_type,
-                n_runs=10,
-                n_epochs=2000,
-            ) \
-            .set_setting(
-            ) \
-            .set_learning(
-                # model_sharing=False,
-                learner_type='PSOLearner',
-                batch_size=2**17,
-                pretrain_iters=0,
-                learner_hyperparams={
-                    'swarm_size': 64,
-                    'topology': 'von_neumann',
-                    'upper_bounds': 1,
-                    'lower_bounds': -1,
-                    'reevaluation_frequency': 10,
-                    'inertia_weight': .5,
-                    'cognition': .8,
-                    'social': .8,
-                    # 'pretrain_deviation': .2,
-                }
-                # pretrain_iters=500,
-                # learner_hyperparams={
-                #     'population_size': 64,
-                #     'sigma': 1.,
-                #     'scale_sigma_by_model_size': True,
-                #     # 'regularize': {
-                #     #     'inital_strength': inital_strength,
-                #     #     'regularize_decay': regularize_decay,
-                #     # },
-                # }
-            ) \
-            .set_hardware(
-                specific_gpu=5,
-            ) \
-            .set_logging(
-                eval_batch_size=2**17,
-                cache_eval_actions=True,
-                util_loss_batch_size=2**11,
-                util_loss_grid_size=2**10,
-                util_loss_frequency=2000,
-                best_response=False,
-                log_root_dir=log_root_dir,
-                save_tb_events_to_csv_detailed=True,
-                stopping_criterion_frequency=1e8,
-                save_models=True,
-                plot_frequency=200,
-            ) \
-            .get_config()
-        experiment = experiment_class(experiment_config)
-        experiment.run()
+        for u_lo, u_hi in zip(u_los, u_his):
+        # for payment_rule in payment_rules:
+            # Set up experiment
+                experiment_config, experiment_class = \
+                    ConfigurationManager(
+                        experiment_type=experiment_type,
+                        n_runs=1,
+                        n_epochs=10000,
+                    ) \
+                    .set_setting(
+                        # payment_rule=payment_rule,
+                        # core_solver='mpc',
+                        # u_lo=u_lo,
+                        # u_hi=u_hi,
+                    ) \
+                    .set_learning(
+                        model_sharing=False,
+                        batch_size=2**12,
+                        # optimizer_type='RMSprop',
+                        # learner_type='PSOLearner',
+                        # pretrain_iters=0,
+                        # learner_hyperparams={
+                        #     'swarm_size': 64,
+                        #     'topology': 'von_neumann',
+                        #     'upper_bounds': 1,
+                        #     'lower_bounds': -1,
+                        #     'reevaluation_frequency': 10,
+                        #     'inertia_weight': .5,
+                        #     # 'cognition': .8,
+                        #     # 'social': .8,
+                        #     # 'pretrain_deviation': .2,
+                        # }
+                        # hidden_nodes=[128, 128],
+                        # learner_hyperparams={
+                        #     'population_size': 64,
+                        #     'sigma': 1.,
+                        #     'scale_sigma_by_model_size': True,
+                        #     # 'regularize': {
+                        #     #     'inital_strength': inital_strength,
+                        #     #     'regularize_decay': regularize_decay,
+                        #     # },
+                        # }
+                    ) \
+                    .set_hardware(
+                        specific_gpu=4,
+                    ) \
+                    .set_logging(
+                        eval_batch_size=2**12,
+                        cache_eval_actions=True,
+                        util_loss_batch_size=2**2,
+                        util_loss_grid_size=2**2,
+                        util_loss_frequency=100,
+                        best_response=True,
+                        log_root_dir=log_root_dir,
+                        save_tb_events_to_csv_detailed=True,
+                        stopping_criterion_frequency=1e8,
+                        save_models=True,
+                        plot_frequency=200,
+                    ) \
+                    .get_config()
+                experiment = experiment_class(experiment_config)
+                experiment.run()
 
-        torch.cuda.empty_cache()
+                torch.cuda.empty_cache()

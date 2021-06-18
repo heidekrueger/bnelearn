@@ -4,6 +4,7 @@ can often be shared by specific experiments.
 """
 
 import os
+import io
 from sys import platform
 import time
 import inspect
@@ -216,6 +217,9 @@ class Experiment(ABC):
             for i, model in enumerate(self.models):
                 model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
                                self.learning.pretrain_iters, pretrain_transform)
+                            # TODO: bidder specific pretraining (e.g. for LLGFull)
+                            #    self.learning.pretrain_iters,
+                            #    pretrain_transform(self._model2bidder[i][0]))
 
     def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding
@@ -341,18 +345,20 @@ class Experiment(ABC):
                        for model in self.models]
 
         # update model
-        #start_timer = timer()
+        start_timer = timer()
         utilities = torch.tensor([
             learner.update_strategy_and_evaluate_utility()
             for learner in self.learners
         ])
-        #self._cur_epoch_log_params['time_per_step'] = timer()-start_timer
-
-
+        time_per_step = timer() - start_timer
 
         if self.logging.enable_logging:
             # pylint: disable=attribute-defined-outside-init
-            self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}
+            self._cur_epoch_log_params = {
+                'utilities': utilities,
+                'prev_params': prev_params,
+                'time_per_step': time_per_step
+            }
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
             print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),
                     end="\r")
@@ -806,27 +812,58 @@ class Experiment(ABC):
             "Util_loss for larger than actual batch size not implemented."
 
         torch.cuda.empty_cache()
+        factor = 8
         util_loss = [
-            metrics.ex_interim_util_loss(env, player_positions[0], batch_size, grid_size,
-                                         return_best_response=self.logging.best_response)
-            for player_positions in self._model2bidder
+            [
+                torch.zeros((batch_size * factor), device=self.hardware.device),
+                (
+                    torch.zeros((batch_size * factor, 1), device=self.hardware.device),
+                    torch.zeros((batch_size * factor, 1), device=self.hardware.device)
+                )
+            ]
+            for _ in self._model2bidder
         ]
+        for f in range(factor):
+            env.prepare_iteration()
+            temp = [
+                metrics.ex_interim_util_loss(
+                    env=env,
+                    player_position=player_positions[0],
+                    batch_size=batch_size,
+                    grid_size=grid_size,
+                    opponent_batch_size=2**18,
+                    return_best_response=self.logging.best_response
+                )
+                for player_positions in self._model2bidder
+            ]
+            for p in range(self.n_players):
+                util_loss[p][0][batch_size*f:batch_size*(f+1)] = temp[p][0]
+                util_loss[p][1][0][batch_size*f:batch_size*(f+1)] = temp[p][1][0]
+                util_loss[p][1][1][batch_size*f:batch_size*(f+1)] = temp[p][1][1]
         if self.logging.best_response:
             # Extract return values from `util_loss`
             best_responses = (
                 torch.stack([r[1][0] for r in util_loss], dim=1),  # observation
                 torch.stack([r[1][1] for r in util_loss], dim=1)   # best response
             )
+            if epoch == self.running.n_epochs:
+                observation = torch.stack([r[1][0] for r in util_loss], dim=1)
+                action =  torch.stack([r[1][1] for r in util_loss], dim=1)
+                _dir = self.run_log_dir + '/best_responses'
+                os.mkdir(_dir)
+                torch.save(observation, _dir + '/observation.pt')
+                torch.save(action,  _dir + '/action.pt')
+
             util_loss = [t[0] for t in util_loss]                  # actual util loss
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
             fmts = ['bo'] * len(self.models)
 
             # Plot
             self._plot(plot_data=best_responses, writer=self.writer,
-                       ylim=[0, max(a._grid_ub for a in self.env.agents).cpu()],
+                       ylim=[0, max(float(a._grid_ub) for a in self.env.agents)],
                        figure_name='best_responses', y_label='best response',
                        colors=list(range(len(self.models))), epoch=epoch, labels=labels,
-                       fmts=fmts, plot_points=self.plot_points)
+                       fmts=fmts, plot_points=1000000)
 
         ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_loss]
         ex_interim_max_util_loss = [util_loss_model.max() for util_loss_model in util_loss]

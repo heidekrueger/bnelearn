@@ -77,8 +77,8 @@ class GradientBasedLearner(Learner):
         self.optimizer.zero_grad()
         self._set_gradients()
         loss = self.optimizer.step(closure=closure)
-        if self.writer is not None:
-            self.writer.add_scalar('learner/time_per_step', timer()-start_timer, self.cur_epoch)
+        # if self.writer is not None:
+        #     self.writer.add_scalar('learner/time_per_step', timer()-start_timer, self.cur_epoch)
         self.cur_epoch += 1
         return loss
 
@@ -680,7 +680,8 @@ class PSOLearner(Learner):
         # self.velocity = torch.zeros_like(self.position)
 
         # personal best fitness and positions
-        self.pbest_fitness = torch.full((swarm_size,), float("Inf"), device=self.position.device)
+        self.pbest_fitness = torch.full((swarm_size,), float("Inf"),
+                                        dtype=torch.float64, device=self.position.device)
         self.pbest_position = torch.empty_like(self.position)
         # the shape of swarm's best position and fitness depend on the topology structure
         self.best_fitness, self.best_position, self.neighborhood = self._calculate_neighborhood(swarm_size)
@@ -882,5 +883,5 @@ class PSOLearner(Learner):
         self.writer.add_scalar('learner/velocity_L_2', velocity_L_2_norm, self.cur_epoch)
         self.writer.add_scalar('learner/position_L_2', position_L_2_norm, self.cur_epoch)
         self.writer.add_scalar('learner/best_fitness', torch.neg(self.best_fitness.min()), self.cur_epoch)
-        self.writer.add_scalar('learner/time_per_step', time_per_step, self.cur_epoch)
+        # self.writer.add_scalar('learner/time_per_step', time_per_step, self.cur_epoch)
 
