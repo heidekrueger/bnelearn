@@ -419,7 +419,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
         if self.config.setting.correlation_types in ['independent'] and \
             self.payment_rule in ['vcg', 'mrcs_favored']:
             return torch.tensor(
-                [[1, 0, 1], [0, 1, 1], [0, 0, 1]], # TODO rather: [[1, 0, 1], [0, 1, 1], [0, 0, 1]]
+                [[1, 0, 1], [0, 1, 1], [0, 0, 1]],
                 device=self.config.hardware.device,
                 dtype=torch.bool
             )

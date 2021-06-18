@@ -681,7 +681,7 @@ class PSOLearner(Learner):
 
         # personal best fitness and positions
         self.pbest_fitness = torch.full((swarm_size,), float("Inf"),
-                                        dtype=torch.float64, device=self.position.device)
+                                        dtype=torch.float32, device=self.position.device)
         self.pbest_position = torch.empty_like(self.position)
         # the shape of swarm's best position and fitness depend on the topology structure
         self.best_fitness, self.best_position, self.neighborhood = self._calculate_neighborhood(swarm_size)
