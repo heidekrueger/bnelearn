@@ -57,8 +57,8 @@ if __name__ == '__main__':
             experiment_config, experiment_class = \
                 ConfigurationManager(
                     experiment_type=experiment_type,
-                    n_runs=1,
-                    n_epochs=1,
+                    n_runs=10,
+                    n_epochs=2000,
                 ) \
                 .set_setting(
                 ) \
@@ -75,7 +75,7 @@ if __name__ == '__main__':
                 .set_logging(
                     eval_batch_size=2**17,
                     cache_eval_actions=True,
-                    util_loss_batch_size=2**2,
+                    util_loss_batch_size=2**12,
                     util_loss_grid_size=2**10,
                     util_loss_frequency=100,
                     best_response=True,
