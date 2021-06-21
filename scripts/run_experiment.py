@@ -37,8 +37,9 @@ if __name__ == '__main__':
 
     ### ALL PAY EXPERIMENTS ###
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_all_pay', n_runs=1, n_epochs=2) \
-        .set_setting(n_players=4) \
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_symmetric_monotonic_all_pay', n_runs=1, n_epochs=100) \
+        .set_setting(n_players=2) \
+        .set_learning(pretrain_iters = 5, learner_hyperparams={'population_size': 64, 'sigma': 1., 'scale_sigma_by_model_size': True}) \
         .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True).get_config()
 
 

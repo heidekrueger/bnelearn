@@ -198,7 +198,7 @@ class ThirdPriceSealedBidAuction(Mechanism):
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
 
-class SingleItemAllPayAuction(Mechanism):
+class SingleItemSymmetircMonotonicAllPayAuction(Mechanism):
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
        
@@ -227,14 +227,14 @@ class SingleItemAllPayAuction(Mechanism):
 
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
-        
+
         # name dimensions for readibility
         # pylint: disable=unused-variable
         batch_dim, player_dim, item_dim = 0, 1, 2
         batch_size, n_players, n_items = bids.shape
 
         # allocate return variables
-        payments = bids.reshape(batch_size, n_players)
+        payments = bids.reshape(batch_size, n_players) # pay as bid
         allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
 
         # Assign item to the bidder with the highest bid, in case of a tie assign it randomly to one of the winning bidderss

@@ -26,7 +26,7 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
                                                         AffiliatedObservationsExperiment,
-                                                        SingleItemAllPayExperiment)
+                                                        SingleItemSymmetricMonotonicAllPayExperiment)
 
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
@@ -197,9 +197,10 @@ class ConfigurationManager:
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
 
-    def _init_single_item_all_pay(self):
+    def _init_single_item_symmetric_monotinic_all_pay(self):
         self.setting.u_lo = 0
         self.setting.u_hi = 1
+        self.model_sharing = True
 
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
@@ -292,7 +293,7 @@ class ConfigurationManager:
     def _post_init_splitaward(self):
         pass
 
-    def _post_init_single_item_all_pay(self):
+    def _post_init_single_item_symmetric_monotonic_all_pay(self):
         pass
 
     experiment_types = {
@@ -322,8 +323,9 @@ class ConfigurationManager:
             (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
             (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
-        'single_item_all_pay':
-            (SingleItemAllPayExperiment, _init_single_item_all_pay, _post_init_single_item_all_pay)}
+        'single_item_symmetric_monotonic_all_pay':
+            (SingleItemSymmetricMonotonicAllPayExperiment, _init_single_item_symmetric_monotinic_all_pay, 
+            _post_init_single_item_symmetric_monotonic_all_pay)}
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type

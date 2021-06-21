@@ -15,7 +15,7 @@ from bnelearn.environment import AuctionEnvironment
 from .experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, SingleItemAllPayAuction
+from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, SingleItemSymmetircMonotonicAllPayAuction
 from bnelearn.strategy import ClosureStrategy
 from bnelearn.correlation_device import (
     MineralRightsCorrelationDevice, AffiliatedObservationsDevice)
@@ -177,6 +177,10 @@ def _optimal_bid_single_item_3p_mineral_rights(valuation: torch.Tensor, player_p
 def _optimal_bid_single_item_2p_affiliated_observations(valuation: torch.Tensor, player_position: int = 0) -> torch.Tensor:
     return (2/3) * valuation
 
+def _optimal_bid_single_item_symmetric_monotonic_all_pay_auction(valuation: torch.Tensor, player_position: int = 0) -> torch.Tensor:
+    # Assuming continuous uniform prio U(0,1) -> TODO Generalize this
+    opt = 0.5 * valuation**2
+    return opt
 
 # TODO: single item experiment should not be abstract and hold all logic for learning.
 # Only bne needs to go into subclass
@@ -750,7 +754,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         return os.path.join(*name)
 
 
-class SingleItemAllPayExperiment(SingleItemExperiment):
+class SingleItemSymmetricMonotonicAllPayExperiment(SingleItemExperiment):
 
     def __init__(self, config: ExperimentConfig):
 
@@ -781,4 +785,50 @@ class SingleItemAllPayExperiment(SingleItemExperiment):
 
     def _setup_mechanism(self):
         print('Setting up the all pay auction mechanism')
-        self.mechanism = SingleItemAllPayAuction(cuda=self.hardware.cuda)
+        self.mechanism = SingleItemSymmetircMonotonicAllPayAuction(cuda=self.hardware.cuda)
+
+    def _check_and_set_known_bne(self):
+        self._optimal_bid = _optimal_bid_single_item_symmetric_monotonic_all_pay_auction
+        return True
+
+    def _setup_eval_environment(self):
+        assert self.known_bne
+        assert hasattr(self, '_optimal_bid')
+
+        bne_strategy = ClosureStrategy(self._optimal_bid)
+
+        # define bne agents once then use them in all runs
+        agents = [
+            self._strat_to_bidder(
+                strategy = bne_strategy,
+                player_position = i,
+                batch_size = self.config.logging.eval_batch_size,
+                cache_actions = self.config.logging.cache_eval_actions
+            )
+            for i in range(self.n_players)
+        ]
+        
+
+        self.bne_env = AuctionEnvironment(
+            mechanism = self.mechanism,
+            agents = agents,
+            batch_size = self.config.logging.eval_batch_size,
+            n_players = self.n_players,
+            strategy_to_player_closure = self._strat_to_bidder,
+            correlation_groups = self.correlation_groups,
+            correlation_devices = [AffiliatedObservationsDevice(
+                common_component_dist = self.common_prior,
+                batch_size = self.config.logging.eval_batch_size,
+                n_common_components = 3,
+                correlation = 1
+            )]
+        )
+
+        # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
+        self.bne_utilities = torch.zeros((3,), device=self.config.hardware.device)
+        for i, a in enumerate(self.bne_env.agents):
+            self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
+
+        print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities.tolist()))
+        self.bne_utility = self.bne_utilities.mean()
+
