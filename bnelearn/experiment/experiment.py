@@ -331,6 +331,7 @@ class Experiment(ABC):
             for learner in self.learners
         ])
 
+        #TODO let's have this dict always
         if self.logging.enable_logging:
             # pylint: disable=attribute-defined-outside-init
             self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}

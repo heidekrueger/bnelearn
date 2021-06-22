@@ -25,13 +25,11 @@ from BayesianOptimization.bayes_opt import (
 # from BayesianOptimization.bayes_opt.event import Events
 
 
-
-
 class OptimizableExperiment:
     """
     Optimize hyperparameters of the experiment using bayes_opt    
     """
-    
+
     def __init__(
         self,
         experiment_class,
@@ -42,12 +40,15 @@ class OptimizableExperiment:
         n_runs_budget=5,
         verbose: bool = True,
         log: bool = True,
-        seed: int = 1
+        seed: int = 1,
     ):
         """
         Format for the hp_bounds: {'x': (2, 4), 'y': (-3, 3)}, where x and y are some hp's
         n_runs_budget is the number of effective hp configurations to check, to get the full number of runs, 
         multiply by the number of seeds per run
+
+        Seed: Determines random number generation used to initialize the centers.
+        Pass an int for reproducible results across multiple function calls.
         """
         self.experiment_class = experiment_class
         self.experiment_config = experiment_config
@@ -65,8 +66,8 @@ class OptimizableExperiment:
             random_state=seed,
         )
 
-        #TODO make flexible, check not to override old logs, test with runing and restarting 
-        if log:            
+        # TODO make flexible, check not to override old logs, test with runing and restarting
+        if log:
             logger = self.Observer(path="bnelearn/bopt/logs/logs.json")
             self.optimizer.subscribe(Events.OPTIMIZATION_STEP, logger)
             # self.optimizer.subscribe(Events.OPTIMIZATION_START, logger)
@@ -80,8 +81,10 @@ class OptimizableExperiment:
                 print("Iteration {}: \n\t{}".format(i, res))
             print(self.optimizer.max)
 
+        return self.optimizer.max
+
     def load_from_logs(self, path: str):
-        load_logs(self.optimizer, logs=[path]) #TODO test
+        load_logs(self.optimizer, logs=[path])  # TODO test
 
     def set_new_bounds(self, new_bounds: dict):
         """
@@ -103,7 +106,7 @@ class OptimizableExperiment:
     # maybe population size should be described as 2 ** k, where k varies from 1 to 7
     def _get_optimizable_function(self, minimize: bool):
         # only those hp's which are specified in the hp_bounds would be passed, parameter names should match exactly
-        #TODO extend for all the possible hp's
+        # TODO extend for all the possible hp's
         def optimizable_function(
             lr: float = 1e-3,  # learning rate
             population_size: int = 64,  # from 2 to 128 is reasonable (>128 will run really long), this is the # of perturbations in the ES
@@ -161,7 +164,6 @@ class OptimizableExperiment:
 
         return averaged_metric
 
-
     class Observer(_Tracker):
         """
         """
@@ -170,9 +172,9 @@ class OptimizableExperiment:
             self.path = path
             super(type(self), self).__init__()
 
-        def update(self, event, instance):  
+        def update(self, event, instance):
             self.event = event
-            self.instance = instance                      
+            self.instance = instance
             if event == Events.OPTIMIZATION_START:
                 self._on_opt_start()
             if event == Events.OPTIMIZATION_STEP:
@@ -184,13 +186,13 @@ class OptimizableExperiment:
             pass
 
         def _on_opt_step(self):
-            print('_on_opt_step')
+            print("_on_opt_step")
             data = dict(self.instance.res[-1])
             now, time_elapsed, time_delta = self._time_metrics()
             data["datetime"] = {
-               "datetime": now,
-               "elapsed": time_elapsed,
-               "delta": time_delta,
+                "datetime": now,
+                "elapsed": time_elapsed,
+                "delta": time_delta,
             }
 
             with open(self.path, "a+") as f:

@@ -29,10 +29,12 @@ try:
         .get_config()
     )
 
+    #TODO Adam hp's (maybe)
+    #TODO multiple GPUs
     experiment = OptimizableExperiment(
         experiment_class=experiment_class,
         experiment_config=experiment_config,
-        hp_bounds={"lr": (0.0001, 0.01)},
+        hp_bounds={"lr": (0.0001, 0.01)}, #TODO add transforms to the log space
         metric_name="epsilon_relative",
         n_runs_budget=5,
         minimize=True,
