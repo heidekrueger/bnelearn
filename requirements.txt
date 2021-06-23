@@ -1,8 +1,7 @@
 # non-python requirements (for package development only)
 # jq # installable via apt-get; used to automatically clean up ipynb files on commit via git filters.
 
-## required
-# python>=3.9.5
+## Tested with python==3.9.5
 
 -f https://download.pytorch.org/whl/torch_stable.html
 
@@ -20,10 +19,10 @@ pynvml #for accessing GPU statistics
 pytest
 pytest-cov
 pytest-xdist #parallel tests
-qpth #pip - currently using local install, see https://github.com/locuslab/qpth/pull/33
+qpth # currently using local install, see https://github.com/locuslab/qpth/pull/33
 scipy # for numeric integration
 Sphinx
-sphinx-rtd-theme # pip
+sphinx-rtd-theme
 tabulate
 tensorboard
 torch==1.9.0+cu111 # alternative via conda: pytorch -c pytorch
