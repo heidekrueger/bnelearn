@@ -3,6 +3,7 @@ This module defines an experiment. It includes logging and plotting since they
 can often be shared by specific experiments.
 """
 
+from bnelearn.valuation_sampler import ValuationObservationSampler
 import os
 from sys import platform
 import time
@@ -10,6 +11,9 @@ from abc import ABC, abstractmethod
 from time import perf_counter as timer
 from typing import Iterable, List
 from collections import deque
+
+import warnings
+import traceback
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -48,7 +52,9 @@ class Experiment(ABC):
     # attributes required for general setup logic
     _bidder2model: List[int]  # a list matching each bidder to their Strategy
     n_models: int
-    n_items: int
+    valuation_size: int
+    observation_size: int
+    action_size: int
     mechanism: Mechanism
     positive_output_point: torch.Tensor  # shape must be valid model input
     input_length: int
@@ -84,6 +90,7 @@ class Experiment(ABC):
         self.writer = None
         self.overhead = 0.0
 
+        self.sampler: ValuationObservationSampler = None
         self.models: Iterable[torch.nn.Module] = None
         self.bidders: Iterable[Bidder] = None
         self.env: Environment = None
@@ -127,6 +134,7 @@ class Experiment(ABC):
         self._model_names = self._get_model_names()
 
         self._setup_mechanism()
+        self._setup_sampler()
 
         self.known_bne = self._check_and_set_known_bne()
         if self.known_bne:
@@ -153,8 +161,15 @@ class Experiment(ABC):
                 'bidders' + ''.join([str(b) for b in bidders])
                 for bidders in self._model2bidder]
 
+
     @abstractmethod
-    def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=False):
+    def _setup_sampler(self):
+        """Defines and initializes a sampler to retrieve observations and
+           valuations.
+        """
+
+    @abstractmethod
+    def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=False) -> Bidder:
         pass
 
     def _setup_learners(self):
@@ -179,11 +194,11 @@ class Experiment(ABC):
 
         for i in range(len(self.models)):
             self.models[i] = NeuralNetStrategy(
-                self.input_length,
+                self.observation_size,
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
                 ensure_positive_output=self.positive_output_point,
-                output_length=self.n_items
+                output_length=self.action_size
             ).to(self.hardware.device)
 
         self.bidders = [
@@ -201,8 +216,11 @@ class Experiment(ABC):
             else:
                 pretrain_transform = None
 
+            _, obs = self.sampler.draw_profiles()
+
             for i, model in enumerate(self.models):
-                model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
+                pos = self._model2bidder[i][0]
+                model.pretrain(obs[:, pos, :],
                                self.learning.pretrain_iters, pretrain_transform)
 
     def _check_and_set_known_bne(self):
@@ -221,11 +239,10 @@ class Experiment(ABC):
         print(f'Learning env correlation {self.correlation_groups}: {self.correlation_devices}.')
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
+                                      valuation_observation_sampler=self.sampler,
                                       batch_size=self.learning.batch_size,
                                       n_players=self.n_players,
-                                      strategy_to_player_closure=self._strat_to_bidder,
-                                      correlation_groups=self.correlation_groups,
-                                      correlation_devices=self.correlation_devices)
+                                      strategy_to_player_closure=self._strat_to_bidder)
 
     def _init_new_run(self):
         """Setup everything that is specific to an individual run, including everything nondeterministic"""
@@ -237,38 +254,12 @@ class Experiment(ABC):
 
             if not isinstance(self.bne_env, list):
                 # TODO Nils: should perhaps always be a list, even when there is only one BNE
+                # TODO Stefan: Yes, we should not do any type conversions here, these should be lists from the beginning.
                 self.bne_env: List[Environment] = [self.bne_env]
                 self._optimal_bid: List[callable] = [self._optimal_bid]
                 self.bne_utilities = [self.bne_utilities]
 
-            # set up list for (multiple) BNE valuations and bids
-            self.v_opt = [None] * len(self.bne_env)
-            self.b_opt = [None] * len(self.bne_env)
-
-            # Switch needed for high dimensional settings, where we can't
-            # exactly match the requested grid (see e.g. multi-unit simplex)
-            grid_size_differs = False
-
-            # Draw valuations and corresponding equilibrium bids in all the
-            # availabe BNE
-            for i, bne_env in enumerate(self.bne_env):
-                # dim: [points, bidders, items]
-                self.v_opt[i] = torch.stack(
-                    [bidder.get_valuation_grid(n_points=self.plot_points)
-                     for bidder in [bne_env.agents[j[0]] for j in self._model2bidder]],
-                    dim=1
-                )
-                self.b_opt[i] = torch.stack(
-                    [self._optimal_bid[i](self.v_opt[i][:, m, :], player_position=bidder[0])
-                     for m, bidder in enumerate(self._model2bidder)],
-                    dim=1
-                )
-                if self.v_opt[i].shape[0] != self.plot_points:
-                    grid_size_differs = True
-
-            if grid_size_differs:
-                print('´plot_points´ changed due to get_valuation_grid')
-                self.plot_points = self.v_opt[0].shape[0]
+            self._setup_plot_equilibirum_data()
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
@@ -276,7 +267,7 @@ class Experiment(ABC):
         plt.rcParams['figure.figsize'] = [8, 5]
 
         print('Stating run...')
-        
+
         if self.logging.enable_logging:
             # Create summary writer object and create output dirs if necessary
             self._initialize_logging()
@@ -289,14 +280,45 @@ class Experiment(ABC):
             logging_utils.save_experiment_config(self.experiment_log_dir, self.config)
             logging_utils.log_git_commit_hash(self.experiment_log_dir)
             elapsed = timer() - tic
-
         else:
             print('\tLogging disabled.')
             elapsed = 0
         self.overhead += elapsed
 
+    def _setup_plot_equilibirum_data(self):
+        # set up list for (multiple) BNE valuations and bids
+        self.v_opt = [None] * len(self.bne_env)
+        self.b_opt = [None] * len(self.bne_env)
+
+        # Switch needed for high dimensional settings, where we can't
+        # exactly match the requested grid (see e.g. multi-unit simplex)
+        grid_size_differs = False
+
+        # Draw valuations and corresponding equilibrium bids in all the
+        # availabe BNE
+        for bne_id, bne_env in enumerate(self.bne_env):
+            # dim: [points, models, valuation_size]
+            # get one representative player for each model
+            model_players = [m[0] for m in self._model2bidder]
+            self.v_opt[bne_id] = torch.stack(
+                [self.sampler.generate_valuation_grid(i, self.plot_points)
+                 for i in model_players],
+                dim=1)
+            self.b_opt[bne_id] = torch.stack(
+                [self._optimal_bid[bne_id](
+                    self.v_opt[bne_id][:, model_id, :],
+                    player_position=model_players[model_id])
+                 for model_id in range(len(model_players))],
+                dim=1)
+            if self.v_opt[bne_id].shape[0] != self.plot_points:
+                grid_size_differs = True
+
+        if grid_size_differs:
+            print('´plot_points´ changed due to get_valuation_grid')
+            self.plot_points = self.v_opt[0].shape[0]
+
     def _initialize_logging(self):
-        """Creates output directories if necessary and 
+        """Creates output directories if necessary and
         initializes the self.writer object for writing tensorboard logs.
         """
         output_dir = self.run_log_dir
@@ -315,8 +337,8 @@ class Experiment(ABC):
         if self.logging.enable_logging:
             self._log_experiment_params(global_step=global_step)
 
-        if self.logging.save_models:
-            self._save_models(directory=self.run_log_dir)
+            if self.logging.save_models:
+                self._save_models(directory=self.run_log_dir)
 
         del self.writer  # make this explicit to force cleanup and closing of tb-logfiles
         self.writer = None
@@ -349,8 +371,18 @@ class Experiment(ABC):
                   end="\r")
         return utilities
 
-    def run(self):
-        """Runs the experiment implemented by this class for `epochs` number of iterations."""
+    def run(self) -> bool:
+        """Runs the experiment implemented by this class, i.e. all defined runs.
+
+        If a run fails for whatever reason, a warning will be raised and the
+        next run will be triggered until all runs have completed/failed.
+
+        Returns:
+            success (bool): True if all runs ran successfully, false otherwise.
+        """
+
+        encountered_errors: bool = False
+
         if not self.running.seeds:
             self.running.seeds = list(range(self.running.n_runs))
 
@@ -359,7 +391,7 @@ class Experiment(ABC):
 
         for run_id, seed in enumerate(self.running.seeds):
             print(f'\nRunning experiment {run_id} (using seed {seed})')
-            e = None
+            epoch = None
             try:
                 t = time.strftime('%T ')
                 if platform == 'win32':
@@ -385,12 +417,12 @@ class Experiment(ABC):
 
                 self._init_new_run()
 
-                for e in range(self.running.n_epochs + 1):
-                    utilities = self._training_loop(epoch=e)
+                for epoch in range(self.running.n_epochs + 1):
+                    utilities = self._training_loop(epoch=epoch)
 
                     # Check stopping criterion
                     if self.logging.stopping_criterion_rel_util_loss_diff is not None and \
-                            e > 0 and not e % stopping_criterion_frequency:
+                            epoch > 0 and not epoch % stopping_criterion_frequency:
                         start_time = timer()
 
                         # Compute relative utility loss
@@ -405,11 +437,11 @@ class Experiment(ABC):
                         if len(stopping_queue) == stopping_queue.maxlen:
                             values = torch.stack(tuple(stopping_queue))
                             if self.logging.enable_logging:
-                                stop = self._check_convergence(values, epoch=e)
+                                stop = self._check_convergence(values, epoch=epoch)
 
                         self.overhead = self.overhead + timer() - start_time
                         if stop:
-                            print(f'Stopping criterion reached after {e} iterations.')
+                            print(f'Stopping criterion reached after {epoch} iterations.')
                             break
 
                 if self.logging.enable_logging and (
@@ -418,9 +450,13 @@ class Experiment(ABC):
                     logging_utils.export_stepwise_linear_bid(
                         experiment_dir=self.run_log_dir, bidders=bidders,
                         step=self.logging.export_step_wise_linear_bid_function_size)
+            except Exception as e:
+                encountered_errors = True
+                tb = traceback.format_exc()
+                warnings.warn(f"WARNING: Run {run_id} failed with {type(e)}! Traceback:\n{tb}")
 
             finally:
-                self._exit_run(global_step=e)
+                self._exit_run(global_step=epoch)
 
         # Once all runs are done, convert tb event files to csv
         if self.logging.enable_logging and (
@@ -436,6 +472,8 @@ class Experiment(ABC):
 
             # logging_utils.print_aggregate_tensorboard_logs(self.experiment_log_dir)
             print('finished.')
+
+        return not encountered_errors
 
     def _check_convergence(self, values: torch.Tensor, stopping_criterion: float = None, epoch: int = None):
         """
@@ -717,22 +755,25 @@ class Experiment(ABC):
 
         return utility_vs_bne, epsilon_relative, epsilon_absolute
 
-    def relevant_actions(self):
-        r"""Get indecies of actions that matter.
 
-        In some games, and in their BNE, only some of the agents' actions
-        matter.
+    # # TODO Stefan: Let's get rid of this. Only relevant for combinatorial experiment, and even there its use
+    # # is questionable.
+    # def relevant_actions(self):
+    #     r"""Get indecies of actions that matter.
 
-        Returns:
-            relevant_actions: (torch.Tensor) of shape (n_agents, n_actions)
-                with elements in $\{0, 1\}$ for marking relevancy for BNE.
+    #     In some games, and in their BNE, only some of the agents' actions
+    #     matter.
 
-        """
-        return torch.ones(
-            size=(len(self.models), self.n_items),
-            device=self.config.hardware.device,
-            dtype=torch.bool
-        )
+    #     Returns:
+    #         relevant_actions: (torch.Tensor) of shape (n_agents, n_actions)
+    #             with elements in $\{0, 1\}$ for marking relevancy for BNE.
+
+    #     """
+    #     return torch.ones(
+    #         size=(len(self.models), self.n_items),
+    #         device=self.config.hardware.device,
+    #         dtype=torch.bool
+    #     )
 
     def _calculate_metrics_action_space_norms(self):
         """
@@ -757,16 +798,14 @@ class Experiment(ABC):
             L_2[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, 2,
-                    componentwise=self.logging.log_componentwise_norm,
-                    component_selection=self.relevant_actions()[i, :]
+                    componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
             ])
             L_inf[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
                     model, m2a(i).get_action(), m2a(i).valuations, float('inf'),
-                    componentwise=self.logging.log_componentwise_norm,
-                    component_selection=self.relevant_actions()[i, :]
+                    componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
             ])

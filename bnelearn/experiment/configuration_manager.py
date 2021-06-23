@@ -15,10 +15,10 @@ from bnelearn.experiment.configurations import (SettingConfig,
                                                 RunningConfig, ExperimentConfig, HardwareConfig,
                                                 EnhancedJSONEncoder)
 
-from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
-                                                          LLGFullExperiment,
-                                                          LLLLGGExperiment)
-from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
+# from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
+#                                                           LLGFullExperiment,
+#                                                           LLLLGGExperiment)
+# from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
 
 from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSingleItemExperiment,
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
@@ -302,17 +302,18 @@ class ConfigurationManager:
         'mineral_rights':
             (MineralRightsExperiment, _init_mineral_rights, _post_init_mineral_rights),
         'affiliated_observations':
-            (AffiliatedObservationsExperiment, _init_affiliated_observations, _post_init_affiliated_observations),
-        'llg':
-            (LLGExperiment, _init_llg, _post_init_llg),
-        'llg_full':
-            (LLGFullExperiment, _init_llg_full, _post_init_llg),
-        'llllgg':
-            (LLLLGGExperiment, _init_llllgg, _post_init_llllgg),
-        'multiunit':
-            (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
-        'splitaward':
-            (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)}
+            (AffiliatedObservationsExperiment, _init_affiliated_observations, _post_init_affiliated_observations)#,
+        # 'llg':
+        #     (LLGExperiment, _init_llg, _post_init_llg),
+        # 'llg_full':
+        #     (LLGFullExperiment, _init_llg_full, _post_init_llg),
+        # 'llllgg':
+        #     (LLLLGGExperiment, _init_llllgg, _post_init_llllgg),
+        # 'multiunit':
+        #     (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
+        # 'splitaward':
+        #     (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)
+        }
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type

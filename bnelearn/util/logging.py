@@ -10,13 +10,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator, STORE_EVERYTHING_SIZE_GUIDANCE
-from torch._C import T
 from torch.utils.tensorboard.summary import hparams
 from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
 import pkg_resources
 
 from bnelearn.bidder import Bidder
-from bnelearn import util
 from bnelearn.experiment.configurations import *
 
 

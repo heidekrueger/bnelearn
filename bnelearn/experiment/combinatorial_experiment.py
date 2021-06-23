@@ -27,11 +27,6 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
 from .experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
-from bnelearn.correlation_device import (
-    IndependentValuationDevice,
-    BernoulliWeightsCorrelationDevice,
-    ConstantWeightsCorrelationDevice
-)
 
 import bnelearn.util.logging as logging_utils
 

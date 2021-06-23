@@ -17,8 +17,8 @@ from bnelearn.experiment.configurations import ExperimentConfig
 
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import ClosureStrategy
-from bnelearn.correlation_device import (
-    MineralRightsCorrelationDevice, AffiliatedObservationsDevice)
+from bnelearn.valuation_sampler import (SymmetricIPVSampler, UniformSymmetricIPVSampler,
+    GaussianSymmetricIPVSampler, LLGSampler, LLLLGGSampler, ValuationObservationSampler)
 
 
 ###############################################################################
@@ -188,13 +188,14 @@ class SingleItemExperiment(Experiment, ABC):
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
+
+        # TODO Stefan: Can we get rid of this procedural code?
         if not hasattr(self, 'payment_rule'):
             self.payment_rule = self.config.setting.payment_rule
         if not hasattr(self, 'valuation_prior'):
             self.valuation_prior = 'unknown'
 
-        self.n_items = 1
-        self.input_length = 1
+        self.observation_size = self.valuation_size = self.action_size = 1
         if self.config.logging.eval_batch_size < 2 ** 20:
             print(f"Using small eval_batch_size of {self.config.logging.eval_batch_size}. Use at least 2**22 for proper experiment runs!")
         super().__init__(config=config)
@@ -226,10 +227,12 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
     def __init__(self, config: ExperimentConfig):
         self.config = config
         self.n_players = self.config.setting.n_players
-        self.n_items = 1
+
+        # instance property will be set in super().__init__ call.
+        action_size = 1
 
         self.common_prior = self.config.setting.common_prior
-        self.positive_output_point = torch.stack([self.common_prior.mean] * self.n_items)
+        self.positive_output_point = torch.stack([self.common_prior.mean] * action_size)
 
         self.risk = float(self.config.setting.risk)
         self.risk_profile = self.get_risk_profile(self.risk)
@@ -243,6 +246,12 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
             self._bidder2model = list(range(self.n_players))
 
         super().__init__(config=config)
+
+    def _setup_sampler(self):
+        self.sampler = SymmetricIPVSampler(
+            self.common_prior, self.n_players, self.valuation_size,
+            self.config.learning.batch_size, self.config.hardware.device
+        )
 
     def _check_and_set_known_bne(self):
         if self.payment_rule == 'first_price' and self.risk == 1:
@@ -297,14 +306,16 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
                                                 self.payment_rule != 'second_price' else 0
         bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
 
+
         # define bne agents once then use them in all runs
         self.bne_env = AuctionEnvironment(
-            self.mechanism,
+            mechanism = self.mechanism,
             agents=[self._strat_to_bidder(bne_strategy,
-                                            player_position=i,
-                                            batch_size=self.logging.eval_batch_size,
-                                            enable_action_caching=self.logging.cache_eval_actions)
+                                          player_position=i,
+                                          batch_size=self.logging.eval_batch_size,
+                                          enable_action_caching=self.logging.cache_eval_actions)
                     for i in range(self.n_players)],
+            valuation_observation_sampler = self.sampler,
             batch_size=self.logging.eval_batch_size,
             n_players=self.n_players,
             strategy_to_player_closure=self._strat_to_bidder
@@ -329,7 +340,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.bne_utilities = [self.bne_utility] * self.n_models
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
-        return Bidder(self.common_prior, strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
+        return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
                       risk=self.risk)
 
     def _get_logdir_hierarchy(self):
