@@ -26,11 +26,6 @@ from bnelearn.strategy import ClosureStrategy
 # These are called millions of times, so each implementation should be
 # setting specific, i.e. there should be NO setting checks at runtime.
 
-def _optimal_bid_buyer_average(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
-    return (2/3 * valuation) + 1/12 
-
-def _optimal_bid_seller_average(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
-    return (2/3 * valuation) + 1/4 
 
 def _optimal_bid_buyer_kdouble(valuation: torch.Tensor, k: float = 0, u_hi: int = 0, **kwargs) -> torch.Tensor:
     return (valuation/(1+k)) + ((k*(1-k))/(2*(1+k)))*u_hi 
@@ -162,7 +157,7 @@ class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExp
 
     def _check_and_set_known_bne(self):
         if self.payment_rule in \
-            ['first_price', 'k_price', 'vickrey_price']:
+            ['k_price', 'vickrey_price']:
             return True
         else:
             # no bne found, defer to parent
@@ -229,12 +224,6 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
         
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.tensor(valuation)
-        
-        if self.payment_rule == 'first_price':
-            if player_position > self.n_buyers - 1:
-                return _optimal_bid_seller_average(valuation)
-            else:
-                return _optimal_bid_buyer_average(valuation)
         
         if self.payment_rule == 'k_price':
             if player_position > self.n_buyers - 1:
