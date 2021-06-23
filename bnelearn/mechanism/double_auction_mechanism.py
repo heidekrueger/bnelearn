@@ -16,7 +16,7 @@ class DoubleAuctionMechanism(Mechanism, ABC):
     items as well as payments for each of the players.
     """
 
-    def __init__(self, n_buyers, n_sellers, **kwargs): 
+    def __init__(self, n_buyers, n_sellers, k, **kwargs): 
         super().__init__(**kwargs)
 
         # 0:n_buyers: indices for buyers
@@ -24,6 +24,7 @@ class DoubleAuctionMechanism(Mechanism, ABC):
 
         self.n_buyers = n_buyers
         self.n_sellers = n_sellers
+        self.k = k
 
 
     def play(self, action_profile):

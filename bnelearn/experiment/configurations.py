@@ -66,6 +66,7 @@ class SettingConfig:
     # Double Auction
     n_buyers: int = None
     n_sellers: int = None
+    k: float = None
 
 
 

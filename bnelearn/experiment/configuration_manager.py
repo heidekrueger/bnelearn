@@ -198,11 +198,13 @@ class ConfigurationManager:
         self.logging.log_componentwise_norm = True
 
     def _init_double_auction_single_item_uniform_symmetric(self):
-        self.learning.model_sharing = False
+        self.learning.model_sharing = True
         self.setting.u_lo = 0
         self.setting.u_hi = 1
+        self.setting.n_players = 2
         self.setting.n_buyers = 1
         self.setting.n_sellers = 1
+        self.setting.k = 0.5
 
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
@@ -325,7 +327,7 @@ class ConfigurationManager:
             (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
             (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
-        'double_auction_single_item':
+        'double_auction_single_item_uniform_symmetric':
             (DoubleAuctionUniformSymmetricPriorSingleItemExperiment, _init_double_auction_single_item_uniform_symmetric,
             _post_init_double_auction_single_item_uniform_symmetric)}
 
@@ -352,7 +354,7 @@ class ConfigurationManager:
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
                     core_solver: str = 'None', regret: float = 'None',
-                    n_buyers: int = 'None', n_sellers: int = 'None'):
+                    n_buyers: int = 'None', n_sellers: int = 'None', k: float = 'None'):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
