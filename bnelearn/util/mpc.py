@@ -226,10 +226,12 @@ class mpc_class():
                 dual_1_resid=torch.abs(rz)
                 if self.neq!=None:
                     dual_2_resid=torch.abs(ry)
-                    resids=np.array([pri_resid.max(),mu.max(),dual_1_resid.max(),dual_2_resid.max()])
+                    resids=np.array([tensor.cpu() for tensor in 
+                                     [pri_resid.max(),mu.max(),dual_1_resid.max(),dual_2_resid.max()]])
                 else:
                     dual_2_resid=torch.zeros_like(dual_1_resid)
-                    resids=np.array([pri_resid.max(),mu.max(),dual_1_resid.max()])
+                    resids=np.array([tensor.cpu() for tensor in
+                                     [pri_resid.max(),mu.max(),dual_1_resid.max()]])
 
                 #find if any of the problems converged
                 # if (mu < 1e-6).any() :
