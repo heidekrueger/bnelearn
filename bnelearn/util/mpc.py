@@ -1,11 +1,5 @@
 import torch
 import numpy as np
-import pandas as pd
-from sklearn.datasets import make_spd_matrix
-import random
-import warnings
-# warnings.filterwarnings('error')
-import time
 
 class mpc_class():
     # TODO: fix these linting erros instead of ignoring them
@@ -33,7 +27,7 @@ class mpc_class():
         self.J=self.get_lu_J()
 
         #get initial solution
-        if self.neq!=None:
+        if self.neq is not None:
             self.b_unsqueezed=self.b.unsqueeze(-1)
         else:
             self.b_unsqueezed=None

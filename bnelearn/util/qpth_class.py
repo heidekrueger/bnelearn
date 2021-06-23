@@ -1,10 +1,5 @@
 import torch
 from enum import Enum
-import random
-import numpy as np
-import pandas as pd
-from sklearn.datasets import make_spd_matrix
-import time
 
 def bdiag(d):
     nBatch, sz = d.size()

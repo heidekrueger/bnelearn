@@ -1,25 +1,30 @@
-cvxpy #pip
-qpth #pip - currently using local install, see https://github.com/locuslab/qpth/pull/33
-gurobi # conda -c gurobi
-numpy
+# non-python requirements (for package development only)
+# jq # installable via apt-get; used to automatically clean up ipynb files on commit via git filters.
+
+## required
+# python>=3.9.5
+
+-f https://download.pytorch.org/whl/torch_stable.html
+
+cvxpy
+fire
 future
+gurobipy # alternative via conda: gurobi -c gurobi
 jupyterlab
-pytorch >= 1.8# conda install -c pytorch
-tensorboard
 matplotlib
-pynvml #for accessing GPU statistics. conda install -c fastai pynvml
-python >= 3.8
+numpy
+pandas
+pylint
+pylint-gitlab
+pynvml #for accessing GPU statistics
 pytest
 pytest-cov
 pytest-xdist #parallel tests
-pylint
-pylint-gitlab #pip
+qpth #pip - currently using local install, see https://github.com/locuslab/qpth/pull/33
 scipy # for numeric integration
 Sphinx
 sphinx-rtd-theme # pip
+tabulate
+tensorboard
+torch==1.9.0+cu111 # alternative via conda: pytorch -c pytorch
 tqdm #for progress bars
-fire #conda install -c conda-forge fire
-tabulate # required for pandas pretty-printing
-
-# non-python requirements (for package development only)
-# jq # installable via apt-get; used to automatically clean up ipynb files on commit via git filters.
