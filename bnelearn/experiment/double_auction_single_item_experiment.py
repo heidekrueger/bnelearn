@@ -15,7 +15,7 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 
-from bnelearn.mechanism import AverageAuction, kDoubleAuction, VickreyDoubleAuction
+from bnelearn.mechanism import kDoubleAuction, VickreyDoubleAuction
 from bnelearn.strategy import ClosureStrategy
 
 
