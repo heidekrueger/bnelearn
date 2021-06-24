@@ -198,7 +198,7 @@ class ThirdPriceSealedBidAuction(Mechanism):
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
 
-class SingleItemSymmetircMonotonicAllPayAuction(Mechanism):
+class SingleItemAllPayAuction(Mechanism):
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
        

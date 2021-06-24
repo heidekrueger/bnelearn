@@ -13,6 +13,7 @@ import os
 import sys
 
 import torch
+import torch.nn as nn
 
 # put bnelearn imports after this.
 # pylint: disable=wrong-import-position
@@ -37,10 +38,11 @@ if __name__ == '__main__':
 
     ### ALL PAY EXPERIMENTS ###
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_symmetric_monotonic_all_pay', n_runs=1, n_epochs=100) \
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_asymmetric_uniform_all_pay', n_runs=1, n_epochs=500) \
         .set_setting(n_players=2) \
-        .set_learning(pretrain_iters = 5, learner_hyperparams={'population_size': 64, 'sigma': 1., 'scale_sigma_by_model_size': True}) \
-        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True).get_config()
+        .set_learning(pretrain_iters = 250, batch_size=2**12, hidden_nodes=[10, 10], hidden_activations=[nn.SELU(), nn.SELU()]) \
+        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True, eval_batch_size=2**7, util_loss_grid_size=2**10, util_loss_batch_size=2**12) \
+        .set_hardware(specific_gpu=4).get_config()
 
 
     ### SINGLE ITEM EXPERIMENTS ###
@@ -154,10 +156,10 @@ if __name__ == '__main__':
     experiment_config.logging.plot_frequency = 1
     experiment_config.logging.util_loss_frequency = 1
     experiment_config.logging.plot_points = 10
-    experiment_config.logging.util_loss_batch_size = 2 ** 2
-    experiment_config.logging.util_loss_grid_size = 2 ** 2
-    experiment_config.learning.batch_size = 2 ** 2
-    experiment_config.logging.eval_batch_size = 2 ** 2
+    # experiment_config.logging.util_loss_batch_size = 2 ** 2
+    #experiment_config.logging.util_loss_grid_size = 2 ** 2
+    # experiment_config.learning.batch_size = 2 ** 2
+    # experiment_config.logging.eval_batch_size = 2 ** 2
 
     try:
         experiment = experiment_class(experiment_config)

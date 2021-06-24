@@ -26,7 +26,8 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
                                                         AffiliatedObservationsExperiment,
-                                                        SingleItemSymmetricMonotonicAllPayExperiment)
+                                                        SingleItemSymmetricMonotonicAllPayExperiment,
+                                                        SingleItemAsymmetricUniformicAllPayExperiment)
 
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
@@ -200,11 +201,17 @@ class ConfigurationManager:
     def _init_single_item_symmetric_monotinic_all_pay(self):
         self.setting.u_lo = 0
         self.setting.u_hi = 1
-        self.model_sharing = True
+        self.model_sharing = False
+
+    def _init_single_item_asymmetric_uniform_all_pay(self):
+        self.setting.u_lo = 0
+        self.setting.u_hi = [1, 2]
+        self.learning.model_sharing = False
+
 
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
-        # Learning
+        # Learnings
         assert len(self.learning.hidden_activations) == len(self.learning.hidden_nodes)
         self.learning.optimizer = ConfigurationManager._set_optimizer(self.learning.optimizer_type)
 
@@ -296,6 +303,9 @@ class ConfigurationManager:
     def _post_init_single_item_symmetric_monotonic_all_pay(self):
         pass
 
+    def _post_init_single_item_asymmetric_uniform_all_pay(self):
+        pass
+
     experiment_types = {
         'single_item_uniform_symmetric':
             (UniformSymmetricPriorSingleItemExperiment, _init_single_item_uniform_symmetric,
@@ -325,7 +335,10 @@ class ConfigurationManager:
             (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
         'single_item_symmetric_monotonic_all_pay':
             (SingleItemSymmetricMonotonicAllPayExperiment, _init_single_item_symmetric_monotinic_all_pay, 
-            _post_init_single_item_symmetric_monotonic_all_pay)}
+            _post_init_single_item_symmetric_monotonic_all_pay),
+        'single_item_asymmetric_uniform_all_pay':
+            (SingleItemAsymmetricUniformicAllPayExperiment, _init_single_item_asymmetric_uniform_all_pay, 
+            _post_init_single_item_asymmetric_uniform_all_pay)}
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type
