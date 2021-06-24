@@ -998,7 +998,7 @@ class LocalGlobalCompositePVSampler(CompositeValuationObservationSampler):
                 default_batch_size=default_batch_size, default_device=default_device)
         else:
             # no correlation between locals
-            if correlation_locals is not None:
+            if correlation_method_locals is not None:
                 warnings.warn("Warning: You specified a correlation method, but correlation is 0.0.")
             sampler_locals = UniformSymmetricIPVSampler(
                 0.0, 1.0, n_locals, valuation_size, default_batch_size, default_device)
@@ -1018,7 +1018,7 @@ class LocalGlobalCompositePVSampler(CompositeValuationObservationSampler):
                 default_batch_size=default_batch_size, default_device=default_device)
         else:
             # no correlation between globals
-            if correlation_globals is not None:
+            if correlation_method_globals is not None:
                 warnings.warn("Warning: You specified a correlation method, but correlation is 0.0.")
             sampler_globals = UniformSymmetricIPVSampler(
                 0.0, 2.0, n_globals, valuation_size, default_batch_size, default_device)
@@ -1059,9 +1059,9 @@ class LLLLGGSampler(LocalGlobalCompositePVSampler):
             model. For correlation > 0.0, must be one of 'Bernoulli' or 'constant'
 
     """
-    def __init__(self, correlation = 0.0, correlation_method = None,
+    def __init__(self, correlation_locals = 0.0, correlation_method_locals = None,
                  default_batch_size = 1, default_device= None):
         super().__init__(n_locals =4, n_globals = 2, valuation_size = 2,
-                         correlation_locals=correlation, correlation_method_locals=correlation_method,
+                         correlation_locals=correlation_locals, correlation_method_locals=correlation_method_locals,
                          correlation_globals=0.0, correlation_method_globals=None,
                          default_batch_size=default_batch_size, default_device=default_device)

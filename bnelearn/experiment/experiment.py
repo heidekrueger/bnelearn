@@ -188,7 +188,7 @@ class Experiment(ABC):
         1. Create and save the models and bidders
         2. Save the model parameters
         """
-        print('Setting up bidders...')
+        print('\tSetting up bidders...')
         # this method is part of the init workflow, so we #pylint: disable=attribute-defined-outside-init
         self.models = [None] * self.n_models
 
@@ -453,6 +453,7 @@ class Experiment(ABC):
             except Exception as e:
                 encountered_errors = True
                 tb = traceback.format_exc()
+                print("\t Error... aborting run.")
                 warnings.warn(f"WARNING: Run {run_id} failed with {type(e)}! Traceback:\n{tb}")
 
             finally:

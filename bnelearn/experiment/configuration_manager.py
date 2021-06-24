@@ -15,9 +15,9 @@ from bnelearn.experiment.configurations import (SettingConfig,
                                                 RunningConfig, ExperimentConfig, HardwareConfig,
                                                 EnhancedJSONEncoder)
 
-# from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
-#                                                           LLGFullExperiment,
-#                                                           LLLLGGExperiment)
+from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
+                                                          LLGFullExperiment,
+                                                          LLLLGGExperiment)
 # from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
 
 from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSingleItemExperiment,
@@ -268,7 +268,7 @@ class ConfigurationManager:
             if self.setting.correlation_types not in ['Bernoulli_weights', 'constant_weights']:
                 raise NotImplementedError(f'`{self.setting.correlation_types}` corrrelation model unknown.')
         elif self.setting.gamma > 1.0:
-            raise Exception('Wrong gamma')
+            raise ValueError('Invalid gamma')
 
         # Extend the distribution boundaries to all bidders if the request
         # number exceeds the default
@@ -302,13 +302,13 @@ class ConfigurationManager:
         'mineral_rights':
             (MineralRightsExperiment, _init_mineral_rights, _post_init_mineral_rights),
         'affiliated_observations':
-            (AffiliatedObservationsExperiment, _init_affiliated_observations, _post_init_affiliated_observations)#,
-        # 'llg':
-        #     (LLGExperiment, _init_llg, _post_init_llg),
-        # 'llg_full':
-        #     (LLGFullExperiment, _init_llg_full, _post_init_llg),
-        # 'llllgg':
-        #     (LLLLGGExperiment, _init_llllgg, _post_init_llllgg),
+            (AffiliatedObservationsExperiment, _init_affiliated_observations, _post_init_affiliated_observations),
+        'llg':
+            (LLGExperiment, _init_llg, _post_init_llg),
+        'llg_full':
+            (LLGFullExperiment, _init_llg_full, _post_init_llg),
+        'llllgg':
+            (LLLLGGExperiment, _init_llllgg, _post_init_llllgg)#,
         # 'multiunit':
         #     (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         # 'splitaward':
@@ -621,7 +621,7 @@ class ConfigurationManager:
 
         ha = str(experiment_config.learning.hidden_activations).split('()')
         for symb in ['[', ']', ' ', ',']:
-            ha = list(map(lambda s: str(s).replace(symb, ''), ha))
+            ha = list(map(lambda s, c=symb: str(s).replace(c, ''), ha))
         ha = [i for i in ha if i != '']
         ha = [hidden_activations_methods[layer]()() for layer in ha]
         experiment_config.learning.hidden_activations = ha
