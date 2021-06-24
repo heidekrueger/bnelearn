@@ -17,7 +17,7 @@ from bnelearn.experiment.configurations import ExperimentConfig
 
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import ClosureStrategy
-from bnelearn.valuation_sampler import (SymmetricIPVSampler, UniformSymmetricIPVSampler,
+from bnelearn.valuation_sampler import (CompositeValuationObservationSampler, SymmetricIPVSampler, UniformSymmetricIPVSampler,
     GaussianSymmetricIPVSampler, LLGSampler, LLLLGGSampler, ValuationObservationSampler)
 
 
@@ -441,8 +441,8 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         self.risk = float(self.config.setting.risk)
         self.risk_profile = self.get_risk_profile(self.risk)
 
+        n_items = 1
         self.n_players = 2
-        self.n_items = 1
         self.n_models = self.n_players
         self._bidder2model: List[int] = list(range(self.n_players))
 
@@ -452,7 +452,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
             self.u_lo: List[float] = [float(self.config.setting.u_lo[i]) for i in range(self.n_players)]
         self.u_hi: List[float] = [float(self.config.setting.u_hi[i]) for i in range(self.n_players)]
         assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
-        self.positive_output_point = torch.tensor([min(self.u_hi)] * self.n_items)
+        self.positive_output_point = torch.tensor([min(self.u_hi)] * n_items)
 
         self.plot_xmin = min(self.u_lo)
         self.plot_xmax = max(self.u_hi)
@@ -461,14 +461,29 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
 
         super().__init__(config=config)
 
+    def _setup_sampler(self):
+
+        default_batch_size = self.learning.batch_size
+        device = self.hardware.device
+        # setup individual samplers for each bidder
+        bidder_samplers = [
+            UniformSymmetricIPVSampler(
+                self.u_lo[i], self.u_hi[i], 1,
+                self.valuation_size, default_batch_size, device)
+            for i in range(self.n_players)]
+        
+        self.sampler = CompositeValuationObservationSampler(
+            self.n_players, self.valuation_size, self.observation_size, bidder_samplers,
+            default_batch_size, device
+            )
+
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, self.valuation_prior,
                 'asymmetric', self.risk_profile, str(self.n_players) + 'p']
         return os.path.join(*name)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, **strat_to_player_kwargs):
-        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
-                              player_position=player_position, batch_size=batch_size, **strat_to_player_kwargs)
+        return Bidder(strategy, player_position=player_position, batch_size=batch_size, **strat_to_player_kwargs)
 
     def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding
@@ -513,6 +528,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                                               batch_size=self.logging.eval_batch_size,
                                               enable_action_caching=self.config.logging.cache_eval_actions)
                         for p in range(self.n_players)],
+                valuation_observation_sampler=self.sampler,
                 n_players=self.n_players,
                 batch_size=self.logging.eval_batch_size,
                 strategy_to_player_closure=self._strat_to_bidder
