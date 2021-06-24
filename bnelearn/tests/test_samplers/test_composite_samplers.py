@@ -47,7 +47,7 @@ def test_local_global_samplers(setting, method, gamma):
         s = vs.LLGSampler(correlation=gamma, correlation_method=method,
                           default_batch_size=batch_size, default_device=device)
     elif setting == 'LLLLGG':
-        s = vs.LLLLGGSampler(correlation=gamma, correlation_method=method,
+        s = vs.LLLLGGSampler(correlation_locals=gamma, correlation_method_locals=method,
                              default_batch_size=batch_size, default_device=device)
     else:
         raise ValueError("invalid method")

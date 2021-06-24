@@ -23,6 +23,8 @@ from bnelearn.mechanism import (
 )
 from bnelearn.strategy import ClosureStrategy
 
+from bnelearn.valuation_sampler import MultiUnitValuationObservationSampler
+
 
 ###############################################################################
 ###                             BNE STRATEGIES                              ###
@@ -363,6 +365,9 @@ class MultiUnitExperiment(Experiment, ABC):
             correlation_type=correlation_type
         )
 
+    def _setup_sampler(self):
+        raise NotImplementedError
+
     def _setup_mechanism(self):
         """Setup the mechanism"""
         if self.payment_rule in ('discriminatory', 'first_price'):
@@ -466,6 +471,9 @@ class SplitAwardExperiment(MultiUnitExperiment):
         self.plot_ymin = [0, 2 * self.u_hi[0]]
         self.plot_ymax = [0, 2 * self.u_hi[0]]
 
+    def _setup_sampler(self):
+        return NotImplementedError
+
     def _setup_mechanism(self):
         if self.payment_rule == 'first_price':
             self.mechanism = FPSBSplitAwardAuction(cuda=self.hardware.cuda)
@@ -496,8 +504,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=False):
         """Standard strat_to_bidder method, but with ReverseBidder"""
-        return ReverseBidder.uniform(
-            lower=self.u_lo[0], upper=self.u_hi[0],
+        return ReverseBidder(
             strategy=strategy,
             n_items=self.n_units,
             item_interest_limit=self.item_interest_limit,

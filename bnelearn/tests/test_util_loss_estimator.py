@@ -1,17 +1,17 @@
-# """Testing correctness of util_loss estimator for a number of settings.
-#         Estimates the potential benefit of deviating from the current energy, as:
-#             util_loss(v_i) = Max_(b_i)[ E_(b_(-i))[u(v_i,b_i,b_(-i))] ]
-#             util_loss_max = Max_(v_i)[ util_loss(v_i) ]
-#             util_loss_expected = E_(v_i)[ util_loss(v_i) ]
-#         Input:
-#             agent: 1
-#             bid_profile: (batch_size x n_player x n_items)
-#             bid_i: (bid_size x n_items)
-#         Output:
-#             util_loss_max
-#             util_loss_expected
-#     bid_i always used as val_i and only using truthful bidding
-# """
+"""Testing correctness of util_loss estimator for a number of settings.
+        Estimates the potential benefit of deviating from the current energy, as:
+            util_loss(v_i) = Max_(b_i)[ E_(b_(-i))[u(v_i,b_i,b_(-i))] ]
+            util_loss_max = Max_(v_i)[ util_loss(v_i) ]
+            util_loss_expected = E_(v_i)[ util_loss(v_i) ]
+        Input:
+            agent: 1
+            bid_profile: (batch_size x n_player x n_items)
+            bid_i: (bid_size x n_items)
+        Output:
+            util_loss_max
+            util_loss_expected
+    bid_i always used as val_i and only using truthful bidding
+"""
 
 import pytest
 import torch
@@ -101,8 +101,6 @@ expected_util_loss_1_6_2 = torch.tensor([
 #TODO, Paul: @Nils add tests for your settings
 
 
-
-
 # each test input takes form rule: string, bids:torch.tensor,
 #                            expected_allocation: torch.tensor, expected_payments: torch.tensor
 # Each tuple specified here will then be tested for all implemented solvers.
@@ -148,7 +146,7 @@ def test_ex_post_util_loss_estimator_truthful(rule, mechanism, bid_profile, bids
         assert torch.allclose(util_loss.mean(), expected_util_loss[i,0], atol = 0.001), "Unexpected avg util_loss"
         assert torch.allclose(util_loss.max(),  expected_util_loss[i,1], atol = 0.001), "Unexpected max util_loss"
 
-## Stefan TODO: @Nils, this was already commented out, please fix.
+## Stefan TODO: @Nils, this was already commented out, please fix
 # @pytest.mark.parametrize("rule, mechanism, bid_profile, bids_i, expected_util_loss",
 #                          testdata_ex_interim, ids=ids_ex_interim)
 # def test_ex_interim_util_loss_estimator_truthful(rule, mechanism, bid_profile, bids_i, expected_util_loss):
@@ -236,45 +234,47 @@ def test_ex_interim_util_loss_estimator_fpsb_bne():
     assert mean_util_loss < 0.02, "Util_loss {} in BNE should be (close to) zero!".format(util_loss.mean())
     assert max_util_loss < 0.05, "Util_loss {} in BNE should be (close to) zero!".format(util_loss.max())
 
-## TODO Stefan: @Nils: this test nee
-# def test_ex_interim_util_loss_estimator_splitaward_bne():
-#     """Test the util_loss in BNE of fpsb split-award auction. - ex interim util_loss should be close to zero"""
-#     n_players = 2
-#     grid_size = 2**5
-#     batch_size = 2**9
-#     n_items = 2
+## TODO Stefan: @Nils: this test needs multi-unit sampling
+def test_ex_interim_util_loss_estimator_splitaward_bne():
+    """Test the util_loss in BNE of fpsb split-award auction. - ex interim util_loss should be close to zero"""
+    n_players = 2
+    grid_size = 2**5
+    batch_size = 2**9
+    n_items = 2
 
-#     class SpltAwardConfig:
-#         """Data class for split-award setting"""
-#         u_lo = [1, 1]
-#         u_hi = [1.4, 1.4]
-#         efficiency_parameter = .3
-#     config = SpltAwardConfig()
+    pytest.skip("Multi-Unit Not yet implemented!")
 
-#     mechanism = FPSBSplitAwardAuction()
-#     strat = ClosureStrategy(_optimal_bid_splitaward2x2_1(config))
+    # class SpltAwardConfig:
+    #     """Data class for split-award setting"""
+    #     u_lo = [1, 1]
+    #     u_hi = [1.4, 1.4]
+    #     efficiency_parameter = .3
+    # config = SpltAwardConfig()
 
-#     agents = [
-#         ReverseBidder.uniform(config.u_lo[0], config.u_hi[0], strat,
-#                               n_items=n_items, efficiency_parameter=config.efficiency_parameter,
-#                               player_position=i, batch_size=batch_size)
-#         for i in range(n_players)
-#     ]
+    # mechanism = FPSBSplitAwardAuction()
+    # strat = ClosureStrategy(_optimal_bid_splitaward2x2_1(config))
 
-#     env = AuctionEnvironment(
-#         mechanism = mechanism,
-#         agents = agents,
-#         batch_size = batch_size,
-#         n_players = n_players
-#     )
+    # agents = [
+    #     ReverseBidder.uniform(config.u_lo[0], config.u_hi[0], strat,
+    #                           n_items=n_items, efficiency_parameter=config.efficiency_parameter,
+    #                           player_position=i, batch_size=batch_size)
+    #     for i in range(n_players)
+    # ]
 
-#     # assert first player has (near) zero util_loss
-#     util_loss, best_response = metrics.ex_interim_util_loss(env, 0, batch_size, grid_size)
+    # env = AuctionEnvironment(
+    #     mechanism = mechanism,
+    #     agents = agents,
+    #     batch_size = batch_size,
+    #     n_players = n_players
+    # )
 
-#     mean_util_loss = util_loss.mean()
-#     max_util_loss = util_loss.max()
+    # # assert first player has (near) zero util_loss
+    # util_loss, best_response = metrics.ex_interim_util_loss(env, 0, batch_size, grid_size)
 
-#     assert mean_util_loss < 0.02, "util_loss in BNE should be (close to) zero " \
-#         + "but is {}!".format(mean_util_loss)
-#     assert max_util_loss < 0.07, "util_loss in BNE should be (close to) zero " \
-#         + "but is {}!".format(max_util_loss)
+    # mean_util_loss = util_loss.mean()
+    # max_util_loss = util_loss.max()
+
+    # assert mean_util_loss < 0.02, "util_loss in BNE should be (close to) zero " \
+    #     + "but is {}!".format(mean_util_loss)
+    # assert max_util_loss < 0.07, "util_loss in BNE should be (close to) zero " \
+    #     + "but is {}!".format(max_util_loss)

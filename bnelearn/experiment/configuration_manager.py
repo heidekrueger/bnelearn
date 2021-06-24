@@ -18,7 +18,7 @@ from bnelearn.experiment.configurations import (SettingConfig,
 from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
                                                           LLGFullExperiment,
                                                           LLLLGGExperiment)
-# from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
+from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
 
 from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSingleItemExperiment,
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
@@ -26,6 +26,69 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         MineralRightsExperiment,
                                                         AffiliatedObservationsExperiment)
 
+
+DISTRIBUTIONS = {'Uniform': torch.distributions.Uniform,
+                 'Normal': torch.distributions.Normal,
+                 'Bernoulli': torch.distributions.Bernoulli,
+                 'Beta': torch.distributions.Beta,
+                 'Binomial': torch.distributions.Binomial,
+                 'Categorical': torch.distributions.Categorical,
+                 'Cauchy': torch.distributions.Cauchy,
+                 'Chi2': torch.distributions.Chi2,
+                 'ContinuousBernoulli': torch.distributions.ContinuousBernoulli,
+                 'Dirichlet': torch.distributions.Dirichlet,
+                 'Exponential': torch.distributions.Exponential,
+                 'FisherSnedecor': torch.distributions.FisherSnedecor,
+                 'Gamma': torch.distributions.Gamma,
+                 'Geometric': torch.distributions.Geometric,
+                 'Gumbel': torch.distributions.Gumbel,
+                 'HalfCauchy': torch.distributions.HalfCauchy,
+                 'HalfNormal': torch.distributions.HalfNormal,
+                 'Independent': torch.distributions.Independent,
+                 'Laplace': torch.distributions.Laplace,
+                 'LogNormal': torch.distributions.LogNormal,
+                 'LogisticNormal': torch.distributions.LogisticNormal,
+                 'LowRankMultivariateNormal': torch.distributions.LowRankMultivariateNormal,
+                 'Multinomial': torch.distributions.Multinomial,
+                 'MultivariateNormal': torch.distributions.MultivariateNormal,
+                 'NegativeBinomial': torch.distributions.NegativeBinomial,
+                 'OneHotCategorical': torch.distributions.OneHotCategorical,
+                 'Pareto': torch.distributions.Pareto,
+                 'RelaxedBernoulli': torch.distributions.RelaxedBernoulli,
+                 'RelaxedOneHotCategorical': torch.distributions.RelaxedOneHotCategorical,
+                 'StudentT': torch.distributions.StudentT,
+                 'Poisson': torch.distributions.Poisson,
+                 'VonMises': torch.distributions.VonMises,
+                 'Weibull': torch.distributions.Weibull
+                 }
+
+ACTIVATIONS = {'SELU': lambda: nn.SELU,
+               'Threshold': lambda: nn.Threshold,
+               'ReLU': lambda: nn.ReLU,
+               'RReLU': lambda: nn.RReLU,
+               'Hardtanh': lambda: nn.Hardtanh,
+               'ReLU6': lambda: nn.ReLU6,
+               'Sigmoid': lambda: nn.Sigmoid,
+               'Hardsigmoid': lambda: nn.Hardsigmoid,
+               'Tanh': lambda: nn.Tanh,
+               'ELU': lambda: nn.ELU,
+               'CELU': lambda: nn.CELU,
+               'GLU': lambda: nn.GLU,
+               'GELU': lambda: nn.GELU,
+               'Hardshrink': lambda: nn.Hardshrink,
+               'LeakyReLU': lambda: nn.LeakyReLU,
+               'LogSigmoid': lambda: nn.LogSigmoid,
+               'Softplus': lambda: nn.Softplus,
+               'Softshrink': lambda: nn.Softshrink,
+               'MultiheadAttention': lambda: nn.MultiheadAttention,
+               'PReLU': lambda: nn.PReLU,
+               'Softsign': lambda: nn.Softsign,
+               'Tanhshrink': lambda: nn.Tanhshrink,
+               'Softmin': lambda: nn.Softmin,
+               'Softmax': lambda: nn.Softmax,
+               'Softmax2d': lambda: nn.Softmax2d,
+               'LogSoftmax': lambda: nn.LogSoftmax
+               }
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
 # pylint: disable = dangerous-default-value
@@ -308,11 +371,11 @@ class ConfigurationManager:
         'llg_full':
             (LLGFullExperiment, _init_llg_full, _post_init_llg),
         'llllgg':
-            (LLLLGGExperiment, _init_llllgg, _post_init_llllgg)#,
-        # 'multiunit':
-        #     (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
-        # 'splitaward':
-        #     (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)
+            (LLLLGGExperiment, _init_llllgg, _post_init_llllgg),
+        'multiunit':
+            (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
+        'splitaward':
+            (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)
         }
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
@@ -452,45 +515,49 @@ class ConfigurationManager:
         """Creates with default (or most common) parameters and returns members
          of the ExperimentConfig"""
         running = RunningConfig(n_runs=0, n_epochs=0)
-        setting = SettingConfig(n_players=2,
-                                payment_rule='first_price',
-                                risk=1.0)
-        learning = LearningConfig(model_sharing=True,
-                                  learner_hyperparams={'population_size': 64,
-                                                       'sigma': 1.,
-                                                       'scale_sigma_by_model_size': True},
-                                  optimizer_type='adam',
-                                  optimizer_hyperparams={'lr': 1e-3},
-                                  hidden_nodes=[10, 10],
-                                  pretrain_iters=500,
-                                  batch_size=2 ** 18,
-                                  hidden_activations=[nn.SELU(), nn.SELU()])
-        logging = LoggingConfig(enable_logging=True,
-                                log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),
-                                plot_frequency=100,
-                                plot_points=100,
-                                plot_show_inline=True,
-                                log_metrics={'opt': True,
-                                             'util_loss': True},
-                                log_componentwise_norm=False,
-                                save_tb_events_to_csv_aggregate=True,
-                                save_tb_events_to_csv_detailed=False,
-                                save_tb_events_to_binary_detailed=False,
-                                save_models=True,
-                                save_figure_to_disk_png=True,
-                                save_figure_to_disk_svg=True,
-                                save_figure_data_to_disk=True,
-                                util_loss_batch_size=2 ** 4,
-                                util_loss_grid_size=2 ** 4,
-                                util_loss_frequency=100,
-                                best_response=False,
-                                eval_batch_size=2 ** 22,
-                                cache_eval_actions=True,
-                                stopping_criterion_rel_util_loss_diff=0.001)
-        hardware = HardwareConfig(specific_gpu=0,
-                                  cuda=True,
-                                  fallback=False,
-                                  max_cpu_threads=1)
+        setting = SettingConfig(
+            n_players=2,
+            payment_rule='first_price',
+            risk=1.0)
+        learning = LearningConfig(
+            model_sharing=True,
+            learner_hyperparams={'population_size': 64,
+                                 'sigma': 1.,
+                                 'scale_sigma_by_model_size': True},
+            optimizer_type='adam',
+            optimizer_hyperparams={'lr': 1e-3},
+            hidden_nodes=[10, 10],
+            pretrain_iters=500,
+            batch_size=2 ** 18,
+            hidden_activations=[nn.SELU(), nn.SELU()])
+        logging = LoggingConfig(
+            enable_logging=True,
+            log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),
+            plot_frequency=100,
+            plot_points=100,
+            plot_show_inline=True,
+            log_metrics={'opt': True,
+                         'util_loss': True},
+            log_componentwise_norm=False,
+            save_tb_events_to_csv_aggregate=True,
+            save_tb_events_to_csv_detailed=False,
+            save_tb_events_to_binary_detailed=False,
+            save_models=True,
+            save_figure_to_disk_png=True,
+            save_figure_to_disk_svg=True,
+            save_figure_data_to_disk=True,
+            util_loss_batch_size=2 ** 4,
+            util_loss_grid_size=2 ** 4,
+            util_loss_frequency=100,
+            best_response=False,
+            eval_batch_size=2 ** 22,
+            cache_eval_actions=True,
+            stopping_criterion_rel_util_loss_diff=0.001)
+        hardware = HardwareConfig(
+            specific_gpu=0,
+            cuda=True,
+            fallback=False,
+            max_cpu_threads=1)
 
         return running, setting, learning, logging, hardware
 
@@ -592,82 +659,23 @@ class ConfigurationManager:
 
         # Create hidden activations object based on the loaded string
         # Tested for SELU only
-        hidden_activations_methods = {'SELU': lambda: nn.SELU,
-                                      'Threshold': lambda: nn.Threshold,
-                                      'ReLU': lambda: nn.ReLU,
-                                      'RReLU': lambda: nn.RReLU,
-                                      'Hardtanh': lambda: nn.Hardtanh,
-                                      'ReLU6': lambda: nn.ReLU6,
-                                      'Sigmoid': lambda: nn.Sigmoid,
-                                      'Hardsigmoid': lambda: nn.Hardsigmoid,
-                                      'Tanh': lambda: nn.Tanh,
-                                      'ELU': lambda: nn.ELU,
-                                      'CELU': lambda: nn.CELU,
-                                      'GLU': lambda: nn.GLU,
-                                      'GELU': lambda: nn.GELU,
-                                      'Hardshrink': lambda: nn.Hardshrink,
-                                      'LeakyReLU': lambda: nn.LeakyReLU,
-                                      'LogSigmoid': lambda: nn.LogSigmoid,
-                                      'Softplus': lambda: nn.Softplus,
-                                      'Softshrink': lambda: nn.Softshrink,
-                                      'MultiheadAttention': lambda: nn.MultiheadAttention,
-                                      'PReLU': lambda: nn.PReLU,
-                                      'Softsign': lambda: nn.Softsign,
-                                      'Tanhshrink': lambda: nn.Tanhshrink,
-                                      'Softmin': lambda: nn.Softmin,
-                                      'Softmax': lambda: nn.Softmax,
-                                      'Softmax2d': lambda: nn.Softmax2d,
-                                      'LogSoftmax': lambda: nn.LogSoftmax, }
 
         ha = str(experiment_config.learning.hidden_activations).split('()')
         for symb in ['[', ']', ' ', ',']:
             ha = list(map(lambda s, c=symb: str(s).replace(c, ''), ha))
         ha = [i for i in ha if i != '']
-        ha = [hidden_activations_methods[layer]()() for layer in ha]
+        ha = [ACTIVATIONS[layer]()() for layer in ha]
         experiment_config.learning.hidden_activations = ha
 
         if experiment_config.setting.common_prior != 'None':
             # Create common_prior object based on the loaded string
-            common_priors = {'Uniform': torch.distributions.Uniform,
-                             'Normal': torch.distributions.Normal,
-                             'Bernoulli': torch.distributions.Bernoulli,
-                             'Beta': torch.distributions.Beta,
-                             'Binomial': torch.distributions.Binomial,
-                             'Categorical': torch.distributions.Categorical,
-                             'Cauchy': torch.distributions.Cauchy,
-                             'Chi2': torch.distributions.Chi2,
-                             'ContinuousBernoulli': torch.distributions.ContinuousBernoulli,
-                             'Dirichlet': torch.distributions.Dirichlet,
-                             'Exponential': torch.distributions.Exponential,
-                             'FisherSnedecor': torch.distributions.FisherSnedecor,
-                             'Gamma': torch.distributions.Gamma,
-                             'Geometric': torch.distributions.Geometric,
-                             'Gumbel': torch.distributions.Gumbel,
-                             'HalfCauchy': torch.distributions.HalfCauchy,
-                             'HalfNormal': torch.distributions.HalfNormal,
-                             'Independent': torch.distributions.Independent,
-                             'Laplace': torch.distributions.Laplace,
-                             'LogNormal': torch.distributions.LogNormal,
-                             'LogisticNormal': torch.distributions.LogisticNormal,
-                             'LowRankMultivariateNormal': torch.distributions.LowRankMultivariateNormal,
-                             'Multinomial': torch.distributions.Multinomial,
-                             'MultivariateNormal': torch.distributions.MultivariateNormal,
-                             'NegativeBinomial': torch.distributions.NegativeBinomial,
-                             'OneHotCategorical': torch.distributions.OneHotCategorical,
-                             'Pareto': torch.distributions.Pareto,
-                             'RelaxedBernoulli': torch.distributions.RelaxedBernoulli,
-                             'RelaxedOneHotCategorical': torch.distributions.RelaxedOneHotCategorical,
-                             'StudentT': torch.distributions.StudentT,
-                             'Poisson': torch.distributions.Poisson,
-                             'VonMises': torch.distributions.VonMises,
-                             'Weibull': torch.distributions.Weibull
-                             }
-            distribution = str(experiment_config.setting.common_prior).split('(')[0]
-            if distribution == 'Uniform':
-                experiment_config.setting.common_prior = common_priors[distribution](experiment_config.setting.u_lo,
-                                                                                     experiment_config.setting.u_hi)
-            elif distribution == 'Normal':
-                experiment_config.setting.common_prior = common_priors[distribution](
+
+            dist_str = str(experiment_config.setting.common_prior).split('(')[0]
+            if dist_str == 'Uniform':
+                experiment_config.setting.common_prior = DISTRIBUTIONS[dist_str](experiment_config.setting.u_lo,
+                                                                                 experiment_config.setting.u_hi)
+            elif dist_str == 'Normal':
+                experiment_config.setting.common_prior = DISTRIBUTIONS[dist_str](
                     experiment_config.setting.valuation_mean,
                     experiment_config.setting.valuation_std)
             else:

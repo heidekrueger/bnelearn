@@ -120,48 +120,48 @@ ids_lg, *testdata_lg = zip(*[
     ]
 ])
 
-# # MultiUnit
-# # id , config, class, known_bne
-# ids_mu, *testdata_mu = zip(*[
-#     # TODO: in the following test cases, the "expected bne" has been set to make the tests pass.
-#     # Those where this didn't match Nils's expectations have been marked. @Nils, please take a look.
-#     [
-#         'MultiUnit-discr',
-#         *ConfigurationManager(experiment_type='multiunit', n_runs=N_RUNS, n_epochs=N_EPOCHS)
-#                            .set_setting(payment_rule='discriminatory')
-#                            .get_config(),
-#         True  # TODO: Nils said should find False for bne, but finds true
-#     ], [
-#         'MultiUnit-discr-no_model_sharing',
-#         *ConfigurationManager(experiment_type='multiunit', n_runs=N_RUNS, n_epochs=N_EPOCHS)
-#                            .set_setting(payment_rule='discriminatory')
-#                            .set_learning(model_sharing=False)
-#                            .get_config(),
-#         True  # TODO: Nils said should find False for bne, but finds true
-#     ], [
-#         'MultiUnit-vcg',
-#         *ConfigurationManager(experiment_type='multiunit', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
-#                            .set_setting(payment_rule='vcg').get_config(),
-#         True
-#     ], [
-#         'MultiUnit-uniform',
-#         *ConfigurationManager(experiment_type='multiunit', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
-#                            .set_setting(payment_rule='uniform').get_config(),
-#         True
-#     ], [
-#         'SplitAward-fp',
-#         *ConfigurationManager(experiment_type='splitaward', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
-#                            .get_config(),
-#         True  # TODO: Nils said should find False for bne, but finds true
-#     ], [
-#         'SplitAward-fp-no_model_sharing',
-#         *ConfigurationManager(experiment_type='splitaward', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
-#                            .set_learning(model_sharing=False)
-#                            .get_config(),
-#         True  # TODO: Nils said should find False for bne, but finds true
-#     ]
+# MultiUnit
+# id , config, class, known_bne
+ids_mu, *testdata_mu = zip(*[
+    # TODO: in the following test cases, the "expected bne" has been set to make the tests pass.
+    # Those where this didn't match Nils's expectations have been marked. @Nils, please take a look.
+    [
+        '0-MultiUnit-discr',
+        *ConfigurationManager(experiment_type='multiunit', n_runs=N_RUNS, n_epochs=N_EPOCHS)
+                           .set_setting(payment_rule='discriminatory')
+                           .get_config(),
+        True  # TODO: Nils said should find False for bne, but finds true
+    ], [
+        '1-MultiUnit-discr-no_model_sharing',
+        *ConfigurationManager(experiment_type='multiunit', n_runs=N_RUNS, n_epochs=N_EPOCHS)
+                           .set_setting(payment_rule='discriminatory')
+                           .set_learning(model_sharing=False)
+                           .get_config(),
+        True  # TODO: Nils said should find False for bne, but finds true
+    ], [
+        '2-MultiUnit-vcg',
+        *ConfigurationManager(experiment_type='multiunit', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
+                           .set_setting(payment_rule='vcg').get_config(),
+        True
+    ], [
+        '3-MultiUnit-uniform',
+        *ConfigurationManager(experiment_type='multiunit', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
+                           .set_setting(payment_rule='uniform').get_config(),
+        True
+    ], [
+        '4-SplitAward-fp',
+        *ConfigurationManager(experiment_type='splitaward', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
+                           .get_config(),
+        True  # TODO: Nils said should find False for bne, but finds true
+    ], [
+        '5-SplitAward-fp-no_model_sharing',
+        *ConfigurationManager(experiment_type='splitaward', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
+                           .set_learning(model_sharing=False)
+                           .get_config(),
+        True  # TODO: Nils said should find False for bne, but finds true
+    ]
 
-# ])
+])
 
 
 def run_auction_test(config, exp_class, known_bne):
@@ -200,6 +200,7 @@ def test_local_global_auctions(config, exp_class, known_bne):
     run_auction_test(config, exp_class, known_bne)
 
 
-# @pytest.mark.parametrize("config, exp_class, known_bne", zip(*testdata_mu), ids=ids_mu)
-# def test_multi_unit_auctions(config, exp_class, known_bne):
-#     run_auction_test(config, exp_class, known_bne)
+@pytest.mark.parametrize("config, exp_class, known_bne", zip(*testdata_mu), ids=ids_mu)
+def test_multi_unit_auctions(config, exp_class, known_bne):
+    pytest.skip("Multi-Unit not implemented!")
+    run_auction_test(config, exp_class, known_bne)
