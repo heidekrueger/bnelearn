@@ -194,6 +194,9 @@ print(len(testdata_si))
 def test_single_item_auctions(config, exp_class, known_bne):
     run_auction_test(config, exp_class, known_bne)
 
+@pytest.mark.xfail
+def test_missing_single_item_experiments():
+    assert 1 == 0, "No tests exist for MineralRights and AffiliatedValues. (Samplers are implemented, Experiments need to updated.)"
 
 @pytest.mark.parametrize("config, exp_class, known_bne", zip(*testdata_lg), ids=ids_lg)
 def test_local_global_auctions(config, exp_class, known_bne):

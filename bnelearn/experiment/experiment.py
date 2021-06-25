@@ -110,16 +110,14 @@ class Experiment(ABC):
         self.n_parameters = None
         self._cur_epoch_log_params = {}
 
+        # TODO: Get rid of these. payment rule should not be part of the 
+        # experiment interface.
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
         if not hasattr(self, 'n_players'):
             self.n_players = self.setting.n_players
         if not hasattr(self, 'payment_rule'):
             self.payment_rule = self.setting.payment_rule
-        if not hasattr(self, 'correlation_groups'):
-            # TODO Stefan: quick hack, only works properly for LLG
-            self.correlation_groups = None
-            self.correlation_devices = None
 
         # sets log dir for experiment. Individual runs will log to subdirectories of this.
         self.experiment_log_dir = os.path.join(self.logging.log_root_dir,
@@ -236,7 +234,6 @@ class Experiment(ABC):
         raise NotImplementedError("This Experiment has no implemented BNE. No eval env was created.")
 
     def _setup_learning_environment(self):
-        print(f'Learning env correlation {self.correlation_groups}: {self.correlation_devices}.')
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
                                       valuation_observation_sampler=self.sampler,

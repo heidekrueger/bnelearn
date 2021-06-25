@@ -17,8 +17,7 @@ from bnelearn.experiment.configurations import ExperimentConfig
 
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import ClosureStrategy
-from bnelearn.valuation_sampler import (CompositeValuationObservationSampler, SymmetricIPVSampler, UniformSymmetricIPVSampler,
-    GaussianSymmetricIPVSampler, LLGSampler, LLLLGGSampler, ValuationObservationSampler)
+from bnelearn.valuation_sampler import (CompositeValuationObservationSampler, SymmetricIPVSampler, UniformSymmetricIPVSampler)
 
 
 ###############################################################################
@@ -45,7 +44,7 @@ def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(
     ).reshape(valuation.shape)
     return valuation - numerator / Fpowered(valuation)
 
-
+ 
 def _optimal_bid_FPSB_UniformSymmetricPriorSingleItem(valuation: torch.Tensor, n: int, r: float, u_lo, u_hi,
                                                       **kwargs) -> torch.Tensor:
     return u_lo + (valuation - u_lo) * (n - 1) / (n - 1.0 + r)
@@ -562,6 +561,8 @@ class MineralRightsExperiment(SingleItemExperiment):
     For risk-neutral agents, a unique BNE is known.
     """
 
+    # TODO: update to new interface and add test
+
     def __init__(self,  config: ExperimentConfig):
 
         self.n_players = config.setting.n_players
@@ -673,6 +674,8 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
     """A Single Item Experiment that has the same valuation prior for all participating bidders.
     For risk-neutral agents, a unique BNE is known.
     """
+
+    # TODO: update to new interface and add test
 
     def __init__(self,  config: ExperimentConfig):
 
