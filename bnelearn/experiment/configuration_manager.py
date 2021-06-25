@@ -437,7 +437,7 @@ class ConfigurationManager:
             ``self`` with updated parameters.
 
         """
-        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
+        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.setting, arg):
                 setattr(self.setting, arg, v)
         return self
@@ -449,7 +449,7 @@ class ConfigurationManager:
                      pretrain_iters: int = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
-        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
+        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.learning, arg):
                 setattr(self.learning, arg, v)
         return self
@@ -468,7 +468,7 @@ class ConfigurationManager:
                     cache_eval_actions: bool = 'None', export_step_wise_linear_bid_function_size: bool = 'None',
                     experiment_dir: str = 'None', experiment_name: str = 'None'):
         """Sets only the parameters of logging which were passed, returns self"""
-        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
+        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.logging, arg):
                 setattr(self.logging, arg, v)
 
@@ -481,7 +481,7 @@ class ConfigurationManager:
     def set_hardware(self, cuda: bool = 'None', specific_gpu: int = 'None', fallback: bool = 'None',
                      max_cpu_threads: int = 'None'):
         """Sets only the parameters of hardware which were passed, returns self"""
-        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value is not 'None'}.items():
+        for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.hardware, arg):
                 setattr(self.hardware, arg, v)
         return self

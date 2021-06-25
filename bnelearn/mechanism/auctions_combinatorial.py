@@ -892,7 +892,8 @@ class LLLLGGAuction(Mechanism):
         tmp_select_first = torch.zeros((n_batch,n_coalition), dtype=int, device=self.device)
         tmp_select_first[:,0] = -1
         tmp_select_first[:,1:] = A_unique_idx_sorted_complete[:,0:(n_coalition-1)]
-        tmp_select_first = torch.tensor(A_unique_idx_sorted_complete - tmp_select_first, dtype=torch.bool, device=self.device)
+        tmp_select_first = (A_unique_idx_sorted_complete - tmp_select_first) \
+            .to(dtype=torch.bool, device=self.device)
 
         ## Phase 3: Select only the highest betas for the groups in A unique
         beta_final = torch.masked_select(beta_sort_complete,tmp_select_first).view(n_batch,max(tmp_select_first.sum(1)))
