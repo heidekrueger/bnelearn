@@ -1,11 +1,12 @@
 from bnelearn.experiment.configuration_manager import ConfigurationManager
 import pytest
 
+
+@pytest.mark.xfail(reason="MultiUnit Experiments not yet implemented.")
 def test_all_experiments_serialization():
     """
     Checks all types of experiments are serialized and deserialized properly with default parameters
     """
-    pytest.skip("Multi-Unit not implemented!")
 
     for experiment_type in list(ConfigurationManager.experiment_types.keys()):
         exp_config, experiment_class = ConfigurationManager(experiment_type=experiment_type, n_runs=2, n_epochs=3) \

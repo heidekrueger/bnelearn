@@ -41,7 +41,7 @@ class GradientBasedLearner(Learner):
         self.environment = environment
 
         self.strat_to_player_kwargs = strat_to_player_kwargs if strat_to_player_kwargs else {}
-            # warn if weird initialization
+        # warn if weird initialization
         if 'player_position' not in self.strat_to_player_kwargs.keys():
             warnings.warn('You haven\'t specified a player_position to evaluate the model. Defaulting to position 0.')
             self.strat_to_player_kwargs['player_position'] = 0

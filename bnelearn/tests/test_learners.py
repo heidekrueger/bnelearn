@@ -67,11 +67,11 @@ def test_ES_learner_SGD():
     """Tests ES PG learner with SGD optimizer in static environment.
        This does not test complete convergence but 'running in the right direction'.
     """
-    BATCH_SIZE = 2**12
+    BATCH_SIZE = 2**16
     epoch = 100
 
     optimizer_type = torch.optim.SGD
-    optimizer_hyperparams = {'lr': 1e-1, 'momentum': 0.5}
+    optimizer_hyperparams = {'lr': 1e-1, 'momentum': 0.3}
     learner_hyperparams = {'sigma': .1, 'population_size': 32, 'scale_sigma_by_model_size': False}
 
     model = NeuralNetStrategy(
@@ -100,7 +100,7 @@ def test_ES_learner_SGD():
         optimizer_hyperparams=optimizer_hyperparams
     )
 
-    for _ in range(epoch+1):
+    for e in range(epoch+1):
         utility = learner.update_strategy_and_evaluate_utility()
 
     assert utility > 1.34, "optimizer did not learn sufficiently (1.34), got {:.2f}".format(utility)
@@ -144,11 +144,11 @@ def test_PG_learner_SGD():
     assert utility > 2.3, "optimizer did not learn sufficiently (2.2), got {:.2f}".format(utility)
 
 
+@pytest.mark.xfail(reason="AESP is still experimental.")
 def test_AESPG_learner_SGD():
     """Tests the standard policy gradient learner in static env.
     This does not test complete convergence but 'running in the right direction'.
     """
-    pytest.skip("AESPG is still experimental")
     BATCH_SIZE = 2**10
     epoch = 100
 
