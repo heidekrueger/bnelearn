@@ -1,8 +1,17 @@
+"""Testing for identical results from solvers for the LLLLGG combinatorial auction implementations."""
 import pytest
 import torch
 from bnelearn.mechanism import LLLLGGAuction
+import warnings
 
-"""Testing for identical results from solvers for the LLLLGG combinatorial auction implementations."""
+@pytest.fixture(autouse=True)
+def check_gurobipy():
+    if not pytest.gurobi_installed:
+        warnings.warn("Gurobipy not installed, test will be skipped")
+        pytest.skip("The test was skipped becasue Gurobipy is not installed")         
+    if not pytest.gurobi_licence_valid:
+        warnings.warn("The Gurobipy is installed but no valid licence available, the test will fail")
+
 torch.manual_seed(1)
 torch.cuda.manual_seed(1)
 bids_1 = torch.rand([2**9,6,2], dtype = torch.float)

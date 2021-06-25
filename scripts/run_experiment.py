@@ -152,29 +152,15 @@ if __name__ == '__main__':
     experiment_config.learning.batch_size = 2 ** 2
     experiment_config.logging.eval_batch_size = 2 ** 2
 
-    #try:
-        #experiment = experiment_class(experiment_config)
+    try:
+        experiment = experiment_class(experiment_config)
 
-        # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
-        #if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
-        #    experiment.run()        
-        #else:
-        #    raise Exception('Unable to perform the correct serialization')
+        #Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
+        if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
+            experiment.run()        
+        else:
+            raise Exception('Unable to perform the correct serialization')
 
-    #except KeyboardInterrupt:
-    #    print('\nKeyboardInterrupt: released memory after interruption')
-    #    torch.cuda.empty_cache()
-
-print('hi')
-
-import gurobi
-
-try:
-    import gurobipy as gp
-    gurobi_installed = True
-except ModuleNotFoundError:
-    gurobi_installed = False
-
-print(gurobi_installed)
-
-m = gp.Model("NewModel")
+    except KeyboardInterrupt:
+        print('\nKeyboardInterrupt: released memory after interruption')
+        torch.cuda.empty_cache()
