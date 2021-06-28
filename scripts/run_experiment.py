@@ -155,7 +155,7 @@ if __name__ == '__main__':
     try:
         experiment = experiment_class(experiment_config)
 
-        #Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
+        # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
         if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
             experiment.run()        
         else:
@@ -164,3 +164,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print('\nKeyboardInterrupt: released memory after interruption')
         torch.cuda.empty_cache()
+        

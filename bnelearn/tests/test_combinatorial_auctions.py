@@ -1,3 +1,4 @@
+"""Testing correctness of LLLLGG combinatorial auction implementations."""
 import pytest
 import torch
 from bnelearn.mechanism import CombinatorialAuction
@@ -9,7 +10,6 @@ def check_gurobipy():
     if not pytest.gurobi_licence_valid:
         warnings.warn("The Gurobipy is installed but no valid licence available, the test will fail")
 
-"""Testing correctness of LLLLGG combinatorial auction implementations."""
 bids_1 = torch.tensor([[
     #Bundle1 (one item)
     [2], #L1
@@ -73,7 +73,8 @@ def run_Combinatorial_test(rule, device, bids, bundle, expected_allocation, expe
 
 
 @pytest.mark.parametrize("rule,bids,bundles,expected_allocation,expected_payments", testdata, ids=ids)
-def test_Combinatorial(rule,bids,bundles,expected_allocation,expected_payments):      
+def test_Combinatorial(rule,bids,bundles,expected_allocation,expected_payments):  
+    """ Tests allocation and payments in combinatorial auctions"""    
     run_Combinatorial_test(rule, 'cpu', bids, bundles, expected_allocation, expected_payments)
     run_Combinatorial_test(rule, 'cuda', bids, bundles, expected_allocation, expected_payments)
     
