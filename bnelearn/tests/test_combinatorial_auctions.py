@@ -5,9 +5,7 @@ import warnings
 
 @pytest.fixture(autouse=True)
 def check_gurobipy():
-    if not pytest.gurobi_installed:
-        warnings.warn("Gurobipy not installed, test will be skipped")
-        pytest.skip("The test was skipped becasue Gurobipy is not installed")         
+    pytest.importorskip('gurobipy')      
     if not pytest.gurobi_licence_valid:
         warnings.warn("The Gurobipy is installed but no valid licence available, the test will fail")
 
