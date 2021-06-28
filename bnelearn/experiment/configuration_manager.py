@@ -457,7 +457,7 @@ class ConfigurationManager:
     # pylint: disable=too-many-arguments, unused-argument
     def set_logging(self, enable_logging: bool = 'None', log_root_dir: str = 'None', util_loss_batch_size: int = 'None',
                     util_loss_grid_size: int = 'None', util_loss_frequency: int = 'None', eval_batch_size: int = 'None',
-                    cache_eval_action: bool = 'None', plot_frequency: int = 'None', plot_points: int = 'None',
+                    plot_frequency: int = 'None', plot_points: int = 'None',
                     plot_show_inline: bool = 'None', log_metrics: dict = 'None', best_response: bool = 'None',
                     save_tb_events_to_csv_aggregate: bool = 'None', save_tb_events_to_csv_detailed: bool = 'None',
                     save_tb_events_to_binary_detailed: bool = 'None', save_models: bool = 'None',

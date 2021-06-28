@@ -108,7 +108,7 @@ class LocalGlobalExperiment(Experiment, ABC):
         else:
             return super()._get_model_names()
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=True):
         return Bidder(strategy, player_position=player_position, batch_size=batch_size,
                       valuation_size=self.valuation_size, observation_size=self.observation_size,
                       bid_size=self.action_size,

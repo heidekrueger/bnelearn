@@ -230,6 +230,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         # instance property will be set in super().__init__ call.
         action_size = 1
 
+        # TODO: common_prior possibly on wrnog device now
         self.common_prior = self.config.setting.common_prior
         self.positive_output_point = torch.stack([self.common_prior.mean] * action_size)
 
@@ -338,7 +339,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.bne_utility = bne_utility_analytical
         self.bne_utilities = [self.bne_utility] * self.n_models
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=True):
         return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
                       risk=self.risk)
 
@@ -360,7 +361,10 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         self.u_lo = self.config.setting.u_lo
         self.u_hi = self.config.setting.u_hi
         self.config.setting.common_prior = \
-            torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
+            torch.distributions.uniform.Uniform(
+                low=torch.tensor(self.u_lo, dtype=torch.float32, device=self.config.hardware.device),
+                high=torch.tensor(self.u_hi, dtype=torch.float32, device=self.config.hardware.device)
+                )
 
         # ToDO Implicit list to float type conversion
         self.plot_xmin = self.u_lo
@@ -658,7 +662,7 @@ class MineralRightsExperiment(SingleItemExperiment):
         else:
             self.known_bne = False
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=True):
         correlation_type = 'multiplicative'
         return Bidder(self.common_prior, strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
                       risk=self.risk, correlation_type=correlation_type)

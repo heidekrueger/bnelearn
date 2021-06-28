@@ -81,7 +81,7 @@ class Bidder(Player):
                  observation_size: int =1,
                  bid_size: int = 1,
                  cuda: str = True,
-                 enable_action_caching: bool = False,
+                 enable_action_caching: bool = True,
                  risk: float = 1.0
                  ):
 

@@ -346,7 +346,7 @@ class MultiUnitExperiment(Experiment, ABC):
 
         super().__init__(config=config)
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=True):
         """
         Standard strat_to_bidder method.
         """
@@ -502,7 +502,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
     #         output_tensor = temp
     #     return output_tensor
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=True):
         """Standard strat_to_bidder method, but with ReverseBidder"""
         return ReverseBidder(
             strategy=strategy,

@@ -167,7 +167,7 @@ class Experiment(ABC):
         """
 
     @abstractmethod
-    def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=False) -> Bidder:
+    def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=True) -> Bidder:
         pass
 
     def _setup_learners(self):
@@ -195,7 +195,7 @@ class Experiment(ABC):
                 self.observation_size,
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
-                ensure_positive_output=self.positive_output_point,
+                ensure_positive_output=self.positive_output_point.to('cpu'),  # models init. on cpu
                 output_length=self.action_size
             ).to(self.hardware.device)
 
@@ -687,7 +687,7 @@ class Experiment(ABC):
 
             unique_bidders = [self.env.agents[i[0]] for i in self._model2bidder]
             v = torch.stack(
-                [b.valuations[:self.plot_points, ...] for b in unique_bidders],
+                [b._cached_observations[:self.plot_points, ...] for b in unique_bidders],
                 dim=1
             )
             b = torch.stack([b.get_action()[:self.plot_points, ...]
@@ -795,14 +795,14 @@ class Experiment(ABC):
 
             L_2[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
-                    model, m2a(i).get_action(), m2a(i).valuations, 2,
+                    model, m2a(i).get_action(), m2a(i)._cached_observations, 2,
                     componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
             ])
             L_inf[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
-                    model, m2a(i).get_action(), m2a(i).valuations, float('inf'),
+                    model, m2a(i).get_action(), m2a(i)._cached_observations, float('inf'),
                     componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
@@ -830,8 +830,16 @@ class Experiment(ABC):
             "Util_loss for larger than actual batch size not implemented."
 
         torch.cuda.empty_cache()
+        util_loss_batch_size = min(self.logging.util_loss_batch_size, self.learning.batch_size)
+        agent_observations = lambda x: \
+            self.env.agents[x]._cached_observations[:util_loss_batch_size, ...]
         util_losses, best_responses = zip(*[
-            metrics.ex_interim_util_loss(env, player_positions[0], batch_size, grid_size)
+            metrics.ex_interim_util_loss(
+                env=env,
+                player_position=player_positions[0],
+                agent_observations=agent_observations(player_positions[0]),
+                grid_size=grid_size
+            )
             for player_positions in self._model2bidder
         ])
         if self.logging.best_response:
@@ -864,11 +872,11 @@ class Experiment(ABC):
             # TODO Nils: differentiate models in plot
             # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
             util_losses = torch.stack(list(util_losses), dim=1)[:, :, None]
-            valuations = torch.stack([self.bidders[player_positions[0]].valuations[:batch_size, ...]
+            valuations = torch.stack([self.bidders[player_positions[0]]._cached_observations[:batch_size, ...]
                                       for player_positions in self._model2bidder], dim=1)
             plot_output = (valuations, util_losses)
             self._plot(plot_data=plot_output, writer=self.writer,
-                       ylim=[0, max(self._max_util_loss).cpu()],
+                       ylim=[0, max(self._max_util_loss).detach().cpu()],
                        figure_name='util_loss_landscape', y_label='ex-interim loss',
                        epoch=epoch, plot_points=self.plot_points)
 
@@ -890,7 +898,7 @@ class Experiment(ABC):
         # TODO: Stefan: this currently called _per run_. is this desired behavior?
         for i, model in enumerate(self.models):
             self.writer.add_text('hyperparameters/neural_net_spec', str(model))
-            self.writer.add_graph(model, self.env.agents[i].valuations)
+            self.writer.add_graph(model, self.env.agents[i]._cached_observations)
 
         h_params = {'hyperparameters/batch_size': self.learning.batch_size,
                     'hyperparameters/pretrain_iters': self.learning.pretrain_iters,
@@ -921,7 +929,7 @@ class Experiment(ABC):
     #
     #     for i, model in enumerate(self.models):
     #         self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)  # ToDO To hyperparams
-    #         self.writer.add_graph(model, self.env.agents[i].valuations)
+    #         self.writer.add_graph(model, self.env.agents[i]._cached_observations)
 
     def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to
