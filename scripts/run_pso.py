@@ -17,12 +17,12 @@ if __name__ == '__main__':
 
     # Path is user-specific
     log_root_dir = os.path.join(
-        os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
+        os.path.expanduser('~'), 'bnelearn', 'experiments', 'figure_test')
 
     experiment_types = [
-        # 'single_item_uniform_symmetric',
-        # 'single_item_asymmetric_uniform_overlapping',
-        # 'llg',
+         'single_item_uniform_symmetric',
+         'single_item_asymmetric_uniform_overlapping',
+         'llg',
         'llg_full',
     ]
     learners = [
@@ -45,8 +45,8 @@ if __name__ == '__main__':
                 'lower_bounds': -1,
                 'reevaluation_frequency': 10,
                 'inertia_weight': .5,
-                # 'cognition': .8,
-                # 'social': .8,
+                'cognition': .8,
+                'social': .8,
                 # 'pretrain_deviation': .2,
             }
         }
@@ -54,6 +54,7 @@ if __name__ == '__main__':
     for experiment_type in experiment_types:
         for learner in learners:
             print(f'\n###\nRunning `{experiment_type}` with {learner}')
+            log_root_dir_test = os.path.join(log_root_dir, learner['learner_type'])
             experiment_config, experiment_class = \
                 ConfigurationManager(
                     experiment_type=experiment_type,
@@ -70,7 +71,7 @@ if __name__ == '__main__':
                     learner_hyperparams=learner['learner_hyperparams'],
                 ) \
                 .set_hardware(
-                    specific_gpu=1,
+                    specific_gpu=4,
                 ) \
                 .set_logging(
                     eval_batch_size=2**17,
@@ -79,7 +80,7 @@ if __name__ == '__main__':
                     util_loss_grid_size=2**10,
                     util_loss_frequency=100,
                     best_response=True,
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_root_dir_test,
                     save_tb_events_to_csv_detailed=True,
                     stopping_criterion_frequency=1e8,
                     save_models=True,
