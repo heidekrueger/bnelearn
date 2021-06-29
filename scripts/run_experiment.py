@@ -32,18 +32,31 @@ if __name__ == '__main__':
     # experiment_class = ConfigurationManager \
     #    .get_class_by_experiment_type(experiment_config.experiment_class)
 
-    # Well, path is user-specific
+    # path is user-specific
     log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
 
 
     ### SINGLE ITEM EXPERIMENTS ###
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
-                                                               n_epochs=200) \
-        .set_setting(risk=1.1)\
-        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
-        .set_learning(pretrain_iters=5) \
-        .set_logging(eval_batch_size=2**4).get_config()
+    experiment_config, experiment_class = \
+        ConfigurationManager(
+            experiment_type='single_item_uniform_symmetric',
+            n_runs=1,
+            n_epochs=100
+            ) \
+        .set_setting() \
+        .set_logging(
+            # util_loss_batch_size=2*12,
+            # util_loss_grid_size=2**10,
+            # util_loss_frequency=25,
+            # cache_eval_actions=True,
+            log_root_dir=log_root_dir,
+            save_tb_events_to_csv_detailed=True
+            ) \
+        .set_learning(
+            # model_sharing=False
+            ) \
+        .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
     #                                                            n_runs=2, n_epochs=2)\
@@ -141,25 +154,6 @@ if __name__ == '__main__':
     #     .set_hardware(specific_gpu=1) \
     #     .get_config()
 
-    # for making a toy experiment
-    experiment_config.running.n_epochs = 2
-    experiment_config.logging.plot_frequency = 1
-    experiment_config.logging.util_loss_frequency = 1
-    experiment_config.logging.plot_points = 10
-    experiment_config.logging.util_loss_batch_size = 2 ** 2
-    experiment_config.logging.util_loss_grid_size = 2 ** 2
-    experiment_config.learning.batch_size = 2 ** 2
-    experiment_config.logging.eval_batch_size = 2 ** 2
-
-    try:
-        experiment = experiment_class(experiment_config)
-
-        # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
-        if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
-            experiment.run()
-        else:
-            raise Exception('Unable to perform the correct serialization')
-
-    except KeyboardInterrupt:
-        print('\nKeyboardInterrupt: released memory after interruption')
-        torch.cuda.empty_cache()
+    experiment = experiment_class(experiment_config)
+    experiment.run()
+    torch.cuda.empty_cache()

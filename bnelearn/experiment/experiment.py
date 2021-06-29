@@ -685,25 +685,30 @@ class Experiment(ABC):
         if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
 
-            unique_bidders = [self.env.agents[i[0]] for i in self._model2bidder]
-            v = torch.stack(
-                [b._cached_observations[:self.plot_points, ...] for b in unique_bidders],
+            unique_bidders = [i[0] for i in self._model2bidder]
+            # TODO: possibly want to use old valuations, but currently it uses
+            #       those from the util_loss, not those that were used during self-play
+            observation_profile = self.sampler._sample(
+                batch_sizes=self.plot_points,
+                device=self.hardware.device)
+            o = torch.stack(
+                [observation_profile[:self.plot_points, b, ...] for b in unique_bidders],
                 dim=1
             )
-            b = torch.stack([b.get_action()[:self.plot_points, ...]
-                             for b in unique_bidders], dim=1)
+            b = torch.stack([self.env.agents[b[0]].get_action(o[:, i, ...])
+                             for i, b in enumerate(self._model2bidder)], dim=1)
 
             labels = ['NPGA agent {}'.format(i) for i in range(len(self.models))]
-            fmts = ['bo'] * len(self.models)
+            fmts = ['o'] * len(self.models)
             if self.known_bne and self.logging.log_metrics['opt']:
                 for env_idx, _ in enumerate(self.bne_env):
-                    v = torch.cat([v, self.v_opt[env_idx]], dim=1)
+                    o = torch.cat([o, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
                     labels += ['BNE {} agent {}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
                                for j in range(len(self.models))]
-                    fmts += ['b--'] * len(self.models)
+                    fmts += ['--'] * len(self.models)
 
-            self._plot(plot_data=(v, b), writer=self.writer, figure_name='bid_function',
+            self._plot(plot_data=(o, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         self.overhead = self.overhead + timer() - start_time
@@ -843,14 +848,13 @@ class Experiment(ABC):
             for player_positions in self._model2bidder
         ])
         if self.logging.best_response:
-            # TODO: Stefan@ Nils: I don't understand what's happening here. what are the 0 and 1 indices?
-            # is this explicitly only for 2 players/modles??
+            # TODO Nils: clean up
             best_responses = (
                 torch.stack([br[0] for br in best_responses], dim=1)[:, :, None],
                 torch.stack([br[1] for br in best_responses], dim=1)[:, :, None]
             )
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
-            fmts = ['bo'] * len(self.models)
+            fmts = ['o'] * len(self.models)
             self._plot(plot_data=best_responses, writer=self.writer,
                        ylim=[0, max(a._grid_ub for a in self.env.agents).cpu()],
                        figure_name='best_responses', y_label='best response',
