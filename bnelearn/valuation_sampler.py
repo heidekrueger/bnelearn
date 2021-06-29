@@ -231,11 +231,11 @@ class SymmetricIPVSampler(PVSampler):
 
         device = device or self.default_device
         inner_batch_size = inner_batch_size or self.default_batch_size
-        *outer_batch_sizes , observation_size = conditioned_observation.shape
+        *outer_batch_sizes, observation_size = conditioned_observation.shape
 
         profile = self._sample([*outer_batch_sizes, inner_batch_size], device)
 
-        profile[...,conditioned_player, :] = \
+        profile[..., conditioned_player, :] = \
             conditioned_observation \
                 .view(*outer_batch_sizes, 1, observation_size) \
                 .repeat(*([1]*len(outer_batch_sizes)), inner_batch_size, 1)
@@ -664,7 +664,6 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
         return v
 
 
-
 class AffiliatedValuationObservationSampler(ValuationObservationSampler):
     """The 'Affiliated Values Model' model. (Krishna 2009, Example 6.2).
        This is a private values model.
@@ -835,6 +834,7 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
 
         return profile
 
+
 class CompositeValuationObservationSampler(ValuationObservationSampler):
     """A class representing composite prior distributions that are
     made up of several groups of bidders, each of which can be represented by
@@ -869,8 +869,6 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
         super().__init__(n_players, valuation_size, observation_size, support_bounds,
                          default_batch_size, default_device)
 
-
-
     def draw_profiles(self, batch_sizes: int or List[int] = None, device=None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws and returns a batch of valuation and observation profiles.
 
@@ -896,8 +894,7 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
             players = self.group_indices[g]
             v[:, players, :], o[:, players, :] = self.group_samplers[g].draw_profiles(batch_sizes, device)
 
-        return v,o
-
+        return v, o
 
     def draw_conditional_profiles(self,
                                   conditioned_player: int,
@@ -932,13 +929,12 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
 
         device = device or self.default_device
         inner_batch = inner_batch_size or self.default_batch_size
-        outer_batch = conditioned_observation.shape[0]
-        full_batch = inner_batch * outer_batch
+        outer_batch = list(conditioned_observation.shape[:-1])  # possbibly more than one outer batch dim
 
         i = conditioned_player
 
-        cv = torch.empty([inner_batch_size, self.n_players, self.valuation_size], device=device)
-        co = torch.empty([inner_batch_size, self.n_players, self.observation_size], device=device)
+        cv = torch.empty([*outer_batch, inner_batch, self.n_players, self.valuation_size], device=device)
+        co = torch.empty([*outer_batch, inner_batch, self.n_players, self.observation_size], device=device)
 
         ## Draw independently for each group.
 
@@ -953,18 +949,18 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
                 # i's relative position in the subgroup:
                 sub_i =  i - sum(self.group_sizes[:g])
 
-                cv[:, players, :], co[:, players, :] = \
+                cv[..., players, :], co[..., players, :] = \
                     self.group_samplers[g].draw_conditional_profiles(
-                        conditioned_player= sub_i,
-                        conditioned_observation= conditioned_observation,
-                        inner_batch_size = inner_batch,
-                        device = device
+                        conditioned_player=sub_i,
+                        conditioned_observation=conditioned_observation,
+                        inner_batch_size=inner_batch,
+                        device=device
                     )
             else:
                 # the conditioned player is not in this group, the groups draw
                 # is independent of the observation
-                cv[:, players, :], co[:, players, :] = \
-                    self.group_samplers[g].draw_profiles(full_batch, device)
+                cv[..., players, :], co[..., players, :] = \
+                    self.group_samplers[g].draw_profiles([*outer_batch, inner_batch], device)
 
         return cv, co
 

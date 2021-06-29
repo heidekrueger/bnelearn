@@ -89,7 +89,7 @@ class Bidder(Player):
 
         self.valuation_size = valuation_size
         self.observation_size = observation_size
-        self.bid_size = bid_size,
+        self.bid_size = bid_size
 
         self.risk = risk
         self._enable_action_caching = enable_action_caching
@@ -97,12 +97,11 @@ class Bidder(Player):
         self._cached_observations = None
         self._cached_valuations_changed = False # true if new observations drawn since actions calculated
         self._cached_valuations = None
+
         if self._enable_action_caching:
-            self._cached_valuations   = torch.zeros(batch_size, valuation_size, device=self.device)
+            self._cached_valuations = torch.zeros(batch_size, valuation_size, device=self.device)
             self._cached_observations = torch.zeros(batch_size, observation_size, device=self.device)
-            self._cached_actions      = torch.zeros(batch_size, bid_size, device=self.device)
-
-
+            self._cached_actions = torch.zeros(batch_size, bid_size, device=self.device)
 
     @property
     def cached_observations(self):
@@ -141,8 +140,6 @@ class Bidder(Player):
         if not new_value.equal(self._cached_valuations):
             self._cached_valuations = new_value.to(self._cached_valuations.device, self._cached_valuations.dtype)
             self._cached_valuations_changed = True
-
-
 
     def get_utility(self, allocations, payments, valuations=None):
         """

@@ -33,7 +33,7 @@ if __name__ == '__main__':
     #    .get_class_by_experiment_type(experiment_config.experiment_class)
 
     # path is user-specific
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
 
 
     ### SINGLE ITEM EXPERIMENTS ###
@@ -42,20 +42,28 @@ if __name__ == '__main__':
         ConfigurationManager(
             experiment_type='single_item_uniform_symmetric',
             n_runs=1,
-            n_epochs=100
+            n_epochs=200
             ) \
-        .set_setting() \
+        .set_setting(
+            # correlation_groups=[[0, 1, 2]],
+            # correlation_types='independent',
+            # gamma=0.0
+            ) \
         .set_logging(
-            # util_loss_batch_size=2*12,
-            # util_loss_grid_size=2**10,
-            # util_loss_frequency=25,
-            # cache_eval_actions=True,
+            eval_batch_size=2**18,
+            util_loss_batch_size=2**10,
+            util_loss_grid_size=2**10,
+            util_loss_frequency=10,
+            cache_eval_actions=True,
             log_root_dir=log_root_dir,
             save_tb_events_to_csv_detailed=True
             ) \
         .set_learning(
-            # model_sharing=False
+            model_sharing=False
             ) \
+        .set_hardware(
+            specific_gpu=7
+        ) \
         .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',

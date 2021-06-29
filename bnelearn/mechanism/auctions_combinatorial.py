@@ -294,7 +294,7 @@ class LLGAuction(Mechanism):
         """
         ## TODO: this probably won't with multiple batch_dimensions
         ## TODO: alsow won't work with new valuations interface yet.
-        batch_size = min(env.agents[0].valuations.shape[0], 2 ** 12)
+        batch_size = min(env._observations.shape[0], 2 ** 12)
 
         if redraw_valuations:
             env.draw_valuations()
@@ -308,14 +308,14 @@ class LLGAuction(Mechanism):
         for a in env.agents:
             actual_welfare += a.get_welfare(
                 allocations[:batch_size, a.player_position],
-                a.valuations[:batch_size, ...]
+                a._cached_observations[:batch_size, ...]
             )
 
         local_valuations = torch.zeros_like(actual_welfare)
         for a in env.agents[:-1]:
-            local_valuations += a.valuations[:batch_size, ...].squeeze()
+            local_valuations += a._cached_observations[:batch_size, ...].squeeze()
         maximum_welfare = torch.max(
-            env.agents[-1].valuations[:batch_size, ...].squeeze(), local_valuations
+            env.agents[-1]._cached_observations[:batch_size, ...].squeeze(), local_valuations
         ).view_as(actual_welfare)
 
         efficiency = (actual_welfare / maximum_welfare).mean()
