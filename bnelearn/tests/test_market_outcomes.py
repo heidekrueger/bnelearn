@@ -59,4 +59,4 @@ def test_llg_efficiency():
     mean_max_valuation = 1.28239631  # for precise calc. see Irwin–Hall distribution
     efficiency = mechanism.get_efficiency(env)
     # Average efficiency should be the actual_welfare and the maximum_welfare
-    assert abs(efficiency.item() - (1. / mean_max_valuation)) < 1e-1
+    assert abs(efficiency.item() - (1. / mean_max_valuation)) < 2e-1

@@ -459,8 +459,8 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
         self.positive_output_point = torch.tensor([min(self.u_hi)] * n_items)
 
-        self.plot_xmin = min(self.u_lo).cpu()
-        self.plot_xmax = max(self.u_hi).cpu()
+        self.plot_xmin = min(self.u_lo)
+        self.plot_xmax = max(self.u_hi)
         self.plot_ymin = self.plot_xmin * 0.90
         self.plot_ymax = self.plot_xmax * 1.05
 
@@ -476,7 +476,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                 self.u_lo[i], self.u_hi[i], 1,
                 self.valuation_size, default_batch_size, device)
             for i in range(self.n_players)]
-        
+
         self.sampler = CompositeValuationObservationSampler(
             self.n_players, self.valuation_size, self.observation_size, bidder_samplers,
             default_batch_size, device
