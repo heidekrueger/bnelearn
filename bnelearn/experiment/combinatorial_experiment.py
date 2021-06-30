@@ -108,7 +108,7 @@ class LocalGlobalExperiment(Experiment, ABC):
         else:
             return super()._get_model_names()
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=True):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         return Bidder(strategy, player_position=player_position, batch_size=batch_size,
                       valuation_size=self.valuation_size, observation_size=self.observation_size,
                       bid_size=self.action_size,
@@ -233,7 +233,8 @@ class LLGExperiment(LocalGlobalExperiment):
         bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
             agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                         batch_size=self.config.logging.eval_batch_size)
+                                         batch_size=self.config.logging.eval_batch_size,
+                                         enable_action_caching=self.config.logging.cache_eval_actions)
                     for i in range(self.n_players)],
             valuation_observation_sampler= self.sampler,
             n_players=self.n_players,
@@ -412,7 +413,8 @@ class LLGFullExperiment(LocalGlobalExperiment):
         self.bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
             agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                          batch_size=self.config.logging.eval_batch_size)
+                                          batch_size=self.config.logging.eval_batch_size,
+                                          enable_action_caching=self.config.logging.cache_eval_actions)
                     for i in range(self.n_players)],
             valuation_observation_sampler=self.sampler,
             n_players=self.n_players,

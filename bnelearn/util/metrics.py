@@ -102,6 +102,77 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.Tensor, bid_prof
     return bid_profile #bid_eval_size*batch, 1,n_items
 
 
+def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid_profile: torch.Tensor, bidder: Bidder,
+                      grid: torch.Tensor, half_precision = False, player_position: int = None):
+    """
+    # TODO: do we really need this or can we delete it in general?
+    # If we decide to keep it, check implementation in detail! (Removing many many todos in the body)
+
+    Estimates a bidder's ex post util_loss in the current bid_profile vs a potential grid,
+        i.e. the potential benefit of having deviated from the current strategy, as:
+        util_loss = max(0, BR(v_i, b_-i) - u_i(b_i, b_-i))
+    Input:
+        mechanism
+        player_valuations: the valuations of the player that is to be evaluated
+        bid_profile: (batch_size x n_player x n_items)
+        bidder: a Bidder (used to retrieve valuations and utilities)
+        grid:
+            option 1: 1d tensor with length grid_size
+                todo for n_items > 1, all grid_size**n_items combination will be used. Should be
+                replaced by e.g. torch.meshgrid
+            option 2: tensor with shape (grid_size, n_items)
+        player_position (optional): specific position in which the player will be evaluated
+            (defaults to player_position of bidder)
+        half_precision: (optional, bool) Whether to use half precision tensors. default: false
+    Output:
+        util_loss (batch_size)
+
+    Useful: To get the memory used by a tensor (in MB): (tensor.element_size() * tensor.nelement())/(1024*1024)
+    """
+
+    player_position = bidder.player_position
+
+    ## Use smaller dtypes to save memory
+    if half_precision:
+        bid_profile = bid_profile.half()
+        bidder_valuations = bidder_valuations.half()
+        grid = grid.half()
+
+    #Generalize these dimensions
+    batch_size, n_players, n_items = bid_profile.shape # pylint: disable=unused-variable
+    grid_size = grid.shape[0] #update this
+    # Create multidimensional bid tensor if required
+    if n_items == 1:
+        grid = grid.view(grid_size, 1).to(bid_profile.device)
+    elif n_items >= 2 and len(grid.shape) == 1:
+        grid = torch.combinations(grid, r=n_items, with_replacement=True).to(bid_profile.device) #grid_size**n_items x n_items
+        # Stefan: this only works if both bids are over the same action space (what if one of these is the bid for a bundle?)
+    grid_size, _ = grid.shape # this _new_ grid size refers to all combinations, whereas the previous one was 1D only
+
+    ### Evaluate alternative bids on grid
+    grid_bid_profile = _create_grid_bid_profiles(player_position, grid, bid_profile) # (grid_size*batch_size) x n_players x n_items
+    ## Calculate allocation and payments for alternative bids given opponents bids
+    allocation, payments = mechanism.play(grid_bid_profile)
+
+    # we only need the specific player's allocation and can get rid of the rest.
+    a_i = allocation[:,player_position,:]
+    p_i = payments[:,player_position] # 1D tensor of length (grid * batch)
+
+    utility_grid = bidder.get_utility(
+        a_i, p_i, bidder_valuations.repeat_interleave(grid_size, dim=0)
+        ).view(grid_size, batch_size)
+    best_response_utility, best_response = utility_grid.max(0)
+
+    ## Evaluate actual bids
+    allocation, payments = mechanism.play(bid_profile)
+    a_i = allocation[:,player_position,:]
+    p_i = payments[:,player_position]
+
+    actual_utility = bidder.get_utility(a_i, p_i, bidder_valuations)
+
+    return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
+
+
 def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                          agent_observations: torch.Tensor,
                          grid_size: int,

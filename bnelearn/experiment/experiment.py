@@ -159,7 +159,6 @@ class Experiment(ABC):
                 'bidders' + ''.join([str(b) for b in bidders])
                 for bidders in self._model2bidder]
 
-
     @abstractmethod
     def _setup_sampler(self):
         """Defines and initializes a sampler to retrieve observations and
@@ -167,7 +166,7 @@ class Experiment(ABC):
         """
 
     @abstractmethod
-    def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=True) -> Bidder:
+    def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=False) -> Bidder:
         pass
 
     def _setup_learners(self):
@@ -359,7 +358,10 @@ class Experiment(ABC):
 
         if self.logging.enable_logging:
             # pylint: disable=attribute-defined-outside-init
-            self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}
+            self._cur_epoch_log_params = {
+                'utilities': utilities.detach(),
+                'prev_params': prev_params
+            }
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
             print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),
                   end="\r")
@@ -831,30 +833,26 @@ class Experiment(ABC):
 
         env = self.env
         if batch_size is None:
-            batch_size = self.logging.util_loss_batch_size
+            # take min of both in case the requested batch size is too large for the env
+            batch_size = min(self.logging.util_loss_batch_size, self.learning.batch_size)
         if grid_size is None:
             grid_size = self.logging.util_loss_grid_size
 
         assert batch_size <= env.batch_size, \
             "Util_loss for larger than actual batch size not implemented."
 
-        torch.cuda.empty_cache()
-
-        # here we reuse the obs & vals from the bidders within self.env
-        # take min of both in case the requested batch size is too large for the env
-        util_loss_batch_size = min(self.logging.util_loss_batch_size, self.learning.batch_size)
-
-        agent_observations = lambda p: \
-            self.env._observations[:util_loss_batch_size, p, :]
-        util_losses, best_responses = zip(*[
-            metrics.ex_interim_util_loss(
-                env=env,
-                player_position=player_positions[0],
-                agent_observations=agent_observations(player_positions[0]),
-                grid_size=grid_size
-            )
-            for player_positions in self._model2bidder
-        ])
+        with torch.no_grad():  # don't need any gradient information here
+            # TODO: currently we don't know where exactly a mmory leak is
+            observations = self.env._observations[:batch_size, :, :]
+            util_losses, best_responses = zip(*[
+                metrics.ex_interim_util_loss(
+                    env=env,
+                    player_position=player_positions[0],
+                    agent_observations=observations[:, player_positions[0], :],
+                    grid_size=grid_size
+                )
+                for player_positions in self._model2bidder
+            ])
 
         if self.logging.best_response:
             # TODO Nils: clean up
@@ -888,7 +886,7 @@ class Experiment(ABC):
             # TODO Nils: differentiate models in plot
             # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
             util_losses = torch.stack(list(util_losses), dim=1)[:, :, None]
-            valuations = torch.stack([self.env._observations[:batch_size, player_positions[0], :]
+            valuations = torch.stack([observations[:batch_size, player_positions[0], :]
                                       for player_positions in self._model2bidder], dim=1)
             plot_output = (valuations, util_losses)
             self._plot(plot_data=plot_output, writer=self.writer,

@@ -25,9 +25,126 @@ from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
 import bnelearn.valuation_sampler as samplers
 
-u_lo = 0
-u_hi = 1
 
+u_lo = 0.0
+u_hi = 1.0
+
+
+eps = 0.0001
+# bid candidates to be evaluated against
+bids_i = torch.linspace(0, 1, steps=7).unsqueeze(0) + eps
+bids_i_comb = torch.linspace(0,1, steps=4).unsqueeze(0) + eps
+
+# 1 Batch, 2 bidders, 1 item
+## First player wins the item for 0.999
+
+valuations_1_2_1 = torch.tensor(
+    [[[0.9999], [0]]],
+    dtype = torch.float)
+# n_bidders x 2 (avg, max)
+expected_util_loss_1_2_1 = torch.tensor(
+    [   #mean                                   max
+        [valuations_1_2_1[0,0,0] - bids_i[0,0], valuations_1_2_1[0,0,0] - bids_i[0,0] ],
+        [0                                     , 0                                      ]
+    ], dtype = torch.float)
+
+# 2 Batch, 3 bidders, 1 item
+# TODO, later: add a player that has highest valuation SOMETIMES but with different behavior of opponents across batches!
+valuations_2_3_1 = torch.tensor(
+    [[
+        [0.1], [0.3], [0.5]
+     ],[
+        [0.6], [0.3], [0.5]
+    ]], dtype = torch.float)
+expected_ex_post_util_loss_2_3_1_sixths = torch.tensor(
+    [   # mean    #max
+        [0.04995, 0.0999],
+        [0      , 0     ],
+        [0.0833 , 0.1666]
+    ], dtype = torch.float)
+
+expected_ex_interim_util_loss_2_3_1_sixths = torch.tensor(
+    [   # mean    #max
+        [0.04995, 0.0999],
+        [0      , 0     ],
+        [0.0833 , 0.0833]
+    ], dtype = torch.float)
+
+b_i_tenths = torch.linspace(0, 1, steps=11).unsqueeze(0) + eps
+expected_ex_post_util_loss_2_3_1_tenths = torch.tensor(
+    [   # mean    #max
+        [0.04995, 0.0999],
+        [0      , 0     ],
+        [0.09995 , 0.1999]
+    ], dtype = torch.float)
+
+# LLLLGG: 1 Batch, 6 bidders,2 items (bid on each, 8 in total)
+valuations_1_6_2 = torch.tensor([[
+        [0.011, 0.512],#[,*]
+        [0.021, 0.22],#[,*]
+        [0.031, 0.32],#[,*]
+        [0.041, 0.42],#[,*]
+        [0.89, 0.052],
+        [0.061, 0.062]
+    ]], dtype = torch.float)
+
+# same for interim and post
+expected_util_loss_1_6_2 = torch.tensor([
+        [0.512 - 1/3 + eps, 0.512 - 1/3 + eps],
+        [0.22        + eps, 0.22        + eps],
+        [0.32        + eps, 0.32        + eps],
+        [0.42  - 1/3 + eps, 0.42  - 1/3 + eps],
+        [0,                 0                ],
+        [0,                 0                ]
+    ], dtype = torch.float)
+#TODO, later: Add one test with other pricing rule (-> and positive utility in agent)
+#TODO, Paul: @Nils add tests for your settings
+
+
+# each test input takes form rule: string, bids:torch.tensor,
+#                            expected_allocation: torch.tensor, expected_payments: torch.tensor
+# Each tuple specified here will then be tested for all implemented solvers.
+ids_ex_post, testdata_ex_post = zip(*[
+    ['fpsb - 1 batch, 2 bidders, 1 item',
+     ('first_price', FirstPriceSealedBidAuction(),valuations_1_2_1, bids_i, expected_util_loss_1_2_1)],
+    ['fpsb - 2 batches, 3 bidders, 1 item, steps of sixths',
+     ('first_price', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_post_util_loss_2_3_1_sixths)],
+    ['fpsb - 2 batches, 3 bidders, 1 item, steps of tenths',
+     ('first_price', FirstPriceSealedBidAuction(), valuations_2_3_1, b_i_tenths, expected_ex_post_util_loss_2_3_1_tenths)],
+    ['LLLLGG - 1 batch, 6 bidders, 2 item',
+     ('first_price', LLLLGGAuction(), valuations_1_6_2, bids_i_comb, expected_util_loss_1_6_2)]
+    ])
+
+ids_ex_interim, testdata_ex_interim = zip(*[
+    ['fpsb - 1 batch, 2 bidders, 1 item',
+     ('first_price', FirstPriceSealedBidAuction(), valuations_1_2_1, bids_i, expected_util_loss_1_2_1)],
+    ['fpsb - 2 batches, 3 bidders, 1 item, steps of sixths',
+     ('fpfirst_pricesb', FirstPriceSealedBidAuction(), valuations_2_3_1, bids_i, expected_ex_interim_util_loss_2_3_1_sixths)],
+    ['fpsb - 1 batch, 6 bidders, 2 item',
+     ('first_price', LLLLGGAuction(), valuations_1_6_2, bids_i_comb, expected_util_loss_1_6_2)]
+    ])
+
+
+@pytest.mark.parametrize("rule, mechanism, bid_profile, bids_i, expected_util_loss", testdata_ex_post, ids=ids_ex_post)
+def test_ex_post_util_loss_estimator_truthful(rule, mechanism, bid_profile, bids_i, expected_util_loss):
+    """Check ex-post util loss"""
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    batch_size, n_players, valuation_size = bid_profile.shape
+    observation_size = action_size = valuation_size
+
+    bids = bid_profile.to(device)
+
+    agents = [None] * n_players
+    for i in range(n_players):
+        agents[i] = Bidder(TruthfulStrategy(), i, batch_size, valuation_size, observation_size, action_size)
+
+
+    for i in range(n_players):
+        valuations_i = bids[:,i,:]
+        util_loss = metrics.ex_post_util_loss(mechanism, valuations_i, bids, agents[i], bids_i.squeeze().to(device))
+        assert torch.allclose(util_loss.mean(), expected_util_loss[i,0], atol = 0.001), "Unexpected avg util_loss"
+        assert torch.allclose(util_loss.max(),  expected_util_loss[i,1], atol = 0.001), "Unexpected max util_loss"
 
 ## Stefan TODO: @Nils, this was already commented out, please fix
 # @pytest.mark.parametrize("rule, mechanism, bid_profile, bids_i, expected_util_loss",

@@ -301,8 +301,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         assert self.known_bne
         assert  hasattr(self, '_optimal_bid')
 
-        # TODO: parallelism should be taken from elsewhere. Should be moved to config. Assigned @Stefan
-        n_processes_optimal_strategy = 44 if self.valuation_prior != 'uniform' and \
+        n_processes_optimal_strategy = self.config.hardware.max_cpu_threads if self.valuation_prior != 'uniform' and \
                                                 self.payment_rule != 'second_price' else 0
         bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
 
@@ -339,7 +338,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.bne_utility = bne_utility_analytical
         self.bne_utilities = [self.bne_utility] * self.n_models
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=True):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
                       risk=self.risk)
 
@@ -358,19 +357,18 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         assert self.config.setting.u_hi is not None, """Prior boundaries not specified!"""
 
         self.valuation_prior = 'uniform'
-        self.u_lo = self.config.setting.u_lo
-        self.u_hi = self.config.setting.u_hi
+        self.u_lo = torch.tensor(self.config.setting.u_lo, dtype=torch.float32,
+            device=self.config.hardware.device)
+        self.u_hi = torch.tensor(self.config.setting.u_hi, dtype=torch.float32,
+            device=self.config.hardware.device)
         self.config.setting.common_prior = \
-            torch.distributions.uniform.Uniform(
-                low=torch.tensor(self.u_lo, dtype=torch.float32, device=self.config.hardware.device),
-                high=torch.tensor(self.u_hi, dtype=torch.float32, device=self.config.hardware.device)
-                )
+            torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
 
         # ToDO Implicit list to float type conversion
-        self.plot_xmin = self.u_lo
-        self.plot_xmax = self.u_hi
+        self.plot_xmin = self.u_lo.cpu()
+        self.plot_xmax = self.u_hi.cpu()
         self.plot_ymin = 0
-        self.plot_ymax = self.u_hi * 1.05
+        self.plot_ymax = self.u_hi.cpu() * 1.05
 
         super().__init__(config=config)
 
@@ -418,8 +416,12 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
         assert self.config.setting.valuation_mean is not None, """Valuation mean and/or std not specified! """
         assert self.config.setting.valuation_std is not None, """Valuation mean and/or std not specified! """
         self.valuation_prior = 'normal'
-        self.valuation_mean = self.config.setting.valuation_mean
-        self.valuation_std = self.config.setting.valuation_std
+        self.valuation_mean = torch.tensor(
+            self.config.setting.valuation_mean, dtype=torch.float32,
+            device=self.config.hardware.device)
+        self.valuation_std = torch.tensor(
+            self.config.setting.valuation_std, dtype=torch.float32,
+            device=self.config.hardware.device)
         self.config.setting.common_prior = \
             torch.distributions.normal.Normal(loc=self.valuation_mean, scale=self.valuation_std)
 
@@ -457,8 +459,8 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
         self.positive_output_point = torch.tensor([min(self.u_hi)] * n_items)
 
-        self.plot_xmin = min(self.u_lo)
-        self.plot_xmax = max(self.u_hi)
+        self.plot_xmin = min(self.u_lo).cpu()
+        self.plot_xmax = max(self.u_hi).cpu()
         self.plot_ymin = self.plot_xmin * 0.90
         self.plot_ymax = self.plot_xmax * 1.05
 
@@ -662,7 +664,7 @@ class MineralRightsExperiment(SingleItemExperiment):
         else:
             self.known_bne = False
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=True):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         correlation_type = 'multiplicative'
         return Bidder(self.common_prior, strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
                       risk=self.risk, correlation_type=correlation_type)
