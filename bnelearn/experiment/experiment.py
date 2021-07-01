@@ -675,14 +675,14 @@ class Experiment(ABC):
                              for b in unique_bidders], dim=1)
 
             labels = ['NPGA agent {}'.format(i) for i in range(len(self.models))]
-            fmts = ['bo'] * len(self.models)
+            fmts = ['o'] * len(self.models)
             if self.known_bne and self.logging.log_metrics['opt']:
                 for env_idx, _ in enumerate(self.bne_env):
                     v = torch.cat([v, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
                     labels += ['BNE {} agent {}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
                                for j in range(len(self.models))]
-                    fmts += ['b--'] * len(self.models)
+                    fmts += ['--'] * len(self.models)
 
             self._plot(plot_data=(v, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
@@ -823,7 +823,7 @@ class Experiment(ABC):
             )
             util_loss = [t[0] for t in util_loss]
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
-            fmts = ['bo'] * len(self.models)
+            fmts = ['o'] * len(self.models)
             self._plot(plot_data=best_responses, writer=self.writer,
                        ylim=[0, max(a._grid_ub for a in self.env.agents).cpu()],
                        figure_name='best_responses', y_label='best response',

@@ -17,12 +17,12 @@ if __name__ == '__main__':
 
     # Path is user-specific
     log_root_dir = os.path.join(
-        os.path.expanduser('~'), 'bnelearn', 'experiments', 'figure_test')
+        os.path.expanduser('~'), 'bnelearn', 'experiments', 'pso-final')
 
     experiment_types = [
-         'single_item_uniform_symmetric',
-         'single_item_asymmetric_uniform_overlapping',
-         'llg',
+        'single_item_uniform_symmetric',
+        'single_item_asymmetric_uniform_overlapping',
+        'llg',
         'llg_full',
     ]
     learners = [
@@ -41,8 +41,8 @@ if __name__ == '__main__':
             'learner_hyperparams': {
                 'swarm_size': 64,
                 'topology': 'von_neumann',
-                'upper_bounds': 1,
-                'lower_bounds': -1,
+                # 'upper_bounds': 1,
+                # 'lower_bounds': -1,
                 'reevaluation_frequency': 10,
                 'inertia_weight': .5,
                 'cognition': .8,
@@ -71,20 +71,20 @@ if __name__ == '__main__':
                     learner_hyperparams=learner['learner_hyperparams'],
                 ) \
                 .set_hardware(
-                    specific_gpu=4,
+                    specific_gpu=1,
                 ) \
                 .set_logging(
                     eval_batch_size=2**17,
                     cache_eval_actions=True,
-                    util_loss_batch_size=2**12,
+                    util_loss_batch_size=2**11,
                     util_loss_grid_size=2**10,
-                    util_loss_frequency=100,
+                    util_loss_frequency=2000,
                     best_response=True,
                     log_root_dir=log_root_dir_test,
                     save_tb_events_to_csv_detailed=True,
                     stopping_criterion_frequency=1e8,
                     save_models=True,
-                    plot_frequency=500,
+                    plot_frequency=2000,
                 ) \
                 .get_config()
             experiment = experiment_class(experiment_config)
