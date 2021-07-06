@@ -240,5 +240,8 @@ class SingleItemAllPayAuction(Mechanism):
         # Assign item to the bidder with the highest bid, in case of a tie assign it randomly to one of the winning bidderss
         highest_bids, winning_bidders = bids.max(dim=player_dim, keepdim=True) 
         allocations.scatter_(player_dim, winning_bidders, 1)
+        # Don't allocate items that have a winnign bid of zero.
+        payments_per_item = payments.reshape((payments.shape[0], payments.shape[1], 1))
+        allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
         return allocations, payments

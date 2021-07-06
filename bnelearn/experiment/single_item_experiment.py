@@ -177,9 +177,19 @@ def _optimal_bid_single_item_3p_mineral_rights(valuation: torch.Tensor, player_p
 def _optimal_bid_single_item_2p_affiliated_observations(valuation: torch.Tensor, player_position: int = 0) -> torch.Tensor:
     return (2/3) * valuation
 
-def _optimal_bid_single_item_symmetric_monotonic_all_pay_auction(valuation: torch.Tensor, player_position: int = 0) -> torch.Tensor:
-    # Assuming continuous uniform prio U(0,1) -> TODO Generalize this
-    opt = 0.5 * valuation**2
+def _optimal_bid_single_item_symmetric_all_pay_auction(valuation: torch.Tensor, n: int, u_lo: int, u_hi: int, player_position: int = 0) -> torch.Tensor:
+    denom = n * (u_hi - u_lo) ** (n-1)
+    vals = valuation ** n
+    opt = (n-1)/denom * vals 
+    return opt
+
+def _optimal_bid_single_item_asymmetric_all_pay_auction(valuation: torch.Tensor, B: int, B_prime: int, player_position: int = 0) -> torch.Tensor:
+    C = B_prime / B
+    if player_position == 0:
+        opt = 1/B * (C+1) * valuation ** (C+1)
+    else:
+        k_inv = valuation ** (1/C)
+        opt = 1/B * (C+1) * k_inv ** (C+1)
     return opt
 
 # TODO: single item experiment should not be abstract and hold all logic for learning.
@@ -754,7 +764,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         return os.path.join(*name)
 
 
-class SingleItemSymmetricMonotonicAllPayExperiment(SingleItemExperiment):
+class SingleItemSymmetricUniformAllPayExperiment(SymmetricPriorSingleItemExperiment):
 
     def __init__(self, config: ExperimentConfig):
 
@@ -762,38 +772,37 @@ class SingleItemSymmetricMonotonicAllPayExperiment(SingleItemExperiment):
         self.n_players = self.config.setting.n_players
         self.n_items = 1
         self.input_length = 1
-        self.u_lo = float(config.setting.u_lo)
-        self.u_hi = float(config.setting.u_hi)
-        self.common_prior = torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi) # TODO: check meaningful prior
-        self.model_sharing = self.config.learning.model_sharing
+        self.valuation_prior = 'uniform'
+        self.u_lo = self.config.setting.u_lo
+        self.u_hi = self.config.setting.u_hi
+        self.config.setting.common_prior = torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
         self.risk = float(self.config.setting.risk)
-        self.n_models = self.n_players
-        self._bidder2model = list(range(self.n_players))
-        self.positive_output_point = torch.stack([self.common_prior.mean] * self.n_items)
-
+        self.loss = self.config.setting.loss
 
         super().__init__(config)
 
     def _get_logdir_hierarchy(self):
-        name = ['all_pay/single_item_symmetric_uniform']
+        name = ['all_pay/single_item/symmetric/uniform/neutral/']
         return os.path.join(*name)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         return Bidder.uniform(self.u_lo, self.u_hi, strategy,
                               player_position=player_position, batch_size=batch_size,
                               n_items=self.input_length,
-                              risk=self.risk, cache_actions=cache_actions)
+                              risk=self.risk, cache_actions=cache_actions, loss=self.loss)
 
     def _setup_mechanism(self):
         print('Setting up the all pay auction mechanism')
         self.mechanism = SingleItemAllPayAuction(cuda=self.hardware.cuda)
 
     def _check_and_set_known_bne(self):
-        if self.n_players == 2:
-            self._optimal_bid = _optimal_bid_single_item_symmetric_monotonic_all_pay_auction
+        if self.risk == 1.0:
+            self._optimal_bid = partial(_optimal_bid_single_item_symmetric_all_pay_auction,
+                                        n=self.n_players, u_lo=self.u_lo, u_hi=self.u_hi)
             return True
         else:
             return False
+
 
     def _setup_eval_environment(self):
         assert self.known_bne
@@ -829,7 +838,7 @@ class SingleItemSymmetricMonotonicAllPayExperiment(SingleItemExperiment):
         )
 
         # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
-        self.bne_utilities = torch.zeros((3,), device=self.config.hardware.device)
+        self.bne_utilities = torch.zeros((len(self.bne_env.agents),), device=self.config.hardware.device)
         for i, a in enumerate(self.bne_env.agents):
             self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
 
@@ -849,6 +858,7 @@ class SingleItemAsymmetricUniformicAllPayExperiment(SingleItemExperiment):
         self.model_sharing = False
 
         self.risk = float(self.config.setting.risk)
+        self.loss = self.config.setting.loss
         self.n_models = self.n_players
         self._bidder2model = list(range(self.n_players))
         self.positive_output_point = torch.tensor([min(self.u_hi)] * self.n_items)
@@ -857,65 +867,68 @@ class SingleItemAsymmetricUniformicAllPayExperiment(SingleItemExperiment):
         
 
     def _get_logdir_hierarchy(self):
-        name = ['all_pay/single_item_asymmetric_uniform']
+        name = ['all_pay/single_item/asymmetric/uniform/neutral/']
         return os.path.join(*name)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
                               player_position=player_position, batch_size=batch_size,
                               n_items=self.input_length,
-                              risk=self.risk, cache_actions=cache_actions)
+                              risk=self.risk, cache_actions=cache_actions, loss=self.loss)
 
     def _setup_mechanism(self):
         print('Setting up the all pay auction mechanism')
         self.mechanism = SingleItemAllPayAuction(cuda=self.hardware.cuda)
 
     def _check_and_set_known_bne(self):
-        # if self.n_players == 2:
-        #     self._optimal_bid = _optimal_bid_single_item_symmetric_monotonic_all_pay_auction
-        #     return True
-        # else:
-        #     return False
-        return False
+        if self.n_players == 2 and self.risk == 1.0:
+            self._optimal_bid = [partial(_optimal_bid_single_item_asymmetric_all_pay_auction,
+                                        B=self.u_hi[0], B_prime=self.u_hi[1])]         
+  
+            return True
+        else:
+            return False
 
     def _setup_eval_environment(self):
-        # TODO - implement...
         assert self.known_bne
         assert hasattr(self, '_optimal_bid')
 
-        bne_strategy = ClosureStrategy(self._optimal_bid)
+        bne_strategies = [None] * len(self._optimal_bid)
+        self.bne_env = [None] * len(self._optimal_bid)
+        bne_utilities_sampled = [None] * len(self._optimal_bid)
+        for i, bid_function in enumerate(self._optimal_bid):
+            bne_strategies[i] = [ClosureStrategy(partial(bid_function, player_position=j))
+                                 for j in range(self.n_players)]
 
-        # define bne agents once then use them in all runs
-        agents = [
-            self._strat_to_bidder(
-                strategy = bne_strategy,
-                player_position = i,
-                batch_size = self.config.logging.eval_batch_size,
-                cache_actions = self.config.logging.cache_eval_actions
+            self.bne_env[i] = AuctionEnvironment(
+                mechanism=self.mechanism,
+                agents=[self._strat_to_bidder(bne_strategies[i][p], player_position=p,
+                                              batch_size=self.logging.eval_batch_size,
+                                              cache_actions=self.config.logging.cache_eval_actions)
+                        for p in range(self.n_players)],
+                n_players=self.n_players,
+                batch_size=self.logging.eval_batch_size,
+                strategy_to_player_closure=self._strat_to_bidder
             )
-            for i in range(self.n_players)
-        ]
-        
 
-        self.bne_env = AuctionEnvironment(
-            mechanism = self.mechanism,
-            agents = agents,
-            batch_size = self.config.logging.eval_batch_size,
-            n_players = self.n_players,
-            strategy_to_player_closure = self._strat_to_bidder,
-            correlation_groups = self.correlation_groups,
-            correlation_devices = [AffiliatedObservationsDevice(
-                common_component_dist = self.common_prior,
-                batch_size = self.config.logging.eval_batch_size,
-                n_common_components = 3,
-                correlation = 1
-            )]
-        )
+            bne_utilities_sampled[i] = torch.tensor(
+                [self.bne_env[i].get_reward(a, draw_valuations=True) for a in self.bne_env[i].agents])
 
-        # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
-        self.bne_utilities = torch.zeros((3,), device=self.config.hardware.device)
-        for i, a in enumerate(self.bne_env.agents):
-            self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
+            print(('Utilities in BNE{} (sampled):' + '\t{:.5f}' * self.n_players + '.') \
+                .format(i + 1,*bne_utilities_sampled[i]))
 
-        print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities.tolist()))
-        self.bne_utility = self.bne_utilities.mean()
+        if len(set(self.u_lo)) == 1:
+            print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
+
+        print('Debug: eval_batch size: {}'.format(self.bne_env[0].batch_size))
+
+        # TODO Stefan: generalize using analytical/hardcoded utilities over all settings!
+        # In case of 'canonica' overlapping setting, use precomputed bne-utils with higher precision.
+        if len(self.bne_env) == 1 and \
+            self.u_lo[0] == self.u_lo[1] == 5.0 and self.u_hi[0] ==15. and self.u_hi[1] == 25. and \
+            self.bne_env[0].batch_size <= 2**22:
+            # replace by known optimum with higher precision
+            bne_utilities_sampled[0] = torch.tensor([0.9694, 5.0688]) # calculated using 100x batch size above
+            print(f"\tReplacing sampled bne utilities by precalculated utilities with higher precision: {bne_utilities_sampled[0]}")
+
+        self.bne_utilities = bne_utilities_sampled

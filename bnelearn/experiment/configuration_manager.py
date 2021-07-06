@@ -26,7 +26,7 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
                                                         AffiliatedObservationsExperiment,
-                                                        SingleItemSymmetricMonotonicAllPayExperiment,
+                                                        SingleItemSymmetricUniformAllPayExperiment,
                                                         SingleItemAsymmetricUniformicAllPayExperiment)
 
 
@@ -198,17 +198,15 @@ class ConfigurationManager:
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
 
-    def _init_single_item_symmetric_monotinic_all_pay(self):
+    def _init_single_item_symmetric_uniform_all_pay(self):
         self.setting.u_lo = 0
         self.setting.u_hi = 1
-        self.model_sharing = False
+        self.learning.model_sharing = True
 
     def _init_single_item_asymmetric_uniform_all_pay(self):
         self.setting.u_lo = 0
-        self.setting.u_hi = [1, 2]
+        self.setting.u_hi = [2, 1]
         self.learning.model_sharing = False
-
-
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
         # Learnings
@@ -300,7 +298,7 @@ class ConfigurationManager:
     def _post_init_splitaward(self):
         pass
 
-    def _post_init_single_item_symmetric_monotonic_all_pay(self):
+    def _post_init_single_item_symmetric_uniform_all_pay(self):
         pass
 
     def _post_init_single_item_asymmetric_uniform_all_pay(self):
@@ -333,9 +331,9 @@ class ConfigurationManager:
             (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
             (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
-        'single_item_symmetric_monotonic_all_pay':
-            (SingleItemSymmetricMonotonicAllPayExperiment, _init_single_item_symmetric_monotinic_all_pay, 
-            _post_init_single_item_symmetric_monotonic_all_pay),
+        'single_item_symmetric_uniform_all_pay':
+            (SingleItemSymmetricUniformAllPayExperiment, _init_single_item_symmetric_uniform_all_pay, 
+            _post_init_single_item_symmetric_uniform_all_pay),
         'single_item_asymmetric_uniform_all_pay':
             (SingleItemAsymmetricUniformicAllPayExperiment, _init_single_item_asymmetric_uniform_all_pay, 
             _post_init_single_item_asymmetric_uniform_all_pay)}
