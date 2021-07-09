@@ -547,22 +547,18 @@ class PSOLearner(Learner):
                             Particles form a neighborhood based on their position in the population matrix.
                             A particle is connected to its left, right, upper and lower neighbor in the matrix.
                             Neighborhood size = 5
-                    upper_bounds: float, List or Tensor
-                        Upper search space bounds for each dimension
-                        If a float is given, the value will be used for each dim
-                        If bound_handling == False then only used for initialization
-                    lower_bounds: float, List or Tensor
-                        Lower search space bounds for each dimension
-                        If a float is given, this value will be used for each dim
-                        If bound_handling == False then only used for initialization
                     max_velocity: float
                         Max step size in each direction during one update step
                         If velocity_clamping == False then only used for initialization
                 (optional:)
                     The default values for the inertia weight and the cognition & social ratio are commonly used values
                     performing well form most problem settings. Based on: Clerc, M., & Kennedy, J. (2002)
-                    inertia_weight: float (default: 0.792)
+                    inertia_weight: float, List, Tuple (default: 0.792)
                         Scales the impact of the old velocity on the new one.
+                        If float, will set value as constant
+                        If List or Tuple, with lenght == 2, will take the first value as w_max and second as w_min for a
+                        linear decreasing inertia weight
+                        !!! max number of iteration is hardcoded to 2000 !!!
                     cognition_ratio: float (default: 1.49445)
                         Upper limit for the impact of the personal best solution on the velocity
                     social_ratio: float (default: 1.49445)
@@ -570,9 +566,15 @@ class PSOLearner(Learner):
                     reevaluation_frequency: int (default: None)
                         Number of epochs after which the personal and overall bests are reevaluated
                         to prevent false memory introduced by varying batch data
+                    decrease_fitness: List or Tuple (default None)
+                        The to evaporation constants are used to reduce the remembered fitness of the bests to prevent
+                        false memory introduced by varying batch data.
+                        !!! Use either 'reevaluation_frequency'or 'decrease_fitness' !!!
+                        with lenght == 2, will take the first value as evaporation constant for personal best
+                        and second as evaporation constant for global (neighborhood) best
                     pretrain_deviation: float (default: 0)
                         If pretrain_deviation > 0 the positions will be initialized as:
-                        model.parameters + U[-pretrain_deviation, pretrain_deviation]
+                        model.parameters + N(mean=0.0, std=pretrain_deviation)
                         otherwise positions will be initialized randomly over the whole search space
                     bound_handling: bool (default: False)
                         If true will clamp particle's positions in each dim to the interval [-max_position, max_position]
@@ -637,9 +639,16 @@ class PSOLearner(Learner):
 
         # initialize non-required parameters
         if 'inertia_weight' in hyperparams:
-            self.inertia = float(hyperparams['inertia_weight'])
+            if isinstance(hyperparams['inertia_weight'], float):
+                self.inertia = float(hyperparams['inertia_weight'])
+                self.decrease_w = False
+            else:
+                self.inertia_max = float(hyperparams['inertia_weight'][0])
+                self.inertia_min = float(hyperparams['inertia_weight'][1])
+                self.decrease_w = True
         else:
             self.inertia = 0.729
+            self.decrease_w = False
         if 'cognition_ratio' in hyperparams:
             self.cognition = float(hyperparams['cognition_ratio'])
         else:
@@ -651,7 +660,14 @@ class PSOLearner(Learner):
         if 'reevaluation_frequency' in hyperparams:
             self.reevaluation_frequency = int(hyperparams['reevaluation_frequency'])
         else:
-            self.reevaluation_frequency = None
+            self.reevaluation_frequency = False
+        if 'decrease_fitness' in hyperparams:
+            self.decrease_pbest = float(hyperparams['decrease_fitness'][0])
+            self.decrease_best = float(hyperparams['decrease_fitness'][1])
+            self.decrease_fitness = True
+        else:
+            self.decrease_fitness = False
+
         if 'bound_handling' in hyperparams and hyperparams['bound_handling']:
             self.bound_handling = True
             self.max_position = max_position
@@ -805,6 +821,9 @@ class PSOLearner(Learner):
             if not torch.equal(old_best, self.best_fitness):
                 self.pbest_fitness = torch.tensor([self._calculate_fitness(p) for p in self.pbest_position],
                                                   device=self.position.device)
+        if self.decrease_fitness:
+            self.pbest_fitness = self.pbest_fitness * self.decrease_pbest
+            self.best_fitness = self.best_fitness * self.decrease_best
 
         ### --- best solution update ---
         ### 3. update the personal best positions:
@@ -841,6 +860,8 @@ class PSOLearner(Learner):
         #save current velocity before updating
         cur_velocity = self.velocity
         cur_position = self.position
+        if self.decrease_w:
+            self.inertia = self.inertia_max - (self.inertia_max - self.inertia_min) * self.cur_epoch / 2000
         # new velocity = old velocity + cognitive component + social component
         self.velocity = self.inertia * self.velocity \
                         + self.cognition * torch.rand_like(self.position) * (self.pbest_position - self.position) \
