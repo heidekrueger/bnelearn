@@ -43,8 +43,7 @@ def norm_strategies(strategy1: Strategy, strategy2: Strategy, valuations: torch.
 
     return norm_actions(b1, b2, p)
 
-def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: float=2, componentwise=False,
-                              component_selection=None) -> float:
+def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: float=2, componentwise=False) -> float:
     """Calculates the norm as above, but given one action vector and one strategy.
     The valuations must match the given actions.
 
@@ -65,17 +64,10 @@ def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: fl
     if componentwise:
         component_norm = [norm_actions(s_actions[..., d], actions[..., d], p)
                           for d in range(actions.shape[-1])]
-        # select that component with the smallest norm
-        if component_selection is None:
-            return min(component_norm)
-        else:
-            return min([n for n, s in zip(component_norm, component_selection) if s])
+        return min(component_norm)
+
     else:
-        if component_selection is None:
-            return norm_actions(s_actions, actions, p)
-        else:
-            return norm_actions(s_actions[..., component_selection],
-                                actions[..., component_selection], p)
+        return norm_actions(s_actions, actions, p)
 
 
 def _create_grid_bid_profiles(bidder_position: int, grid: torch.tensor, bid_profile: torch.tensor):

@@ -13,6 +13,7 @@ import os
 from abc import ABC
 from functools import partial
 from typing import Iterable, List
+from tqdm import tqdm
 import math
 import warnings
 import numpy as np
@@ -385,7 +386,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
 
                 threshold = 2 - 2 * math.sqrt(6.) / 3.
                 z = np.zeros_like(v)
-                for i, vv in enumerate(v):
+                for i, vv in tqdm(enumerate(v), total=v.shape[0]):
                     if threshold < vv:
                         z[i] = solve_for_z(vv)
                 z = torch.as_tensor(
@@ -416,6 +417,9 @@ class LLGFullExperiment(LocalGlobalExperiment):
         return lambda x: self.relevant_actions()[player_position] * x
 
     def relevant_actions(self):
+        """
+        The relavant actions for truthful pretraining
+        """
         if self.config.setting.correlation_types in ['independent'] and \
             self.payment_rule in ['vcg', 'mrcs_favored']:
             return torch.tensor(
@@ -493,6 +497,9 @@ class LLGFullExperiment(LocalGlobalExperiment):
             risk=self.risk,
             cache_actions=cache_actions
         )
+
+    def _get_model_names(self):
+        return ['local 1', 'local 2', 'global']
 
     def _plot(self, **kwargs):  # pylint: disable=arguments-differ
         kwargs['x_label'] = ['item A', 'item B', 'bundle']
