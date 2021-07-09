@@ -719,7 +719,7 @@ class Experiment(ABC):
 
         Returns:
             relevant_actions: (torch.Tensor) of shape (n_agents, n_actions)
-                with elements in $\{0, 1\}$ for marking relevancy for BNE.
+                with elements in :math:`\{0, 1\}` for marking relevancy for BNE.
 
         """
         return torch.ones(

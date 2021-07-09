@@ -116,7 +116,8 @@ class MatrixGameStrategy(Strategy, nn.Module):
         if init_weights is not None:
             self.logits.weight.data = init_weights
             if init_weight_normalization:
-                self.logits.weight.data = self.logits.weight.data/torch.norm(init_weights) #NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
+                self.logits.weight.data = self.logits.weight.data/torch.norm(init_weights) 
+                #NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
 
         # initialize distribution
         self._update_distribution()

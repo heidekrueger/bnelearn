@@ -158,7 +158,7 @@ class Bidder(Player):
 
     def get_valuation_grid(self, n_points=None, extended_valuation_grid=False,
                            dtype=torch.float32, step=None, dimension=None):
-        """Returns a grid of approximately `n_points` valuations that are
+        r"""Returns a grid of approximately `n_points` valuations that are
         equidistant (in each dimension) on the support of
         `self.value_distribution`.
 
@@ -166,8 +166,8 @@ class Bidder(Player):
         instead.
 
         For most distributions, the actual total size of the grid returned will
-        be `min(n^self.n_items)` s.t. `n^self.n_items >= n_points`. E.g. for
-        `n_items=2` the grid will be square, for `3` it will be a cupe, etc.
+        be :math:`min(n^{self.n\_items})` s.t. :math:`n^{self.n\_items} >= n\_points`. E.g. for
+        :math:`n\_items=2` the grid will be square, for `3` it will be a cube, etc.
         (For descending_valuations, the logic is somewhat different.)
 
         Args:
@@ -179,7 +179,7 @@ class Bidder(Player):
                 are not all equal.
 
         Returns:
-            grid_values (dim: [ceil(n_points^(1/n_items)]*n_items).
+            :math:`grid\_values (dim: [ceil(n\_points^{(1/n\_items)}]*n\_items).`
         """
         # TODO:
         #   Update this to support different number of points per
