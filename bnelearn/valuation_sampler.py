@@ -357,12 +357,7 @@ class CorrelatedSymmetricUniformPVSampler(PVSampler, ABC):
             device = device) \
             .uniform_(self.u_lo, self.u_hi)
 
-        # TODO Nils @ Stefan: feel free to propose more elegant solution for
-        # handeling (i) multiple outer batches and (ii) handeling both Bernoulli 
-        # & const. weights model (e.g. w: float and w: tensor)
         w = self._get_weights(batch_sizes, device)
-        if not w.shape == torch.Size([]):
-            w = w.view(*batch_sizes, 1, 1)
 
         return (1-w) * individual_components + w * common_component
 
@@ -378,19 +373,19 @@ class BernoulliWeightsCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUni
         """Draws Bernoulli distributed weights along the batch size.
 
         Returns:
-            w: Tensor of shape (batch_size, 1, 1)
+            w: Tensor of shape (*batch_sizes, 1, 1)
         """
         # TODO: do we want to handle weights differently in different batch dimensions?
         return (torch.empty(batch_sizes, device=device)
                 .bernoulli_(self.gamma) # different weight per batch
-                .view(-1, 1, 1)) # same weight across item/bundle in each batch-instance
+                .view(*batch_sizes, 1, 1)) # same weight across item/bundle in each batch-instance
 
     def draw_conditional_profiles(self, conditioned_player: int,
                                   conditioned_observation: torch.Tensor,
                                   inner_batch_size: int, device: Device  = None
                                   ) -> Tuple[torch.Tensor, torch.Tensor]:
         device = device or self.default_device
-        *outer_batch_sizes, observation_size = conditioned_observation
+        *outer_batch_sizes, observation_size = conditioned_observation.shape
 
         conditioned_observation = conditioned_observation.to(device)
         # let i be the index of the player conditioned on.
@@ -449,7 +444,7 @@ class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUnifo
 
 
     def _get_weights(self, batch_sizes: List[int], device) -> torch.Tensor:
-        """Draws Bernoulli distributed weights along the batch size.
+        """Returns the constant weight as a scalar tensor.
         """
         # batch size is ignored, we always return a scalar.
         return self._weight.to(device)
