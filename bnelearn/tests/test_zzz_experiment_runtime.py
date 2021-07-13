@@ -186,12 +186,6 @@ def run_auction_test(config, exp_class, known_bne):
     experiment.run()
 
 
-print(type(testdata_si))
-print(len(testdata_si))
-
-print('hi')
-
-
 @pytest.mark.parametrize("config, exp_class, known_bne", zip(*testdata_si), ids=ids_si)
 def test_single_item_auctions(config, exp_class, known_bne):
     run_auction_test(config, exp_class, known_bne)

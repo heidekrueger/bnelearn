@@ -10,11 +10,13 @@ import warnings, traceback
 
 
 def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> float:
-    """
+    r"""
     Calculates the approximate "mean" Lp-norm between two action vectors.
-    (\\sum_i=1^n(1/n * |b1 - b2|^p))^(1/p)
+    
+    .. math::
+        \sum_i=1^n(1/n * |b1 - b2|^p)^{1/p}
 
-    If p=Infty, this evaluates to the supremum.
+    If p = Infty, this evaluates to the supremum.
     """
     assert b1.shape == b2.shape
 
@@ -28,15 +30,21 @@ def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> float:
     return (torch.dist(b1, b2, p=p)*(1./n)**(1/p)).detach()
 
 def norm_strategies(strategy1: Strategy, strategy2: Strategy, valuations: torch.Tensor, p: float=2) -> float:
-    """
+    r"""
     Calculates the approximate "mean" Lp-norm between two strategies approximated
     via Monte-Carlo integration on a sample of valuations that have been drawn according to the prior.
 
-    The function Lp norm is given by (\\int_V |s1(v) - s2(v)|^p dv)^(1/p).
-    With Monte-Carlo Integration this is approximated by
-     (|V|/n * \\sum_i^n(|s1(v) - s2(v)|^p) )^(1/p)  where |V| is the volume of the set V.
+    The function Lp norm is given by
 
-    Here, we ignore the volume. This gives us the RMSE for L2, supremum for Linfty, etc.
+    .. math::
+        (\int_V |s1(v) - s2(v)|^p dv)^{1/p}.
+
+    With Monte-Carlo Integration this is approximated by
+
+    .. math::
+        (|V|/n * \sum_i^n(|s1(v) - s2(v)|^p) )^{1/p}  
+
+    where |V| is the volume of the set V. Here, we ignore the volume. This gives us the RMSE for L2, supremum for Linfty, etc.
     """
     b1 = strategy1.play(valuations)
     b2 = strategy2.play(valuations)
@@ -104,20 +112,23 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.tensor, bid_prof
 
 def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: Bidder,
                       grid: torch.Tensor, half_precision = False, player_position: int = None):
-    """
+    r"""
     # TODO: do we really need this or can we delete it in general?
     # If we decide to keep it, check implementation in detail! (Removing many many todos in the body)
 
     Estimates a bidder's ex post util_loss in the current bid_profile vs a potential grid,
         i.e. the potential benefit of having deviated from the current strategy, as:
-        util_loss = max(0, BR(v_i, b_-i) - u_i(b_i, b_-i))
+        
+    .. math::
+        util\_loss = max(0, BR(v_i, b_-i) - u_i(b_i, b_-i))
+        
     Input:
         mechanism
-        bid_profile: (batch_size x n_player x n_items)
+        bid_profile: :math:`(batch_size x n_player x n_items)`
         bidder: a Bidder (used to retrieve valuations and utilities)
         grid:
             option 1: 1d tensor with length grid_size
-                todo for n_items > 1, all grid_size**n_items combination will be used. Should be
+                todo for :math:`n\_items > 1`, all :math:`grid\_size^{n\_items}` combination will be used. Should be
                 replaced by e.g. torch.meshgrid
             option 2: tensor with shape (grid_size, n_items)
         player_position (optional): specific position in which the player will be evaluated
@@ -126,7 +137,7 @@ def ex_post_util_loss(mechanism: Mechanism, bid_profile: torch.Tensor, bidder: B
     Output:
         util_loss (batch_size)
 
-    Useful: To get the memory used by a tensor (in MB): (tensor.element_size() * tensor.nelement())/(1024*1024)
+    Useful: To get the memory used by a tensor (in MB): :math:`(tensor.element\_size() * tensor.nelement())/(1024*1024)`
     """
 
     player_position = bidder.player_position
@@ -176,13 +187,13 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                          batch_size: int, grid_size: int,
                          opponent_batch_size: int = None,
                          return_best_response: bool = False):
-    """Estimates a bidder's utility loss in the current state of the
+    r"""Estimates a bidder's utility loss in the current state of the
     environment, i.e. the     potential benefit of deviating from the current
     strategy, evaluated at each point of     the agent_valuations. therfore, we
     calculate
-        $$\max_{v_i \in V_i} \max_{b_i^* \in A_i}
-            + E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i}))
-            - u(v_i, b_i, b_{-i}(v_{-i}))]$$
+    
+    .. math:: 
+        \max_{v_i \in V_i} \max_{b_i^* \in A_i} + E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i})) - u(v_i, b_i, b_{-i}(v_{-i}))]
 
     We're conditoning on the agent's observation at `player_position`. That
     means, types and observations of other palyers as well as its own type have
