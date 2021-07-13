@@ -202,5 +202,4 @@ def test_local_global_auctions(config, exp_class, known_bne):
 @pytest.mark.xfail(reason="MultiUnit not yet implemented.")
 @pytest.mark.parametrize("config, exp_class, known_bne", zip(*testdata_mu), ids=ids_mu)
 def test_multi_unit_auctions(config, exp_class, known_bne):
-    pytest.skip("Multi-Unit not implemented!")
     run_auction_test(config, exp_class, known_bne)
