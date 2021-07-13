@@ -230,6 +230,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         # instance property will be set in super().__init__ call.
         action_size = 1
 
+        # TODO: common_prior possibly on wrnog device now
         self.common_prior = self.config.setting.common_prior
         self.positive_output_point = torch.stack([self.common_prior.mean] * action_size)
 
@@ -300,8 +301,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         assert self.known_bne
         assert  hasattr(self, '_optimal_bid')
 
-        # TODO: parallelism should be taken from elsewhere. Should be moved to config. Assigned @Stefan
-        n_processes_optimal_strategy = 44 if self.valuation_prior != 'uniform' and \
+        n_processes_optimal_strategy = self.config.hardware.max_cpu_threads if self.valuation_prior != 'uniform' and \
                                                 self.payment_rule != 'second_price' else 0
         bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
 
@@ -357,16 +357,18 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         assert self.config.setting.u_hi is not None, """Prior boundaries not specified!"""
 
         self.valuation_prior = 'uniform'
-        self.u_lo = self.config.setting.u_lo
-        self.u_hi = self.config.setting.u_hi
+        self.u_lo = torch.tensor(self.config.setting.u_lo, dtype=torch.float32,
+            device=self.config.hardware.device)
+        self.u_hi = torch.tensor(self.config.setting.u_hi, dtype=torch.float32,
+            device=self.config.hardware.device)
         self.config.setting.common_prior = \
             torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
 
         # ToDO Implicit list to float type conversion
-        self.plot_xmin = self.u_lo
-        self.plot_xmax = self.u_hi
+        self.plot_xmin = self.u_lo.cpu()
+        self.plot_xmax = self.u_hi.cpu()
         self.plot_ymin = 0
-        self.plot_ymax = self.u_hi * 1.05
+        self.plot_ymax = self.u_hi.cpu() * 1.05
 
         super().__init__(config=config)
 
@@ -414,8 +416,12 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
         assert self.config.setting.valuation_mean is not None, """Valuation mean and/or std not specified! """
         assert self.config.setting.valuation_std is not None, """Valuation mean and/or std not specified! """
         self.valuation_prior = 'normal'
-        self.valuation_mean = self.config.setting.valuation_mean
-        self.valuation_std = self.config.setting.valuation_std
+        self.valuation_mean = torch.tensor(
+            self.config.setting.valuation_mean, dtype=torch.float32,
+            device=self.config.hardware.device)
+        self.valuation_std = torch.tensor(
+            self.config.setting.valuation_std, dtype=torch.float32,
+            device=self.config.hardware.device)
         self.config.setting.common_prior = \
             torch.distributions.normal.Normal(loc=self.valuation_mean, scale=self.valuation_std)
 
@@ -470,7 +476,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                 self.u_lo[i], self.u_hi[i], 1,
                 self.valuation_size, default_batch_size, device)
             for i in range(self.n_players)]
-        
+
         self.sampler = CompositeValuationObservationSampler(
             self.n_players, self.valuation_size, self.observation_size, bidder_samplers,
             default_batch_size, device

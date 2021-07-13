@@ -57,7 +57,7 @@ class Mechanism(Game, ABC):
         if redraw_valuations:
             env.draw_valuations()
 
-        action_length = env.agents[0].n_items
+        action_length = env.agents[0].bid_size
 
         bid_profile = torch.zeros(env.batch_size, env.n_players, action_length,
                                   device=self.device)
@@ -86,7 +86,7 @@ class Mechanism(Game, ABC):
         if redraw_valuations:
             env.draw_valuations()
 
-        action_length = env.agents[0].n_items
+        action_length = env.agents[0].bid_size
 
         bid_profile = torch.zeros(batch_size, env.n_players, action_length,
                                   device=self.device)

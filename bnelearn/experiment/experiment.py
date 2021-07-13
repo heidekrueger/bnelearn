@@ -159,7 +159,6 @@ class Experiment(ABC):
                 'bidders' + ''.join([str(b) for b in bidders])
                 for bidders in self._model2bidder]
 
-
     @abstractmethod
     def _setup_sampler(self):
         """Defines and initializes a sampler to retrieve observations and
@@ -195,7 +194,7 @@ class Experiment(ABC):
                 self.observation_size,
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
-                ensure_positive_output=self.positive_output_point,
+                ensure_positive_output=self.positive_output_point.to('cpu'),  # models init. on cpu
                 output_length=self.action_size
             ).to(self.hardware.device)
 
@@ -359,7 +358,10 @@ class Experiment(ABC):
 
         if self.logging.enable_logging:
             # pylint: disable=attribute-defined-outside-init
-            self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}
+            self._cur_epoch_log_params = {
+                'utilities': utilities.detach(),
+                'prev_params': prev_params
+            }
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
             print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),
                   end="\r")
@@ -685,25 +687,27 @@ class Experiment(ABC):
         if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
 
-            unique_bidders = [self.env.agents[i[0]] for i in self._model2bidder]
-            v = torch.stack(
-                [b.valuations[:self.plot_points, ...] for b in unique_bidders],
+            unique_bidders = [i[0] for i in self._model2bidder]
+            # TODO: possibly want to use old valuations, but currently it uses
+            #       those from the util_loss, not those that were used during self-play
+            o = torch.stack(
+                [self.env._observations[:self.plot_points, b, ...] for b in unique_bidders],
                 dim=1
             )
-            b = torch.stack([b.get_action()[:self.plot_points, ...]
-                             for b in unique_bidders], dim=1)
+            b = torch.stack([self.env.agents[b[0]].get_action(o[:, i, ...])
+                             for i, b in enumerate(self._model2bidder)], dim=1)
 
             labels = ['NPGA agent {}'.format(i) for i in range(len(self.models))]
-            fmts = ['bo'] * len(self.models)
+            fmts = ['o'] * len(self.models)
             if self.known_bne and self.logging.log_metrics['opt']:
                 for env_idx, _ in enumerate(self.bne_env):
-                    v = torch.cat([v, self.v_opt[env_idx]], dim=1)
+                    o = torch.cat([o, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
                     labels += ['BNE {} agent {}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
                                for j in range(len(self.models))]
-                    fmts += ['b--'] * len(self.models)
+                    fmts += ['--'] * len(self.models)
 
-            self._plot(plot_data=(v, b), writer=self.writer, figure_name='bid_function',
+            self._plot(plot_data=(o, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         self.overhead = self.overhead + timer() - start_time
@@ -792,17 +796,24 @@ class Experiment(ABC):
             # pylint: disable=cell-var-from-loop
 
             m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
+            m2o = lambda m: bne_env._observations[:, self._model2bidder[m][0], :]
 
             L_2[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
-                    model, m2a(i).get_action(), m2a(i).valuations, 2,
+                    strategy=model,
+                    actions=m2a(i).get_action(),
+                    valuations=m2o(i),
+                    p=2,
                     componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
             ])
             L_inf[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
-                    model, m2a(i).get_action(), m2a(i).valuations, float('inf'),
+                    strategy=model,
+                    actions=m2a(i).get_action(),
+                    valuations=m2o(i),
+                    p=float('inf'),
                     componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
@@ -812,8 +823,8 @@ class Experiment(ABC):
     def _calculate_metrics_util_loss(self, create_plot_output: bool, epoch: int = None,
                                      batch_size=None, grid_size=None):
         """
-        Compute mean util_loss of current policy and return
-        ex interim util_loss (ex ante util_loss is the average of that tensor)
+        Compute mean util_loss of current policy and return ex interim util
+        loss (ex ante util_loss is the average of that tensor).
 
         Returns:
             ex_ante_util_loss: List[torch.tensor] of length self.n_models
@@ -822,53 +833,64 @@ class Experiment(ABC):
 
         env = self.env
         if batch_size is None:
-            batch_size = self.logging.util_loss_batch_size
+            # take min of both in case the requested batch size is too large for the env
+            batch_size = min(self.logging.util_loss_batch_size, self.learning.batch_size)
         if grid_size is None:
             grid_size = self.logging.util_loss_grid_size
 
         assert batch_size <= env.batch_size, \
             "Util_loss for larger than actual batch size not implemented."
 
-        torch.cuda.empty_cache()
-        util_losses, best_responses = zip(*[
-            metrics.ex_interim_util_loss(env, player_positions[0], batch_size, grid_size)
-            for player_positions in self._model2bidder
-        ])
+        with torch.no_grad():  # don't need any gradient information here
+            # TODO: currently we don't know where exactly a mmory leak is
+            observations = self.env._observations[:batch_size, :, :]
+            util_losses, best_responses = zip(*[
+                metrics.ex_interim_util_loss(
+                    env=env,
+                    player_position=player_positions[0],
+                    agent_observations=observations[:, player_positions[0], :],
+                    grid_size=grid_size
+                )
+                for player_positions in self._model2bidder
+            ])
+
         if self.logging.best_response:
-            # TODO: Stefan@ Nils: I don't understand what's happening here. what are the 0 and 1 indices?
-            # is this explicitly only for 2 players/modles??
+            # TODO Nils: clean up
             best_responses = (
                 torch.stack([br[0] for br in best_responses], dim=1)[:, :, None],
                 torch.stack([br[1] for br in best_responses], dim=1)[:, :, None]
             )
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
-            fmts = ['bo'] * len(self.models)
+            fmts = ['o'] * len(self.models)
             self._plot(plot_data=best_responses, writer=self.writer,
-                       ylim=[0, max(a._grid_ub for a in self.env.agents).cpu()],
+                       ylim=[0, max(a._grid_ub for a in self.bidders).cpu()],
                        figure_name='best_responses', y_label='best response',
                        colors=list(range(len(self.models))), epoch=epoch, labels=labels,
                        fmts=fmts, plot_points=self.plot_points)
 
+        # calculate different losses
         ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_losses]
         ex_interim_max_util_loss = [util_loss_model.max() for util_loss_model in util_losses]
-
-        # TODO Nils @Stefan: check consisteny with journal version
         estimated_relative_ex_ante_util_loss = [
             (1 - u / (u + l)).item()
             for u, l in zip(self._cur_epoch_log_params['utilities'].tolist(), ex_ante_util_loss)
         ]
 
-        if not hasattr(self, '_max_util_loss'):
-            self._max_util_loss = ex_interim_max_util_loss
+        # plotting
         if create_plot_output:
+
+            # keep track of upper bound for plotting
+            if not hasattr(self, '_max_util_loss'):
+                self._max_util_loss = ex_interim_max_util_loss
+
             # TODO Nils: differentiate models in plot
             # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
             util_losses = torch.stack(list(util_losses), dim=1)[:, :, None]
-            valuations = torch.stack([self.bidders[player_positions[0]].valuations[:batch_size, ...]
+            valuations = torch.stack([observations[:batch_size, player_positions[0], :]
                                       for player_positions in self._model2bidder], dim=1)
             plot_output = (valuations, util_losses)
             self._plot(plot_data=plot_output, writer=self.writer,
-                       ylim=[0, max(self._max_util_loss).cpu()],
+                       ylim=[0, max(self._max_util_loss).detach().cpu()],
                        figure_name='util_loss_landscape', y_label='ex-interim loss',
                        epoch=epoch, plot_points=self.plot_points)
 
@@ -890,7 +912,7 @@ class Experiment(ABC):
         # TODO: Stefan: this currently called _per run_. is this desired behavior?
         for i, model in enumerate(self.models):
             self.writer.add_text('hyperparameters/neural_net_spec', str(model))
-            self.writer.add_graph(model, self.env.agents[i].valuations)
+            self.writer.add_graph(model, self.env._observations[:, i, :])
 
         h_params = {'hyperparameters/batch_size': self.learning.batch_size,
                     'hyperparameters/pretrain_iters': self.learning.pretrain_iters,
@@ -921,7 +943,7 @@ class Experiment(ABC):
     #
     #     for i, model in enumerate(self.models):
     #         self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)  # ToDO To hyperparams
-    #         self.writer.add_graph(model, self.env.agents[i].valuations)
+    #         self.writer.add_graph(model, self.env.agents[i]._cached_observations)
 
     def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to

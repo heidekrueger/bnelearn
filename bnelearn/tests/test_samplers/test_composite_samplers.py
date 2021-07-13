@@ -87,14 +87,14 @@ def test_local_global_samplers(setting, method, gamma):
 
     assert torch.equal(co, cv)
 
-    assert cv.shape == torch.Size([batch_size, n_players, valuation_size]), 'invalid shape!'
+    assert cv.shape == torch.Size([1, batch_size, n_players, valuation_size]), 'invalid shape!'
 
     assert torch.allclose(v[:, local_indices, :].mean(dim=0) - local_mean,
                           torch.zeros([2],device=device),
                           atol= 2e-3), \
         "unexpected means for locals"
 
-    assert torch.allclose(cv[:,conditioned_player, :] - 0.5, torch.zeros([batch_size, valuation_size], device=device))
+    assert torch.allclose(cv[..., conditioned_player, :] - 0.5, torch.zeros([batch_size, valuation_size], device=device))
 
     assert torch.allclose(v[:, global_indices, :].mean(dim=0) - global_mean,
                           torch.zeros([1],device=device),

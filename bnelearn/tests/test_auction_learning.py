@@ -56,7 +56,8 @@ sampler = UniformSymmetricIPVSampler(u_lo, u_hi, n_players, n_items, batch_size,
 def strat_to_bidder(strategy, batch_size, player_position=None): #pylint: disable=redefined-outer-name,missing-docstring
     return Bidder(strategy,
         batch_size = batch_size,
-        player_position=player_position
+        player_position=player_position,
+        enable_action_caching=False
         )
 
 def test_learning_in_fpsb_environment():

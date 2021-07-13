@@ -101,6 +101,7 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.Tensor, bid_prof
 
     return bid_profile #bid_eval_size*batch, 1,n_items
 
+
 def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid_profile: torch.Tensor, bidder: Bidder,
                       grid: torch.Tensor, half_precision = False, player_position: int = None):
     """
@@ -246,7 +247,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     br_actions = actual_was_best.view(-1, action_size) * agent_action_actual + \
                  actual_was_best.logical_not().view(-1, action_size) * action_alternatives[br_indices]
 
-    return(utility_loss, br_actions)
+    return (utility_loss, br_actions)
 
 def _calculate_best_responses_with_dynamic_mini_batching(
         env, player_position, agent_observations, action_alternatives, opponent_batch_size):
@@ -333,7 +334,7 @@ def _get_best_responses_among_alternatives(
 
 def ex_interim_utility(
         env: AuctionEnvironment, player_position: int,
-        agent_observations: torch.Tensor, agent_action: torch.Tensor,
+        agent_observations: torch.Tensor, agent_actions: torch.Tensor,
         opponent_batch_size: int, device) -> torch.Tensor:
     """
     Calculates the ex-interim utility of a given agent in the environment,
@@ -346,7 +347,7 @@ def ex_interim_utility(
             profiles and opponent actions will be sampled.
         player_position (int): the position of the agent to be evaluated
         agent_observations (Tensor of dim (*agent_batch_sizes x observation_size))
-        agent_action       (Tensor of dim (*agent_batch_sizes x action_size))
+        agent_actions      (Tensor of dim (*agent_batch_sizes x action_size))
         opponent_batch_size (int): how many conditional valuations and opponent
             observations to sample for each agent_batch entry. The expected
             ex-interim utility will then be approximated by the sample mean
@@ -360,11 +361,11 @@ def ex_interim_utility(
     mechanism = env.mechanism
     agent = env.agents[player_position]
 
-    *batch_dims, action_dim = range(agent_action.dim())
-    *agent_batch_sizes, action_size = agent_action.shape
+    *batch_dims, action_dim = range(agent_actions.dim())
+    *agent_batch_sizes, action_size = agent_actions.shape
     assert agent_observations.shape[:len(batch_dims)] == torch.Size(agent_batch_sizes), \
         """observations and actions must have the same batch sizes!"""
-    action_dtype = agent_action.dtype
+    action_dtype = agent_actions.dtype
     # draw conditional observations conditioned on `agent`'s observation:
     # co has dimension (*agent_batches , opponent_batch, n_players, observation_size)
     # each agent_observations is repeated opponent_batch_size times
@@ -378,7 +379,7 @@ def ex_interim_utility(
         )
 
     action_profile_actual[...,:,player_position,:] = \
-        agent_action \
+        agent_actions \
             .view(*agent_batch_sizes, 1, action_size) \
             .repeat(*([1]*len(agent_batch_sizes)), opponent_batch_size, 1)
 
