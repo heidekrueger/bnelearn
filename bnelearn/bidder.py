@@ -199,7 +199,7 @@ class Bidder(Player):
             # use cached observations but recompute actions
             observations = self._cached_observations
 
-        #TODO: there was a reshaping here added by Nils (to self.batch_size, -1). This is problematic, should be done 
+        #TODO: there was a reshaping here added by Nils (to self.batch_size, -1). This is problematic, should be done
         # in strategy, not here. Strategy should always map complete obs to complete actions.
         inputs = observations
         # for cases when n_observations != input_length (e.g. Split-Award Auctions, combinatorial auctions with bid languages)

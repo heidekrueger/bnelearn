@@ -18,7 +18,6 @@ r"""Testing correctness of util_loss estimator for a number of settings.
 
 import pytest
 import torch
-from torch.cuda import device
 from bnelearn.mechanism import LLLLGGAuction, FirstPriceSealedBidAuction
 from bnelearn.mechanism.auctions_multiunit import FPSBSplitAwardAuction
 from bnelearn.strategy import TruthfulStrategy, ClosureStrategy
@@ -26,7 +25,7 @@ import bnelearn.util.metrics as metrics
 from bnelearn.bidder import Bidder, ReverseBidder
 #from bnelearn.experiment.multi_unit_experiment import _optimal_bid_splitaward2x2_1
 from bnelearn.environment import AuctionEnvironment
-import bnelearn.valuation_sampler as samplers
+import bnelearn.sampler as samplers
 
 
 u_lo = 0.0

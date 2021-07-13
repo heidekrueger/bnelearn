@@ -17,7 +17,7 @@ from bnelearn.experiment.configurations import ExperimentConfig
 
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import ClosureStrategy
-from bnelearn.valuation_sampler import (CompositeValuationObservationSampler, SymmetricIPVSampler, UniformSymmetricIPVSampler)
+from bnelearn.sampler import (CompositeValuationObservationSampler, SymmetricIPVSampler, UniformSymmetricIPVSampler)
 
 
 ###############################################################################

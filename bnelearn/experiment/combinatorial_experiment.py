@@ -29,7 +29,7 @@ from .experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
 
 import bnelearn.util.logging as logging_utils
-from bnelearn.valuation_sampler import LLGSampler, LLLLGGSampler
+from bnelearn.sampler import LLGSampler, LLLLGGSampler
 
 # maps config correlation_types to LocalGlobalSampler correlation_method arguments
 CORRELATION_METHODS = {

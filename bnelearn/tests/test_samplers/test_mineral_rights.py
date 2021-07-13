@@ -6,7 +6,7 @@ from math import sqrt
 import pytest
 import torch
 
-import bnelearn.valuation_sampler as vs
+import bnelearn.sampler as vs
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 

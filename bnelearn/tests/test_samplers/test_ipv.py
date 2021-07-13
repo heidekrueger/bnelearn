@@ -6,7 +6,9 @@ from math import sqrt
 import torch
 import numpy as np
 
-import bnelearn.valuation_sampler as vs
+import bnelearn.sampler as vs
+
+ASSERT_MSG_STD_DEVICE_IS_NOT_CUDA = "Standard device should be cuda, if available!"
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_players = 3
@@ -64,7 +66,8 @@ def test_uniform_symmetric_ipv():
 
     v,o = s.draw_profiles()
     assert o.device == v.device, "Observations and Valuations should be on same device"
-    assert o.device.type == device, "Standard device should be cuda, if available!"
+
+    assert o.device.type == device, ASSERT_MSG_STD_DEVICE_IS_NOT_CUDA
 
     assert torch.equal(o, v), "observations and valuations should be identical in IPV"
 
@@ -111,7 +114,7 @@ def test_gaussian_symmetric_ipv():
 
     v,o = s.draw_profiles()
     assert o.device == v.device, "Observations and Valuations should be on same device"
-    assert v.device.type == device, "Standard device should be cuda, if available!"
+    assert v.device.type == device, ASSERT_MSG_STD_DEVICE_IS_NOT_CUDA
 
     assert torch.equal(o, v), "observations and valuations should be identical in IPV"
 
@@ -140,7 +143,7 @@ def test_gaussian_symmetric_ipv():
     valuation_size = 4
     s = vs.GaussianSymmetricIPVSampler(n_mean, n_std, n_players, valuation_size, batch_size)
     v,o = s.draw_profiles()
-    assert v.device.type == device, "Standard device should be cuda, if available!"
+    assert v.device.type == device, ASSERT_MSG_STD_DEVICE_IS_NOT_CUDA
 
     check_validity(v,
                    expected_shape= torch.Size([batch_size, n_players, valuation_size]),

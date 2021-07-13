@@ -8,7 +8,7 @@ from bnelearn.mechanism import StaticMechanism, StaticFunctionMechanism
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.learner import ESPGLearner, PGLearner, AESPGLearner
-from bnelearn.valuation_sampler import UniformSymmetricIPVSampler
+from bnelearn.sampler import UniformSymmetricIPVSampler
 
 # Shared objects
 cuda = torch.cuda.is_available()

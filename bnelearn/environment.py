@@ -13,7 +13,7 @@ import torch
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism
 from bnelearn.strategy import Strategy
-from bnelearn.valuation_sampler import ValuationObservationSampler
+from bnelearn.sampler import ValuationObservationSampler
 
 class Environment(ABC):
     """Environment

@@ -23,7 +23,7 @@ from bnelearn.mechanism import (
 )
 from bnelearn.strategy import ClosureStrategy
 
-from bnelearn.valuation_sampler import MultiUnitValuationObservationSampler
+from bnelearn.sampler import MultiUnitValuationObservationSampler
 
 
 ###############################################################################

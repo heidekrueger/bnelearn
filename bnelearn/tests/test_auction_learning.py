@@ -19,7 +19,7 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.mechanism import FirstPriceSealedBidAuction
 from bnelearn.learner import ESPGLearner
 from bnelearn.strategy import NeuralNetStrategy
-from bnelearn.valuation_sampler import UniformSymmetricIPVSampler
+from bnelearn.sampler import UniformSymmetricIPVSampler
 
 cuda = torch.cuda.is_available()
 device = 'cuda' if cuda else 'cpu'

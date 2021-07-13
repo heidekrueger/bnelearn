@@ -1,4 +1,4 @@
-"""This module tests implemented learner in a 'static' environment."""
+"""This module tests whether rewards can be calculated correctly in an environment."""
 
 import torch
 
@@ -6,7 +6,7 @@ from bnelearn.strategy import TruthfulStrategy
 from bnelearn.mechanism import FirstPriceSealedBidAuction
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.valuation_sampler import UniformSymmetricIPVSampler
+from bnelearn.sampler import UniformSymmetricIPVSampler
 
 # Shared objects
 cuda = torch.cuda.is_available()

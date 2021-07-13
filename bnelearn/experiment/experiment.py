@@ -3,7 +3,7 @@ This module defines an experiment. It includes logging and plotting since they
 can often be shared by specific experiments.
 """
 
-from bnelearn.valuation_sampler import ValuationObservationSampler
+from bnelearn.sampler import ValuationObservationSampler
 import os
 from sys import platform
 import time
