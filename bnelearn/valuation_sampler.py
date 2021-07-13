@@ -390,8 +390,7 @@ class BernoulliWeightsCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUni
                                   inner_batch_size: int, device: Device  = None
                                   ) -> Tuple[torch.Tensor, torch.Tensor]:
         device = device or self.default_device
-        observation_size = conditioned_observation.shape[-1]
-        outer_batch_size = list(conditioned_observation.shape[:-1])
+        *outer_batch_sizes, observation_size = conditioned_observation
 
         conditioned_observation = conditioned_observation.to(device)
         # let i be the index of the player conditioned on.
@@ -399,9 +398,8 @@ class BernoulliWeightsCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUni
 
         # repeat each entry of conditioned_observation inner_batch_size times.
         v_i = conditioned_observation \
-            .view(*outer_batch_size, 1, observation_size) \
-            .repeat(*([1] * len(outer_batch_size)), inner_batch_size, 1)
-
+            .view(*outer_batch_sizes, 1, observation_size) \
+            .repeat(*([1] * len(outer_batch_sizes)), inner_batch_size, 1)
 
         # each observation v_i has a probability of self.gamma of being the
         # common component v_i=s, and (1-self.gamma) of being the player's
@@ -413,7 +411,7 @@ class BernoulliWeightsCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUni
         # Start by sampling these (and overwriting ith entry with actual obs.)
         # (ith's entry is technically incorrect, but the cases
         # where v_i != z_i are disregarded by the weights drawn below.)
-        z = torch.empty([*outer_batch_size,inner_batch_size,
+        z = torch.empty([*outer_batch_sizes,inner_batch_size,
                          self.n_players,
                          self.valuation_size], device = device) \
             .uniform_(self.u_lo, self.u_hi)
@@ -425,7 +423,7 @@ class BernoulliWeightsCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUni
         # batch, otherwise, we'll always end up perfectly correlated, or not
         # at all, rather than the correct amount.
 
-        w = torch.empty([*outer_batch_size, inner_batch_size, 1, 1], device=device) \
+        w = torch.empty([*outer_batch_sizes, inner_batch_size, 1, 1], device=device) \
             .bernoulli_(self.gamma)
 
         # sample valuations directly:
@@ -464,7 +462,7 @@ class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUnifo
 
         device = device or self.default_device
         inner_batch_size = inner_batch_size or self.default_batch_size
-        outer_batch_size = list(conditioned_observation.shape[:-1])  # possbibly more than one outer batch dim
+        *outer_batch_sizes, observation_size = conditioned_observation.shape
 
         conditioned_observation = conditioned_observation.to(device)
 
@@ -474,17 +472,17 @@ class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUnifo
         # repeat each entry of conditioned_observation inner_batch_size times.
         v_i = (conditioned_observation
                .to(device)
-               # add a dim for inner_batch after outer batch_dim(s)
+               # add a dim for inner_batch after outer_batch dim(s)
                # (dim before the last dim which is val_size)
                .unsqueeze(-2)
-               .repeat(*([1] * len(outer_batch_size)), inner_batch_size, 1)
+               .repeat(*([1] * len(outer_batch_sizes)), inner_batch_size, 1)
                )
 
         # individual components z_j are conditionally independent of z_i.
         # start by sampling these (and overwriting ith entry with actual obs.)
 
         # create repeated entries for conditioned_player
-        z = torch.empty([*outer_batch_size,
+        z = torch.empty([*outer_batch_sizes,
                          inner_batch_size,
                          self.n_players,
                          self.valuation_size], device = device) \
@@ -497,7 +495,7 @@ class ConstantWeightCorrelatedSymmetricUniformPVSampler(CorrelatedSymmetricUnifo
         #     = v_i + (1-w)*(z_j - z_i)
 
         v =(1 - self._weight)*(z - z[...,[i],:]) + \
-            v_i.view(*outer_batch_size, inner_batch_size, 1, self.valuation_size)
+            v_i.view(*outer_batch_sizes, inner_batch_size, 1, self.valuation_size)
 
         # private values setting: observations = valuations
         return v, v
@@ -917,7 +915,7 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
         Args:
             conditioned_player: int
                 Index of the player whose observation we are conditioning on.
-            conditioned_observation: torch.Tensor (`outer_batch_size` (implicit), `observation_size`)
+            conditioned_observation: torch.Tensor (`*outer_batch_sizes` (implicit), `observation_size`)
                 A (batch of) observations of player `conditioned_player`.
 
         Kwargs:
@@ -936,12 +934,12 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
 
         device = device or self.default_device
         inner_batch = inner_batch_size or self.default_batch_size
-        outer_batch = list(conditioned_observation.shape[:-1])  # possbibly more than one outer batch dim
+        *outer_batches, observation_size = conditioned_observation.shape
 
         i = conditioned_player
 
-        cv = torch.empty([*outer_batch, inner_batch, self.n_players, self.valuation_size], device=device)
-        co = torch.empty([*outer_batch, inner_batch, self.n_players, self.observation_size], device=device)
+        cv = torch.empty([*outer_batches, inner_batch, self.n_players, self.valuation_size], device=device)
+        co = torch.empty([*outer_batches, inner_batch, self.n_players, self.observation_size], device=device)
 
         ## Draw independently for each group.
 
@@ -951,7 +949,7 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
 
             if i in players:
                 # this is the group of the conditioned player, we need to sample
-                # from the group's conditional distribtuion
+                # from the group's conditional distribution
 
                 # i's relative position in the subgroup:
                 sub_i =  i - sum(self.group_sizes[:g])
@@ -964,10 +962,10 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
                         device=device
                     )
             else:
-                # the conditioned player is not in this group, the groups draw
+                # the conditioned player is not in this group, the group's draw
                 # is independent of the observation
                 cv[..., players, :], co[..., players, :] = \
-                    self.group_samplers[g].draw_profiles([*outer_batch, inner_batch], device)
+                    self.group_samplers[g].draw_profiles([*outer_batches, inner_batch], device)
 
         return cv, co
 
