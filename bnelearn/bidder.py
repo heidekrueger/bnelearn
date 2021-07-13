@@ -230,27 +230,6 @@ class ReverseBidder(Bidder):
         self.efficiency_parameter = efficiency_parameter
         super().__init__(**kwargs)
 
-    # pylint: disable=arguments-differ
-    # def get_valuation_grid(self, n_points, extended_valuation_grid=False):
-    #     """ Extends `Bidder.draw_values_grid` with efficiency parameter
-
-    #     Args
-    #     ----
-    #         extended_valuation_grid: bool, if True returns legitimate valuations, otherwise it returns
-    #             a larger grid, which can be used as ``all reasonable bids`` as needed for
-    #             estiamtion of regret.
-    #     """
-
-    #     grid_values = torch.zeros(n_points, self.valuation_size, device=self.device)
-
-    #     if extended_valuation_grid:
-    #         grid_values = super().get_valuation_grid(n_points, extended_valuation_grid)
-    #     else:
-    #         grid_values[:, 0] = torch.linspace(self._grid_lb, self._grid_ub, n_points,
-    #                                            device=self.device)
-    #         grid_values[:, 1] = self.efficiency_parameter * grid_values[:, 0]
-
-    #     return grid_values
 
     def get_utility(self, allocations, payments, valuations = None):
         """For reverse bidders, returns are inverted.

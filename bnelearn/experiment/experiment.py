@@ -758,25 +758,6 @@ class Experiment(ABC):
         return utility_vs_bne, epsilon_relative, epsilon_absolute
 
 
-    # # TODO Stefan: Let's get rid of this. Only relevant for combinatorial experiment, and even there its use
-    # # is questionable.
-    # def relevant_actions(self):
-    #     r"""Get indecies of actions that matter.
-
-    #     In some games, and in their BNE, only some of the agents' actions
-    #     matter.
-
-    #     Returns:
-    #         relevant_actions: (torch.Tensor) of shape (n_agents, n_actions)
-    #             with elements in $\{0, 1\}$ for marking relevancy for BNE.
-
-    #     """
-    #     return torch.ones(
-    #         size=(len(self.models), self.n_items),
-    #         device=self.config.hardware.device,
-    #         dtype=torch.bool
-    #     )
-
     def _calculate_metrics_action_space_norms(self):
         """
         Calculate "action space distance" of model and bne-strategy. If

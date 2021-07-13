@@ -1,12 +1,15 @@
-"""Testing correctness of util_loss estimator for a number of settings.
+r"""Testing correctness of util_loss estimator for a number of settings.
         Estimates the potential benefit of deviating from the current energy, as:
-            util_loss(v_i) = Max_(b_i)[ E_(b_(-i))[u(v_i,b_i,b_(-i))] ]
-            util_loss_max = Max_(v_i)[ util_loss(v_i) ]
-            util_loss_expected = E_(v_i)[ util_loss(v_i) ]
+        
+        .. math:: 
+            util\_loss(v_i) = Max_(b_i)[ E_(b_(-i))[u(v_i,b_i,b_(-i))] ] \\
+            util\_loss_max = Max_(v_i)[ util\_loss(v_i) ] \\
+            util\_loss_expected = E_(v_i)[ util\_loss(v_i) ]
+
         Input:
             agent: 1
-            bid_profile: (batch_size x n_player x n_items)
-            bid_i: (bid_size x n_items)
+            bid_profile: :math:`(batch\_size * n\_player * n\_items)`
+            bid_i: :math:`(bid\_size * n\_items)`
         Output:
             util_loss_max
             util_loss_expected
