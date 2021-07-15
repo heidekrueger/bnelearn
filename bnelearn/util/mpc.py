@@ -1,11 +1,5 @@
 import torch
 import numpy as np
-import pandas as pd
-from sklearn.datasets import make_spd_matrix
-import random
-import warnings
-# warnings.filterwarnings('error')
-import time
 
 class mpc_class():
     # TODO: fix these linting erros instead of ignoring them
@@ -33,7 +27,7 @@ class mpc_class():
         self.J=self.get_lu_J()
 
         #get initial solution
-        if self.neq!=None:
+        if self.neq is not None:
             self.b_unsqueezed=self.b.unsqueeze(-1)
         else:
             self.b_unsqueezed=None
@@ -74,7 +68,7 @@ class mpc_class():
 
     def is_Q_pd(self):
         try:
-            torch.cholesky(self.Q)
+            torch.linalg.cholesky(self.Q)
         except:
             raise RuntimeError("Q is not PD")
 
@@ -165,7 +159,7 @@ class mpc_class():
     #   A12= self.J[:,:self.nx+self.nineq,self.nx+self.nineq:]
     #   A21=  torch.transpose(A12,dim0=2, dim1=1)
     #   # self.J_lu,self.J_piv= self.lu_factorize(self.J)
-    #   # U_A11= torch.cholesky(A11)
+    #   # U_A11= torch.linalg.cholesky(A11)
     #   U_A11,U_A11_piv= A11.lu(pivot=False)
     #   # u=torch.cholesky_solve(b1,U_A11)
     #   u=torch.lu_solve(b1,U_A11,U_A11_piv)

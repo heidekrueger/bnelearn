@@ -5,6 +5,7 @@ This module implements games such as matrix games and auctions.
 """
 
 from abc import ABC, abstractmethod
+from typing import Tuple
 
 # pylint: disable=E1102
 import torch
@@ -33,30 +34,30 @@ class Mechanism(Game, ABC):
     items as well as payments for each of the players.
     """
 
-    def play(self, action_profile):
+    def play(self, action_profile) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.run(bids=action_profile)
 
     @abstractmethod
-    def run(self, bids):
+    def run(self, bids) -> Tuple[torch.Tensor, torch.Tensor]:
         """Alias for play for auction mechanisms"""
         raise NotImplementedError()
 
-    def get_revenue(self, env, draw_valuations: bool = False) -> float:
+    def get_revenue(self, env, redraw_valuations: bool = False) -> float:
         """Returns the average seller revenue over a batch.
 
         Args:
             env (:obj:`Environment`).
-            draw_valuations (bool): whether or not to redraw the valuations of
+            redraw_valuations (bool): whether or not to redraw the valuations of
                 the agents.
 
         Returns:
             revenue (float): average of seller revenue over a batch of games.
 
         """
-        if draw_valuations:
-            env.draw_valuations_()
+        if redraw_valuations:
+            env.draw_valuations()
 
-        action_length = env.agents[0].n_items
+        action_length = env.agents[0].bid_size
 
         bid_profile = torch.zeros(env.batch_size, env.n_players, action_length,
                                   device=self.device)
@@ -66,13 +67,13 @@ class Mechanism(Game, ABC):
 
         return payments.sum(axis=1).float().mean()
 
-    def get_efficiency(self, env, draw_valuations: bool = False) -> float:
+    def get_efficiency(self, env, redraw_valuations: bool = False) -> float:
         """Average percentage that the actual welfare reaches of the maximal
         possible welfare over a batch.
 
         Args:
             env (:obj:`Environment`).
-            draw_valuations (:bool:) whether or not to redraw the valuations of
+            redraw_valuations (:bool:) whether or not to redraw the valuations of
                 the agents.
 
         Returns:
@@ -82,10 +83,10 @@ class Mechanism(Game, ABC):
         """
         batch_size = min(env.agents[0].valuations.shape[0], 2 ** 12)
 
-        if draw_valuations:
-            env.draw_valuations_()
+        if redraw_valuations:
+            env.draw_valuations()
 
-        action_length = env.agents[0].n_items
+        action_length = env.agents[0].bid_size
 
         bid_profile = torch.zeros(batch_size, env.n_players, action_length,
                                   device=self.device)

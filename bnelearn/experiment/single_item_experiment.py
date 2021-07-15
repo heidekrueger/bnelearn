@@ -17,8 +17,8 @@ from bnelearn.experiment.configurations import ExperimentConfig
 
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import ClosureStrategy
-from bnelearn.correlation_device import (
-    MineralRightsCorrelationDevice, AffiliatedObservationsDevice)
+from bnelearn.sampler import (CompositeValuationObservationSampler, SymmetricIPVSampler, UniformSymmetricIPVSampler)
+from bnelearn.util.distribution_util import copy_dist_to_device
 
 
 ###############################################################################
@@ -30,6 +30,10 @@ from bnelearn.correlation_device import (
 
 def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(
         valuation: torch.Tensor or np.ndarray or float, n_players: int, prior_cdf: Callable, **kwargs) -> torch.Tensor:
+    if not prior_cdf(torch.tensor(0.0)).device.type == 'cpu':
+        raise ValueError("prior_cdf is required to return CPU-tensors rather than gpu tensors, " + \
+            "otherwise we will encounter errors when using numerical integration via scipy together with " + \
+            "torch.multiprocessing. For now, please provide a cpu-version of the prior-cdf.")
     if not isinstance(valuation, torch.Tensor):
         # For float and numpy --> convert to tensor (relevant for plotting)
         valuation = torch.tensor(valuation, dtype=torch.float)
@@ -45,7 +49,7 @@ def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(
     ).reshape(valuation.shape)
     return valuation - numerator / Fpowered(valuation)
 
-
+ 
 def _optimal_bid_FPSB_UniformSymmetricPriorSingleItem(valuation: torch.Tensor, n: int, r: float, u_lo, u_hi,
                                                       **kwargs) -> torch.Tensor:
     return u_lo + (valuation - u_lo) * (n - 1) / (n - 1.0 + r)
@@ -188,13 +192,14 @@ class SingleItemExperiment(Experiment, ABC):
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
+
+        # TODO Stefan: Can we get rid of this procedural code?
         if not hasattr(self, 'payment_rule'):
             self.payment_rule = self.config.setting.payment_rule
         if not hasattr(self, 'valuation_prior'):
             self.valuation_prior = 'unknown'
 
-        self.n_items = 1
-        self.input_length = 1
+        self.observation_size = self.valuation_size = self.action_size = 1
         if self.config.logging.eval_batch_size < 2 ** 20:
             print(f"Using small eval_batch_size of {self.config.logging.eval_batch_size}. Use at least 2**22 for proper experiment runs!")
         super().__init__(config=config)
@@ -226,10 +231,13 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
     def __init__(self, config: ExperimentConfig):
         self.config = config
         self.n_players = self.config.setting.n_players
-        self.n_items = 1
 
+        # instance property will be set in super().__init__ call.
+        action_size = 1
+
+        # TODO: common_prior possibly on wrnog device now
         self.common_prior = self.config.setting.common_prior
-        self.positive_output_point = torch.stack([self.common_prior.mean] * self.n_items)
+        self.positive_output_point = torch.stack([self.common_prior.mean] * action_size)
 
         self.risk = float(self.config.setting.risk)
         self.risk_profile = self.get_risk_profile(self.risk)
@@ -244,10 +252,17 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
         super().__init__(config=config)
 
+    def _setup_sampler(self):
+        self.sampler = SymmetricIPVSampler(
+            self.common_prior, self.n_players, self.valuation_size,
+            self.config.learning.batch_size, self.config.hardware.device
+        )
+
     def _check_and_set_known_bne(self):
         if self.payment_rule == 'first_price' and self.risk == 1:
+            cdf_cpu = copy_dist_to_device(self.common_prior, 'cpu').cdf
             self._optimal_bid = partial(_optimal_bid_single_item_FPSB_generic_prior_risk_neutral,
-                                        n_players=self.n_players, prior_cdf=self.common_prior.cdf)
+                                        n_players=self.n_players, prior_cdf=cdf_cpu)
             return True
         elif self.payment_rule == 'second_price':
             self._optimal_bid = _truthful_bid
@@ -291,20 +306,24 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
         assert self.known_bne
         assert  hasattr(self, '_optimal_bid')
+        print("Setting up the evaluation environment..." + \
+            "\tDepending on your and hardware and the eval_batch_size, this may take a while," +\
+                "-- sequential numeric integration on the cpu is required in this environment.")
 
-        # TODO: parallelism should be taken from elsewhere. Should be moved to config. Assigned @Stefan
-        n_processes_optimal_strategy = 44 if self.valuation_prior != 'uniform' and \
+        n_processes_optimal_strategy = self.config.hardware.max_cpu_threads if self.valuation_prior != 'uniform' and \
                                                 self.payment_rule != 'second_price' else 0
         bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
 
+
         # define bne agents once then use them in all runs
         self.bne_env = AuctionEnvironment(
-            self.mechanism,
+            mechanism = self.mechanism,
             agents=[self._strat_to_bidder(bne_strategy,
-                                            player_position=i,
-                                            batch_size=self.logging.eval_batch_size,
-                                            cache_actions=self.logging.cache_eval_actions)
+                                          player_position=i,
+                                          batch_size=self.logging.eval_batch_size,
+                                          enable_action_caching=self.logging.cache_eval_actions)
                     for i in range(self.n_players)],
+            valuation_observation_sampler = self.sampler,
             batch_size=self.logging.eval_batch_size,
             n_players=self.n_players,
             strategy_to_player_closure=self._strat_to_bidder
@@ -312,7 +331,7 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
         # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
         # TODO: This is not very precise. Instead we should consider taking the mean over all agents
-        bne_utility_sampled = self.bne_env.get_reward(self.bne_env.agents[0], draw_valuations=True)
+        bne_utility_sampled = self.bne_env.get_reward(self.bne_env.agents[0], redraw_valuations=True)
         bne_utility_analytical = self._get_analytical_bne_utility()
 
         print('Utility in BNE (sampled): \t{:.5f}'.format(bne_utility_sampled))
@@ -328,8 +347,8 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.bne_utility = bne_utility_analytical
         self.bne_utilities = [self.bne_utility] * self.n_models
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
-        return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions,
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+        return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
                       risk=self.risk)
 
     def _get_logdir_hierarchy(self):
@@ -347,16 +366,18 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         assert self.config.setting.u_hi is not None, """Prior boundaries not specified!"""
 
         self.valuation_prior = 'uniform'
-        self.u_lo = self.config.setting.u_lo
-        self.u_hi = self.config.setting.u_hi
+        self.u_lo = torch.tensor(self.config.setting.u_lo, dtype=torch.float32,
+            device=self.config.hardware.device)
+        self.u_hi = torch.tensor(self.config.setting.u_hi, dtype=torch.float32,
+            device=self.config.hardware.device)
         self.config.setting.common_prior = \
             torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
 
         # ToDO Implicit list to float type conversion
-        self.plot_xmin = self.u_lo
-        self.plot_xmax = self.u_hi
+        self.plot_xmin = self.u_lo.cpu()
+        self.plot_xmax = self.u_hi.cpu()
         self.plot_ymin = 0
-        self.plot_ymax = self.u_hi * 1.05
+        self.plot_ymax = self.u_hi.cpu() * 1.05
 
         super().__init__(config=config)
 
@@ -404,8 +425,12 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
         assert self.config.setting.valuation_mean is not None, """Valuation mean and/or std not specified! """
         assert self.config.setting.valuation_std is not None, """Valuation mean and/or std not specified! """
         self.valuation_prior = 'normal'
-        self.valuation_mean = self.config.setting.valuation_mean
-        self.valuation_std = self.config.setting.valuation_std
+        self.valuation_mean = torch.tensor(
+            self.config.setting.valuation_mean, dtype=torch.float32,
+            device=self.config.hardware.device)
+        self.valuation_std = torch.tensor(
+            self.config.setting.valuation_std, dtype=torch.float32,
+            device=self.config.hardware.device)
         self.config.setting.common_prior = \
             torch.distributions.normal.Normal(loc=self.valuation_mean, scale=self.valuation_std)
 
@@ -430,8 +455,8 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         self.risk = float(self.config.setting.risk)
         self.risk_profile = self.get_risk_profile(self.risk)
 
+        n_items = 1
         self.n_players = 2
-        self.n_items = 1
         self.n_models = self.n_players
         self._bidder2model: List[int] = list(range(self.n_players))
 
@@ -441,7 +466,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
             self.u_lo: List[float] = [float(self.config.setting.u_lo[i]) for i in range(self.n_players)]
         self.u_hi: List[float] = [float(self.config.setting.u_hi[i]) for i in range(self.n_players)]
         assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
-        self.positive_output_point = torch.tensor([min(self.u_hi)] * self.n_items)
+        self.positive_output_point = torch.tensor([min(self.u_hi)] * n_items)
 
         self.plot_xmin = min(self.u_lo)
         self.plot_xmax = max(self.u_hi)
@@ -450,14 +475,29 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
 
         super().__init__(config=config)
 
+    def _setup_sampler(self):
+
+        default_batch_size = self.learning.batch_size
+        device = self.hardware.device
+        # setup individual samplers for each bidder
+        bidder_samplers = [
+            UniformSymmetricIPVSampler(
+                self.u_lo[i], self.u_hi[i], 1,
+                self.valuation_size, default_batch_size, device)
+            for i in range(self.n_players)]
+
+        self.sampler = CompositeValuationObservationSampler(
+            self.n_players, self.valuation_size, self.observation_size, bidder_samplers,
+            default_batch_size, device
+            )
+
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, self.valuation_prior,
                 'asymmetric', self.risk_profile, str(self.n_players) + 'p']
         return os.path.join(*name)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, **strat_to_player_kwargs):
-        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
-                              player_position=player_position, batch_size=batch_size, **strat_to_player_kwargs)
+        return Bidder(strategy, player_position=player_position, batch_size=batch_size, **strat_to_player_kwargs)
 
     def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding
@@ -500,15 +540,16 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                 mechanism=self.mechanism,
                 agents=[self._strat_to_bidder(bne_strategies[i][p], player_position=p,
                                               batch_size=self.logging.eval_batch_size,
-                                              cache_actions=self.config.logging.cache_eval_actions)
+                                              enable_action_caching=self.config.logging.cache_eval_actions)
                         for p in range(self.n_players)],
+                valuation_observation_sampler=self.sampler,
                 n_players=self.n_players,
                 batch_size=self.logging.eval_batch_size,
                 strategy_to_player_closure=self._strat_to_bidder
             )
 
             bne_utilities_sampled[i] = torch.tensor(
-                [self.bne_env[i].get_reward(a, draw_valuations=True) for a in self.bne_env[i].agents])
+                [self.bne_env[i].get_reward(a, redraw_valuations=True) for a in self.bne_env[i].agents])
 
             print(('Utilities in BNE{} (sampled):' + '\t{:.5f}' * self.n_players + '.') \
                 .format(i + 1,*bne_utilities_sampled[i]))
@@ -535,7 +576,10 @@ class MineralRightsExperiment(SingleItemExperiment):
     For risk-neutral agents, a unique BNE is known.
     """
 
+    # TODO: update to new interface and add test
+
     def __init__(self,  config: ExperimentConfig):
+        raise NotImplementedError("#188 not yet implemented for MR setting")
 
         self.n_players = config.setting.n_players
         self.n_items = 1
@@ -597,7 +641,7 @@ class MineralRightsExperiment(SingleItemExperiment):
                     bne_strategy,
                     player_position = i,
                     batch_size = self.config.logging.eval_batch_size,
-                    cache_actions = self.config.logging.cache_eval_actions
+                    enable_action_caching = self.config.logging.cache_eval_actions
                 )
                 for i in range(self.n_players)
             ]
@@ -623,16 +667,16 @@ class MineralRightsExperiment(SingleItemExperiment):
             # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
             self.bne_utilities = torch.zeros((self.n_players,), device=self.config.hardware.device)
             for i, a in enumerate(self.bne_env.agents):
-                self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
+                self.bne_utilities[i] = self.bne_env.get_reward(agent=a, redraw_valuations=True)
 
             print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities))
             self.bne_utility = torch.tensor(self.bne_utilities).mean() #Stefan: Update to pytorch 1.7 will move this from 'cpu' to self.config.hardware.device. Will this cause problems? What behavior do we want?
         else:
             self.known_bne = False
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         correlation_type = 'multiplicative'
-        return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions,
+        return Bidder(self.common_prior, strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
                       risk=self.risk, correlation_type=correlation_type)
 
     def _get_logdir_hierarchy(self):
@@ -647,7 +691,10 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
     For risk-neutral agents, a unique BNE is known.
     """
 
+    # TODO: update to new interface and add test
+
     def __init__(self,  config: ExperimentConfig):
+        raise NotImplementedError("Issue #188 not yet implmemented for Aff. Values setting.")
 
         self.n_players = config.setting.n_players
         self.n_items = 1
@@ -709,7 +756,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
                 strategy = bne_strategy,
                 player_position = i,
                 batch_size = self.config.logging.eval_batch_size,
-                cache_actions = self.config.logging.cache_eval_actions
+                enable_action_caching = self.config.logging.cache_eval_actions
             )
             for i in range(self.n_players)
         ]
@@ -735,7 +782,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
         self.bne_utilities = torch.zeros((3,), device=self.config.hardware.device)
         for i, a in enumerate(self.bne_env.agents):
-            self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
+            self.bne_utilities[i] = self.bne_env.get_reward(agent=a, redraw_valuations=True)
 
         print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities.tolist()))
         self.bne_utility = self.bne_utilities.mean()

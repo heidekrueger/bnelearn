@@ -16,7 +16,8 @@ test:
   # (some tests are gpu bound, this will create multiple processes on same gpu.)
   # Gives somewhat less readible output when tests have failed, so disabled for now as it only
   # saves us around 10-15 seconds.
-  - pytest --cov-report term-missing --cov=bnelearn --junitxml=testreport.xml
+  # -rxXs: add output about skipped, xfailed, xpassed tests.
+  - pytest -rxXs --cov-report term-missing --cov=bnelearn --junitxml=testreport.xml
   artifacts:
     when: always
     reports:

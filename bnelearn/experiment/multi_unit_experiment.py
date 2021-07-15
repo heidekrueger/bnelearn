@@ -22,9 +22,8 @@ from bnelearn.mechanism import (
     MultiUnitDiscriminatoryAuction, FPSBSplitAwardAuction
 )
 from bnelearn.strategy import ClosureStrategy
-from bnelearn.correlation_device import (
-    IndependentValuationDevice, MultiUnitDevice
-)
+
+from bnelearn.sampler import MultiUnitValuationObservationSampler
 
 
 ###############################################################################
@@ -94,6 +93,11 @@ def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
         with constant marginal valuations
     """
     n_players = 2
+
+    if not valuation_cdf(torch.tensor(0.0)).device.type == 'cpu':
+        raise ValueError("valuation_cdf is required to return CPU-tensors rather than gpu tensors, " + \
+            "otherwise we will encounter errors when using numerical integration via scipy together with " + \
+            "torch.multiprocessing. For now, please provide a cpu-version of the prior-cdf.")
 
     if isinstance(valuation_cdf, torch.distributions.uniform.Uniform):
         def _optimal_bid(valuation, player_position=None):
@@ -283,13 +287,13 @@ class MultiUnitExperiment(Experiment, ABC):
     """
 
     def __init__(self, config: ExperimentConfig):
+        raise NotImplementedError("Does not yet correspond to #188")
         self.config = config
 
         self.n_units = self.n_items = self.config.setting.n_units
         self.n_players = self.config.setting.n_players
         self.payment_rule = self.config.setting.payment_rule
         self.risk = float(self.config.setting.risk)
-
         if len(self.config.setting.u_lo) == 1:
             self.u_lo = self.config.setting.u_lo * self.n_players
 
@@ -348,7 +352,7 @@ class MultiUnitExperiment(Experiment, ABC):
 
         super().__init__(config=config)
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         """
         Standard strat_to_bidder method.
         """
@@ -363,9 +367,12 @@ class MultiUnitExperiment(Experiment, ABC):
             constant_marginal_values=self.constant_marginal_values,
             player_position=player_position,
             batch_size=batch_size,
-            cache_actions=cache_actions,
+            enable_action_caching=enable_action_caching,
             correlation_type=correlation_type
         )
+
+    def _setup_sampler(self):
+        raise NotImplementedError
 
     def _setup_mechanism(self):
         """Setup the mechanism"""
@@ -407,7 +414,7 @@ class MultiUnitExperiment(Experiment, ABC):
                 mechanism=self.mechanism,
                 agents=[
                     self._strat_to_bidder(bne_strategy, self.logging.eval_batch_size, j,
-                                          cache_actions=self.config.logging.cache_eval_actions)
+                                          enable_action_caching=self.config.logging.cache_eval_actions)
                     for j, bne_strategy in enumerate(bne_strategies)
                 ],
                 n_players=self.n_players,
@@ -415,7 +422,7 @@ class MultiUnitExperiment(Experiment, ABC):
                 strategy_to_player_closure=self._strat_to_bidder
             )
 
-            self.bne_utilities[i] = [self.bne_env[i].get_reward(agent, draw_valuations=True)
+            self.bne_utilities[i] = [self.bne_env[i].get_reward(agent, redraw_valuations=True)
                                      for agent in self.bne_env[i].agents]
 
         print('BNE envs have been set up.')
@@ -452,6 +459,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
     """
 
     def __init__(self, config: ExperimentConfig):
+        raise NotImplementedError("Implementation does not yet work after #188.")
         self.config = config
         self.efficiency_parameter = self.config.setting.efficiency_parameter
 
@@ -469,6 +477,9 @@ class SplitAwardExperiment(MultiUnitExperiment):
                           self.setting.efficiency_parameter * self.u_hi[0]]
         self.plot_ymin = [0, 2 * self.u_hi[0]]
         self.plot_ymax = [0, 2 * self.u_hi[0]]
+
+    def _setup_sampler(self):
+        return NotImplementedError
 
     def _setup_mechanism(self):
         if self.payment_rule == 'first_price':
@@ -498,10 +509,9 @@ class SplitAwardExperiment(MultiUnitExperiment):
     #         output_tensor = temp
     #     return output_tensor
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=False):
         """Standard strat_to_bidder method, but with ReverseBidder"""
-        return ReverseBidder.uniform(
-            lower=self.u_lo[0], upper=self.u_hi[0],
+        return ReverseBidder(
             strategy=strategy,
             n_items=self.n_units,
             item_interest_limit=self.item_interest_limit,
@@ -510,7 +520,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
             player_position=player_position,
             efficiency_parameter=self.efficiency_parameter,
             batch_size=batch_size,
-            cache_actions=cache_actions
+            enable_action_caching=enable_action_caching
         )
 
     def _get_logdir_hierarchy(self):
