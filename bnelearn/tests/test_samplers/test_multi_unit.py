@@ -29,7 +29,7 @@ ids, test_cases = zip(*[
     ['6_all_mixed',       (5,        3,       2,          2.0,   4.0     )],
 ])
 
-
+@pytest.mark.xfail(reason="not fully implemented")
 @pytest.mark.parametrize("n_players, n_items, max_demand, u_lo, u_hi",
                          test_cases, ids=ids)
 def test_uniform_symmetric_ipv(n_players, n_items, max_demand, u_lo, u_hi):
@@ -52,4 +52,4 @@ def test_uniform_symmetric_ipv(n_players, n_items, max_demand, u_lo, u_hi):
     ## * kth valuation should be distritubuted according to the kth order statistic of a uniform RV, i.e.
     ##     Beta(k, n_items + 1 - k)
 
-    pytest.skip("Test not completely implemented!")
+    raise NotImplementedError("test not fully implemented!")
