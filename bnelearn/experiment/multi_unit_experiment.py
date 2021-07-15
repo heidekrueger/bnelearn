@@ -94,6 +94,11 @@ def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
     """
     n_players = 2
 
+    if not valuation_cdf(torch.tensor(0.0)).device.type == 'cpu':
+        raise ValueError("valuation_cdf is required to return CPU-tensors rather than gpu tensors, " + \
+            "otherwise we will encounter errors when using numerical integration via scipy together with " + \
+            "torch.multiprocessing. For now, please provide a cpu-version of the prior-cdf.")
+
     if isinstance(valuation_cdf, torch.distributions.uniform.Uniform):
         def _optimal_bid(valuation, player_position=None):
             return valuation / 2
@@ -282,6 +287,7 @@ class MultiUnitExperiment(Experiment, ABC):
     """
 
     def __init__(self, config: ExperimentConfig):
+        raise NotImplementedError("Does not yet correspond to #188")
         self.config = config
 
         self.n_units = self.n_items = self.config.setting.n_units
@@ -453,6 +459,7 @@ class SplitAwardExperiment(MultiUnitExperiment):
     """
 
     def __init__(self, config: ExperimentConfig):
+        raise NotImplementedError("Implementation does not yet work after #188.")
         self.config = config
         self.efficiency_parameter = self.config.setting.efficiency_parameter
 

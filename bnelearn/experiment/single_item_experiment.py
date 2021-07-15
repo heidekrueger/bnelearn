@@ -18,6 +18,7 @@ from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import ClosureStrategy
 from bnelearn.sampler import (CompositeValuationObservationSampler, SymmetricIPVSampler, UniformSymmetricIPVSampler)
+from bnelearn.util.distribution_util import copy_dist_to_device
 
 
 ###############################################################################
@@ -29,6 +30,10 @@ from bnelearn.sampler import (CompositeValuationObservationSampler, SymmetricIPV
 
 def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(
         valuation: torch.Tensor or np.ndarray or float, n_players: int, prior_cdf: Callable, **kwargs) -> torch.Tensor:
+    if not prior_cdf(torch.tensor(0.0)).device.type == 'cpu':
+        raise ValueError("prior_cdf is required to return CPU-tensors rather than gpu tensors, " + \
+            "otherwise we will encounter errors when using numerical integration via scipy together with " + \
+            "torch.multiprocessing. For now, please provide a cpu-version of the prior-cdf.")
     if not isinstance(valuation, torch.Tensor):
         # For float and numpy --> convert to tensor (relevant for plotting)
         valuation = torch.tensor(valuation, dtype=torch.float)
@@ -255,8 +260,9 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
     def _check_and_set_known_bne(self):
         if self.payment_rule == 'first_price' and self.risk == 1:
+            cdf_cpu = copy_dist_to_device(self.common_prior, 'cpu').cdf
             self._optimal_bid = partial(_optimal_bid_single_item_FPSB_generic_prior_risk_neutral,
-                                        n_players=self.n_players, prior_cdf=self.common_prior.cdf)
+                                        n_players=self.n_players, prior_cdf=cdf_cpu)
             return True
         elif self.payment_rule == 'second_price':
             self._optimal_bid = _truthful_bid
@@ -300,6 +306,9 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
         assert self.known_bne
         assert  hasattr(self, '_optimal_bid')
+        print("Setting up the evaluation environment..." + \
+            "\tDepending on your and hardware and the eval_batch_size, this may take a while," +\
+                "-- sequential numeric integration on the cpu is required in this environment.")
 
         n_processes_optimal_strategy = self.config.hardware.max_cpu_threads if self.valuation_prior != 'uniform' and \
                                                 self.payment_rule != 'second_price' else 0
@@ -570,6 +579,7 @@ class MineralRightsExperiment(SingleItemExperiment):
     # TODO: update to new interface and add test
 
     def __init__(self,  config: ExperimentConfig):
+        raise NotImplementedError("#188 not yet implemented for MR setting")
 
         self.n_players = config.setting.n_players
         self.n_items = 1
@@ -684,6 +694,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
     # TODO: update to new interface and add test
 
     def __init__(self,  config: ExperimentConfig):
+        raise NotImplementedError("Issue #188 not yet implmemented for Aff. Values setting.")
 
         self.n_players = config.setting.n_players
         self.n_items = 1

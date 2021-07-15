@@ -40,7 +40,7 @@ if __name__ == '__main__':
 
     experiment_config, experiment_class = \
         ConfigurationManager(
-            experiment_type='single_item_uniform_symmetric',
+            experiment_type='single_item_gaussian_symmetric',
             n_runs=1,
             n_epochs=200
             ) \
@@ -67,13 +67,13 @@ if __name__ == '__main__':
         .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
-    #                                                            n_runs=2, n_epochs=2)\
+    #                                                            n_runs=2, n_epochs=200)\
     #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True).get_config()
 
-    # All three next experiments get AssertionError: scalar should be 0D
+    #All three next experiments get AssertionError: scalar should be 0D
     # experiment_config, experiment_class = ConfigurationManager(
     #    experiment_type='single_item_asymmetric_uniform_overlapping',
-    #    n_runs=1, n_epochs=200
+    #    n_runs=1, n_epochs=20000
     # ) \
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .get_config()

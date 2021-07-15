@@ -3,6 +3,7 @@ import os
 import time
 import warnings
 from typing import List, Type, Iterable, Tuple
+from numpy import MAXDIMS
 
 import torch
 import torch.nn as nn
@@ -24,7 +25,12 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
-                                                        AffiliatedObservationsExperiment)
+                                                        AffiliatedObservationsExperiment
+                                                        )
+
+# TODO: server-specific constant hardcoded. We need a more dynamic way to do this.
+# See gitlab issue #218
+MAX_CPU_THREADS = 44
 
 
 DISTRIBUTIONS = {'Uniform': torch.distributions.Uniform,
@@ -363,9 +369,9 @@ class ConfigurationManager:
             (TwoPlayerAsymmetricUniformPriorSingleItemExperiment, _init_single_item_asymmetric_uniform_disjunct,
              _post_init_single_item_asymmetric_uniform_disjunct),
         'mineral_rights':
-            (MineralRightsExperiment, _init_mineral_rights, _post_init_mineral_rights),
+           (MineralRightsExperiment, _init_mineral_rights, _post_init_mineral_rights),
         'affiliated_observations':
-            (AffiliatedObservationsExperiment, _init_affiliated_observations, _post_init_affiliated_observations),
+           (AffiliatedObservationsExperiment, _init_affiliated_observations, _post_init_affiliated_observations),
         'llg':
             (LLGExperiment, _init_llg, _post_init_llg),
         'llg_full':
@@ -373,9 +379,9 @@ class ConfigurationManager:
         'llllgg':
             (LLLLGGExperiment, _init_llllgg, _post_init_llllgg),
         'multiunit':
-            (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
+           (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
-            (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)
+           (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)
         }
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
@@ -557,7 +563,8 @@ class ConfigurationManager:
             specific_gpu=0,
             cuda=True,
             fallback=False,
-            max_cpu_threads=1)
+            # TODO, see gitlab issue #218
+            max_cpu_threads=MAX_CPU_THREADS)
 
         return running, setting, learning, logging, hardware
 

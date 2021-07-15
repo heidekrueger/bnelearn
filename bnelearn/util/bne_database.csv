@@ -134,9 +134,9 @@ experiment_class,payment_rule,correlation,risk,player_position,batch_size,bne_ut
 <class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,vcg,0.5,1.0,0,8388608,0.229153574
 <class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,vcg,0.5,1.0,1,8388608,0.229225233
 <class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,vcg,0.5,1.0,2,8388608,0.312698334
-<class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_zero,0.0,1.0,0,4194304,0.13404372334480286
-<class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_zero,0.0,1.0,1,4194304,0.13381648063659668
-<class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_zero,0.0,1.0,2,4194304,0.46408677101135254
+<class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_zero,0.0,1.0,0,4194304,0.1340497732162475
+<class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_zero,0.0,1.0,1,4194304,0.1340605914592743
+<class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_zero,0.0,1.0,2,4194304,0.4641630947589874
 <class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_vcg,0.5,1.0,0,8388608,0.1411969065666198
 <class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_vcg,0.5,1.0,1,8388608,0.1412290781736374
 <class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_vcg,0.5,1.0,2,8388608,0.4797596037387848
@@ -182,6 +182,6 @@ experiment_class,payment_rule,correlation,risk,player_position,batch_size,bne_ut
 <class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_bid,0.5,1.0,0,4,0.0
 <class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_bid,0.5,1.0,1,4,0.2819873392581939
 <class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_bid,0.5,1.0,2,4,0.4244400858879089
-<class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_bid,1.0,1.0,0,4,0.169651448726654
-<class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_bid,1.0,1.0,1,4,0.2000929415225982
-<class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_bid,1.0,1.0,2,4,0.4475541710853576
+<class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_bid,1.0,1.0,0,4,0.16965144872665405
+<class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_bid,1.0,1.0,1,4,0.20009294152259827
+<class 'bnelearn.experiment.combinatorial_experiment.LLGExperiment'>,nearest_bid,1.0,1.0,2,4,0.44755417108535767
