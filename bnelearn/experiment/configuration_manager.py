@@ -334,6 +334,8 @@ class ConfigurationManager:
         if self.setting.gamma == 0.0:
             self.setting.correlation_types = 'independent'
         elif self.setting.gamma > 0.0:
+            if self.setting.correlation_types is None:
+                self.setting.correlation_types = 'Bernoulli_weights'
             if self.setting.correlation_types not in ['Bernoulli_weights', 'constant_weights']:
                 raise NotImplementedError(f'`{self.setting.correlation_types}` corrrelation model unknown.')
         elif self.setting.gamma > 1.0:

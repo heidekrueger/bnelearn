@@ -29,12 +29,10 @@ class Player(ABC):
     @abstractmethod
     def get_action(self):
         """Chooses an action according to the player's strategy."""
-        raise NotImplementedError
 
     @abstractmethod
     def get_utility(self, *args, **kwargs):
         """Calculates player's utility based on outcome of a game."""
-        raise NotImplementedError
 
 class MatrixGamePlayer(Player):
     """ A player playing a matrix game"""
