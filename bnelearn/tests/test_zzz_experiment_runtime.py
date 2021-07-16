@@ -58,6 +58,11 @@ ids_si, *testdata_si = zip(*[
         *ConfigurationManager(experiment_type='affiliated_observations', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
                            .get_config(),
         True
+    ], [
+        '6 - single_item-mineral-rights',
+        *ConfigurationManager(experiment_type='mineral_rights', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
+                           .get_config(),
+        True
     ]
 ])
 

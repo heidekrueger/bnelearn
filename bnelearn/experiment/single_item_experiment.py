@@ -21,6 +21,7 @@ from bnelearn.sampler import (
     CompositeValuationObservationSampler,
     SymmetricIPVSampler,
     UniformSymmetricIPVSampler,
+    MineralRightsValuationObservationSampler,
     AffiliatedValuationObservationSampler
 )
 from bnelearn.util.distribution_util import copy_dist_to_device
@@ -581,11 +582,9 @@ class MineralRightsExperiment(SingleItemExperiment):
     For risk-neutral agents, a unique BNE is known.
     """
 
-    # TODO: update to new interface and add test
+    # TODO Nils: there's some issue with the upper bound in the BNE / plotting
 
     def __init__(self,  config: ExperimentConfig):
-        raise NotImplementedError("#188 not yet implemented for MR setting")
-
         self.n_players = config.setting.n_players
         self.n_items = 1
 
@@ -593,7 +592,7 @@ class MineralRightsExperiment(SingleItemExperiment):
         self.u_lo = float(config.setting.u_lo)
         self.u_hi = float(config.setting.u_hi)
         self.common_prior = torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
-        self.positive_output_point = torch.stack([self.common_prior.mean] * self.n_items)
+        self.positive_output_point = torch.tensor([(self.u_lo+self.u_hi)/2] * self.n_items)
 
         self.risk = float(config.setting.risk)
         self.risk_profile = self.get_risk_profile(self.risk)
@@ -601,14 +600,6 @@ class MineralRightsExperiment(SingleItemExperiment):
         self.correlation_groups = config.setting.correlation_groups
 
         assert len(config.setting.correlation_coefficients) == 1
-        self.correlation_devices = [
-            MineralRightsCorrelationDevice(
-                common_component_dist=self.common_prior,
-                batch_size=config.learning.batch_size,
-                n_items=1,
-                correlation=1
-            )
-        ]
 
         self.model_sharing = config.learning.model_sharing
         if self.model_sharing:
@@ -619,6 +610,20 @@ class MineralRightsExperiment(SingleItemExperiment):
             self._bidder2model = list(range(self.n_players))
 
         super().__init__(config)
+
+    def _setup_sampler(self):
+
+        default_batch_size = self.learning.batch_size
+        device = self.hardware.device
+        # setup individual samplers for each bidder
+        self.sampler = MineralRightsValuationObservationSampler(
+            n_players=self.n_players,
+            valuation_size=self.valuation_size,
+            common_value_lo=self.u_lo,
+            common_value_hi=self.u_hi,
+            default_batch_size=default_batch_size,
+            default_device=device
+        )
 
     def _setup_mechanism(self):
         if self.payment_rule == 'second_price':
@@ -643,10 +648,10 @@ class MineralRightsExperiment(SingleItemExperiment):
             # define bne agents once then use them in all runs
             agents = [
                 self._strat_to_bidder(
-                    bne_strategy,
-                    player_position = i,
-                    batch_size = self.config.logging.eval_batch_size,
-                    enable_action_caching = self.config.logging.cache_eval_actions
+                    strategy=bne_strategy,
+                    player_position=i,
+                    batch_size=self.config.logging.eval_batch_size,
+                    enable_action_caching=self.config.logging.cache_eval_actions
                 )
                 for i in range(self.n_players)
             ]
@@ -655,18 +660,12 @@ class MineralRightsExperiment(SingleItemExperiment):
                 a._grid_ub = 2
 
             self.bne_env = AuctionEnvironment(
-                mechanism = self.mechanism,
-                agents = agents,
-                batch_size = self.config.logging.eval_batch_size,
-                n_players = self.n_players,
-                strategy_to_player_closure = self._strat_to_bidder,
-                correlation_groups = self.correlation_groups,
-                correlation_devices = [MineralRightsCorrelationDevice(
-                    common_component_dist = self.common_prior,
-                    batch_size = self.config.logging.eval_batch_size,
-                    n_items = 1,
-                    correlation = 1
-                )]
+                mechanism=self.mechanism,
+                agents=agents,
+                valuation_observation_sampler=self.sampler,
+                batch_size=self.config.logging.eval_batch_size,
+                n_players=self.n_players,
+                strategy_to_player_closure=self._strat_to_bidder
             )
 
             # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
@@ -675,14 +674,13 @@ class MineralRightsExperiment(SingleItemExperiment):
                 self.bne_utilities[i] = self.bne_env.get_reward(agent=a, redraw_valuations=True)
 
             print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities))
-            self.bne_utility = torch.tensor(self.bne_utilities).mean() #Stefan: Update to pytorch 1.7 will move this from 'cpu' to self.config.hardware.device. Will this cause problems? What behavior do we want?
+            self.bne_utility = self.bne_utilities.mean()
+
         else:
             self.known_bne = False
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
-        correlation_type = 'multiplicative'
-        return Bidder(self.common_prior, strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
-                      risk=self.risk, correlation_type=correlation_type)
+    def _strat_to_bidder(self, **kwargs):
+        return Bidder(risk=self.risk, **kwargs)
 
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, 'interdependent', self.valuation_prior,
@@ -695,8 +693,6 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
     """A Single Item Experiment that has the same valuation prior for all participating bidders.
     For risk-neutral agents, a unique BNE is known.
     """
-
-    # TODO: update to new interface and add test
 
     def __init__(self,  config: ExperimentConfig):
 
@@ -791,7 +787,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         self.bne_utility = self.bne_utilities.mean()
 
     def _strat_to_bidder(self, **kwargs):
-        return Bidder(**kwargs)
+        return Bidder(risk=self.risk, **kwargs)
 
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, 'interdependent', self.valuation_prior,

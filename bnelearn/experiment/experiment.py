@@ -428,7 +428,8 @@ class Experiment(ABC):
                         loss_ex_ante, _, _ = self._calculate_metrics_util_loss(
                             create_plot_output=False,
                             batch_size=stopping_criterion_batch_size,
-                            grid_size=stopping_criterion_grid_size)
+                            grid_size=stopping_criterion_grid_size,
+                            epoch=epoch)
                         rel_util_loss = 1 - utilities / (utilities + torch.tensor(loss_ex_ante))
                         stopping_queue.append(rel_util_loss)
 
@@ -836,18 +837,15 @@ class Experiment(ABC):
             ])
 
         if self.logging.best_response:
-            # TODO Nils: clean up
-            best_responses = (
-                torch.stack([br[0] for br in best_responses], dim=1)[:, :, None],
-                torch.stack([br[1] for br in best_responses], dim=1)[:, :, None]
-            )
+            plot_data = (observations[:, [b[0] for b in self._model2bidder], :],
+                         torch.stack(best_responses, 1))
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
-            fmts = ['o'] * len(self.models)
-            self._plot(plot_data=best_responses, writer=self.writer,
-                       ylim=[0, max(a._grid_ub for a in self.bidders).cpu()],
+            fmts = ['o'] * len(self.models) 
+            self._plot(plot_data=plot_data, writer=self.writer,
+                       ylim=[0, self.sampler.support_bounds.max().item()],
                        figure_name='best_responses', y_label='best response',
-                       colors=list(range(len(self.models))), epoch=epoch, labels=labels,
-                       fmts=fmts, plot_points=self.plot_points)
+                       colors=list(range(len(self.models))), epoch=epoch,
+                       labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         # calculate different losses
         ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_losses]
@@ -867,16 +865,17 @@ class Experiment(ABC):
             if not hasattr(self, '_max_util_loss'):
                 self._max_util_loss = ex_interim_max_util_loss
 
-            # TODO Nils: differentiate models in plot
             # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
-            util_losses = torch.stack(list(util_losses), dim=1)[:, :, None]
-            valuations = torch.stack([observations[:batch_size, player_positions[0], :]
-                                      for player_positions in self._model2bidder], dim=1)
-            plot_output = (valuations, util_losses)
-            self._plot(plot_data=plot_output, writer=self.writer,
-                       ylim=[0, max(self._max_util_loss).detach().cpu()],
+            util_losses = torch.stack(list(util_losses), dim=1).unsqueeze_(-1)
+            observations = self.env._observations[:batch_size, :, :]
+            plot_data = (observations[:, [b[0] for b in self._model2bidder], :], util_losses)
+            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
+            fmts = ['o'] * len(self.models)
+            self._plot(plot_data=plot_data, writer=self.writer,
+                       ylim=[0, max(self._max_util_loss).detach().item()],
                        figure_name='util_loss_landscape', y_label='ex-interim loss',
-                       epoch=epoch, plot_points=self.plot_points)
+                       colors=list(range(len(self.models))), epoch=epoch,
+                       labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 
