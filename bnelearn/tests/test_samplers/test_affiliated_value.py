@@ -14,9 +14,9 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 batch_size = 2**20
 
 # for first test: outer x 1
-conditional_outer_batch_size = 2**15
+conditional_outer_batch_size = 2**12
 # for second test: few x inner
-conditional_inner_batch_size = 2**18
+conditional_inner_batch_size = 2**10
 
 
 ids, test_cases = zip(*[
@@ -37,6 +37,7 @@ ids, test_cases = zip(*[
 def test_affiliated_values(n_players, valuation_size, u_lo, u_hi):
     """Test the Affiliated Values Sampler."""
 
+    _RTOL = 0.03  # depends on above specified batch sizes
 
     ### test with valuation size 1.
     s = vs.AffiliatedValuationObservationSampler(n_players, valuation_size, u_lo, u_hi, batch_size)
@@ -72,16 +73,16 @@ def test_affiliated_values(n_players, valuation_size, u_lo, u_hi):
     expected_observation_mean =  torch.tensor([[o_mean]*valuation_size]*n_players, device=o.device)
     expected_observation_std =  torch.tensor([[o_std]*valuation_size]*n_players, device=o.device)
 
-    assert torch.allclose(v.mean(dim=0), expected_valuation_mean, rtol = 0.02), \
+    assert torch.allclose(v.mean(dim=0), expected_valuation_mean, rtol = _RTOL), \
         "unexpected valuation sample mean!"
     # mean of obs should be identical to mean of vals.
-    assert torch.allclose(o.mean(dim=0), expected_observation_mean, rtol = 0.02), \
+    assert torch.allclose(o.mean(dim=0), expected_observation_mean, rtol = _RTOL), \
         "unexpected observation sample mean!"
 
-    assert torch.allclose(v.std(dim=0), expected_valuation_std, rtol = 0.02), \
+    assert torch.allclose(v.std(dim=0), expected_valuation_std, rtol = _RTOL), \
         "unexpected sample mean!"
 
-    assert torch.allclose(o.std(dim=0), expected_observation_std, rtol = 0.02), \
+    assert torch.allclose(o.std(dim=0), expected_observation_std, rtol = _RTOL), \
         "unexpected sample mean!"
 
     ## test manual dimensionalities and devices
@@ -103,13 +104,13 @@ def test_affiliated_values(n_players, valuation_size, u_lo, u_hi):
 
     for i in range(n_players):
         cv, co = s.draw_conditional_profiles(i, o[:,i,:], 1)
-        assert torch.allclose(o[:,i,:], co[:,i,:]), \
+        assert torch.allclose(o[...,i,:], co[...,0,i,:]), \
             "conditional sample did not respect inputs!"
 
-        assert  torch.allclose(o.mean(dim=0), co.mean(dim=0), rtol = 0.02) \
-            and torch.allclose(o.std(dim=0),  co.std(dim=0),  rtol = 0.02) \
-            and torch.allclose(v.mean(dim=0), cv.mean(dim=0), rtol = 0.02) \
-            and torch.allclose(v.std(dim=0),  cv.std(dim=0),  rtol = 0.02), \
+        assert  torch.allclose(o.mean(dim=0), co.mean(dim=0), rtol = _RTOL) \
+            and torch.allclose(o.std(dim=0),  co.std(dim=0),  rtol = _RTOL) \
+            and torch.allclose(v.mean(dim=0), cv.mean(dim=0), rtol = _RTOL) \
+            and torch.allclose(v.std(dim=0),  cv.std(dim=0),  rtol = _RTOL), \
             "With outer batch following the true distribtuion and inner_batch_size=1," + \
                 "co, cv should follow the same distribution as o,v."
 

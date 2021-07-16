@@ -854,7 +854,10 @@ class Experiment(ABC):
         ex_interim_max_util_loss = [util_loss_model.max() for util_loss_model in util_losses]
         estimated_relative_ex_ante_util_loss = [
             (1 - u / (u + l)).item()
-            for u, l in zip(self._cur_epoch_log_params['utilities'].tolist(), ex_ante_util_loss)
+            for u, l in zip(
+                [self.env.get_reward(self.env.agents[self._model2bidder[m][0]]).detach()
+                for m in range(len(self.models))],
+                ex_ante_util_loss)
         ]
 
         # plotting

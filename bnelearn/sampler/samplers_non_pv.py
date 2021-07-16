@@ -208,10 +208,14 @@ class AffiliatedValuationObservationSampler(ValuationObservationSampler):
                                   device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
         device = device or self.default_device
         inner_batch = inner_batch_size or self.default_batch_size
-        outer_batch = conditioned_observation.shape[0]
+        *outer_batch_sizes, observation_size = conditioned_observation.shape
+
+        assert observation_size == self.valuation_size
 
         i = conditioned_player
-        o_i = conditioned_observation.repeat_interleave(inner_batch, dim=0)
+        o_i = conditioned_observation \
+            .view(*outer_batch_sizes, 1, observation_size) \
+            .repeat(*([1]*len(outer_batch_sizes)), inner_batch_size, 1)
 
         # S|o_i is uniform on [max(lo, o-hi),  min(hi, o-lo)]
         # z_i = o_i - s
@@ -228,11 +232,16 @@ class AffiliatedValuationObservationSampler(ValuationObservationSampler):
 
         #sample for all players then overwrite for i
         z = torch.empty(
-            [outer_batch*inner_batch, self.n_players, self.valuation_size],
+            [*outer_batch_sizes, inner_batch, self.n_players, self.valuation_size],
             device = device).uniform_(self._u_lo, self._u_hi)
-        z[:,i,:] = o_i - s
+        z[..., i, :] = (o_i - s).view_as(z[..., i, :])
 
-        observations = z + s.view(-1, 1, self.valuation_size)
-        valuations = torch.sum(z, dim = 1) / self.n_players + s
+        observations = z + s.view(*outer_batch_sizes, inner_batch, 1, self.valuation_size)
+        valuations = torch.sum(z, dim=-2) / self.n_players + s
+
+        # same valuations for all agents
+        valuations = valuations \
+            .view(*outer_batch_sizes, inner_batch, 1, self.valuation_size) \
+            .repeat(*([1]*len(outer_batch_sizes)), 1, self.n_players, 1)
 
         return valuations, observations

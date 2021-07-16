@@ -81,7 +81,10 @@ class Mechanism(Game, ABC):
                 the maximale possible welfare. Averaged over batch.
 
         """
-        batch_size = min(env.agents[0].valuations.shape[0], 2 ** 12)
+        # TODO Nils: update to 188 compatibility
+        return -1
+
+        batch_size = min(env.sampler.default_batch_size, 2 ** 12)
 
         if redraw_valuations:
             env.draw_valuations()

@@ -17,7 +17,12 @@ from bnelearn.experiment.configurations import ExperimentConfig
 
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
 from bnelearn.strategy import ClosureStrategy
-from bnelearn.sampler import (CompositeValuationObservationSampler, SymmetricIPVSampler, UniformSymmetricIPVSampler)
+from bnelearn.sampler import (
+    CompositeValuationObservationSampler,
+    SymmetricIPVSampler,
+    UniformSymmetricIPVSampler,
+    AffiliatedValuationObservationSampler
+)
 from bnelearn.util.distribution_util import copy_dist_to_device
 
 
@@ -694,7 +699,6 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
     # TODO: update to new interface and add test
 
     def __init__(self,  config: ExperimentConfig):
-        raise NotImplementedError("Issue #188 not yet implmemented for Aff. Values setting.")
 
         self.n_players = config.setting.n_players
         self.n_items = 1
@@ -712,14 +716,6 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         assert self.correlation_groups == [[0, 1]], \
             "other settings not implemented properly yet"
         assert len(config.setting.correlation_coefficients) == 1
-        self.correlation_devices = [
-            AffiliatedObservationsDevice(
-                common_component_dist = self.common_prior,
-                batch_size = config.learning.batch_size,
-                n_common_components = 3,
-                correlation = 1
-            )
-        ]
 
         self.model_sharing = config.learning.model_sharing
         if self.model_sharing:
@@ -730,6 +726,19 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
             self._bidder2model = list(range(self.n_players))
 
         super().__init__(config)
+
+    def _setup_sampler(self):
+
+        default_batch_size = self.learning.batch_size
+        device = self.hardware.device
+        # setup individual samplers for each bidder
+        self.sampler = AffiliatedValuationObservationSampler(
+            n_players=self.n_players,
+            valuation_size=self.valuation_size,
+            u_lo=self.u_lo, u_hi=self.u_hi,
+            default_batch_size=default_batch_size,
+            default_device=device
+        )
 
     def _setup_mechanism(self):
         if self.payment_rule == 'first_price':
@@ -753,10 +762,10 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         # define bne agents once then use them in all runs
         agents = [
             self._strat_to_bidder(
-                strategy = bne_strategy,
-                player_position = i,
-                batch_size = self.config.logging.eval_batch_size,
-                enable_action_caching = self.config.logging.cache_eval_actions
+                strategy=bne_strategy,
+                player_position=i,
+                batch_size=self.config.logging.eval_batch_size,
+                enable_action_caching=self.config.logging.cache_eval_actions
             )
             for i in range(self.n_players)
         ]
@@ -765,18 +774,12 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
             a._grid_ub = 1.5
 
         self.bne_env = AuctionEnvironment(
-            mechanism = self.mechanism,
-            agents = agents,
-            batch_size = self.config.logging.eval_batch_size,
-            n_players = self.n_players,
-            strategy_to_player_closure = self._strat_to_bidder,
-            correlation_groups = self.correlation_groups,
-            correlation_devices = [AffiliatedObservationsDevice(
-                common_component_dist = self.common_prior,
-                batch_size = self.config.logging.eval_batch_size,
-                n_common_components = 3,
-                correlation = 1
-            )]
+            mechanism=self.mechanism,
+            agents=agents,
+            valuation_observation_sampler=self.sampler,
+            batch_size=self.config.logging.eval_batch_size,
+            n_players=self.n_players,
+            strategy_to_player_closure=self._strat_to_bidder
         )
 
         # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
@@ -788,8 +791,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         self.bne_utility = self.bne_utilities.mean()
 
     def _strat_to_bidder(self, **kwargs):
-        correlation_type = 'affiliated'
-        return Bidder(self.common_prior, correlation_type=correlation_type, **kwargs)
+        return Bidder(**kwargs)
 
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, 'interdependent', self.valuation_prior,
