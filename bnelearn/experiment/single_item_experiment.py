@@ -582,8 +582,6 @@ class MineralRightsExperiment(SingleItemExperiment):
     For risk-neutral agents, a unique BNE is known.
     """
 
-    # TODO Nils: there's some issue with the upper bound in the BNE / plotting
-
     def __init__(self,  config: ExperimentConfig):
         self.n_players = config.setting.n_players
         self.n_items = 1
@@ -608,6 +606,12 @@ class MineralRightsExperiment(SingleItemExperiment):
         else:
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
+
+        # plot limits
+        self.plot_xmin = self.u_lo
+        self.plot_xmax = self.u_hi * 2
+        self.plot_ymin = 0
+        self.plot_ymax = self.u_hi * 1.1
 
         super().__init__(config)
 
@@ -720,6 +724,12 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         else:
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
+
+        # plot limits
+        self.plot_xmin = self.u_lo
+        self.plot_xmax = self.u_hi
+        self.plot_ymin = 0
+        self.plot_ymax = self.u_hi
 
         super().__init__(config)
 

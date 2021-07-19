@@ -1,6 +1,7 @@
 """This module implements samplers that do not adhere to the private values setting."""
 
 from typing import List, Tuple
+from math import ceil
 import torch
 from torch.cuda import _device_t as Device
 from .base import ValuationObservationSampler
@@ -136,6 +137,27 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
 
         return v
 
+    def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
+                                dtype=torch.float, device = None) -> torch.Tensor:
+        """Custom grid that lives on larger (2x) support"""
+        device = device or self.default_device
+
+        bounds = 2*self.support_bounds[player_position]
+
+        # dimensionality
+        dims = self.valuation_size
+
+        # use equal density in each dimension of the valuation, such that
+        # the total number of points is at least as high as the specified one
+        n_points_per_dim = ceil(minimum_number_of_points**(1/dims))
+
+        # create equidistant lines along the support in each dimension
+        lines = [torch.linspace(bounds[d][0], bounds[d][1], n_points_per_dim,
+                                device=device, dtype=dtype)
+                 for d in range(dims)]
+        grid = torch.stack(torch.meshgrid(lines), dim=-1).view(-1, dims)
+
+        return grid
 
 class AffiliatedValuationObservationSampler(ValuationObservationSampler):
     """The 'Affiliated Values Model' model. (Krishna 2009, Example 6.2).
