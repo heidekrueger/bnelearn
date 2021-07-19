@@ -39,13 +39,13 @@ class ValuationObservationSampler(ABC):
         """Draws and returns a batch of valuation and observation profiles.
 
         Kwargs:
-            batch_size (optional): int, the batch_size to draw. If none provided,
-            `self.default_batch_size` will be used.
+            batch_sizes (optional): List[int], the batch_sizes to draw. If none provided,
+            `[self.default_batch_size]` will be used.
             device (optional): torch.cuda.Device, the device to draw profiles on
 
         Returns:
-            valuations: torch.Tensor (batch_size x n_players x valuation_size): a valuation profile
-            observations: torch.Tensor (batch_size x n_players x observation_size): an observation profile
+            valuations: torch.Tensor (*batch_sizes x n_players x valuation_size): a valuation profile
+            observations: torch.Tensor (*batch_sizes x n_players x observation_size): an observation profile
         """
 
     @abstractmethod
@@ -62,7 +62,7 @@ class ValuationObservationSampler(ABC):
         Args:
             conditioned_player: int
                 Index of the player whose observation we are conditioning on.
-            conditioned_observation: torch.Tensor (`outer_batch_size` (implicit), `observation_size`)
+            conditioned_observation: torch.Tensor (*`outer_batch_sizes` (implicit), `observation_size`)
                 A (batch of) observations of player `conditioned_player`.
 
         Kwargs:
@@ -71,9 +71,9 @@ class ValuationObservationSampler(ABC):
             If none provided, will use `self.default_batch_size` of the class.
 
         Returns:
-            valuations: torch.Tensor (outer_batch_size x inner_batch_size x n_players x valuation_size):
+            valuations: torch.Tensor (outer_batch_size, inner_batch_size, n_players, valuation_size):
                 a conditional valuation profile
-            observations: torch.Tensor (`outer_batch_size`, inner_batch_size x n_players x observation_size):
+            observations: torch.Tensor (*`outer_batch_size`s, inner_batch_size, n_players, observation_size):
                 a corresponding conditional observation profile.
                 observations[:,conditioned_observation,:] will be equal to
                 `conditioned_observation` repeated `batch_size` times
@@ -173,13 +173,13 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
         """Draws and returns a batch of valuation and observation profiles.
 
         Kwargs:
-            batch_size (optional): int, the batch_size to draw. If none provided,
+            batch_sizes (optional): List[int], the batch_size to draw. If none provided,
             `self.default_batch_size` will be used.
             device (optional): torch.cuda.Device, the device to draw profiles on
 
         Returns:
-            valuations: torch.Tensor (batch_size x n_players x valuation_size): a valuation profile
-            observations: torch.Tensor (batch_size x n_players x observation_size): an observation profile
+            valuations: torch.Tensor (*batch_sizes x n_players x valuation_size): a valuation profile
+            observations: torch.Tensor (*batch_sizes x n_players x observation_size): an observation profile
         """
         device = device or self.default_device
         batch_sizes: List[int] = self._parse_batch_sizes_arg(batch_sizes)
@@ -202,7 +202,7 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
                                   inner_batch_size: int,
                                   device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws and returns batches conditional valuation and corresponding observation profile.
-        For each entry of `conditioned_observation`, `batch_size` samples will be drawn!
+        For each entry of `conditioned_observation`, `inner_batch_size` samples will be drawn!
 
         Note that here, we are returning full profiles instead (including
         `conditioned_player`'s observation and others' valuations.)
@@ -211,7 +211,7 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
             conditioned_player: int
                 Index of the player whose observation we are conditioning on.
             conditioned_observation: torch.Tensor (`*outer_batch_sizes` (implicit), `observation_size`)
-                A (batch of) observations of player `conditioned_player`.
+                A batch of/batches of observations of player `conditioned_player`.
 
         Kwargs:
             batch_size (optional): int, the "inner"batch_size to draw - i.e.
@@ -221,9 +221,9 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
         Returns:
             valuations: torch.Tensor (batch_size x n_players x valuation_size):
                 a conditional valuation profile
-            observations: torch.Tensor ((batch_size * `outer_batch_size`) x n_players x observation_size):
+            observations: torch.Tensor (`*outer_batch_sizes`, inner_batch_size, n_players, observation_size):
                 a corresponding conditional observation profile.
-                observations[:,conditioned_observation,:] will be equal to
+                observations[...,conditioned_observation,:] will be equal to
                 `conditioned_observation` repeated `batch_size` times
         """
 
