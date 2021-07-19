@@ -139,25 +139,10 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
                                 dtype=torch.float, device = None) -> torch.Tensor:
-        """Custom grid that lives on larger (2x) support"""
-        device = device or self.default_device
-
-        bounds = 2*self.support_bounds[player_position]
-
-        # dimensionality
-        dims = self.valuation_size
-
-        # use equal density in each dimension of the valuation, such that
-        # the total number of points is at least as high as the specified one
-        n_points_per_dim = ceil(minimum_number_of_points**(1/dims))
-
-        # create equidistant lines along the support in each dimension
-        lines = [torch.linspace(bounds[d][0], bounds[d][1], n_points_per_dim,
-                                device=device, dtype=dtype)
-                 for d in range(dims)]
-        grid = torch.stack(torch.meshgrid(lines), dim=-1).view(-1, dims)
-
-        return grid
+        """This setting needs larger bounds for the grid."""
+        return 2 * super().generate_valuation_grid(player_position=player_position,
+                                                   minimum_number_of_points=minimum_number_of_points,
+                                                   dtype=dtype, device=device)
 
 class AffiliatedValuationObservationSampler(ValuationObservationSampler):
     """The 'Affiliated Values Model' model. (Krishna 2009, Example 6.2).
