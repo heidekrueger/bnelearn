@@ -68,7 +68,9 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
 
         device = device or self.default_device
         inner_batch = inner_batch_size or self.default_batch_size
-        outer_batch = conditioned_observation.shape[0]
+        *outer_batch_sizes, observation_size = conditioned_observation.shape
+
+        assert observation_size == self.valuation_size
 
         # shorthands
         i = conditioned_player
@@ -76,16 +78,16 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
         v = self._draw_v_given_o(conditioned_observation, inner_batch)
 
         valuations = v.to(device) \
-                      .view(outer_batch, inner_batch, 1, self.valuation_size) \
-                      .repeat([1, 1, self.n_players, 1])
+                      .view(*outer_batch_sizes, inner_batch, 1, observation_size) \
+                      .repeat(*([1]*len(outer_batch_sizes)), 1, self.n_players, 1)
 
         # draw individual factors, then overwrite for i
         x = torch.empty(
-            [outer_batch, inner_batch, self.n_players, self.valuation_size],
+            [*outer_batch_sizes, inner_batch, self.n_players, observation_size],
             device=device).uniform_()
         x[..., i, :] = conditioned_observation \
-            .view(outer_batch, 1, -1) \
-            .repeat(1, inner_batch, 1) / (2*v)
+            .unsqueeze(-2) \
+            .repeat(*([1]*len(outer_batch_sizes)), inner_batch, 1) / (2*v)
         # previous operation introduces NaNs when cond_observation == 0
         # and u_lo ==0 ==> v == 0, thus x/v = 0/0.
         # in this case, we set x to 0.
@@ -104,13 +106,16 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
         To do so, we use the inverse CDF method.
 
         Args:
-            o_i: observation of a single player (outer_batch_size x valuation_size)
+            o_i: observation of a single player (*outer_batch_sizes x valuation_size)
 
         Returns:
-            common_value: tensor of dim (outer_batch, inner_batch, valuation_size) on same device as o_i
+            common_value: tensor of dim (*outer_batch_sizes, inner_batch, valuation_size)
+                on same device as o_i
         """
 
-        o_i = o_i.unsqueeze(1).repeat(1, inner_batch_size, 1)
+        *outer_batch_sizes, _ = o_i.shape
+
+        o_i = o_i.unsqueeze(-2).repeat(*([1]*len(outer_batch_sizes)), inner_batch_size, 1)
 
         # Let o = 2*v*x where v is U[lo,hi], x is U[0,1]. Then
         #  1. f(o|v) ∝ 1/v on [0, 2v]
@@ -126,11 +131,17 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
         hi = torch.zeros_like(o_i) + self._common_value_hi
 
         u = torch.empty_like(o_i).uniform_()
-        v =(u* hi.log() + (1-u) * lo.log()).exp()
+        v = (u* hi.log() + (1-u) * lo.log()).exp()
         # alternative form of the same: v= b**u * a**(1-u). Which is faster/more stable?
 
         return v
 
+    def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
+                                dtype=torch.float, device = None) -> torch.Tensor:
+        """This setting needs larger bounds for the grid."""
+        return 2 * super().generate_valuation_grid(player_position=player_position,
+                                                   minimum_number_of_points=minimum_number_of_points,
+                                                   dtype=dtype, device=device)
 
 class AffiliatedValuationObservationSampler(ValuationObservationSampler):
     """The 'Affiliated Values Model' model. (Krishna 2009, Example 6.2).
@@ -208,10 +219,14 @@ class AffiliatedValuationObservationSampler(ValuationObservationSampler):
                                   device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
         device = device or self.default_device
         inner_batch = inner_batch_size or self.default_batch_size
-        outer_batch = conditioned_observation.shape[0]
+        *outer_batch_sizes, observation_size = conditioned_observation.shape
+
+        assert observation_size == self.valuation_size
 
         i = conditioned_player
-        o_i = conditioned_observation.repeat_interleave(inner_batch, dim=0)
+        o_i = conditioned_observation \
+            .view(*outer_batch_sizes, 1, observation_size) \
+            .repeat(*([1]*len(outer_batch_sizes)), inner_batch_size, 1)
 
         # S|o_i is uniform on [max(lo, o-hi),  min(hi, o-lo)]
         # z_i = o_i - s
@@ -228,11 +243,16 @@ class AffiliatedValuationObservationSampler(ValuationObservationSampler):
 
         #sample for all players then overwrite for i
         z = torch.empty(
-            [outer_batch*inner_batch, self.n_players, self.valuation_size],
+            [*outer_batch_sizes, inner_batch, self.n_players, self.valuation_size],
             device = device).uniform_(self._u_lo, self._u_hi)
-        z[:,i,:] = o_i - s
+        z[..., i, :] = (o_i - s).view_as(z[..., i, :])
 
-        observations = z + s.view(-1, 1, self.valuation_size)
-        valuations = torch.sum(z, dim = 1) / self.n_players + s
+        observations = z + s.view(*outer_batch_sizes, inner_batch, 1, self.valuation_size)
+        valuations = torch.sum(z, dim=-2) / self.n_players + s
+
+        # same valuations for all agents
+        valuations = valuations \
+            .view(*outer_batch_sizes, inner_batch, 1, self.valuation_size) \
+            .repeat(*([1]*len(outer_batch_sizes)), 1, self.n_players, 1)
 
         return valuations, observations

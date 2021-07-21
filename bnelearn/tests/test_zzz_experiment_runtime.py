@@ -48,9 +48,19 @@ ids_si, *testdata_si = zip(*[
                            .get_config(),
         True
     ], [
-        '4 -single_item-asymmetric-uniform-vcg',
+        '4 - single_item-asymmetric-uniform-vcg',
         *ConfigurationManager(experiment_type='single_item_asymmetric_uniform_overlapping', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
                            .set_setting(payment_rule='second_price')
+                           .get_config(),
+        True
+    ], [
+        '5 - single_item-affiliated-observations',
+        *ConfigurationManager(experiment_type='affiliated_observations', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
+                           .get_config(),
+        True
+    ], [
+        '6 - single_item-mineral-rights',
+        *ConfigurationManager(experiment_type='mineral_rights', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
                            .get_config(),
         True
     ]
@@ -190,9 +200,6 @@ def run_auction_test(config, exp_class, known_bne):
 def test_single_item_auctions(config, exp_class, known_bne):
     run_auction_test(config, exp_class, known_bne)
 
-@pytest.mark.xfail
-def test_missing_single_item_experiments():
-    assert 1 == 0, "No tests exist for MineralRights and AffiliatedValues. (Samplers are implemented, Experiments need to updated.)"
 
 @pytest.mark.parametrize("config, exp_class, known_bne", zip(*testdata_lg), ids=ids_lg)
 def test_local_global_auctions(config, exp_class, known_bne):
