@@ -1,7 +1,6 @@
 """This module implements samplers that do not adhere to the private values setting."""
 
 from typing import List, Tuple
-from math import ceil
 import torch
 from torch.cuda import _device_t as Device
 from .base import ValuationObservationSampler
