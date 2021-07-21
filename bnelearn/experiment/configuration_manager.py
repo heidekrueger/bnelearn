@@ -172,7 +172,6 @@ class ConfigurationManager:
 
     def _init_affiliated_observations(self):
         self.running.n_runs = 1
-        self.running.n_epochs = 2000
         self.setting.n_players = 2
         self.setting.correlation_groups = [[0, 1]]
         self.setting.correlation_types = 'corr_type'
