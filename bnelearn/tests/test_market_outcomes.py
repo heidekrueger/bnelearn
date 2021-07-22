@@ -54,7 +54,7 @@ def run_efficiency_test(experiment_type = str, setting_params = dict, true_effic
     experiment = experiment_class(experiment_config)
 
     efficiency = experiment.bne_env.get_efficiency()
-    assert abs(efficiency.item() - true_efficiency) < 1e-3
+    assert abs(efficiency.item() - true_efficiency) < 1e-2
 
 @pytest.mark.parametrize("experiment_type, setting_params, true_efficiency", zip(*test_data), ids=test_ids)
 def test_efficiency(experiment_type, setting_params, true_efficiency):
