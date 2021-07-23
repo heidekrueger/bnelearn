@@ -1,5 +1,12 @@
+"""This module is based on the qpth package by Brandon Amos
+https://github.com/locuslab/qpth/blob/master/qpth/solvers/pdipm/batch.py
+and has been slightly modified. The original work is licensed under 
+Apache 2.0
+"""
+
 import torch
 from enum import Enum
+
 
 def bdiag(d):
     nBatch, sz = d.size()
@@ -7,6 +14,7 @@ def bdiag(d):
     I = torch.eye(sz).repeat(nBatch, 1, 1).type_as(d).bool()
     D[I] = d.squeeze().view(-1)
     return D
+
 
 def get_sizes(G, A=None):
     if G.dim() == 2:
@@ -20,6 +28,7 @@ def get_sizes(G, A=None):
         neq = None
     # nBatch = batchedTensor.size(0) if batchedTensor is not None else None
     return nineq, nz, neq, nBatch
+
 
 def lu_hack(x):
     data, pivots = x.lu(pivot=not x.is_cuda)
@@ -47,11 +56,11 @@ INACC_ERR = "qpth warning: Returning an inaccurate and potentially incorrect sol
 # --------
 
 
-
 class KKTSolvers(Enum):
     LU_FULL = 1
     LU_PARTIAL = 2
     IR_UNOPT = 3
+
 
 def forward(Q, p, G, h, A, b, Q_LU, S_LU, R, eps=1e-12, verbose=0, notImprovedLim=3,
             maxIter=25, solver=KKTSolvers.LU_FULL):
@@ -109,16 +118,19 @@ def forward(Q, p, G, h, A, b, Q_LU, S_LU, R, eps=1e-12, verbose=0, notImprovedLi
         ry = torch.bmm(x.unsqueeze(1), A.transpose(
             1, 2)).squeeze(1) - b if neq > 0 else 0.0
         mu = torch.abs((s * z).sum(1).squeeze() / nineq)
-        z_resid = torch.norm(rz, 2, 1).squeeze() #NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
-        y_resid = torch.norm(ry, 2, 1).squeeze() if neq > 0 else 0 #NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
+        # NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
+        z_resid = torch.norm(rz, 2, 1).squeeze()
+        # NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
+        y_resid = torch.norm(ry, 2, 1).squeeze() if neq > 0 else 0
         pri_resid = y_resid + z_resid
-        dual_resid = torch.norm(rx, 2, 1).squeeze() #NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
+        # NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
+        dual_resid = torch.norm(rx, 2, 1).squeeze()
         resids = pri_resid + dual_resid + nineq * mu
 
         d = z / s
-        if i>20:
+        if i > 20:
             print("_________d_qpth_________")
-            print(d[2,:].view(-1))
+            print(d[2, :].view(-1))
             print("___________________________")
         try:
             factor_kkt(S_LU, R, d)
@@ -151,7 +163,7 @@ def forward(Q, p, G, h, A, b, Q_LU, S_LU, R, eps=1e-12, verbose=0, notImprovedLi
                 I_neq = I.repeat(neq, 1).t()
                 best['y'][I_neq] = y[I_neq]
         if nNotImproved == notImprovedLim or best['resids'].max() < eps or mu.min() > 1e32:
-            print("residuals not improving, exiting! at iter ", i) #modified
+            print("residuals not improving, exiting! at iter ", i)  # modified
             if best['resids'].max() > 1. and verbose >= 0:
                 print(INACC_ERR)
             return best['x'], best['y'], best['z'], best['s']
@@ -220,10 +232,13 @@ def forward(Q, p, G, h, A, b, Q_LU, S_LU, R, eps=1e-12, verbose=0, notImprovedLi
         print(INACC_ERR)
     return best['x'], best['y'], best['z'], best['s']
 
+
 def get_step(v, dv):
     a = -v / dv
     a[dv > 0] = max(1.0, a.max())
     return a.min(1)[0].squeeze()
+
+
 def unpack_kkt(v, nz, nineq, neq):
     i = 0
     x = v[:, i:i + nz]
@@ -334,10 +349,11 @@ def factor_solve_kkt(Q, D, G, A, rx, rs, rz, ry):
         h_ = torch.cat([rz, ry], 1)
     else:
         # A_ = torch.cat([G, torch.eye(nineq).type_as(Q)], 1)
-        A_ = torch.cat([G, torch.eye(nineq).type_as(Q).repeat(nBatch, 1, 1)], 2) #modified
+        A_ = torch.cat([G, torch.eye(nineq).type_as(
+            Q).repeat(nBatch, 1, 1)], 2)  # modified
         g_ = torch.cat([rx, rs], 1)
         h_ = rz
-    H_=H_.detach() #modified
+    H_ = H_.detach()  # modified
     H_LU = lu_hack(H_)
 
     invH_A_ = A_.transpose(1, 2).lu_solve(*H_LU)
@@ -367,7 +383,8 @@ def solve_kkt(Q_LU, d, G, A, S_LU, rx, rs, rz, ry):
         h = torch.cat((invQ_rx.unsqueeze(1).bmm(A.transpose(1, 2)).squeeze(1) - ry,
                        invQ_rx.unsqueeze(1).bmm(G.transpose(1, 2)).squeeze(1) + rs / d - rz), 1)
     else:
-        h = invQ_rx.unsqueeze(1).bmm(G.transpose(1, 2)).squeeze(1) + rs / d - rz
+        h = invQ_rx.unsqueeze(1).bmm(
+            G.transpose(1, 2)).squeeze(1) + rs / d - rz
 
     w = -(h.unsqueeze(2).lu_solve(*S_LU)).squeeze(2)
 
