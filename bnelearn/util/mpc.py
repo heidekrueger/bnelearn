@@ -1,20 +1,27 @@
 """This module contains the implementation of our custom GPU-enabled solver
 for batched constrained quadratic programs.
+
+authors:
+    Anne Christopher
+    Stefan Heidekrüger (@heidekrueger)
+    Paul Sutterer
 """
+
+from typing import Tuple
 
 import torch
 import numpy as np
 
 class MpcSolver():
-    """A batched qp-solver that solves batches of QPs of the form
-    
+    r"""A batched qp-solver that solves batches of QPs of the form
+
     min   0.5 x.T Q x + q.T x
     s.t.  Gx <= h
           Ax = b
-    
-    with problem sice n (i.e. :math:`x\in\mathbb{R}^n}`)  , `n_ineq` many inequality constraints 
+
+    with problem sice n (i.e. :math:`x\in\mathbb{R}^n}`)  , `n_ineq` many inequality constraints
     and `n_eq` equality constraints.
-    
+
     The device and dtype used by the solver will be inferred from Q.
 
     Args:
@@ -30,7 +37,24 @@ class MpcSolver():
     def __init__(self, max_iter=20):
         self.max_iter = max_iter
 
-    def solve(self, Q: torch.Tensor, q: torch.Tensor, 
+        # the following tensors will kept as state variables over all iterations
+        self.Q: torch.Tensor = None
+        self.q: torch.Tensor = None
+        self.G: torch.Tensor = None
+        self.G_T: torch.Tensor = None
+        self.h: torch.Tensor = None
+        self.A: torch.Tensor = None
+        self.A_T: torch.Tensor = None
+        self.b: torch.Tensor = None
+
+        # the following are dimensions likewise stored in memory
+        self.n_batch: int = None
+        self.n_x: int = None
+        self.n_eq: int = 0
+        self.n_ineq: int = 0
+
+
+    def solve(self, Q: torch.Tensor, q: torch.Tensor,
                     G: torch.Tensor, h: torch.Tensor,
                     A: torch.Tensor  = None, b: torch.Tensor = None,
                     refine=False, print_warning=False):
@@ -43,7 +67,7 @@ class MpcSolver():
         self.b = b
         if self.A != None:
             self.A_T = torch.transpose(self.A, dim0=2, dim1=1)
-        self.n_batch, self.n_x, self.n_ineq, self.n_eq = self.get_sizes()
+        self.n_batch, self.n_x, self.n_ineq, self.n_eq = self._verify_parameter_sizes()
         self.device = self.Q.device
         self.dtype = self.Q.dtype
         assert self.is_Q_pd(), "Q is not p.d., but this is required!"
@@ -56,10 +80,13 @@ class MpcSolver():
             self.b_unsqueezed = self.b.unsqueeze(-1)
         else:
             self.b_unsqueezed = None
-        self.x, self.s, self.z, self.y = self.solve_kkt(-self.q.unsqueeze(-1),
-                                                        torch.zeros(
-                                                            (self.n_batch, self.n_ineq), device=self.device, dtype=self.dtype).unsqueeze(-1),
-                                                        self.h.unsqueeze(-1), self.b_unsqueezed)
+        self.x, self.s, self.z, self.y = self.solve_kkt(
+            -self.q.unsqueeze(-1),
+            torch.zeros((self.n_batch, self.n_ineq),
+                        device=self.device, dtype=self.dtype
+                       ).unsqueeze(-1),
+            self.h.unsqueeze(-1),
+            self.b_unsqueezed)
 
         alpha_p = self.get_initial(-self.z)
         alpha_d = self.get_initial(self.z)
@@ -73,7 +100,8 @@ class MpcSolver():
             torch.bmm(torch.transpose(self.q.unsqueeze(-1), dim0=2, dim1=1), self.x)
         return self.x, op_val
 
-    def get_sizes(self):
+    def _verify_parameter_sizes(self) -> Tuple[int,int,int,int]:
+        """Checks whether problem parameters are compatible, and determines and sets dimensions."""
         # 2 dimensions, i.e. no batches ==> dimensions are (n_ineq, n_x), add dimension n_batch at pos 0
         if(self.Q.dim() == self.G.dim() == 2):
             self.Q = self.Q.unsqueeze(0)
@@ -98,26 +126,29 @@ class MpcSolver():
         except RuntimeError as e:
             raise RuntimeError("Q is not PD") from e
 
-    def lu_factorize(self, x):
-        # do lu factorization of x
-        # avoid pivoting when possible, i.e when on cuda
-        data, pivots = x.lu(pivot=not x.is_cuda)
-        # define pivot matrix manually when on cuda
-        if x.is_cuda == True:
-            # pivot matrix doesnt do any pivoting
-            pivots = torch.arange(1, 1+x.size(1), dtype=torch.int,
-                                  device=self.device).unsqueeze(0).repeat(x.size(0), 1)
-        return (data, pivots)
+    # TODO: following code is commented out while we confirm that the if
+    # condition in the lower half can actually be removed.
+    # def lu_factorize(self, x) -> Tuple[torch.Tensor, torch.Tensor]:
+    #     """Returns the LU factorization of x.
 
-    def get_diag_matrix(self, d):
-        # return diagonal matrix with diagonal entries d
-        nBatch, n, _ = d.size()
-        Diag = torch.zeros(
-            (nBatch, n, n), device=self.device, dtype=self.dtype)
-        I = torch.eye(n, device=self.device, dtype=self.dtype).repeat(
-            nBatch, 1, 1).bool()
-        Diag[I] = d.view(-1)
-        return Diag
+    #     Args:
+    #         x: torch.tensor (batch_size, n, n) (where n is arbitrary)
+
+    #     """
+    #     # We want to avoid pivoting if possible. As of pytorch 1.9,
+    #     # this is possible only for cuda tensors.
+    #     data, pivots = x.lu(pivot=not x.is_cuda)
+    #     # define pivot matrix manually when on cuda
+    #     #As of pytorch 1.9, this seems to be redundant,
+    #     # as pivats returns this matrix by default. (let's keep the code around
+    #     # to confirm nothing breaks.)
+    #     if x.is_cuda == True:
+    #         pivot matrix doesnt do any pivoting
+    #         pivots = torch.arange(
+    #             1, 1+x.size(1),
+    #             dtype=torch.int, device=self.device
+    #             ).unsqueeze(0).repeat(x.size(0), 1)
+    #     return (data, pivots)
 
     def get_Jacobian(self):
         # get the jacobian kkt matrix as concatenation of 4 blocks, B2=transpose(B3)
@@ -156,16 +187,19 @@ class MpcSolver():
         self.J[:, :self.n_x+self.n_ineq, self.n_x+self.n_ineq:] = B2
         self.J[:, self.n_x+self.n_ineq:, :self.n_x+self.n_ineq] = B3
         self.J[:, self.n_x+self.n_ineq:, self.n_x+self.n_ineq:] = B4
-        # self.J=torch.cat((torch.cat((B1,B2),dim=2),torch.cat((B3,B4),dim=2)),dim=1)
         return self.J
 
     def get_lu_J(self, d=None):
         # the jacobian J is modified when d is specified
         if d != None:
-            self.D = self.get_diag_matrix(d)
-            self.J[:, self.n_x:self.n_x+self.n_ineq,
-                   self.n_x:self.n_x+self.n_ineq] = self.D
-        self.J_lu, self.J_piv = self.lu_factorize(self.J)
+            assert (d.dim() == 3 and d.shape[2] == 1), "unexpected input d"
+            self.D = torch.diag_embed(d.squeeze(-1))
+            self.J[ :, self.n_x:self.n_x+self.n_ineq, self.n_x:self.n_x+self.n_ineq] = self.D
+        # TODO Stefan: wrapper no longer needed (??)
+        # replaced by direct torch.lu call below, but keep around just in case
+        #self.J_lu, self.J_piv = self.lu_factorize(self.J)
+        self.J_lu, self.J_piv = self.J.lu(pivot = not self.J.is_cuda)
+
         return self.J
 
     def solve_kkt(self, rx, rs, rz, ry):
@@ -185,7 +219,9 @@ class MpcSolver():
             dy = None
         return(dx, ds, dz, dy)
 
-    # SOLVE_KKT USING BLOCK ELIMINATION TECHNIQUE
+    # ALTERNATIVE SOLVE_KKT USING BLOCK ELIMINATION TECHNIQUE
+    # this has been found to be slower in our settings.
+    # For details see Anne Christopher's MSc Thesis (2020), section 5.3.2
     # def solve_kkt(self,rx,rs,rz,ry):
     #   b1=torch.cat((rx,rs),dim=1)
     #   if ry!=None:
@@ -223,6 +259,12 @@ class MpcSolver():
     #   return (dx,ds,dz,dy)
 
     def remove_nans(self, dx, ds, dz, dy):
+        """When the tensor of a batch contains NaNs in its first row,
+           replace that entire batch with zero entries.
+
+           Note that this behavior differs from simply checking
+           torch.where(x.isnan()).
+        """
         wh = torch.where(dx[:, 0, :] != dx[:, 0, :])[0]  # find NaN positions
         dx[wh, :, :] = torch.zeros((len(wh), dx.size()[1], dx.size()[
                                    2]), device=self.device, dtype=self.dtype)
@@ -236,7 +278,7 @@ class MpcSolver():
         return dx, ds, dz, dy, wh
 
     def mpc_opt(self, print_warning=True):
-        count = 0
+
         bat = np.array([i for i in range(self.n_batch)])
         n_iter = 0
         # this_problem_not_converged= torch.ones(self.nbatch).type_as(self.Q).view(self.nbatch,1,1)
@@ -376,9 +418,6 @@ class MpcSolver():
                 if(i == self.max_iter-1 and (resids > 1e-10).any()) & print_warning == True:
                     print("mpc exit in iter", i)
                     print("no of mu not converged: ", len(mu[mu > 1e-10]))
-                    # print("no of primal residual not converged: ",len(pri_resid[pri_resid>1e-10]))
-                    # print("no of dual residual 1 not converged: ",len(dual_1_resid[dual_1_resid>1e-10]))
-                    # print("no of dual residual 2 not converged: ",len(dual_2_resid[dual_2_resid>1e-10]))
                     print("mpc warning: Residuals not converged, need more itrations")
             if self.refine == False:
                 return(self.x, self.s, self.z, self.y)
@@ -386,7 +425,8 @@ class MpcSolver():
                 n_iter += 1
         return(self.x, self.s, self.z, self.y)
 
-    def get_step(self, v, dv):
+    @staticmethod
+    def get_step(v, dv):
         v = v.squeeze(2)
         dv = dv.squeeze(2)
         div = -v/dv
@@ -397,9 +437,9 @@ class MpcSolver():
         return (div.min(1)[0]).view(v.size()[0], 1, 1)
 
     def get_initial(self, z):
-        # get step size using line search for initialization
-        nbatch, _, _ = z.size()
+        """get step size using line search for initialization"""
+        n_batch, _, _ = z.size()
         dz = torch.ones_like(z)
         div = -z/dz
-        alpha = torch.max(div, dim=1).values.view(nbatch, 1, 1)+1  # 0.00001
-        return alpha.view(nbatch, 1, 1)
+        alpha = torch.max(div, dim=1).values.view(n_batch, 1, 1)+1  # 0.00001
+        return alpha.view(n_batch, 1, 1)
