@@ -17,7 +17,6 @@ from qpth.qp import QPFunction
 
 from .mechanism import Mechanism
 from bnelearn.util import mpc
-# from bnelearn.util import qpth_class
 from time import perf_counter as timer
 
 
@@ -130,7 +129,7 @@ class _OptNet_for_LLLLGG(nn.Module):
                              (self.Q, self.q, self.G, self.h, self.e, self.mu)
 
         elif solver == 'mpc':
-            mpc_solver=mpc.mpc_class(max_iter=self.max_iter)
+            mpc_solver=mpc.MpcSolver(max_iter=self.max_iter)
             # detach all variables to set requires_grad=False
             if self.e is not None:
                 self.e_no_grad=self.e.detach()
