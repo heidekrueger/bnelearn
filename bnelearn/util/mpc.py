@@ -94,6 +94,7 @@ class MpcSolver():
     def is_Q_pd(self):
         try:
             torch.linalg.cholesky(self.Q)
+            return True
         except RuntimeError as e:
             raise RuntimeError("Q is not PD") from e
 
