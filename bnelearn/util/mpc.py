@@ -37,7 +37,7 @@ class MpcSolver():
     def __init__(self, max_iter=20):
         self.max_iter = max_iter
 
-        # the following tensors will kept as state variables over all iterations
+        # problem parameters
         self.Q: torch.Tensor = None
         self.q: torch.Tensor = None
         self.G: torch.Tensor = None
@@ -47,39 +47,41 @@ class MpcSolver():
         self.A_T: torch.Tensor = None
         self.b: torch.Tensor = None
 
-        # the following are dimensions likewise stored in memory
+        # problem dimensions
         self.n_batch: int = None
         self.n_x: int = None
         self.n_eq: int = 0
         self.n_ineq: int = 0
+        self.n_constraints = None
 
 
     def solve(self, Q: torch.Tensor, q: torch.Tensor,
                     G: torch.Tensor, h: torch.Tensor,
                     A: torch.Tensor  = None, b: torch.Tensor = None,
                     refine=False, print_warning=False):
+
+        self.device = Q.device
+        self.dtype = Q.dtype
+        assert self.is_pd(Q), "Q is not p.d., but this is a requirement!"
+
         self.Q = Q
         self.q = q
         self.G = G
         self.h = h
-        self.G_T = torch.transpose(self.G, dim0=2, dim1=1)
+        self.G_T = torch.transpose(self.G, dim0=2, dim1=1).contiguous()
         self.A = A
         self.b = b
-        if self.A != None:
-            self.A_T = torch.transpose(self.A, dim0=2, dim1=1)
-        self.n_batch, self.n_x, self.n_ineq, self.n_eq = self._verify_parameter_sizes()
-        self.device = self.Q.device
-        self.dtype = self.Q.dtype
-        assert self.is_Q_pd(), "Q is not p.d., but this is required!"
+        if self.A is not None:
+            self.A_T = torch.transpose(self.A, dim0=2, dim1=1).contiguous()
+        self._verify_parameter_sizes()
+
         self.refine = refine
         self.J = self.get_Jacobian()
         self.J = self.get_lu_J()
 
         # get initial solution
-        if self.n_eq is not None:
-            self.b_unsqueezed = self.b.unsqueeze(-1)
-        else:
-            self.b_unsqueezed = None
+        self.b_unsqueezed = b.unsqueeze(-1) if self.n_eq > 0 else None
+
         self.x, self.s, self.z, self.y = self.solve_kkt(
             -self.q.unsqueeze(-1),
             torch.zeros((self.n_batch, self.n_ineq),
@@ -100,7 +102,7 @@ class MpcSolver():
             torch.bmm(torch.transpose(self.q.unsqueeze(-1), dim0=2, dim1=1), self.x)
         return self.x, op_val
 
-    def _verify_parameter_sizes(self) -> Tuple[int,int,int,int]:
+    def _verify_parameter_sizes(self):
         """Checks whether problem parameters are compatible, and determines and sets dimensions."""
         # 2 dimensions, i.e. no batches ==> dimensions are (n_ineq, n_x), add dimension n_batch at pos 0
         if(self.Q.dim() == self.G.dim() == 2):
@@ -112,16 +114,23 @@ class MpcSolver():
             self.A = self.A.unsqueeze(0)
             self.b = self.b.unsqueeze(0)
         # get sizes
-        n_batch, n_ineq, n_x = self.G.size()
+        self.n_batch, self.n_ineq, self.n_x = self.G.size()
         if self.A is not None:
-            _, n_eq, _ = self.A.size()
+            n_batch_A, self.n_eq, n_x_A = self.A.size()
+            assert n_batch_A == self.n_batch and n_x_A == self.n_x, \
+                "batch and decision variables don't match between A and G!"
         else:
-            n_eq = None
-        return n_batch, n_x, n_ineq, n_eq
+            self.n_eq = 0
 
-    def is_Q_pd(self):
+        self.n_constraints = self.n_ineq + self.n_eq
+
+    @staticmethod
+    def is_pd(Q):
+        """checks whether Q (respectively, its entry-matrices in each batch,
+        are positive definite.
+        """
         try:
-            torch.linalg.cholesky(self.Q)
+            torch.linalg.cholesky(Q)
             return True
         except RuntimeError as e:
             raise RuntimeError("Q is not PD") from e
@@ -151,19 +160,21 @@ class MpcSolver():
     #     return (data, pivots)
 
     def get_Jacobian(self):
-        # get the jacobian kkt matrix as concatenation of 4 blocks, B2=transpose(B3)
+        """get the jacobian kkt matrix as concatenation of 4 blocks.
+        Note that B2=transpose(B3)
+        """
         B1 = torch.zeros((self.n_batch, self.n_x+self.n_ineq, self.n_x +
                          self.n_ineq), device=self.device, dtype=self.dtype)
-        if self.n_eq == None:
-            B3 = torch.zeros((self.n_batch, self.n_ineq, self.n_x +
-                             self.n_ineq), device=self.device, dtype=self.dtype)
+        if self.n_eq == 0:
+            B3 = torch.zeros((self.n_batch, self.n_ineq, self.n_x + self.n_ineq),
+                             device=self.device, dtype=self.dtype)
             B4 = torch.zeros((self.n_batch, self.n_ineq, self.n_ineq),
                              device=self.device, dtype=self.dtype)
         else:
-            B3 = torch.zeros((self.n_batch, self.n_eq+self.n_ineq, self.n_x +
-                             self.n_ineq), device=self.device, dtype=self.dtype)
-            B4 = torch.zeros((self.n_batch, self.n_eq+self.n_ineq, self.n_eq +
-                             self.n_ineq), device=self.device, dtype=self.dtype)
+            B3 = torch.zeros((self.n_batch, self.n_constraints, self.n_x + self.n_ineq),
+                             device=self.device, dtype=self.dtype)
+            B4 = torch.zeros((self.n_batch, self.n_constraints, self.n_constraints),
+                              device=self.device, dtype=self.dtype)
 
         B1[:, :self.n_x, :self.n_x] = self.Q
         # D here is unit identity matrix (initial case)
@@ -172,15 +183,13 @@ class MpcSolver():
         B1[:, -self.n_ineq:, -self.n_ineq:] = self.D
 
         B3[:, :self.n_ineq, :self.n_x] = self.G
-        if self.A != None:
+        if self.A is not None:
             B3[:, -self.n_eq:, :self.n_x] = self.A
-        B3[:, :self.n_ineq, -self.n_ineq:] = torch.eye(
-            (self.n_ineq), device=self.device, dtype=self.dtype).repeat(self.n_batch, 1, 1)
+        B3[:, :self.n_ineq, -self.n_ineq:] = torch.eye((self.n_ineq),
+            device=self.device, dtype=self.dtype).repeat(self.n_batch, 1, 1)
 
         B2 = torch.transpose(B3, dim0=2, dim1=1)
-        size = self.n_x+(2*self.n_ineq)
-        if self.n_eq != None:
-            size += self.n_eq
+        size = self.n_x+(2*self.n_ineq) + self.n_eq
         self.J = torch.zeros((self.n_batch, size, size),
                              device=self.device, dtype=self.dtype)
         self.J[:, :self.n_x+self.n_ineq, :self.n_x+self.n_ineq] = B1
@@ -190,7 +199,7 @@ class MpcSolver():
         return self.J
 
     def get_lu_J(self, d=None):
-        # the jacobian J is modified when d is specified
+        """the jacobian J is modified when d is specified"""
         if d != None:
             assert (d.dim() == 3 and d.shape[2] == 1), "unexpected input d"
             self.D = torch.diag_embed(d.squeeze(-1))
@@ -211,7 +220,7 @@ class MpcSolver():
         step = F.lu_solve(self.J_lu, self.J_piv)
         dx = step[:, :self.n_x, :]
         ds = step[:, self.n_x:self.n_x+self.n_ineq, :]
-        if self.n_eq != None:
+        if self.n_eq != 0:
             dz = step[:, self.n_x+self.n_ineq:-self.n_eq, :]
             dy = step[:, -self.n_eq:, :]
         else:
@@ -272,7 +281,7 @@ class MpcSolver():
                                    2]), device=self.device, dtype=self.dtype)
         dz[wh, :, :] = torch.zeros((len(wh), dz.size()[1], dz.size()[
                                    2]), device=self.device, dtype=self.dtype)
-        if self.n_eq != None:
+        if self.n_eq != 0:
             dy[wh, :, :] = torch.zeros((len(wh), dy.size()[1], dy.size()[
                                        2]), device=self.device, dtype=self.dtype)
         return dx, ds, dz, dy, wh
@@ -287,7 +296,7 @@ class MpcSolver():
                 print(n_iter)
                 print("Refining solutions with second round of iterations")
             for i in range(self.max_iter):
-                if self.n_eq != None:
+                if self.n_eq > 0:
                     rx = -(torch.bmm(self.A_T, self.y)+torch.bmm(self.G_T,
                            self.z)+torch.bmm(self.Q, self.x)+self.q.unsqueeze(-1))
                 else:
@@ -295,7 +304,7 @@ class MpcSolver():
                            torch.bmm(self.Q, self.x)+self.q.unsqueeze(-1))
                 rs = -self.z
                 rz = -(torch.bmm(self.G, self.x)+self.s-self.h.unsqueeze(-1))
-                if self.n_eq != None:
+                if self.n_eq > 0:
                     ry = -(torch.bmm(self.A, self.x)-self.b.unsqueeze(-1))
                 else:
                     ry = None
@@ -304,7 +313,7 @@ class MpcSolver():
                     self.s, dim0=2, dim1=1), self.z).sum(1))/self.n_ineq
                 pri_resid = torch.abs(rx)
                 dual_1_resid = torch.abs(rz)
-                if self.n_eq != None:
+                if self.n_eq > 0:
                     dual_2_resid = torch.abs(ry)
                     resids = np.array([tensor.cpu() for tensor in
                                        [pri_resid.max(), mu.max(), dual_1_resid.max(), dual_2_resid.max()]])
@@ -327,9 +336,9 @@ class MpcSolver():
                     if (resids < 1e-6).all():
                         # print("Early exit at iteration no:",i)
                         return(self.x, self.s, self.z, self.y)
-                except:
+                except Exception as e:
                     print(bat[torch.isnan(pri_resid.sum(1)).squeeze(1)])
-                    raise RuntimeError("invalid res")
+                    raise RuntimeError("invalid res") from e
 
                 # affine step calculation
                 # get modified Jacobian and its lu factorization
@@ -356,7 +365,7 @@ class MpcSolver():
                       self.n_ineq, 1)-ds_aff*dz_aff)/self.s
                 rz = torch.zeros(
                     (rz.size()), device=self.device, dtype=self.dtype)
-                if self.n_eq != None:
+                if self.n_eq > 0:
                     ry = torch.zeros(
                         (ry.size()), device=self.device, dtype=self.dtype)
                 dx_cor, ds_cor, dz_cor, dy_cor = self.solve_kkt(rx, rs, rz, ry)
@@ -364,7 +373,7 @@ class MpcSolver():
                 dx = dx_aff+dx_cor
                 ds = ds_aff+ds_cor
                 dz = dz_aff+dz_cor
-                if self.n_eq != None:
+                if self.n_eq > 0:
                     dy = dy_aff+dy_cor
                 else:
                     dy = None
@@ -399,7 +408,7 @@ class MpcSolver():
                 self.x += alpha*dx
                 self.s += alpha*ds
                 self.z += alpha*dz
-                if self.n_eq != None:
+                if self.n_eq > 0:
                     self.y += alpha*dy
                 else:
                     self.y = None

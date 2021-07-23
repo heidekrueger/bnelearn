@@ -213,5 +213,3 @@ def test_LLLLGG(parallel, rule,bids,expected_allocation,expected_payments):
     #run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'cvxpy')
     run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'qpth')
     run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'mpc')
-
-
