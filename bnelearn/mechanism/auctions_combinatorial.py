@@ -287,40 +287,6 @@ class LLGAuction(Mechanism):
 
         return (allocations.unsqueeze(-1), payments)  # payments: batches x players, allocation: batch x players x items
 
-    def get_efficiency(self, env, redraw_valuations: bool = False) -> float:
-        """LLG auction specific efficiency that uses fact of single-minded
-        bidders.
-        """
-        ## TODO: this probably won't with multiple batch_dimensions
-        ## TODO: alsow won't work with new valuations interface yet.
-        batch_size = min(env._observations.shape[0], 2 ** 12)
-        observations = env._observations[:batch_size, :, :]
-
-        if redraw_valuations:
-            env.draw_valuations()
-
-        bid_profile = torch.zeros(batch_size, env.n_players, 1,
-                                  device=self.device)
-        for pos, bid in env._generate_agent_actions():
-            bid_profile[:, pos, :] = bid[:batch_size, ...]
-        allocations, _ = self.play(bid_profile)
-        actual_welfare = torch.zeros(batch_size, device=self.device)
-        for a in env.agents:
-            actual_welfare += a.get_welfare(
-                allocations[:batch_size, a.player_position],
-                observations[..., a.player_position, :]
-            )
-
-        local_valuations = torch.zeros_like(actual_welfare)
-        for a in env.agents[:-1]:
-            local_valuations += observations[..., a.player_position, :].squeeze()
-        maximum_welfare = torch.max(
-                observations[..., env.agents[-1].player_position, :].squeeze(), local_valuations
-        ).view_as(actual_welfare)
-
-        efficiency = (actual_welfare / maximum_welfare).mean()
-        return efficiency
-
 
 class LLGFullAuction(Mechanism):
     """Implements auctions in the LLG setting with 3 bidders and 2 goods.

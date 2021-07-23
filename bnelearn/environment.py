@@ -246,7 +246,6 @@ class AuctionEnvironment(Environment):
             yield (agent.player_position,
                    agent.get_action(self._observations[:, agent.player_position, :]))
 
-
     def get_reward(
             self,
             agent: Bidder,
@@ -337,6 +336,78 @@ class AuctionEnvironment(Environment):
         return self.get_reward(
             agent, redraw_valuations, aggregate, return_allocation=True
             )[1]
+
+    def get_revenue(self, redraw_valuations: bool = False) -> float:
+        """Returns the average seller revenue over a batch.
+
+        Args:
+            redraw_valuations (bool): whether or not to redraw the valuations of
+                the agents.
+
+        Returns:
+            revenue (float): average of seller revenue over a batch of games.
+
+        """
+        if redraw_valuations:
+            self.draw_valuations()
+
+        action_length = self.agents[0].bid_size
+
+        bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
+                                  device=self.mechanism.device)
+        for pos, bid in self._generate_agent_actions():  # pylint: disable=protected-access
+            bid_profile[:, pos, :] = bid
+        _, payments = self.mechanism.play(bid_profile)
+
+        return payments.sum(axis=1).float().mean()
+
+    def get_efficiency(self, redraw_valuations: bool = False) -> float:
+        """Average percentage that the actual welfare reaches of the maximal
+        possible welfare over a batch.
+
+        Args:
+            redraw_valuations (:bool:) whether or not to redraw the valuations of
+                the agents.
+
+        Returns:
+            efficiency (:float:) Percentage that the actual welfare reaches of
+                the maximale possible welfare. Averaged over batch.
+
+        """
+        batch_size = min(self.sampler.default_batch_size, 2 ** 13)
+
+        if redraw_valuations:
+            self.draw_valuations()
+
+        # pylint: disable=protected-access
+        valuations = self._valuations[:batch_size, :, :]
+
+        action_length = self.agents[0].bid_size
+
+        # Calculate actual welfare under the current strategies
+        bid_profile = torch.zeros(batch_size, self.n_players, action_length,
+                                  device=self.mechanism.device)
+        for pos, bid in self._generate_agent_actions():  # pylint: disable=protected-access
+            bid_profile[:, pos, :] = bid[:batch_size, ...]
+        actual_allocations, _ = self.mechanism.play(bid_profile)
+        actual_welfare = torch.zeros(batch_size, device=self.mechanism.device)
+        for a in self.agents:
+            actual_welfare += a.get_welfare(
+                actual_allocations[:batch_size, a.player_position],
+                valuations[..., a.player_position, :]
+            )
+
+        # Calculate counterfactual welfare under truthful strategies
+        maximum_allocations, _ = self.mechanism.play(valuations)
+        maximum_welfare = torch.zeros_like(actual_welfare)
+        for a in self.agents:
+            maximum_welfare += a.get_welfare(
+                maximum_allocations[:batch_size, a.player_position],
+                valuations[..., a.player_position, :]
+            )
+
+        efficiency = (actual_welfare / maximum_welfare).mean().float()
+        return efficiency
 
     def prepare_iteration(self):
         if self._redraw_every_iteration:
