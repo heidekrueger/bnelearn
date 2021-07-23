@@ -17,7 +17,8 @@ from qpth.qp import QPFunction
 
 from .mechanism import Mechanism
 from bnelearn.util import mpc
-from time import perf_counter as timer
+#from time import perf_counter as timer
+from bnelearn.mechanism.data import LLGData, LLLLGGData
 
 
 class _OptNet_for_LLLLGG(nn.Module):
@@ -205,13 +206,12 @@ class LLGAuction(Mechanism):
 
         # move bids to gpu/cpu if necessary, get rid of unused item_dim
         bids = bids.squeeze(item_dim).to(self.device)  # batch_size x n_players
-        # individual bids as *batch_sized x 1 tensors:
+        # individual bids as *batch_sizes x 1 tensors:
         b_locals, b_global = bids[..., :-1], bids[..., [-1]]
 
-        # allocate return variables
-        payments = torch.zeros(*batch_sizes, n_players, device=self.device)
-        allocations = torch.zeros(*batch_sizes, n_players, n_items, dtype=bool,
-                                  device=self.device)
+        # NOTE: payments and allocations below will have the following dims and dtypes:
+        # payments = torch.zeros(*batch_sizes, n_players, device=self.device)
+        # allocations = torch.zeros(*batch_sizes, n_players, n_items, dtype=bool, device=self.device)
 
         # Two possible allocations
         allocation_locals = torch.ones(1, n_players, dtype=bool, device=self.device)
@@ -333,8 +333,6 @@ class LLGFullAuction(Mechanism):
 
     """
     def __init__(self, rule='first_price', cuda: bool=True):
-        # pylint:disable=import-outside-toplevel
-        from bnelearn.util import large_lists_LLG
         super().__init__(cuda)
 
         if rule not in ['first_price', 'vcg', 'nearest_vcg', 'mrcs_favored']:
@@ -342,7 +340,7 @@ class LLGFullAuction(Mechanism):
         self.rule = rule
 
         self.subsolutions = torch.tensor(
-            large_lists_LLG.subsolutions,
+            LLGData.legal_allocations_sparse,
             device=self.device
         )
         self.n_subsolutions = self.subsolutions[-1][0] + 1
@@ -665,7 +663,6 @@ class LLLLGGAuction(Mechanism):
     """
 
     def __init__(self, rule='first_price', core_solver='NoCore', parallel: int = 1, cuda: bool = True):
-        from bnelearn.util import large_lists_LLLLGG  # pylint:disable=import-outside-toplevel
         super().__init__(cuda)
 
         if rule not in ['nearest_vcg', 'vcg', 'first_price']:
@@ -688,23 +685,14 @@ class LLLLGGAuction(Mechanism):
         _device = self.device
         if (parallel > 1 and core_solver == 'gurobi'):
             _device = 'cpu'
-        self.solutions_sparse = torch.tensor(large_lists_LLLLGG.solutions_sparse, device=_device)
+        # never used
+        #self.solutions_sparse = torch.tensor(large_lists_LLLLGG.solutions_sparse, device=_device)
 
-        self.solutions_non_sparse = torch.tensor(large_lists_LLLLGG.solutions_non_sparse,
-                                                 dtype=torch.float, device=_device)
+        self.efficient_allocations_dense = LLLLGGData.efficient_allocations_dense(device=_device)
 
-        self.subsolutions = torch.tensor(large_lists_LLLLGG.subsolutions, device=_device)
+        self.legal_allocations_sparse = LLLLGGData.legal_allocations_sparse(device=_device)
 
-        self.player_bundles = torch.tensor([
-            # Bundles
-            # B1,B2,B3,B4, B5,B6,B7,B8, B9,B10,B11,B12
-            [0, 1],
-            [2, 3],
-            [4, 5],
-            [6, 7],
-            [8, 9],
-            [10, 11]
-        ], dtype=torch.long, device=_device)
+        self.player_bundles = LLLLGGData.player_bundles(device=_device)
 
     def __mute(self):
         """suppresses stdout output from workers (avoid gurobi startup licence message clutter)"""
@@ -725,7 +713,7 @@ class LLLLGGAuction(Mechanism):
             welfare: torch.Tensor, dims (batch_size), values = [0, Inf]
 
         """
-        solutions = self.solutions_non_sparse.to(self.device)
+        solutions = self.efficient_allocations_dense.to(self.device)
 
         n_batch, n_players, n_bundles = bids.shape
         bids_flat = bids.view(n_batch, n_players * n_bundles)
@@ -813,17 +801,11 @@ class LLLLGGAuction(Mechanism):
         ---
         A: (parameter) winning and not in coalition (1, else 0)
         b: (parameter) bid of winning bidders (0 if non winning)
-
         """
-        subsolutions = self.subsolutions.to(self.device)
-
         n_batch, n_player, n_bundle = bids.shape
+        
         # Generate dense tensor of subsolutions
-        subsolutions_dense = torch.sparse.FloatTensor(
-            subsolutions.t(),
-            torch.ones(len(subsolutions), device=self.device),
-            torch.Size([subsolutions[-1][0] + 1, n_player * n_bundle], device=self.device)
-        ).to_dense()
+        subsolutions_dense = LLLLGGData.legal_allocations_dense(device=self.device)
         # Compute beta
         coalition_willing_to_pay = torch.mm(bids.view(n_batch, n_player * n_bundle), subsolutions_dense.t())
 
