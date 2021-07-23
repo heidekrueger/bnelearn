@@ -344,8 +344,7 @@ class LLGFullAuction(Mechanism):
             device=self.device
         )
         self.n_subsolutions = self.subsolutions[-1][0] + 1
-        self.subul_dim = len(self.subsolutions) + 1
-        self.max_iter = 20
+        self.solver_max_iter = 20
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Runs a batch of LLG Combinatorial auctions.
@@ -509,7 +508,7 @@ class LLGFullAuction(Mechanism):
         # Generate dense tensor of subsolutions
         subsolutions_dense = torch.sparse.FloatTensor(
             self.subsolutions.t(),
-            torch.ones(self.subul_dim - 1, device=self.device),
+            torch.ones(len(self.subsolutions), device=self.device),
             torch.Size(
                 [self.n_subsolutions, n_player * n_bundle],
                 device=self.device
@@ -618,7 +617,7 @@ class LLGFullAuction(Mechanism):
     def _run_batch_core_solver(self, A, beta, payments_vcg, b,
                                min_distance_to_vcg=True):
         model = _OptNet_for_LLLLGG(self.device, A, beta, b, payments_vcg,
-                                   max_iter=self.max_iter)
+                                   max_iter=self.solver_max_iter)
         model._add_objective_min_payments()  # pylint: disable=protected-access
         if min_distance_to_vcg:
             mu = model('mpc')
@@ -666,41 +665,54 @@ class LLLLGGAuction(Mechanism):
         super().__init__(cuda)
 
         if rule not in ['nearest_vcg', 'vcg', 'first_price']:
-            raise NotImplementedError(':(')
+            raise ValueError('Invalid pricing rule.')
 
         if rule == 'nearest_vcg':
             if core_solver not in ['gurobi', 'cvxpy', 'qpth', 'mpc']:
-                raise NotImplementedError(':/')
-        # 'nearest_zero' and 'proxy' are aliases
-        if rule == 'proxy':
-            rule = 'nearest_zero'
+                raise ValueError('Invalid solver.')
         self.rule = rule
+
+
         self.n_items = 8
         self.n_bidders = 6
-        self.n_bundles = 2
+        # number of bundles that each bidder is interested in
+        self.action_size = 2
+        # total number of bundles
+        self.n_bundles = LLLLGGData.n_bundles # = 12
+        assert self.n_bundles == self.n_bidders * self.action_size
+        self.n_legal_allocations = LLLLGGData.n_legal_allocations # = 66
+
         self.core_solver = core_solver
         self.parallel = parallel
 
-        # solver might require 'cpu' even when `self.device=='cuda'`, we thus work with a copy
-        _device = self.device
+        # When using cpu-multiprocessing for the solver, self cannot have 
+        # members allocated on cuda, or multiprocessing will fail.
+        # In that case, we initiate members on 'cpu' even when `self.device=='cuda'`.
+        # This will cost us a few copy operations, but we'll be bottlenecked by 
+        # the solver anyway.
+        self._solver_device = self.device
         if (parallel > 1 and core_solver == 'gurobi'):
-            _device = 'cpu'
-        # never used
-        #self.solutions_sparse = torch.tensor(large_lists_LLLLGG.solutions_sparse, device=_device)
+            self._solver_device = 'cpu'
 
-        self.efficient_allocations_dense = LLLLGGData.efficient_allocations_dense(device=_device)
-
-        self.legal_allocations_sparse = LLLLGGData.legal_allocations_sparse(device=_device)
-
-        self.player_bundles = LLLLGGData.player_bundles(device=_device)
+        # all feasible allocations as a dense tensor
+        self.legal_allocations = LLLLGGData.legal_allocations_dense(device=self._solver_device)
+        assert len(self.legal_allocations) == self.n_legal_allocations
+        # subset of all feasible allocations that might be efficient (i.e. bidder optimal)
+        self.candidate_solutions = LLLLGGData.efficient_allocations_dense(device=self._solver_device)
+        self.player_bundles = LLLLGGData.player_bundles(device=self._solver_device)
+        assert self.player_bundles.shape == torch.Size([self.n_bidders, self.action_size])
 
     def __mute(self):
-        """suppresses stdout output from workers (avoid gurobi startup licence message clutter)"""
+        """suppresses stdout output from multiprocessing workers
+        (e.g. avoid gurobi startup licence message clutter)"""
         sys.stdout = open(os.devnull, 'w')
 
     def _solve_allocation_problem(self, bids: torch.Tensor, dont_allocate_to_zero_bid=True):
         """
-        Computes allocation and welfare
+        Computes allocation and welfare.
+
+        To do so, we enumerate all (possibly efficient) candidate solutions and find 
+        the one with highest utility.
 
         Args:
             bids: torch.Tensor
@@ -713,7 +725,8 @@ class LLLLGGAuction(Mechanism):
             welfare: torch.Tensor, dims (batch_size), values = [0, Inf]
 
         """
-        solutions = self.efficient_allocations_dense.to(self.device)
+        #candidate_solutions might be on solver device that is different from self_device
+        solutions = self.candidate_solutions.to(self.device)
 
         n_batch, n_players, n_bundles = bids.shape
         bids_flat = bids.view(n_batch, n_players * n_bundles)
@@ -793,7 +806,7 @@ class LLLLGGAuction(Mechanism):
         p_0: (parameter) VCG payments
         p: (variable) Core Payments
         ---
-        beta: (parameter) coalitions willingness to pay
+        beta: (parameter) coalition's willingness to pay
         beta = welfare(coalition) - sum_(j \\in coalition){b_j(S_j)}
             \\forall coalitions in subsolutions
         with b_j(S_j) being the bid of the actual allocation (their willingness
@@ -804,30 +817,33 @@ class LLLLGGAuction(Mechanism):
         """
         n_batch, n_player, n_bundle = bids.shape
         
-        # Generate dense tensor of subsolutions
-        subsolutions_dense = LLLLGGData.legal_allocations_dense(device=self.device)
+        # subsolutions might be on solver_device rather than self.device!
+        subsolutions = self.legal_allocations.to(self.device)
+        n_subsolutions = self.n_legal_allocations # = 66
         # Compute beta
-        coalition_willing_to_pay = torch.mm(bids.view(n_batch, n_player * n_bundle), subsolutions_dense.t())
+        coalition_willing_to_pay = torch.mm(
+            bids.view(n_batch, n_player * n_bundle),
+            subsolutions.t())
 
         # For b_j(S_j) we need to consider the actual winning bid of j.
         # Therefore, we adjust the coalition and set 1 for each bundle of j
         winning_and_in_coalition = torch.einsum(
             'ij,kjl->kijl',
-            subsolutions_dense.view(66, n_player, n_bundle).sum(dim=2),
-            allocation.view(n_batch, n_player, n_bundle)).view(n_batch, 66, n_player * n_bundle)
+            subsolutions.view(n_subsolutions, n_player, n_bundle).sum(dim=2),
+            allocation.view(n_batch, n_player, n_bundle)).view(n_batch, n_subsolutions, n_player * n_bundle)
 
         coalition_already_getting = torch.bmm(
             bids.view(n_batch, 1, n_player * n_bundle),
-            winning_and_in_coalition.permute(0, 2, 1)).reshape(n_batch, 66)
+            winning_and_in_coalition.permute(0, 2, 1)).reshape(n_batch, n_subsolutions)
 
         beta = coalition_willing_to_pay - coalition_already_getting
         # Fixing numerical imprecision (as occured before!)
         beta[beta < 1e-6] = 0
 
-        assert beta.shape == (n_batch, 66), "beta has the wrong shape"
+        assert beta.shape == (n_batch, n_subsolutions), "beta has the wrong shape"
 
         A = allocation.view(n_batch, 1, n_player * n_bundle) - winning_and_in_coalition
-        A = A.view(n_batch, 66, n_player, n_bundle).sum(dim=3)
+        A = A.view(n_batch, n_subsolutions, n_player, n_bundle).sum(dim=3)
 
         # Computing b
         b = torch.sum(allocation.view(n_batch, n_player, n_bundle) * bids.view(n_batch, n_player, n_bundle), dim=2)
@@ -1045,10 +1061,8 @@ class LLLLGGAuction(Mechanism):
             loss_batch = 0
             for player_k in range(n_player):
                 loss_batch += (
-                                      model.getVarByName("payment_%s_%s" % (batch_k, player_k)) - payments_vcg[batch_k][
-                                  player_k]
-                              ) * (model.getVarByName("payment_%s_%s" % (batch_k, player_k)) - payments_vcg[batch_k][
-                    player_k])
+                    model.getVarByName("payment_%s_%s" % (batch_k, player_k)) - payments_vcg[batch_k][player_k]
+                ) * (model.getVarByName("payment_%s_%s" % (batch_k, player_k)) - payments_vcg[batch_k][player_k])
             loss += loss_batch
 
         model.setObjective(loss, sense=grb.GRB.MINIMIZE)

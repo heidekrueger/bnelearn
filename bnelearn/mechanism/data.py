@@ -207,6 +207,8 @@ class LLLLGGData():
         [65, 1],  [65, 3],  [65, 5],  [65 ,7]
     ]
 
+    n_legal_allocations = _legal_allocations_sparse[-1][0] + 1
+
     @classmethod
     def player_bundles(cls, device='cpu') -> torch.Tensor:
         "returns the player bundle matching as a torch.Tensor"
