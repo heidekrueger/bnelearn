@@ -15,7 +15,7 @@ from bnelearn.environment import AuctionEnvironment
 from .experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, SingleItemAllPayAuction
+from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, SingleItemAllPayAuction, SingleItemTullockContest
 from bnelearn.strategy import ClosureStrategy
 from bnelearn.correlation_device import (
     MineralRightsCorrelationDevice, AffiliatedObservationsDevice)
@@ -186,11 +186,12 @@ def _optimal_bid_single_item_symmetric_all_pay_auction(valuation: torch.Tensor, 
 def _optimal_bid_single_item_asymmetric_all_pay_auction(valuation: torch.Tensor, B: int, B_prime: int, player_position: int = 0) -> torch.Tensor:
     C = B_prime / B
     if player_position == 0:
-        opt = 1/B * (C+1) * valuation ** (C+1)
-    else:
         k_inv = valuation ** (1/C)
         opt = 1/B * (C+1) * k_inv ** (C+1)
+    else:
+        opt = 1/B * (C+1) * valuation ** (C+1)
     return opt
+
 
 # TODO: single item experiment should not be abstract and hold all logic for learning.
 # Only bne needs to go into subclass
@@ -764,7 +765,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         return os.path.join(*name)
 
 
-class SingleItemSymmetricUniformAllPayExperiment(SymmetricPriorSingleItemExperiment):
+class SingleItemSymmetricContestExperiment(SymmetricPriorSingleItemExperiment):
 
     def __init__(self, config: ExperimentConfig):
 
@@ -777,26 +778,37 @@ class SingleItemSymmetricUniformAllPayExperiment(SymmetricPriorSingleItemExperim
         self.u_hi = self.config.setting.u_hi
         self.config.setting.common_prior = torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
         self.risk = float(self.config.setting.risk)
-        self.loss = self.config.setting.loss
+        self.payment_rule = self.config.setting.payment_rule
+        self.regret = self.config.setting.regret
 
         super().__init__(config)
 
     def _get_logdir_hierarchy(self):
-        name = ['all_pay/single_item/symmetric/uniform/neutral/']
+        if self.risk == 1.0 and self.payment_rule == "all_pay":
+            name = ['contest/all_pay/single_item/symmetric/neutral/']
+        elif self.risk < 1.0 and self.payment_rule == "all_pay":
+            name = ['contest/all_pay/single_item/symmetric/risk_averse/']
+        elif self.risk == 1.0 and self.payment_rule == "tullock":
+            name = ['contest/tullock/single_item/symmetric/neutral/']
+        else:
+            name = ['contest/tullock/single_item/symmetric/risk_averse/']
         return os.path.join(*name)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
         return Bidder.uniform(self.u_lo, self.u_hi, strategy,
                               player_position=player_position, batch_size=batch_size,
                               n_items=self.input_length,
-                              risk=self.risk, cache_actions=cache_actions, loss=self.loss)
+                              risk=self.risk, cache_actions=cache_actions, regret=self.regret)
 
     def _setup_mechanism(self):
-        print('Setting up the all pay auction mechanism')
-        self.mechanism = SingleItemAllPayAuction(cuda=self.hardware.cuda)
+        if self.payment_rule == "all_pay":
+            print('Setting up the all pay auction mechanism')
+            self.mechanism = SingleItemAllPayAuction(random_tie_break=False, cuda=self.hardware.cuda)
+        elif self.payment_rule == "tullock":
+            self.mechanism = SingleItemTullockContest(cuda=self.hardware.cuda)
 
     def _check_and_set_known_bne(self):
-        if self.risk == 1.0:
+        if self.payment_rule == "all_pay":
             self._optimal_bid = partial(_optimal_bid_single_item_symmetric_all_pay_auction,
                                         n=self.n_players, u_lo=self.u_lo, u_hi=self.u_hi)
             return True
@@ -852,13 +864,16 @@ class SingleItemAsymmetricUniformicAllPayExperiment(SingleItemExperiment):
         self.n_players = self.config.setting.n_players
         self.n_items = 1
         self.input_length = 1
-        self.u_lo = [float(self.config.setting.u_lo)] * self.n_players
+        if not isinstance(self.config.setting.u_lo, list):
+            self.u_lo = [float(self.config.setting.u_lo)] * self.n_players
+        else:
+            self.u_lo: List[float] = [float(self.config.setting.u_lo[i]) for i in range(self.n_players)]        
+        
         self.u_hi: List[float] = [float(self.config.setting.u_hi[i]) for i in range(self.n_players)]
 
         self.model_sharing = False
 
         self.risk = float(self.config.setting.risk)
-        self.loss = self.config.setting.loss
         self.n_models = self.n_players
         self._bidder2model = list(range(self.n_players))
         self.positive_output_point = torch.tensor([min(self.u_hi)] * self.n_items)
@@ -874,13 +889,14 @@ class SingleItemAsymmetricUniformicAllPayExperiment(SingleItemExperiment):
         return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
                               player_position=player_position, batch_size=batch_size,
                               n_items=self.input_length,
-                              risk=self.risk, cache_actions=cache_actions, loss=self.loss)
+                              risk=self.risk, cache_actions=cache_actions)
 
     def _setup_mechanism(self):
         print('Setting up the all pay auction mechanism')
-        self.mechanism = SingleItemAllPayAuction(cuda=self.hardware.cuda)
+        self.mechanism = SingleItemAllPayAuction(random_tie_break=False, cuda=self.hardware.cuda)
 
     def _check_and_set_known_bne(self):
+        return False
         if self.n_players == 2 and self.risk == 1.0:
             self._optimal_bid = [partial(_optimal_bid_single_item_asymmetric_all_pay_auction,
                                         B=self.u_hi[0], B_prime=self.u_hi[1])]         
@@ -932,3 +948,6 @@ class SingleItemAsymmetricUniformicAllPayExperiment(SingleItemExperiment):
             print(f"\tReplacing sampled bne utilities by precalculated utilities with higher precision: {bne_utilities_sampled[0]}")
 
         self.bne_utilities = bne_utilities_sampled
+
+        
+

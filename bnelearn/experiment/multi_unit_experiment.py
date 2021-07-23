@@ -12,6 +12,8 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 from scipy import integrate, interpolate
+from functools import partial
+import gurobipy as grb
 
 from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
@@ -19,7 +21,8 @@ from .experiment import  Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.mechanism import (
     MultiUnitVickreyAuction, MultiUnitUniformPriceAuction,
-    MultiUnitDiscriminatoryAuction, FPSBSplitAwardAuction
+    MultiUnitDiscriminatoryAuction, FPSBSplitAwardAuction,
+    MultiUnitSymmetricEqualAllPayAuction, MultiUnitSymmetricUnequalAllPayAuction
 )
 from bnelearn.strategy import ClosureStrategy
 from bnelearn.correlation_device import (
@@ -274,6 +277,21 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
 
     return _optimal_bid
 
+def _optimal_symmetric_equal_all_pay_6_2(valuation: float, u_hi: float, player_position: int = 0):
+    opt = u_hi * (4* (valuation/u_hi) ** 5 - 10/3 * (valuation/u_hi) ** 6)
+    return opt
+
+def _optimal_symmetirc_unequal_all_pay_4_2(valuation: float, u_hi: float, n_units: int, player_position: int = 0):
+    opt_bid = torch.zeros(valuation.size()[0], n_units, device=valuation.device)
+    opt_bid[:, 0] = 5 * (valuation[:, 0] ** 6) * ((1/u_hi) ** 5) - (30/7) * (valuation[:, 0] ** 7) * ((1/u_hi) ** 6) 
+    return opt_bid
+
+def _optimal_symmetric_uneqal_all_pay_2_2(valuation: float, u_hi: float, n_units: int, player_position: int = 0):
+    opt_bid = torch.zeros(valuation.size()[0], n_units, device=valuation.device)
+    opt_bid[:, 0] = (valuation[:, 0] ** 2) / u_hi - 2/3 * 1/u_hi * (valuation[:, 0] ** 3)
+    opt_bid[:, 1] = 2/3 * 1/u_hi * (valuation[:, 1] ** 3)
+    return opt_bid
+
 ###############################################################################
 
 
@@ -437,7 +455,7 @@ class MultiUnitExperiment(Experiment, ABC):
                       y_label=y_label, fmts=fmts, figure_name=figure_name,
                       plot_points=plot_points)
 
-        if self.n_units == 2 and not isinstance(self, SplitAwardExperiment):
+        if self.n_units == 2 and not isinstance(self, SplitAwardExperiment) and not isinstance(self, MultiUnitSymmetricEqualAllPayExperiment) and not isinstance(self, MultiUnitSymmetricUnequalAllPayExperiment):
             super()._plot_3d(plot_data, writer, epoch, figure_name)
 
     @staticmethod
@@ -517,3 +535,155 @@ class SplitAwardExperiment(MultiUnitExperiment):
         name = ['SplitAward', self.payment_rule, str(self.n_players) + 'players_' +
                 str(self.n_units) + 'units']
         return os.path.join(*name)
+
+
+class MultiUnitSymmetricEqualAllPayExperiment(MultiUnitExperiment):
+    """
+    Experiment class of the symmetric multi-unit all-pay auction
+    """
+
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        
+        super().__init__(config=config)
+        
+        self.pretrain_transform = None
+        self.input_length = 1
+        self.n_items = 1
+        if hasattr(self, 'positive_output_point'):
+            self.positive_output_point = torch.tensor(
+                [self.u_hi[0]] * 1, dtype=torch.float)
+
+
+    def _setup_mechanism(self):
+        self.mechanism = MultiUnitSymmetricEqualAllPayAuction(n_units=self.n_units, cuda=self.hardware.cuda)
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+        """
+        Standard strat_to_bidder method.
+        """
+        correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
+        return Bidder.uniform(
+            lower=self.u_lo[player_position], upper=self.u_hi[player_position],
+            strategy=strategy,
+            n_items=1,
+            risk=self.risk,
+            item_interest_limit=self.item_interest_limit,
+            descending_valuations=True,
+            constant_marginal_values=self.constant_marginal_values,
+            player_position=player_position,
+            batch_size=batch_size,
+            cache_actions=cache_actions,
+            correlation_type=correlation_type
+        )
+
+    def _get_logdir_hierarchy(self):
+        name = ['all_pay', 'multi_unit', 'equal', str(self.n_players) + 'players_' +
+                str(self.n_units) + 'units']
+        return os.path.join(*name)
+
+    def _check_and_set_known_bne(self):
+        # never run because solving this would require to solve an integral using complex numbers
+        if self.n_players == 6 and self.n_units == 2:
+            self._optimal_bid = partial(_optimal_symmetric_equal_all_pay_6_2, u_hi=self.u_hi[0])  
+            return True
+        elif self.n_players == 6 and self.n_units == 4:
+            self._optimal_bid = partial(_optimal_symmetric_equal_all_pay_6_4, u_hi=self.u_hi[0])
+            return True
+        else:
+            return False
+
+    def _setup_eval_environment(self):
+        assert self.known_bne
+        assert hasattr(self, '_optimal_bid')
+
+        bne_strategy = ClosureStrategy(self._optimal_bid)
+
+        # define bne agents once then use them in all runs
+        agents = [
+            self._strat_to_bidder(
+                strategy = bne_strategy,
+                player_position = i,
+                batch_size = self.config.logging.eval_batch_size,
+                cache_actions = self.config.logging.cache_eval_actions
+            )
+            for i in range(self.n_players)
+        ]
+        
+
+        self.bne_env = AuctionEnvironment(
+            mechanism = self.mechanism,
+            agents = agents,
+            batch_size = self.config.logging.eval_batch_size,
+            n_players = self.n_players,
+            strategy_to_player_closure = self._strat_to_bidder,
+        )
+
+        # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
+        self.bne_utilities = torch.zeros((len(self.bne_env.agents),), device=self.config.hardware.device)
+        for i, a in enumerate(self.bne_env.agents):
+            self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)
+
+
+class MultiUnitSymmetricUnequalAllPayExperiment(MultiUnitExperiment):
+    """
+    Experiment class of the symmetric multi-unit all-pay auction
+    """
+
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        
+        super().__init__(config=config)
+        
+        self.pretrain_transform = None
+
+
+    def _setup_mechanism(self):
+        self.mechanism = MultiUnitSymmetricUnequalAllPayAuction(n_units=self.n_units, cuda=self.hardware.cuda)
+
+    def _get_logdir_hierarchy(self):
+        name = ['all_pay', 'multi_unit', 'unequal', str(self.n_players) + 'players_' +
+                str(self.n_units) + 'units']
+        return os.path.join(*name)
+
+    def _check_and_set_known_bne(self):
+        if self.n_players == 4 and self.n_units == 2:
+            self._optimal_bid = partial(_optimal_symmetirc_unequal_all_pay_4_2, u_hi=self.u_hi[0], n_units=self.n_units)
+            return True
+        elif self.n_players == 2 and self.n_units == 2:
+            self._optimal_bid = partial(_optimal_symmetric_uneqal_all_pay_2_2, u_hi=self.u_hi[0], n_units=self.n_units)
+            return True
+        else:
+            return False
+
+    # def _setup_eval_environment(self):
+         
+    #     assert self.known_bne
+    #     assert hasattr(self, '_optimal_bid')
+
+    #     bne_strategy = ClosureStrategy(self._optimal_bid)
+
+    #     # define bne agents once then use them in all runs
+    #     agents = [
+    #         self._strat_to_bidder(
+    #             strategy = bne_strategy,
+    #             player_position = i,
+    #             batch_size = self.config.logging.eval_batch_size,
+    #             cache_actions = self.config.logging.cache_eval_actions
+    #         )
+    #         for i in range(self.n_players)
+    #     ]
+        
+
+    #     self.bne_env = AuctionEnvironment(
+    #         mechanism = self.mechanism,
+    #         agents = agents,
+    #         batch_size = self.config.logging.eval_batch_size,
+    #         n_players = self.n_players,
+    #         strategy_to_player_closure = self._strat_to_bidder,
+    #     )
+
+    #     # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
+    #     self.bne_utilities = torch.zeros((len(self.bne_env.agents),), device=self.config.hardware.device)
+    #     for i, a in enumerate(self.bne_env.agents):
+    #         self.bne_utilities[i] = self.bne_env.get_reward(agent=a, draw_valuations=True)

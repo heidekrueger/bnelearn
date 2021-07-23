@@ -93,6 +93,9 @@ class Experiment(ABC):
         self.v_opt: torch.Tensor = None
         self.b_opt: torch.Tensor = None
 
+        # Blotto specific variables
+        self.budget = False
+
         self._hparams_metrics = {}
         ### Save locally - can haves
         # Logging
@@ -183,7 +186,8 @@ class Experiment(ABC):
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
                 ensure_positive_output=self.positive_output_point,
-                output_length=self.n_items
+                output_length=self.n_items,
+                budget=self.budget
             ).to(self.hardware.device)
 
         self.bidders = [

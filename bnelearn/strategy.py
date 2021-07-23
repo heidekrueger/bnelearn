@@ -13,6 +13,7 @@ import warnings
 import torch
 import torch.nn as nn
 from torch.distributions.categorical import Categorical
+from torch.nn.modules.activation import Softmax
 from tqdm import tqdm
 
 from bnelearn.mechanism import Game, MatrixGame
@@ -303,7 +304,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
                  hidden_activations: Iterable[nn.Module],
                  ensure_positive_output: torch.Tensor or None = None,
                  output_length: int = 1, # currently last argument for backwards-compatibility
-                 dropout: float = 0.0
+                 dropout: float = 0.0,
+                 budget: bool = False
                  ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
@@ -337,9 +339,14 @@ class NeuralNetStrategy(Strategy, nn.Module):
             hidden_nodes = [input_length] #don't write to self.hidden nodes, just ensure correct creation
 
         # create output layer
-        self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
-        self.layers[str(nn.ReLU()) + '_out'] = nn.ReLU()
-        self.activations.append(self.layers[str(nn.ReLU()) + '_out'])
+        if budget:
+            self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
+            self.layers[str(nn.Softmax()) + '_out'] = nn.Softmax()
+            self.activations.append(self.layers[str(nn.Softmax()) + '_out'])
+        else:
+            self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
+            self.layers[str(nn.ReLU()) + '_out'] = nn.ReLU()
+            self.activations.append(self.layers[str(nn.ReLU()) + '_out'])
 
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization

@@ -38,23 +38,41 @@ if __name__ == '__main__':
 
     ### ALL PAY EXPERIMENTS ###
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_asymmetric_uniform_all_pay', n_runs=1, n_epochs=3000) \
-        .set_setting(n_players=2) \
-        .set_learning(pretrain_iters = 500, batch_size=2**17) \
-        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True, eval_batch_size=2**17, util_loss_grid_size=2**10, util_loss_batch_size=2**12, util_loss_frequency=1000, stopping_criterion_frequency=100000) \
-        .set_hardware(specific_gpu=7).get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='symmetric_valuation_symmetric_budget_blotto', n_runs=1, n_epochs=5000) \
+    #     .set_setting(n_players=2, n_units=3) \
+    #     .set_learning(pretrain_iters = 500, batch_size=2**17, hidden_nodes=[10, 10]) \
+    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True, save_figure_data_to_disk=True, save_figure_to_disk_png=True, eval_batch_size=2**17, util_loss_grid_size=2**10, util_loss_batch_size=2**12, util_loss_frequency=2000, stopping_criterion_frequency=100000) \
+    #     .set_hardware(specific_gpu=2).get_config()
+
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_symmetric_tullock_contest', n_runs=1, n_epochs=4500) \
+    #     .set_setting(n_players=2) \
+    #     .set_learning(pretrain_iters = 500, batch_size=2**17) \
+    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True, save_figure_data_to_disk=True, save_figure_to_disk_png=True, eval_batch_size=2**17, util_loss_grid_size=2**10, util_loss_batch_size=2**12, util_loss_frequency=1000, stopping_criterion_frequency=100000) \
+    #     .set_hardware(specific_gpu=3).get_config()
+
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='multi_unit_symmetric_unequal_all_pay', n_runs=1, n_epochs=4500) \
+    #     .set_setting(n_players=4, n_units=2) \
+    #     .set_learning(pretrain_iters = 500, batch_size=2**17) \
+    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True, save_figure_data_to_disk=True, save_figure_to_disk_png=True, eval_batch_size=2**17, util_loss_grid_size=2**10, util_loss_batch_size=2**12, util_loss_frequency=2000, stopping_criterion_frequency=100000) \
+    #     .set_hardware(specific_gpu=2).get_config()
+
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_asymmetric_uniform_all_pay', n_runs=1, n_epochs=4500) \
+    #     .set_setting(n_players=2) \
+    #     .set_learning(pretrain_iters = 500, batch_size=2**18) \
+    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True, save_figure_data_to_disk=True, save_figure_to_disk_png=True, eval_batch_size=2**17, util_loss_grid_size=2**10, util_loss_batch_size=2**12, util_loss_frequency=1000, stopping_criterion_frequency=100000, best_response=True) \
+    #     .set_hardware(specific_gpu=2).get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_symmetric_uniform_all_pay', n_runs=1, n_epochs=1000) \
     #     .set_setting(n_players=2) \
     #     .set_learning(pretrain_iters = 500, batch_size=2**17) \
     #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True, eval_batch_size=2**17, util_loss_grid_size=2**10, util_loss_batch_size=2**12, util_loss_frequency=1000, stopping_criterion_frequency=100000) \
-    #     .set_hardware(specific_gpu=7).get_config()
+    #     .set_hardware(specific_gpu=2).get_config()
 
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_symmetric_uniform_all_pay', n_runs=1, n_epochs=1000) \
-    #     .set_setting(n_players=4) \
-    #     .set_learning(pretrain_iters = 500, batch_size=2**17) \
-    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True, eval_batch_size=2**17, util_loss_grid_size=2**10, util_loss_batch_size=2**12, util_loss_frequency=1000, stopping_criterion_frequency=100000) \
-    #     .set_hardware(specific_gpu=7).get_config()
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_symmetric_uniform_all_pay', n_runs=1, n_epochs=3500) \
+        .set_setting(n_players=2, regret=0.25) \
+        .set_learning(pretrain_iters = 500, batch_size=2**17) \
+        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True, eval_batch_size=2**17, util_loss_grid_size=2**10, util_loss_batch_size=2**12, util_loss_frequency=1000, stopping_criterion_frequency=100000) \
+        .set_hardware(specific_gpu=7).get_config()
 
 
     ### SINGLE ITEM EXPERIMENTS ###

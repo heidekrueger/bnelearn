@@ -93,6 +93,7 @@ class Bidder(Player):
                  constant_marginal_values: bool = False,
                  correlation_type: str = None,
                  regret: float = 0.0,
+                 budget: float = 0.0
                  ):
 
         super().__init__(strategy, player_position, batch_size, cuda)
@@ -109,11 +110,14 @@ class Bidder(Player):
         self._valuations = torch.zeros(batch_size, n_items, device=self.device)
         if self._cache_actions:
             self.actions = torch.zeros(batch_size, n_items, device=self.device)
+
         self.draw_valuations_()  # TODO: This is dangerous as it doesn't use correlation
 
         self.welfare_reference = None
         self.payments_reference = None
         self.regret = regret
+
+        self.budgets = budget
 
         # Compute lower and upper bounds for grid computation
         self._grid_lb = self.value_distribution.support.lower_bound \
@@ -315,6 +319,7 @@ class Bidder(Player):
             self.valuations, _ = self.valuations.sort(dim=1, descending=True)
 
         self._valuations_changed = True # torch in-place operations do not trigger check in setter-method!
+
         return self.valuations
 
     def get_utility(self, allocations, payments, bids): #pylint: disable=arguments-differ
@@ -449,6 +454,10 @@ class Bidder(Player):
             inputs = inputs[:,:dim]
 
         actions = self.strategy.play(inputs)
+
+        if self.budgets != 0.0:
+            actions = actions * self.budgets
+
         self._valuations_changed = False
 
         if self._cache_actions:

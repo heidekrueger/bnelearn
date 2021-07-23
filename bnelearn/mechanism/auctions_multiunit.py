@@ -371,3 +371,82 @@ class FPSBSplitAwardAuction(MultiUnitAuction):
         payments = self._calculate_payments_first_price(bids, allocation)
 
         return (allocation, payments)
+
+
+class MultiUnitSymmetricEqualAllPayAuction(MultiUnitAuction):
+
+    def __init__(self, n_units: float, cuda: bool):
+        super().__init__(cuda=cuda)
+        self.n_units = n_units
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs a (batch of) Multi Unit All-Pay(s). Invalid bids (i.e. in
+        increasing order) will be ignored (-> no allocation to that bidder), s.t.
+        the bidder might be able to ´learn´ the right behavior.
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, n_items)
+
+        Returns:
+            allocation: torch.Tensor of dimension (n_batches x n_players x n_items),
+                1 indicating item is allocated to corresponding player
+                in that batch, 0 otherwise
+            payments: torch.Tensor of dimension (n_batches x n_players),
+                total payment from player to auctioneer for her
+                allocation in that batch.
+        """
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # for readability
+        player_dim = 1  # pylint: disable=unused-variable
+        batch_size, n_players, _ = bids.shape
+
+        # Pricing: pay as bid
+        payments = bids.reshape(batch_size, n_players) 
+        payments_per_item = payments.reshape((payments.shape[0], payments.shape[1], 1))
+
+        # We are only interested in whether a bidder obtains one item or not 
+        allocations = torch.zeros(batch_size, n_players, 1, device=bids.device)
+
+        _, winning_bidders = bids.topk(self.n_units, dim=player_dim)
+        allocations.scatter_(player_dim, winning_bidders, 1)
+        allocations.masked_fill_(mask=payments_per_item == 0, value=0)
+
+        return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
+
+
+class MultiUnitSymmetricUnequalAllPayAuction(MultiUnitAuction):
+
+    def __init__(self, n_units: float, cuda: bool):
+        super().__init__(cuda=cuda)
+        self.n_units = n_units
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs a (batch of) Multi Unit All-Pay(s). Invalid bids (i.e. in
+        increasing order) will be ignored (-> no allocation to that bidder), s.t.
+        the bidder might be able to ´learn´ the right behavior.
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, n_items)
+
+        Returns:
+            allocation: torch.Tensor of dimension (n_batches x n_players x n_items),
+                1 indicating item is allocated to corresponding player
+                in that batch, 0 otherwise
+            payments: torch.Tensor of dimension (n_batches x n_players),
+                total payment from player to auctioneer for her
+                allocation in that batch.
+        """
+        bids = bids.to(self.device)
+        bids = self._remove_invalid_bids(bids)
+        allocations = self._solve_allocation_problem(bids)
+        payments = torch.sum(bids, dim=2)  # sum over items
+
+        return (allocations, payments)  # payments: batches x players, allocation: batch x players x items

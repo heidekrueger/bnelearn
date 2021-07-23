@@ -2,6 +2,7 @@ from typing import Tuple
 
 # pylint: disable=E1102
 import torch
+import random
 
 from .mechanism import Mechanism
 from ..util.tensor_util import batched_index_select
@@ -200,6 +201,10 @@ class ThirdPriceSealedBidAuction(Mechanism):
 
 class SingleItemAllPayAuction(Mechanism):
 
+    def __init__(self, cuda: bool, random_tie_break: bool = False):
+        self.random_tie_break = random_tie_break
+        super().__init__(cuda=cuda)
+
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
        
         """
@@ -239,7 +244,74 @@ class SingleItemAllPayAuction(Mechanism):
 
         # Assign item to the bidder with the highest bid, in case of a tie assign it randomly to one of the winning bidderss
         highest_bids, winning_bidders = bids.max(dim=player_dim, keepdim=True) 
+
+        # todo assign 1/n' if multiple bidders have same bid, where n' is the number of bidders with the max bid
+
         allocations.scatter_(player_dim, winning_bidders, 1)
+        # Don't allocate items that have a winnign bid of zero.
+        payments_per_item = payments.reshape((payments.shape[0], payments.shape[1], 1))
+        allocations.masked_fill_(mask=payments_per_item == 0, value=0)
+
+        return allocations, payments
+
+
+class SingleItemTullockContest(Mechanism):
+
+    def __init__(self, cuda: bool):
+        super().__init__(cuda=cuda)
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+       
+        """
+        
+        Runs a (batch of) the standard version of the all pay auction.
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, n_items)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches x n_players x n_items),
+                        1 indicating item is allocated to corresponding player
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (n_batches x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # name dimensions for readibility
+        # pylint: disable=unused-variable
+        batch_dim, player_dim, item_dim = 0, 1, 2
+        batch_size, n_players, n_items = bids.shape
+
+        # allocate return variables
+        payments = bids.reshape(batch_size, n_players) # pay as bid
+        allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
+        efforts = torch.zeros(batch_size, )
+
+        # Assign item to the bidder with the highest bid, in case of a tie assign it randomly to one of the winning bidderss
+        bids_flat = bids.reshape(batch_size, n_players*n_items)
+        devisor = bids.sum(dim=player_dim)
+        devisor[devisor==0] = 1
+        relative_bids = bids_flat/devisor   
+        relative_bids.floor_()
+        relative_bids[relative_bids==0] = 0.0000001
+
+        winning_bids = relative_bids.multinomial(num_samples=1).reshape(batch_size, 1, 1)
+        
+
+        # todo assign 1/n' if multiple bidders have same bid, where n' is the number of bidders with the max bid
+
+        allocations.scatter_(player_dim, winning_bids, 1)
         # Don't allocate items that have a winnign bid of zero.
         payments_per_item = payments.reshape((payments.shape[0], payments.shape[1], 1))
         allocations.masked_fill_(mask=payments_per_item == 0, value=0)

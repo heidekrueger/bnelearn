@@ -20,7 +20,7 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 
 from bnelearn.mechanism import (
-    LLGAuction, LLGFullAuction, LLLLGGAuction
+    LLGAuction, LLGFullAuction, LLLLGGAuction, MultiBattleAllPayAuction
 )
 from bnelearn.bidder import Bidder, CombinatorialBidder
 from bnelearn.environment import AuctionEnvironment
@@ -526,3 +526,122 @@ class LLLLGGExperiment(LocalGlobalExperiment):
                       fmts=fmts, **kwargs)
         super()._plot_3d(plot_data=plot_data, writer=writer, epoch=epoch,
                          figure_name=kwargs['figure_name'])
+
+
+class MultiBattleContest(Experiment):
+
+    def __init__(self, config: ExperimentConfig):
+        self.payment_rule = config.setting.payment_rule
+        self.n_items = config.setting.n_units
+        self.config = config
+        self.n_players = self.config.setting.n_players
+        self.input_length = self.n_items
+        self.risk = config.setting.risk
+        self.budgets = config.setting.budgets
+
+        if len(self.config.setting.u_lo) == 1:
+            self.u_lo = self.config.setting.u_lo * self.n_players
+
+        if len(self.config.setting.u_hi) == 1:
+            self.u_hi = self.config.setting.u_hi * self.n_players
+
+        if len(self.budgets) == 1:
+            self.budgets = self.budgets * self.n_players
+
+        self.model_sharing = self.config.learning.model_sharing
+        if self.model_sharing:
+            self.n_models = 1
+            self._bidder2model = [0] * self.n_players
+        else:
+            self.n_models = self.n_players
+            self._bidder2model = list(range(self.n_players))
+
+        if not hasattr(self, 'positive_output_point'):
+            self.positive_output_point = torch.tensor(
+                [self.u_hi[0]] * self.n_items, dtype=torch.float)
+
+        super().__init__(config)
+
+        if len(self.budgets) != 0:
+            self.budget = True
+
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
+        """
+        Standard strat_to_bidder method.
+        """
+        return Bidder.uniform(
+            lower=self.u_lo[player_position], upper=self.u_hi[player_position],
+            strategy=strategy,
+            n_items=self.n_items,
+            risk=self.risk,
+            descending_valuations=False,
+            player_position=player_position,
+            batch_size=batch_size,
+            cache_actions=cache_actions,
+            budget=self.budgets[player_position]
+        )
+
+    def _setup_mechanism(self):
+        if self.payment_rule == "all_pay":
+            self.mechanism = MultiBattleAllPayAuction(cuda=self.hardware.cuda)
+        else:
+            raise("Payment rule not implemented!") 
+
+    def _check_and_set_known_bne(self):
+        def _optimal_bid(valuation: torch.Tensor, n: int, u_lo: int, u_hi: int, player_position: int = 0) -> torch.Tensor:
+            denom = n * (u_hi - u_lo) ** (n-1)
+            vals = valuation ** n
+            opt = (n-1)/denom * vals 
+
+            # opt_bid = torch.zeros_like(valuation)
+            # for j in range(valuation.size()[1]):
+            #     opt_bid[:, j] = opt
+
+
+            # return opt_bid
+            return opt
+
+        if self.risk == 1.0 and self.payment_rule == "all_pay":
+            self._optimal_bid = partial(_optimal_bid,
+                                        n=self.n_players, u_lo=self.u_lo[0], u_hi=self.u_hi[0])
+            return True
+        else:
+            return False
+
+    def _setup_eval_environment(self):
+        """Setup the BNE envierment for later evaluation of the learned strategies"""
+
+        assert self.known_bne
+        assert hasattr(self, '_optimal_bid')
+
+        if not isinstance(self._optimal_bid, list):
+            self._optimal_bid = [self._optimal_bid]
+
+        # set up list for multiple bne
+        self.bne_env = [None] * len(self._optimal_bid)
+        self.bne_utilities = [None] * len(self._optimal_bid)
+
+        for i, strat in enumerate(self._optimal_bid):
+            bne_strategies = [ClosureStrategy(strat) for _ in range(self.n_players)]
+
+            self.bne_env[i] = AuctionEnvironment(
+                mechanism=self.mechanism,
+                agents=[
+                    self._strat_to_bidder(bne_strategy, self.logging.eval_batch_size, j,
+                                          cache_actions=self.config.logging.cache_eval_actions)
+                    for j, bne_strategy in enumerate(bne_strategies)
+                ],
+                n_players=self.n_players,
+                batch_size=self.logging.eval_batch_size,
+                strategy_to_player_closure=self._strat_to_bidder
+            )
+
+            self.bne_utilities[i] = [self.bne_env[i].get_reward(agent, draw_valuations=True)
+                                     for agent in self.bne_env[i].agents]
+
+        print('BNE envs have been set up.')
+
+    def _get_logdir_hierarchy(self):
+        name = [self.payment_rule, 'multi-battle', str(self.n_players) + "p_" + str(self.n_items) + "i"]
+        return os.path.join(*name)

@@ -17,16 +17,17 @@ from bnelearn.experiment.configurations import (SettingConfig,
 
 from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
                                                           LLGFullExperiment,
-                                                          LLLLGGExperiment)
+                                                          LLLLGGExperiment,
+                                                          MultiBattleContest)
 
-from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
+from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment, MultiUnitSymmetricEqualAllPayExperiment, MultiUnitSymmetricUnequalAllPayExperiment)
 
 from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSingleItemExperiment,
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
                                                         AffiliatedObservationsExperiment,
-                                                        SingleItemSymmetricUniformAllPayExperiment,
+                                                        SingleItemSymmetricContestExperiment,
                                                         SingleItemAsymmetricUniformicAllPayExperiment)
 
 
@@ -202,11 +203,44 @@ class ConfigurationManager:
         self.setting.u_lo = 0
         self.setting.u_hi = 1
         self.learning.model_sharing = True
+        self.setting.payment_rule = 'all_pay'
 
     def _init_single_item_asymmetric_uniform_all_pay(self):
         self.setting.u_lo = 0
-        self.setting.u_hi = [2, 1]
+        self.setting.u_hi = [1, 2, 0.75, 1.5]
         self.learning.model_sharing = False
+        self.setting.payment_rule = 'all_pay'
+
+    def _init_multi_unit_symmetric_equal_all_pay(self):
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1.0]
+        self.learning.model_sharing = True
+
+    def _init_multi_unit_symmetric_unequal_all_pay(self):
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1.0]
+        self.learning.model_sharing = True
+
+    def _init_single_item_symmetric_tullock(self):
+        self.setting.u_lo = 0
+        self.setting.u_hi = 1
+        self.learning.model_sharing = True
+        self.setting.payment_rule = "tullock"
+
+    def _init_multi_battle_symmetric_all_pay(self):
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1]
+        self.learning.model_sharing = True 
+        self.setting.payment_rule = "all_pay"
+        self.setting.budgets = []
+
+    def _init_symmetric_valuation_symmetric_budget_blotto(self):
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1]
+        self.learning.model_sharing = True
+        self.setting.payment_rule = 'all_pay'
+        self.setting.budgets = [1.25]
+
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
         # Learnings
@@ -304,6 +338,21 @@ class ConfigurationManager:
     def _post_init_single_item_asymmetric_uniform_all_pay(self):
         pass
 
+    def _post_init_multi_unit_symmetric_equal_all_pay(self):
+        pass
+
+    def _post_init_multi_unit_symmetric_unequal_all_pay(self):
+        pass
+
+    def _post_init_single_item_symmetric_tullock(self):
+        pass
+
+    def _post_init_multi_battle_symmetric_all_pay(self):
+        pass
+
+    def _post_init_symmetric_valuation_symmetric_budget_blotto(self):
+        pass
+
     experiment_types = {
         'single_item_uniform_symmetric':
             (UniformSymmetricPriorSingleItemExperiment, _init_single_item_uniform_symmetric,
@@ -332,11 +381,21 @@ class ConfigurationManager:
         'splitaward':
             (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
         'single_item_symmetric_uniform_all_pay':
-            (SingleItemSymmetricUniformAllPayExperiment, _init_single_item_symmetric_uniform_all_pay, 
+            (SingleItemSymmetricContestExperiment, _init_single_item_symmetric_uniform_all_pay, 
             _post_init_single_item_symmetric_uniform_all_pay),
         'single_item_asymmetric_uniform_all_pay':
             (SingleItemAsymmetricUniformicAllPayExperiment, _init_single_item_asymmetric_uniform_all_pay, 
-            _post_init_single_item_asymmetric_uniform_all_pay)}
+            _post_init_single_item_asymmetric_uniform_all_pay),
+        'multi_unit_symmetric_equal_all_pay':
+        (MultiUnitSymmetricEqualAllPayExperiment, _init_multi_unit_symmetric_equal_all_pay, _post_init_multi_unit_symmetric_equal_all_pay),
+        'multi_unit_symmetric_unequal_all_pay':
+        (MultiUnitSymmetricUnequalAllPayExperiment, _init_multi_unit_symmetric_unequal_all_pay, _post_init_multi_unit_symmetric_unequal_all_pay),
+        'single_item_symmetric_tullock_contest':
+        (SingleItemSymmetricContestExperiment, _init_single_item_symmetric_tullock, _post_init_single_item_symmetric_tullock),
+        'multi_battle_symmetric_all_pay':
+        (MultiBattleContest, _init_multi_battle_symmetric_all_pay, _post_init_multi_battle_symmetric_all_pay),
+        'symmetric_valuation_symmetric_budget_blotto':
+        (MultiBattleContest, _init_symmetric_valuation_symmetric_budget_blotto, _post_init_symmetric_valuation_symmetric_budget_blotto)}
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type

@@ -1374,3 +1374,56 @@ class CombinatorialAuction(Mechanism):
         m.update()
 
         return m, assign_i_s
+
+
+class MultiBattleAllPayAuction(Mechanism):
+
+    def __init__(self, cuda: bool = True):
+        super().__init__(cuda)
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        
+        Runs a (batch of) the standard version of the all pay auction.
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, n_items)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches x n_players x n_items),
+                        1 indicating item is allocated to corresponding player
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (n_batches x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+
+        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # name dimensions for readibility
+        # pylint: disable=unused-variable
+        batch_dim, player_dim, item_dim = 0, 1, 2
+        batch_size, n_players, n_items = bids.shape
+
+        # allocate return variables
+        payments = bids.sum(dim=item_dim) # pay as bid
+        allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
+
+        bids_transposed = bids.transpose(item_dim, player_dim)
+        _, winning_bidders = bids_transposed.max(dim = item_dim, keepdim=True)
+        winning_bidders.transpose_(player_dim, item_dim)
+
+        allocations.scatter_(player_dim, winning_bidders, 1)
+        # Don't allocate items that have a winnign bid of zero.
+        payments_per_item = payments.reshape((payments.shape[0], payments.shape[1], 1))
+        allocations.masked_fill_(mask=payments_per_item == 0, value=0)
+
+        return allocations, payments
