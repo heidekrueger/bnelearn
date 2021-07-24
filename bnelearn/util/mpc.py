@@ -1,5 +1,5 @@
 """This module contains the implementation of our custom GPU-enabled solver
-for batched constrained quadratic programs.
+for batched constrained quadratic programs, based on Mehrotra's Predictor-Corrector-Method (MPC).
 
 authors:
     Anne Christopher
@@ -7,10 +7,13 @@ authors:
     Paul Sutterer
 """
 
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 import numpy as np
+
+# lots of pylint false positives for -tensor in this module
+#pylint: disable = invalid-unary-operand-type
 
 class MpcSolver():
     r"""A batched qp-solver that solves batches of QPs of the form
@@ -60,7 +63,7 @@ class MpcSolver():
         self.n_x: int = None
         self.n_eq: int = 0
         self.n_ineq: int = 0
-        self.n_constraints = None
+        self.n_dual_vars = None   # = n_eq + n_ineq = n_constraints
         self.n_primal_vars = None # n_x + n_ineq (i.e x and s)
 
         #TODO: tbd
@@ -76,23 +79,18 @@ class MpcSolver():
         self.dtype = Q.dtype
         assert self.is_pd(Q), "Q is not p.d., but this is a requirement!"
 
-
         self._set_and_verify_parameters(Q, q, G, h, A, b)
 
         self.refine = refine
-        self._set_Jacobian()
-        self.J = self.get_lu_J()
+        self._set_initial_Jacobian()
+        self._update_J_LU()
 
-        # get initial solution
-        self.b_unsqueezed = b.unsqueeze(-1) if self.n_eq > 0 else None
-
-        self.x, self.s, self.z, self.y = self.solve_kkt(
+        self.x, self.s, self.z, self.y = self._solve_kkt(
             -self.q.unsqueeze(-1),
-            torch.zeros((self.n_batch, self.n_ineq),
-                        device=self.device, dtype=self.dtype
-                       ).unsqueeze(-1),
-            self.h.unsqueeze(-1),
-            self.b_unsqueezed)
+            torch.zeros(self.n_batch, self.n_ineq,
+                        device=self.device, dtype=self.dtype).unsqueeze(-1),
+            h.unsqueeze(-1),
+            b.unsqueeze(-1) if self.n_eq > 0 else None)
 
         alpha_p = self.get_initial(-self.z)
         alpha_d = self.get_initial(self.z)
@@ -107,9 +105,9 @@ class MpcSolver():
         return self.x, op_val
 
     def _set_and_verify_parameters(self, Q: torch.Tensor, q: torch.Tensor,
-                                         G: torch.Tensor, h: torch.Tensor, 
+                                         G: torch.Tensor, h: torch.Tensor,
                                          A: torch.Tensor, b: torch.Tensor):
-        """Checks whether problem parameters are compatible, assigns them as 
+        """Checks whether problem parameters are compatible, assigns them as
         instance fields,  and determines and sets dimensions."""
         # 2 dimensions, i.e. no batches ==> dimensions are (n_ineq, n_x), add dimension n_batch at pos 0
         if(Q.dim() == G.dim() == 2):
@@ -120,14 +118,14 @@ class MpcSolver():
         if (A is not None) and (A.dim() == 2):
             A = A.unsqueeze(0)
             b = b.unsqueeze(0)
-        
+
         self.Q, self.q = Q, q
         self.G, self.h = G, h
         self.G_T = torch.transpose(G, dim0=2, dim1=1).contiguous()
         self.A, self.b = A, b
         if A is not None:
             self.A_T = torch.transpose(A, dim0=2, dim1=1).contiguous()
-        
+
         # get sizes
         self.n_batch, self.n_ineq, self.n_x = self.G.size()
         if self.A is not None:
@@ -137,7 +135,7 @@ class MpcSolver():
         else:
             self.n_eq = 0
 
-        self.n_constraints = self.n_ineq + self.n_eq
+        self.n_dual_vars = self.n_ineq + self.n_eq
         self.n_primal_vars = self.n_x + self.n_ineq
 
     @staticmethod
@@ -175,78 +173,94 @@ class MpcSolver():
     #             ).unsqueeze(0).repeat(x.size(0), 1)
     #     return (data, pivots)
 
-    def _set_Jacobian(self):
-        """get the jacobian kkt matrix as concatenation of 4 blocks.
-        Note that B2=transpose(B3)
-        """
-        B1 = torch.zeros((self.n_batch, self.n_primal_vars, self.n_x +
-                         self.n_ineq), device=self.device, dtype=self.dtype)
-        if self.n_eq == 0:
-            B3 = torch.zeros((self.n_batch, self.n_ineq, self.n_primal_vars),
-                             device=self.device, dtype=self.dtype)
-            B4 = torch.zeros((self.n_batch, self.n_ineq, self.n_ineq),
-                             device=self.device, dtype=self.dtype)
-        else:
-            B3 = torch.zeros((self.n_batch, self.n_constraints, self.n_primal_vars),
-                             device=self.device, dtype=self.dtype)
-            B4 = torch.zeros((self.n_batch, self.n_constraints, self.n_constraints),
-                              device=self.device, dtype=self.dtype)
+    def _set_initial_Jacobian(self):
+        """Set up the initial Jacobian KKT matrix as the following block matrix:
 
+            | Q 0 | Gt At |
+            | 0 D |  I  0 |    | B1 | B2 |
+        K = |--------------- = |----------
+            | G I |  0  0 |    | B3 | B4 |
+            | A 0 |  0  0 |
+        Note that B2=transpose(B3).
+
+        All entries except D will remain constant in all iterations.
+        At initialization, we have D = I.
+        """
+        B1 = torch.zeros((self.n_batch, self.n_primal_vars, self.n_primal_vars),
+                         device=self.device, dtype=self.dtype)
         B1[:, :self.n_x, :self.n_x] = self.Q
         # D here is unit identity matrix (initial case)
-        self.D = torch.eye((self.n_ineq), device=self.device,
-                           dtype=self.dtype).repeat(self.n_batch, 1, 1)
-        B1[:, -self.n_ineq:, -self.n_ineq:] = self.D
+        B1[:, -self.n_ineq:, -self.n_ineq:] = torch.eye(
+            self.n_ineq, device=self.device, dtype=self.dtype).repeat(self.n_batch, 1, 1)
 
+        B3 = torch.zeros((self.n_batch, self.n_dual_vars, self.n_primal_vars),
+                         device=self.device, dtype=self.dtype)
         B3[:, :self.n_ineq, :self.n_x] = self.G
-        if self.A is not None:
+        if self.n_eq > 0:
             B3[:, -self.n_eq:, :self.n_x] = self.A
         B3[:, :self.n_ineq, -self.n_ineq:] = torch.eye((self.n_ineq),
             device=self.device, dtype=self.dtype).repeat(self.n_batch, 1, 1)
 
-        B2 = torch.transpose(B3, dim0=2, dim1=1)
-        size = self.n_x+(2*self.n_ineq) + self.n_eq
-        self.J = torch.zeros((self.n_batch, size, size),
-                             device=self.device, dtype=self.dtype)
+        B4 = torch.zeros(self.n_batch, self.n_dual_vars, self.n_dual_vars,
+                         device=self.device, dtype=self.dtype)
+
+        size = self.n_primal_vars + self.n_dual_vars # = self.n_x+ 2*self.n_ineq + self.n_eq
+        self.J = torch.zeros(self.n_batch, size, size,
+                        device=self.device, dtype=self.dtype)
         self.J[:, :self.n_primal_vars, :self.n_primal_vars] = B1
-        self.J[:, :self.n_primal_vars, self.n_primal_vars:] = B2
+        # following line will force a copy and ensure contiguity of J
+        self.J[:, :self.n_primal_vars, self.n_primal_vars:] = torch.transpose(B3, dim0=2, dim1=1)
         self.J[:, self.n_primal_vars:, :self.n_primal_vars] = B3
         self.J[:, self.n_primal_vars:, self.n_primal_vars:] = B4
 
-    def get_lu_J(self, d=None):
-        """the jacobian J is modified when d is specified"""
+    def _update_J(self, d=None):
+        """Updates the KKT Jacobian by replacing the D block with diag(d).
+
+        Args:
+            d: torch.tensor (n_batch, n_ineq, 1)
+        """
         if d is not None:
-            assert (d.dim() == 3 and d.shape[2] == 1), "unexpected input d"
-            self.D = torch.diag_embed(d.squeeze(-1))
-            self.J[ :, self.n_x:self.n_primal_vars, self.n_x:self.n_primal_vars] = self.D
+            assert d.shape == torch.Size([self.n_batch, self.n_ineq, 1]), \
+                "d has unexpected shape."
+            self.J[ :, self.n_x:self.n_primal_vars, self.n_x:self.n_primal_vars] = \
+                torch.diag_embed(d.squeeze(-1))
+
+    def _update_J_LU(self):
+        """Update the LU decomposition of the Jacobian based on the current Jacobian"""
         # TODO Stefan: wrapper no longer needed (??)
         # replaced by direct torch.lu call below, but keep around just in case
         #self.J_lu, self.J_piv = self.lu_factorize(self.J)
         self.J_lu, self.J_piv = self.J.lu(pivot = not self.J.is_cuda)
 
-        return self.J
+    def _solve_kkt(self, rx, rs, rz, ry) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Union[torch.Tensor, None]]:
+        """Solve the KKT system with jacobian self.J and RHS specified by rx,rs,rz,ry, i.e.
+        J %*% delta = (rx,rs,rz,ry)
 
-    def solve_kkt(self, rx, rs, rz, ry):
-        # solve the KKT system with jacobian J and F specified by rx,rs,rz,ry
-        if ry != None:
-            F = torch.cat((rx, rs, rz, ry), dim=1)
+        Where delta decomposes into delta = (dx, ds, dz, dy)
+        Note that ry might be None in case there are no equality constraints.
+
+        Args:
+            rx, rs, rz, ry (torch.Tensors): right hand side vectors for the primal and dual variables.
+        """
+        if ry is not None:
+            rhs = torch.cat((rx, rs, rz, ry), dim=1)
         else:
-            F = torch.cat((rx, rs, rz), dim=1)
-        step = F.lu_solve(self.J_lu, self.J_piv)
-        dx = step[:, :self.n_x, :]
-        ds = step[:, self.n_x:self.n_primal_vars, :]
-        if self.n_eq != 0:
-            dz = step[:, self.n_primal_vars:-self.n_eq, :]
-            dy = step[:, -self.n_eq:, :]
+            rhs = torch.cat((rx, rs, rz), dim=1)
+        delta = rhs.lu_solve(self.J_lu, self.J_piv)
+        dx = delta[:,         :self.n_x          , :]
+        ds = delta[:, self.n_x:self.n_primal_vars, :]
+        if self.n_eq > 0:
+            dz = delta[:, self.n_primal_vars:-self.n_eq, :]
+            dy = delta[:,         -self.n_eq:          , :]
         else:
-            dz = step[:, self.n_primal_vars:, :]
+            dz = delta[:, self.n_primal_vars:, :]
             dy = None
-        return(dx, ds, dz, dy)
+        return dx, ds, dz, dy
 
     # ALTERNATIVE SOLVE_KKT USING BLOCK ELIMINATION TECHNIQUE
     # this has been found to be slower in our settings.
     # For details see Anne Christopher's MSc Thesis (2020), section 5.3.2
-    # def solve_kkt(self,rx,rs,rz,ry):
+    # def _solve_kkt(self,rx,rs,rz,ry):
     #   b1=torch.cat((rx,rs),dim=1)
     #   if ry!=None:
     #     b2=torch.cat((rz,ry),dim=1)
@@ -290,44 +304,40 @@ class MpcSolver():
            torch.where(x.isnan()).
         """
         wh = torch.where(dx[:, 0, :] != dx[:, 0, :])[0]  # find NaN positions
-        dx[wh, :, :] = torch.zeros((len(wh), dx.size()[1], dx.size()[
-                                   2]), device=self.device, dtype=self.dtype)
-        ds[wh, :, :] = torch.zeros((len(wh), ds.size()[1], ds.size()[
-                                   2]), device=self.device, dtype=self.dtype)
-        dz[wh, :, :] = torch.zeros((len(wh), dz.size()[1], dz.size()[
-                                   2]), device=self.device, dtype=self.dtype)
-        if self.n_eq != 0:
-            dy[wh, :, :] = torch.zeros((len(wh), dy.size()[1], dy.size()[
-                                       2]), device=self.device, dtype=self.dtype)
+        dx[wh, :, :] = 0.0
+        ds[wh, :, :] = 0.0
+        dz[wh, :, :] = 0.0
+        if self.n_eq > 0:
+            dy[wh, :, :] = 0.0
         return dx, ds, dz, dy, wh
 
     def mpc_opt(self, print_warning=True):
-
+        """Runs the main iterations of """
         bat = np.array([i for i in range(self.n_batch)])
         n_iter = 0
-        # this_problem_not_converged= torch.ones(self.nbatch).type_as(self.Q).view(self.nbatch,1,1)
-        while (n_iter <= 3):
+        while n_iter <= 3:
             if n_iter > 0:
                 print(n_iter)
                 print("Refining solutions with second round of iterations")
             for i in range(self.max_iter):
+
+                # Calculate Residuals and check for convergence
+                rx = -(torch.bmm(self.G_T, self.z) +
+                       torch.bmm(self.Q, self.x)+ self.q.unsqueeze(-1))
                 if self.n_eq > 0:
-                    rx = -(torch.bmm(self.A_T, self.y)+torch.bmm(self.G_T,
-                           self.z)+torch.bmm(self.Q, self.x)+self.q.unsqueeze(-1))
-                else:
-                    rx = -(torch.bmm(self.G_T, self.z) +
-                           torch.bmm(self.Q, self.x)+self.q.unsqueeze(-1))
+                    rx -= torch.bmm(self.A_T, self.y)
+
                 rs = -self.z
                 rz = -(torch.bmm(self.G, self.x)+self.s-self.h.unsqueeze(-1))
-                if self.n_eq > 0:
-                    ry = -(torch.bmm(self.A, self.x)-self.b.unsqueeze(-1))
-                else:
-                    ry = None
+                ry = -(torch.bmm(self.A, self.x)-self.b.unsqueeze(-1)) if self.n_eq > 0 else None
+
                 d = self.z/self.s
                 mu = torch.abs(torch.bmm(torch.transpose(
                     self.s, dim0=2, dim1=1), self.z).sum(1))/self.n_ineq
                 pri_resid = torch.abs(rx)
                 dual_1_resid = torch.abs(rz)
+
+                # TODO: can we move resids to cuda in order to avoid copying?
                 if self.n_eq > 0:
                     dual_2_resid = torch.abs(ry)
                     resids = np.array([tensor.cpu() for tensor in
@@ -337,16 +347,6 @@ class MpcSolver():
                     resids = np.array([tensor.cpu() for tensor in
                                        [pri_resid.max(), mu.max(), dual_1_resid.max()]])
 
-                # find if any of the problems converged
-                # if (mu < 1e-6).any() :
-                #   where= torch.where(mu<1e-6)[0]
-                #   p_resids=torch.max(pri_resid[where,:,:].view(len(where),-1),dim=1).values
-                #   d1_resids=torch.max(pri_resid[where,:,:].view(len(where),-1),dim=1).values
-                #   d2_resids=torch.max(pri_resid[where,:,:].view(len(where),-1),dim=1).values
-                #   sum_resids=p_resids+d1_resids+d2_resids
-                #   resids_where= where[torch.where(sum_resids<1e-6)[0] ]
-                #   compareview = resids_where.repeat(where.shape[0],1).T
-                #   this_problem_not_converged[where,:,:]=0
                 try:
                     if (resids < 1e-6).all():
                         # print("Early exit at iteration no:",i)
@@ -355,10 +355,11 @@ class MpcSolver():
                     print(bat[torch.isnan(pri_resid.sum(1)).squeeze(1)])
                     raise RuntimeError("invalid res") from e
 
-                # affine step calculation
+                # 2. Affine step calculation
                 # get modified Jacobian and its lu factorization
-                self.J = self.get_lu_J(d)
-                dx_aff, ds_aff, dz_aff, dy_aff = self.solve_kkt(rx, rs, rz, ry)
+                self._update_J(d)
+                self._update_J_LU()
+                dx_aff, ds_aff, dz_aff, dy_aff = self._solve_kkt(rx, rs, rz, ry)
 
                 # affine step size calculation
                 alpha = torch.min(self.get_step(self.z, dz_aff),
@@ -383,7 +384,7 @@ class MpcSolver():
                 if self.n_eq > 0:
                     ry = torch.zeros(
                         (ry.size()), device=self.device, dtype=self.dtype)
-                dx_cor, ds_cor, dz_cor, dy_cor = self.solve_kkt(rx, rs, rz, ry)
+                dx_cor, ds_cor, dz_cor, dy_cor = self._solve_kkt(rx, rs, rz, ry)
 
                 dx = dx_aff+dx_cor
                 ds = ds_aff+ds_cor
@@ -404,7 +405,7 @@ class MpcSolver():
                 # dx[torch.isnan(dx)]=0
                 # ds[torch.isnan(ds)]=0
                 # dz[torch.isnan(dz)]=0
-                # if self.neq!=None:
+                # if self.n_eq>0:
                 #   dy[torch.isnan(dy)]=0
                 dx, ds, dz, dy, wh = self.remove_nans(dx, ds, dz, dy)
                 if len(wh) == self.n_batch:
@@ -412,12 +413,12 @@ class MpcSolver():
                 # dx[dx!=dx]=0
                 # ds[ds!=ds]=0
                 # dz[dz!=dz]=0
-                # if self.neq!=None:
+                # if self.n_eq>0:
                 #   dy[dy!=dy]=0
                 # dx[torch.where(this_problem_not_converged==0)[0],:,:]=0
                 # ds[torch.where(this_problem_not_converged==0)[0],:,:]=0
                 # dz[torch.where(this_problem_not_converged==0)[0],:,:]=0
-                # if self.neq!=None:
+                # if self.n_eq>0:
                 #   dy[torch.where(this_problem_not_converged==0)[0],:,:]=0
 
                 self.x += alpha*dx
@@ -439,7 +440,7 @@ class MpcSolver():
                     # print("All problems converged, exiting at iter ",i)
                     # return(self.x,self.s,self.z,self.y)
 
-                if(i == self.max_iter-1 and (resids > 1e-10).any()) & print_warning == True:
+                if i == self.max_iter-1 and (resids > 1e-10).any() and print_warning:
                     print("mpc exit in iter", i)
                     print("no of mu not converged: ", len(mu[mu > 1e-10]))
                     print("mpc warning: Residuals not converged, need more itrations")
