@@ -34,8 +34,11 @@ class MpcSolver():
         h (Tensor of dimension (n_batches, n_ineq))
         A (Tensor of dimension (n_batches, n_eq, n))
         b (Tensor of dimension (n_batches, n_eq))
-        refine: TODO
-        print_warning: TODO
+        refine: bool. When set to `True`, if after max_iter iterations there are 
+            still batches with residuals over 1e-6, the algorithm will run for another max_iter iterations,
+            up to two additional times.
+        print_warning (bool): if True, will print warnings if after three runs of max_iter iterations,
+            the algorithm still hasn't converged sufficiently.
     """
     def __init__(self, max_iter=20):
         self.max_iter = max_iter
@@ -313,7 +316,7 @@ class MpcSolver():
 
     def mpc_opt(self, print_warning=True):
         """Runs the main iterations of """
-        bat = np.array([i for i in range(self.n_batch)])
+        #bat = np.array([i for i in range(self.n_batch)])
         n_iter = 0
         while n_iter <= 3:
             if n_iter > 0:
@@ -326,100 +329,68 @@ class MpcSolver():
                        torch.bmm(self.Q, self.x)+ self.q.unsqueeze(-1))
                 if self.n_eq > 0:
                     rx -= torch.bmm(self.A_T, self.y)
-
                 rs = -self.z
                 rz = -(torch.bmm(self.G, self.x)+self.s-self.h.unsqueeze(-1))
                 ry = -(torch.bmm(self.A, self.x)-self.b.unsqueeze(-1)) if self.n_eq > 0 else None
 
-                d = self.z/self.s
-                mu = torch.abs(torch.bmm(torch.transpose(
-                    self.s, dim0=2, dim1=1), self.z).sum(1))/self.n_ineq
-                pri_resid = torch.abs(rx)
-                dual_1_resid = torch.abs(rz)
 
-                # TODO: can we move resids to cuda in order to avoid copying?
-                if self.n_eq > 0:
-                    dual_2_resid = torch.abs(ry)
-                    resids = np.array([tensor.cpu() for tensor in
-                                       [pri_resid.max(), mu.max(), dual_1_resid.max(), dual_2_resid.max()]])
-                else:
-                    dual_2_resid = torch.zeros_like(dual_1_resid)
-                    resids = np.array([tensor.cpu() for tensor in
-                                       [pri_resid.max(), mu.max(), dual_1_resid.max()]])
+                residual_x = torch.abs(rx)
+                # complementary slackness residual
+                mu = torch.abs(torch.bmm(torch.transpose(self.s, dim0=2, dim1=1),
+                                         self.z).sum(1))/self.n_ineq
+                residual_z = torch.abs(rz)
+                residual_y = torch.abs(ry) if self.n_eq > 0 else torch.zeros_like(residual_z)
+
+                residuals = torch.cat([r.max().view(1) for r in [residual_x, mu, residual_z, residual_y]])
 
                 try:
-                    if (resids < 1e-6).all():
+                    if (residuals < 1e-6).all():
                         # print("Early exit at iteration no:",i)
                         return(self.x, self.s, self.z, self.y)
                 except Exception as e:
-                    print(bat[torch.isnan(pri_resid.sum(1)).squeeze(1)])
-                    raise RuntimeError("invalid res") from e
+                    #print(bat[torch.isnan(residual_x.sum(1)).squeeze(1)])
+                    raise RuntimeError("invalid residuals, NaNs introduced?") from e
 
                 # 2. Affine step calculation
                 # get modified Jacobian and its lu factorization
+                d = self.z/self.s
                 self._update_J(d)
                 self._update_J_LU()
                 dx_aff, ds_aff, dz_aff, dy_aff = self._solve_kkt(rx, rs, rz, ry)
 
                 # affine step size calculation
-                alpha = torch.min(self.get_step(self.z, dz_aff),
-                                  self.get_step(self.s, ds_aff))
-
-                # affine updates for s and z
-                s_aff = self.s+alpha*ds_aff
-                z_aff = self.z+alpha*dz_aff
-                mu_aff = torch.abs(torch.bmm(torch.transpose(
-                    s_aff, dim0=2, dim1=1), z_aff).sum(1))/self.n_ineq
+                alpha = torch.min(self._calculate_step_size(self.z, dz_aff),
+                                  self._calculate_step_size(self.s, ds_aff))
 
                 # find sigma for centering in the direction of mu
+                # This requires temporarily calculating the affine-only updates for s and z
+                s_aff = self.s+alpha*ds_aff
+                z_aff = self.z+alpha*dz_aff
+                mu_aff = torch.abs(torch.bmm(torch.transpose(s_aff, dim0=2, dim1=1),
+                                   z_aff).sum(1))/self.n_ineq                
                 sigma = (mu_aff/mu)**3
 
                 # find centering+correction steps
-                rx = torch.zeros(
-                    (rx.size()), device=self.device, dtype=self.dtype)
-                rs = ((sigma*mu).unsqueeze(-1).repeat(1,
-                      self.n_ineq, 1)-ds_aff*dz_aff)/self.s
-                rz = torch.zeros(
-                    (rz.size()), device=self.device, dtype=self.dtype)
-                if self.n_eq > 0:
-                    ry = torch.zeros(
-                        (ry.size()), device=self.device, dtype=self.dtype)
+                rx.zero_()
+                rs = ((sigma*mu).unsqueeze(-1).repeat(1,self.n_ineq, 1) - ds_aff*dz_aff)/self.s
+                rz.zero_()
+                if self.n_eq > 0: # already zero otherwise.
+                    ry.zero_()
                 dx_cor, ds_cor, dz_cor, dy_cor = self._solve_kkt(rx, rs, rz, ry)
 
-                dx = dx_aff+dx_cor
-                ds = ds_aff+ds_cor
-                dz = dz_aff+dz_cor
-                if self.n_eq > 0:
-                    dy = dy_aff+dy_cor
-                else:
-                    dy = None
+                dx = dx_aff + dx_cor
+                ds = ds_aff + ds_cor
+                dz = dz_aff + dz_cor
+                dy = dy_aff + dy_cor if self.n_eq > 0 else None
+
                 # find update step size
-                alpha = torch.min(torch.ones((self.n_batch), device=self.device, dtype=self.dtype).view(
-                    self.n_batch, 1, 1), 0.99*torch.min(self.get_step(self.z, dz), self.get_step(self.s, ds)))
+                alpha = torch.min(
+                    torch.ones(self.n_batch, device=self.device, dtype=self.dtype).view(self.n_batch, 1, 1),
+                    0.99*torch.min(self._calculate_step_size(self.z, dz), self._calculate_step_size(self.s, ds)))
 
-                # check for early exit
-                # if torch.isnan(dx).all():
-                #   return(self.x,self.s,self.z,self.y)
-
-                # update
-                # dx[torch.isnan(dx)]=0
-                # ds[torch.isnan(ds)]=0
-                # dz[torch.isnan(dz)]=0
-                # if self.n_eq>0:
-                #   dy[torch.isnan(dy)]=0
                 dx, ds, dz, dy, wh = self.remove_nans(dx, ds, dz, dy)
-                if len(wh) == self.n_batch:
+                if len(wh) == self.n_batch: #all batches have NaNs in the update --> terminate
                     return(self.x, self.s, self.z, self.y)
-                # dx[dx!=dx]=0
-                # ds[ds!=ds]=0
-                # dz[dz!=dz]=0
-                # if self.n_eq>0:
-                #   dy[dy!=dy]=0
-                # dx[torch.where(this_problem_not_converged==0)[0],:,:]=0
-                # ds[torch.where(this_problem_not_converged==0)[0],:,:]=0
-                # dz[torch.where(this_problem_not_converged==0)[0],:,:]=0
-                # if self.n_eq>0:
-                #   dy[torch.where(this_problem_not_converged==0)[0],:,:]=0
 
                 self.x += alpha*dx
                 self.s += alpha*ds
@@ -428,19 +399,8 @@ class MpcSolver():
                     self.y += alpha*dy
                 else:
                     self.y = None
-                # do not update problems that already converged
-                # self.x+=torch.bmm(alpha*dx, this_problem_not_converged)
-                # self.s+=torch.bmm(alpha*ds, this_problem_not_converged)
-                # self.z+=torch.bmm(alpha*dz, this_problem_not_converged)
-                # if self.neq!=None:
-                #   self.y+=torch.bmm(alpha*dy, this_problem_not_converged)
-                # else:
-                #   self.y=None
-                # if (this_problem_not_converged==0).all():
-                    # print("All problems converged, exiting at iter ",i)
-                    # return(self.x,self.s,self.z,self.y)
 
-                if i == self.max_iter-1 and (resids > 1e-10).any() and print_warning:
+                if i == self.max_iter-1 and (residuals > 1e-10).any() and print_warning:
                     print("mpc exit in iter", i)
                     print("no of mu not converged: ", len(mu[mu > 1e-10]))
                     print("mpc warning: Residuals not converged, need more itrations")
@@ -451,7 +411,12 @@ class MpcSolver():
         return(self.x, self.s, self.z, self.y)
 
     @staticmethod
-    def get_step(v, dv):
+    def _calculate_step_size(v, dv):
+        """Find batch_wise step size in the direction of dv.
+        The step size should be as small as possible while ensuring that
+        -v/dv will be positive after the update step.
+        
+        If invalid values are encountered, the step size will be set to 1."""
         v = v.squeeze(2)
         dv = dv.squeeze(2)
         div = -v/dv
