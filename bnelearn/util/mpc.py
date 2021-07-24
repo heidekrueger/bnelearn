@@ -10,7 +10,6 @@ authors:
 from typing import Tuple, Union
 
 import torch
-import numpy as np
 
 # lots of pylint false positives for -tensor in this module
 #pylint: disable = invalid-unary-operand-type
@@ -34,7 +33,7 @@ class MpcSolver():
         h (Tensor of dimension (n_batches, n_ineq))
         A (Tensor of dimension (n_batches, n_eq, n))
         b (Tensor of dimension (n_batches, n_eq))
-        refine: bool. When set to `True`, if after max_iter iterations there are 
+        refine: bool. When set to `True`, if after max_iter iterations there are
             still batches with residuals over 1e-6, the algorithm will run for another max_iter iterations,
             up to two additional times.
         print_warning (bool): if True, will print warnings if after three runs of max_iter iterations,
@@ -60,6 +59,8 @@ class MpcSolver():
         self.y: torch.Tensor = None # Lagrange multiplicators of equality constraints
 
         self.J: torch.Tensor = None # Jacobian of the KKT system
+        self.J_lu: torch.Tensor = None # LU factorization of J
+        self.J_piv: torch.Tensor = None # pivot information about J_LU
 
         # problem dimensions
         self.n_batch: int = None
@@ -69,7 +70,6 @@ class MpcSolver():
         self.n_dual_vars = None   # = n_eq + n_ineq = n_constraints
         self.n_primal_vars = None # n_x + n_ineq (i.e x and s)
 
-        #TODO: tbd
         self.refine: bool = None
 
 
@@ -78,13 +78,14 @@ class MpcSolver():
                     A: torch.Tensor  = None, b: torch.Tensor = None,
                     refine=False, print_warning=False):
 
+        self.refine = refine
         self.device = Q.device
         self.dtype = Q.dtype
         assert self.is_pd(Q), "Q is not p.d., but this is a requirement!"
 
         self._set_and_verify_parameters(Q, q, G, h, A, b)
 
-        self.refine = refine
+        # Set up initial KKT system, slack, and dual variables.
         self._set_initial_Jacobian()
         self._update_J_LU()
 
@@ -95,13 +96,13 @@ class MpcSolver():
             h.unsqueeze(-1),
             b.unsqueeze(-1) if self.n_eq > 0 else None)
 
-        alpha_p = self.get_initial(-self.z)
-        alpha_d = self.get_initial(self.z)
+        alpha_p = self._get_initial_step_size(-self.z)
+        alpha_d = self._get_initial_step_size(self.z)
         self.s = -self.z+alpha_p*(torch.ones_like(self.z))
         self.z = self.z+alpha_d*(torch.ones_like(self.z))
 
         # main iterations
-        self.x, self.s, self.z, self.y = self.mpc_opt(
+        self.x, self.s, self.z, self.y = self._run_main_iterations(
             print_warning=print_warning)
         op_val = 0.5*torch.bmm(torch.transpose(self.x, dim0=2, dim1=1), torch.bmm(self.Q, self.x)) + \
             torch.bmm(torch.transpose(self.q.unsqueeze(-1), dim0=2, dim1=1), self.x)
@@ -113,7 +114,7 @@ class MpcSolver():
         """Checks whether problem parameters are compatible, assigns them as
         instance fields,  and determines and sets dimensions."""
         # 2 dimensions, i.e. no batches ==> dimensions are (n_ineq, n_x), add dimension n_batch at pos 0
-        if(Q.dim() == G.dim() == 2):
+        if Q.dim() == G.dim() == 2:
             Q = Q.unsqueeze(0)
             q = q.unsqueeze(0)
             G = G.unsqueeze(0)
@@ -299,7 +300,7 @@ class MpcSolver():
     #     dy=None
     #   return (dx,ds,dz,dy)
 
-    def remove_nans(self, dx, ds, dz, dy):
+    def _remove_nans(self, dx, ds, dz, dy):
         """When the tensor of a batch contains NaNs in its first row,
            replace that entire batch with zero entries.
 
@@ -314,8 +315,8 @@ class MpcSolver():
             dy[wh, :, :] = 0.0
         return dx, ds, dz, dy, wh
 
-    def mpc_opt(self, print_warning=True):
-        """Runs the main iterations of """
+    def _run_main_iterations(self, print_warning=True):
+        """Runs the main iterations of the MPC algorithm."""
         #bat = np.array([i for i in range(self.n_batch)])
         n_iter = 0
         while n_iter <= 3:
@@ -367,7 +368,7 @@ class MpcSolver():
                 s_aff = self.s+alpha*ds_aff
                 z_aff = self.z+alpha*dz_aff
                 mu_aff = torch.abs(torch.bmm(torch.transpose(s_aff, dim0=2, dim1=1),
-                                   z_aff).sum(1))/self.n_ineq                
+                                   z_aff).sum(1))/self.n_ineq
                 sigma = (mu_aff/mu)**3
 
                 # find centering+correction steps
@@ -388,7 +389,7 @@ class MpcSolver():
                     torch.ones(self.n_batch, device=self.device, dtype=self.dtype).view(self.n_batch, 1, 1),
                     0.99*torch.min(self._calculate_step_size(self.z, dz), self._calculate_step_size(self.s, ds)))
 
-                dx, ds, dz, dy, wh = self.remove_nans(dx, ds, dz, dy)
+                dx, ds, dz, dy, wh = self._remove_nans(dx, ds, dz, dy)
                 if len(wh) == self.n_batch: #all batches have NaNs in the update --> terminate
                     return(self.x, self.s, self.z, self.y)
 
@@ -404,7 +405,7 @@ class MpcSolver():
                     print("mpc exit in iter", i)
                     print("no of mu not converged: ", len(mu[mu > 1e-10]))
                     print("mpc warning: Residuals not converged, need more itrations")
-            if self.refine == False:
+            if not self.refine:
                 return(self.x, self.s, self.z, self.y)
             else:
                 n_iter += 1
@@ -415,7 +416,7 @@ class MpcSolver():
         """Find batch_wise step size in the direction of dv.
         The step size should be as small as possible while ensuring that
         -v/dv will be positive after the update step.
-        
+
         If invalid values are encountered, the step size will be set to 1."""
         v = v.squeeze(2)
         dv = dv.squeeze(2)
@@ -426,7 +427,8 @@ class MpcSolver():
         div[dv > 0] = max(1.0, div.max())
         return (div.min(1)[0]).view(v.size()[0], 1, 1)
 
-    def get_initial(self, z):
+    @staticmethod
+    def _get_initial_step_size(z):
         """get step size using line search for initialization"""
         n_batch, _, _ = z.size()
         dz = torch.ones_like(z)
