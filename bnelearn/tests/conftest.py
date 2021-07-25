@@ -4,7 +4,7 @@ try:
     import gurobipy
     gurobipy.Model() 
     pytest.gurobi_licence_valid = True  
-except GurobiError:
+except Exception:
     pytest.gurobi_licence_valid = False
 
 
