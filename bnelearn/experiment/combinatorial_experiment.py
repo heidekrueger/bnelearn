@@ -248,7 +248,7 @@ class LLGExperiment(LocalGlobalExperiment):
 
         # Found higher precision db entry
         if db_batch_size >= self.config.logging.eval_batch_size:
-            self.config.logging.eval_batch_size = db_batch_size
+            print(f"BNE utility is estimated on larger batch of size {db_batch_size}.")
             self.bne_utilities = db_bne_utility
         else:
             self.bne_utilities = torch.tensor(

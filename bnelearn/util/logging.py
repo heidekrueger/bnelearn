@@ -303,7 +303,7 @@ def read_bne_utility_database(exp: 'Experiment'):
     if len(setting_database) == 0:
         return -1, None
 
-    # 2. found entry with smaller batch size
+    # 2. found entry
     else:
         return setting_database['batch_size'].tolist()[0], setting_database.bne_utilities.tolist()
 
