@@ -64,7 +64,8 @@ class SettingConfig:
     # parallel: int = 1 in hardware config now
 
     # All-Pay auctions & Contests
-    budgets: List[float] = None    
+    budgets: List[float] = None 
+    regret: float = None  
 
 
 @dataclass

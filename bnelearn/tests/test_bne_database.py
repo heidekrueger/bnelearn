@@ -2,8 +2,8 @@
 
 from bnelearn.experiment.configuration_manager import ConfigurationManager
 
-
 def test_bne_utility_database():
+
     """Testing correctness of the BNE utilities database."""
     specific_gpu = 0
 

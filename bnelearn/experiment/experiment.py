@@ -3,6 +3,7 @@ This module defines an experiment. It includes logging and plotting since they
 can often be shared by specific experiments.
 """
 
+from bnelearn.sampler import ValuationObservationSampler
 import os
 from sys import platform
 import time
@@ -10,6 +11,9 @@ from abc import ABC, abstractmethod
 from time import perf_counter as timer
 from typing import Iterable, List
 from collections import deque
+
+import warnings
+import traceback
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -48,7 +52,9 @@ class Experiment(ABC):
     # attributes required for general setup logic
     _bidder2model: List[int]  # a list matching each bidder to their Strategy
     n_models: int
-    n_items: int
+    valuation_size: int
+    observation_size: int
+    action_size: int
     mechanism: Mechanism
     positive_output_point: torch.Tensor  # shape must be valid model input
     input_length: int
@@ -84,6 +90,7 @@ class Experiment(ABC):
         self.writer = None
         self.overhead = 0.0
 
+        self.sampler: ValuationObservationSampler = None
         self.models: Iterable[torch.nn.Module] = None
         self.bidders: Iterable[Bidder] = None
         self.env: Environment = None
@@ -106,16 +113,14 @@ class Experiment(ABC):
         self.n_parameters = None
         self._cur_epoch_log_params = {}
 
+        # TODO: Get rid of these. payment rule should not be part of the 
+        # experiment interface.
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
         if not hasattr(self, 'n_players'):
             self.n_players = self.setting.n_players
         if not hasattr(self, 'payment_rule'):
             self.payment_rule = self.setting.payment_rule
-        if not hasattr(self, 'correlation_groups'):
-            # TODO Stefan: quick hack, only works properly for LLG
-            self.correlation_groups = None
-            self.correlation_devices = None
 
         # sets log dir for experiment. Individual runs will log to subdirectories of this.
         self.experiment_log_dir = os.path.join(self.logging.log_root_dir,
@@ -130,6 +135,7 @@ class Experiment(ABC):
         self._model_names = self._get_model_names()
 
         self._setup_mechanism()
+        self._setup_sampler()
 
         self.known_bne = self._check_and_set_known_bne()
         if self.known_bne:
@@ -157,7 +163,13 @@ class Experiment(ABC):
                 for bidders in self._model2bidder]
 
     @abstractmethod
-    def _strat_to_bidder(self, strategy, batch_size, player_position=None, cache_actions=False):
+    def _setup_sampler(self):
+        """Defines and initializes a sampler to retrieve observations and
+           valuations.
+        """
+
+    @abstractmethod
+    def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=False) -> Bidder:
         pass
 
     def _setup_learners(self):
@@ -176,17 +188,17 @@ class Experiment(ABC):
         1. Create and save the models and bidders
         2. Save the model parameters
         """
-        print('Setting up bidders...')
+        print('\tSetting up bidders...')
         # this method is part of the init workflow, so we #pylint: disable=attribute-defined-outside-init
         self.models = [None] * self.n_models
 
         for i in range(len(self.models)):
             self.models[i] = NeuralNetStrategy(
-                self.input_length,
+                self.observation_size,
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
-                ensure_positive_output=self.positive_output_point,
-                output_length=self.n_items,
+                ensure_positive_output=self.positive_output_point.to('cpu'),  # models init. on cpu
+                output_length=self.action_size,
                 budget=self.budget
             ).to(self.hardware.device)
 
@@ -205,8 +217,11 @@ class Experiment(ABC):
             else:
                 pretrain_transform = None
 
+            _, obs = self.sampler.draw_profiles()
+
             for i, model in enumerate(self.models):
-                model.pretrain(self.bidders[self._model2bidder[i][0]].valuations,
+                pos = self._model2bidder[i][0]
+                model.pretrain(obs[:, pos, :],
                                self.learning.pretrain_iters, pretrain_transform)
 
     def _check_and_set_known_bne(self):
@@ -222,14 +237,12 @@ class Experiment(ABC):
         raise NotImplementedError("This Experiment has no implemented BNE. No eval env was created.")
 
     def _setup_learning_environment(self):
-        print(f'Learning env correlation {self.correlation_groups}: {self.correlation_devices}.')
         self.env = AuctionEnvironment(self.mechanism,
                                       agents=self.bidders,
+                                      valuation_observation_sampler=self.sampler,
                                       batch_size=self.learning.batch_size,
                                       n_players=self.n_players,
-                                      strategy_to_player_closure=self._strat_to_bidder,
-                                      correlation_groups=self.correlation_groups,
-                                      correlation_devices=self.correlation_devices)
+                                      strategy_to_player_closure=self._strat_to_bidder)
 
     def _init_new_run(self):
         """Setup everything that is specific to an individual run, including everything nondeterministic"""
@@ -237,83 +250,95 @@ class Experiment(ABC):
         self._setup_learning_environment()
         self._setup_learners()
 
-        output_dir = self.run_log_dir
-
         if self.logging.log_metrics['opt'] and hasattr(self, 'bne_env'):
 
             if not isinstance(self.bne_env, list):
                 # TODO Nils: should perhaps always be a list, even when there is only one BNE
+                # TODO Stefan: Yes, we should not do any type conversions here, these should be lists from the beginning.
                 self.bne_env: List[Environment] = [self.bne_env]
                 self._optimal_bid: List[callable] = [self._optimal_bid]
                 self.bne_utilities = [self.bne_utilities]
 
-            # set up list for (multiple) BNE valuations and bids
-            self.v_opt = [None] * len(self.bne_env)
-            self.b_opt = [None] * len(self.bne_env)
-
-            # Switch needed for high dimensional settings, where we can't
-            # exactly match the requested grid (see e.g. multi-unit simplex)
-            grid_size_differs = False
-
-            # Draw valuations and corresponding equilibrium bids in all the
-            # availabe BNE
-            for i, bne_env in enumerate(self.bne_env):
-                # dim: [points, bidders, items]
-                self.v_opt[i] = torch.stack(
-                    [bidder.get_valuation_grid(n_points=self.plot_points)
-                     for bidder in [bne_env.agents[j[0]] for j in self._model2bidder]],
-                    dim=1
-                )
-                self.b_opt[i] = torch.stack(
-                    [self._optimal_bid[i](self.v_opt[i][:, m, :], player_position=bidder[0])
-                     for m, bidder in enumerate(self._model2bidder)],
-                    dim=1
-                )
-                if self.v_opt[i].shape[0] != self.plot_points:
-                    grid_size_differs = True
-
-            if grid_size_differs:
-                print('´plot_points´ changed due to get_valuation_grid')
-                self.plot_points = self.v_opt[0].shape[0]
+            self._setup_plot_equilibirum_data()
 
         is_ipython = 'inline' in plt.get_backend()
         if is_ipython:
             from IPython import display  # pylint: disable=unused-import,import-outside-toplevel
         plt.rcParams['figure.figsize'] = [8, 5]
 
-        if self.logging.enable_logging:
-            os.makedirs(output_dir, exist_ok=False)
-            if self.logging.save_figure_to_disk_png:
-                os.mkdir(os.path.join(output_dir, 'png'))
-            if self.logging.save_figure_to_disk_svg:
-                os.mkdir(os.path.join(output_dir, 'svg'))
-            if self.logging.save_models:
-                os.mkdir(os.path.join(output_dir, 'models'))
+        print('Stating run...')
 
-            print('Started run. Logging to {}.'.format(output_dir))
+        if self.logging.enable_logging:
+            # Create summary writer object and create output dirs if necessary
+            self._initialize_logging()
             self.fig = plt.figure()
-            self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
 
             tic = timer()
             # self._log_experiment_params()
             # self._log_hyperparams()
-
             # self._log_experiment_params()
             logging_utils.save_experiment_config(self.experiment_log_dir, self.config)
-            elapsed = timer() - tic
             logging_utils.log_git_commit_hash(self.experiment_log_dir)
+            elapsed = timer() - tic
         else:
-            print('Logging disabled.')
+            print('\tLogging disabled.')
             elapsed = 0
         self.overhead += elapsed
+
+    def _setup_plot_equilibirum_data(self):
+        # set up list for (multiple) BNE valuations and bids
+        self.v_opt = [None] * len(self.bne_env)
+        self.b_opt = [None] * len(self.bne_env)
+
+        # Switch needed for high dimensional settings, where we can't
+        # exactly match the requested grid (see e.g. multi-unit simplex)
+        grid_size_differs = False
+
+        # Draw valuations and corresponding equilibrium bids in all the
+        # availabe BNE
+        for bne_id, bne_env in enumerate(self.bne_env):
+            # dim: [points, models, valuation_size]
+            # get one representative player for each model
+            model_players = [m[0] for m in self._model2bidder]
+            self.v_opt[bne_id] = torch.stack(
+                [self.sampler.generate_valuation_grid(i, self.plot_points)
+                 for i in model_players],
+                dim=1)
+            self.b_opt[bne_id] = torch.stack(
+                [self._optimal_bid[bne_id](
+                    self.v_opt[bne_id][:, model_id, :],
+                    player_position=model_players[model_id])
+                 for model_id in range(len(model_players))],
+                dim=1)
+            if self.v_opt[bne_id].shape[0] != self.plot_points:
+                grid_size_differs = True
+
+        if grid_size_differs:
+            print('´plot_points´ changed due to get_valuation_grid')
+            self.plot_points = self.v_opt[0].shape[0]
+
+    def _initialize_logging(self):
+        """Creates output directories if necessary and
+        initializes the self.writer object for writing tensorboard logs.
+        """
+        output_dir = self.run_log_dir
+        os.makedirs(output_dir, exist_ok=False)
+        if self.logging.save_figure_to_disk_png:
+            os.mkdir(os.path.join(output_dir, 'png'))
+        if self.logging.save_figure_to_disk_svg:
+            os.mkdir(os.path.join(output_dir, 'svg'))
+        if self.logging.save_models:
+            os.mkdir(os.path.join(output_dir, 'models'))
+        self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
+        print('\tLogging to {}.'.format(output_dir))
 
     def _exit_run(self, global_step=None):
         """Cleans up a run after it is completed"""
         if self.logging.enable_logging:
             self._log_experiment_params(global_step=global_step)
 
-        if self.logging.save_models:
-            self._save_models(directory=self.run_log_dir)
+            if self.logging.save_models:
+                self._save_models(directory=self.run_log_dir)
 
         del self.writer  # make this explicit to force cleanup and closing of tb-logfiles
         self.writer = None
@@ -337,7 +362,10 @@ class Experiment(ABC):
 
         if self.logging.enable_logging:
             # pylint: disable=attribute-defined-outside-init
-            self._cur_epoch_log_params = {'utilities': utilities, 'prev_params': prev_params}
+            self._cur_epoch_log_params = {
+                'utilities': utilities.detach(),
+                'prev_params': prev_params
+            }
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
             print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),
                   end="\r")
@@ -346,8 +374,18 @@ class Experiment(ABC):
                   end="\r")
         return utilities
 
-    def run(self):
-        """Runs the experiment implemented by this class for `epochs` number of iterations."""
+    def run(self) -> bool:
+        """Runs the experiment implemented by this class, i.e. all defined runs.
+
+        If a run fails for whatever reason, a warning will be raised and the
+        next run will be triggered until all runs have completed/failed.
+
+        Returns:
+            success (bool): True if all runs ran successfully, false otherwise.
+        """
+
+        encountered_errors: bool = False
+
         if not self.running.seeds:
             self.running.seeds = list(range(self.running.n_runs))
 
@@ -356,7 +394,7 @@ class Experiment(ABC):
 
         for run_id, seed in enumerate(self.running.seeds):
             print(f'\nRunning experiment {run_id} (using seed {seed})')
-            e = None
+            epoch = None
             try:
                 t = time.strftime('%T ')
                 if platform == 'win32':
@@ -382,19 +420,20 @@ class Experiment(ABC):
 
                 self._init_new_run()
 
-                for e in range(self.running.n_epochs + 1):
-                    utilities = self._training_loop(epoch=e)
+                for epoch in range(self.running.n_epochs + 1):
+                    utilities = self._training_loop(epoch=epoch)
 
                     # Check stopping criterion
                     if self.logging.stopping_criterion_rel_util_loss_diff is not None and \
-                            e > 0 and not e % stopping_criterion_frequency:
+                            epoch > 0 and not epoch % stopping_criterion_frequency:
                         start_time = timer()
 
                         # Compute relative utility loss
                         loss_ex_ante, _, _ = self._calculate_metrics_util_loss(
                             create_plot_output=False,
                             batch_size=stopping_criterion_batch_size,
-                            grid_size=stopping_criterion_grid_size)
+                            grid_size=stopping_criterion_grid_size,
+                            epoch=epoch)
                         rel_util_loss = 1 - utilities / (utilities + torch.tensor(loss_ex_ante))
                         stopping_queue.append(rel_util_loss)
 
@@ -402,11 +441,11 @@ class Experiment(ABC):
                         if len(stopping_queue) == stopping_queue.maxlen:
                             values = torch.stack(tuple(stopping_queue))
                             if self.logging.enable_logging:
-                                stop = self._check_convergence(values, epoch=e)
+                                stop = self._check_convergence(values, epoch=epoch)
 
                         self.overhead = self.overhead + timer() - start_time
                         if stop:
-                            print(f'Stopping criterion reached after {e} iterations.')
+                            print(f'Stopping criterion reached after {epoch} iterations.')
                             break
 
                 if self.logging.enable_logging and (
@@ -415,9 +454,14 @@ class Experiment(ABC):
                     logging_utils.export_stepwise_linear_bid(
                         experiment_dir=self.run_log_dir, bidders=bidders,
                         step=self.logging.export_step_wise_linear_bid_function_size)
+            except Exception as e:
+                encountered_errors = True
+                tb = traceback.format_exc()
+                print("\t Error... aborting run.")
+                warnings.warn(f"WARNING: Run {run_id} failed with {type(e)}! Traceback:\n{tb}")
 
             finally:
-                self._exit_run(global_step=e)
+                self._exit_run(global_step=epoch)
 
         # Once all runs are done, convert tb event files to csv
         if self.logging.enable_logging and (
@@ -433,6 +477,8 @@ class Experiment(ABC):
 
             # logging_utils.print_aggregate_tensorboard_logs(self.experiment_log_dir)
             print('finished.')
+
+        return not encountered_errors
 
     def _check_convergence(self, values: torch.Tensor, stopping_criterion: float = None, epoch: int = None):
         """
@@ -646,25 +692,27 @@ class Experiment(ABC):
         if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
 
-            unique_bidders = [self.env.agents[i[0]] for i in self._model2bidder]
-            v = torch.stack(
-                [b.valuations[:self.plot_points, ...] for b in unique_bidders],
+            unique_bidders = [i[0] for i in self._model2bidder]
+            # TODO: possibly want to use old valuations, but currently it uses
+            #       those from the util_loss, not those that were used during self-play
+            o = torch.stack(
+                [self.env._observations[:self.plot_points, b, ...] for b in unique_bidders],
                 dim=1
             )
-            b = torch.stack([b.get_action()[:self.plot_points, ...]
-                             for b in unique_bidders], dim=1)
+            b = torch.stack([self.env.agents[b[0]].get_action(o[:, i, ...])
+                             for i, b in enumerate(self._model2bidder)], dim=1)
 
             labels = ['NPGA agent {}'.format(i) for i in range(len(self.models))]
-            fmts = ['bo'] * len(self.models)
+            fmts = ['o'] * len(self.models)
             if self.known_bne and self.logging.log_metrics['opt']:
                 for env_idx, _ in enumerate(self.bne_env):
-                    v = torch.cat([v, self.v_opt[env_idx]], dim=1)
+                    o = torch.cat([o, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
                     labels += ['BNE {} agent {}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
                                for j in range(len(self.models))]
-                    fmts += ['b--'] * len(self.models)
+                    fmts += ['--'] * len(self.models)
 
-            self._plot(plot_data=(v, b), writer=self.writer, figure_name='bid_function',
+            self._plot(plot_data=(o, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         self.overhead = self.overhead + timer() - start_time
@@ -700,8 +748,7 @@ class Experiment(ABC):
                 bne_env.get_strategy_reward(
                     strategy=model,
                     player_position=m2b(m),
-                    draw_valuations=redraw_bne_vals,
-                    use_env_valuations= not redraw_bne_vals
+                    redraw_valuations=redraw_bne_vals
                 ) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(
@@ -715,22 +762,6 @@ class Experiment(ABC):
 
         return utility_vs_bne, epsilon_relative, epsilon_absolute
 
-    def relevant_actions(self):
-        r"""Get indecies of actions that matter.
-
-        In some games, and in their BNE, only some of the agents' actions
-        matter.
-
-        Returns:
-            relevant_actions: (torch.Tensor) of shape (n_agents, n_actions)
-                with elements in $\{0, 1\}$ for marking relevancy for BNE.
-
-        """
-        return torch.ones(
-            size=(len(self.models), self.n_items),
-            device=self.config.hardware.device,
-            dtype=torch.bool
-        )
 
     def _calculate_metrics_action_space_norms(self):
         """
@@ -751,20 +782,25 @@ class Experiment(ABC):
             # pylint: disable=cell-var-from-loop
 
             m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
+            m2o = lambda m: bne_env._observations[:, self._model2bidder[m][0], :]
 
             L_2[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
-                    model, m2a(i).get_action(), m2a(i).valuations, 2,
-                    componentwise=self.logging.log_componentwise_norm,
-                    component_selection=self.relevant_actions()[i, :]
+                    strategy=model,
+                    actions=m2a(i).get_action(),
+                    valuations=m2o(i),
+                    p=2,
+                    componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
             ])
             L_inf[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
-                    model, m2a(i).get_action(), m2a(i).valuations, float('inf'),
-                    componentwise=self.logging.log_componentwise_norm,
-                    component_selection=self.relevant_actions()[i, :]
+                    strategy=model,
+                    actions=m2a(i).get_action(),
+                    valuations=m2o(i),
+                    p=float('inf'),
+                    componentwise=self.logging.log_componentwise_norm
                 )
                 for i, model in enumerate(self.models)
             ])
@@ -773,8 +809,8 @@ class Experiment(ABC):
     def _calculate_metrics_util_loss(self, create_plot_output: bool, epoch: int = None,
                                      batch_size=None, grid_size=None):
         """
-        Compute mean util_loss of current policy and return
-        ex interim util_loss (ex ante util_loss is the average of that tensor)
+        Compute mean util_loss of current policy and return ex interim util
+        loss (ex ante util_loss is the average of that tensor).
 
         Returns:
             ex_ante_util_loss: List[torch.tensor] of length self.n_models
@@ -783,55 +819,67 @@ class Experiment(ABC):
 
         env = self.env
         if batch_size is None:
-            batch_size = self.logging.util_loss_batch_size
+            # take min of both in case the requested batch size is too large for the env
+            batch_size = min(self.logging.util_loss_batch_size, self.learning.batch_size)
         if grid_size is None:
             grid_size = self.logging.util_loss_grid_size
 
         assert batch_size <= env.batch_size, \
             "Util_loss for larger than actual batch size not implemented."
 
-        torch.cuda.empty_cache()
-        util_loss = [
-            metrics.ex_interim_util_loss(env, player_positions[0], batch_size, grid_size,
-                                         return_best_response=self.logging.best_response)
-            for player_positions in self._model2bidder
-        ]
+        with torch.no_grad():  # don't need any gradient information here
+            # TODO: currently we don't know where exactly a mmory leak is
+            observations = self.env._observations[:batch_size, :, :]
+            util_losses, best_responses = zip(*[
+                metrics.ex_interim_util_loss(
+                    env=env,
+                    player_position=player_positions[0],
+                    agent_observations=observations[:, player_positions[0], :],
+                    grid_size=grid_size
+                )
+                for player_positions in self._model2bidder
+            ])
+
         if self.logging.best_response:
-            best_responses = (
-                torch.stack([r[1][0] for r in util_loss], dim=1)[:, :, None],
-                torch.stack([r[1][1] for r in util_loss], dim=1)[:, :, None]
-            )
-            util_loss = [t[0] for t in util_loss]
+            plot_data = (observations[:, [b[0] for b in self._model2bidder], :],
+                         torch.stack(best_responses, 1))
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
-            fmts = ['bo'] * len(self.models)
-            self._plot(plot_data=best_responses, writer=self.writer,
-                       ylim=[0, max(a._grid_ub for a in self.env.agents).cpu()],
+            fmts = ['o'] * len(self.models) 
+            self._plot(plot_data=plot_data, writer=self.writer,
+                       ylim=[0, self.sampler.support_bounds.max().item()],
                        figure_name='best_responses', y_label='best response',
-                       colors=list(range(len(self.models))), epoch=epoch, labels=labels,
-                       fmts=fmts, plot_points=self.plot_points)
+                       colors=list(range(len(self.models))), epoch=epoch,
+                       labels=labels, fmts=fmts, plot_points=self.plot_points)
 
-        ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_loss]
-        ex_interim_max_util_loss = [util_loss_model.max() for util_loss_model in util_loss]
-
-        # TODO Nils @Stefan: check consisteny with journal version
+        # calculate different losses
+        ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_losses]
+        ex_interim_max_util_loss = [util_loss_model.max() for util_loss_model in util_losses]
         estimated_relative_ex_ante_util_loss = [
             (1 - u / (u + l)).item()
-            for u, l in zip(self._cur_epoch_log_params['utilities'].tolist(), ex_ante_util_loss)
+            for u, l in zip(
+                [self.env.get_reward(self.env.agents[self._model2bidder[m][0]]).detach()
+                for m in range(len(self.models))],
+                ex_ante_util_loss)
         ]
 
-        if not hasattr(self, '_max_util_loss'):
-            self._max_util_loss = ex_interim_max_util_loss
+        # plotting
         if create_plot_output:
-            # TODO Nils: differentiate models in plot
+
+            # keep track of upper bound for plotting
+            if not hasattr(self, '_max_util_loss'):
+                self._max_util_loss = ex_interim_max_util_loss
+
             # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
-            util_losses = torch.stack([util_loss[r] for r in range(len(util_loss))], dim=1)[:, :, None]
-            valuations = torch.stack([self.bidders[player_positions[0]].valuations[:batch_size, ...]
-                                      for player_positions in self._model2bidder], dim=1)
-            plot_output = (valuations, util_losses)
-            self._plot(plot_data=plot_output, writer=self.writer,
-                       ylim=[0, max(self._max_util_loss).cpu()],
+            util_losses = torch.stack(list(util_losses), dim=1).unsqueeze_(-1)
+            observations = self.env._observations[:batch_size, :, :]
+            plot_data = (observations[:, [b[0] for b in self._model2bidder], :], util_losses)
+            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
+            fmts = ['o'] * len(self.models)
+            self._plot(plot_data=plot_data, writer=self.writer,
+                       ylim=[0, max(self._max_util_loss).detach().item()],
                        figure_name='util_loss_landscape', y_label='ex-interim loss',
-                       epoch=epoch, plot_points=self.plot_points)
+                       colors=list(range(len(self.models))), epoch=epoch,
+                       labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 
@@ -851,7 +899,7 @@ class Experiment(ABC):
         # TODO: Stefan: this currently called _per run_. is this desired behavior?
         for i, model in enumerate(self.models):
             self.writer.add_text('hyperparameters/neural_net_spec', str(model))
-            self.writer.add_graph(model, self.env.agents[i].valuations)
+            self.writer.add_graph(model, self.env._observations[:, i, :])
 
         h_params = {'hyperparameters/batch_size': self.learning.batch_size,
                     'hyperparameters/pretrain_iters': self.learning.pretrain_iters,
@@ -861,19 +909,17 @@ class Experiment(ABC):
                     'hyperparameters/optimizer_type': self.learning.optimizer_type}
 
         ignored_metrics = ['utilities', 'update_norm', 'overhead_hours']
+        filtered_metrics = filter(lambda elem: elem[0] not in ignored_metrics,
+                                  self._cur_epoch_log_params.items())
         try:
-            for i, (k, v) in enumerate(self._cur_epoch_log_params.items()):
-                if k not in ignored_metrics:
-                    if isinstance(v, list):  # TODO: isn't this the same behavior as in the second case for tensor?
-                        for model_number in range(len(v)):
-                            self._hparams_metrics["metrics/" + k+"_"+str(model_number)] = v[model_number]
-                    elif isinstance(v, torch.Tensor):
-                        for model_number, metric in enumerate(v):
-                            self._hparams_metrics["metrics/" + k+"_"+str(model_number)] = metric
-                    elif isinstance(v, int) or isinstance(v, float):
-                        self._hparams_metrics["metrics/" + k] = v
-                    else:
-                        print("the type ", type(v), " is not supported as a metric")
+            for k, v in filtered_metrics:
+                if isinstance(v, (list, torch.Tensor)):
+                    for model_number, metric in enumerate(v):
+                        self._hparams_metrics["metrics/" + k+"_"+str(model_number)] = metric
+                elif isinstance(v, int) or isinstance(v, float):
+                    self._hparams_metrics["metrics/" + k] = v
+                else:
+                    print("the type ", type(v), " is not supported as a metric")
         except Exception as e:  # pylint: disable=broad-except
             print(e)
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics,
@@ -884,7 +930,7 @@ class Experiment(ABC):
     #
     #     for i, model in enumerate(self.models):
     #         self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)  # ToDO To hyperparams
-    #         self.writer.add_graph(model, self.env.agents[i].valuations)
+    #         self.writer.add_graph(model, self.env.agents[i]._cached_observations)
 
     def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to

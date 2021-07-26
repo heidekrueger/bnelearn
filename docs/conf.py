@@ -58,7 +58,7 @@ html_static_path = ['_static']
 import sphinx_rtd_theme
 import os 
 import sys 
-sys.path.append('.')
+sys.path.append('..')
 extensions = ["sphinx.ext.autodoc",
         "sphinx_rtd_theme",
         "sphinx.ext.viewcode", 
