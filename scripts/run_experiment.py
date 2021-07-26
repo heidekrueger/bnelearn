@@ -68,7 +68,7 @@ if __name__ == '__main__':
     #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True, eval_batch_size=2**17, util_loss_grid_size=2**10, util_loss_batch_size=2**12, util_loss_frequency=1000, stopping_criterion_frequency=100000) \
     #     .set_hardware(specific_gpu=2).get_config()
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_symmetric_uniform_all_pay', n_runs=1, n_epochs=3500) \
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_asymmetric_uniform_all_pay', n_runs=1, n_epochs=3500) \
         .set_setting(n_players=2) \
         .set_learning(pretrain_iters = 500, batch_size=2**17) \
         .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True, eval_batch_size=2**17, util_loss_grid_size=2**10, util_loss_batch_size=2**12, util_loss_frequency=1000, stopping_criterion_frequency=100000) \

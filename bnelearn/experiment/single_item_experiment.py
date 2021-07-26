@@ -424,7 +424,7 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
     def _get_analytical_bne_utility(self):
         """Get bne utility from known closed-form solution for higher precision."""
-        if self.payment_rule == 'first_price' or self.payment_rule == "all_pay":    # TODO Markus -> wie sieht die analytische bne utility aus?
+        if self.payment_rule == 'first_price':
             bne_utility = torch.tensor(
                 (self.risk * (self.u_hi - self.u_lo) / (self.n_players - 1 + self.risk)) **
                 self.risk / (self.n_players + self.risk),
@@ -857,13 +857,49 @@ class SingleItemSymmetricContestExperiment(UniformSymmetricPriorSingleItemExperi
             name = ['contest/tullock/single_item/symmetric/risk_averse/']
         return os.path.join(*name)
 
+
+    def _setup_eval_environment(self):
+        """Determines whether a bne exists and sets up eval environment."""
+
+        assert self.known_bne
+        assert  hasattr(self, '_optimal_bid')
+        print("Setting up the evaluation environment..." + \
+            "\tDepending on your and hardware and the eval_batch_size, this may take a while," +\
+                "-- sequential numeric integration on the cpu is required in this environment.")
+
+        n_processes_optimal_strategy = self.config.hardware.max_cpu_threads if self.valuation_prior != 'uniform' and \
+                                                self.payment_rule != 'second_price' else 0
+        bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
+
+
+        # define bne agents once then use them in all runs
+        self.bne_env = AuctionEnvironment(
+            mechanism = self.mechanism,
+            agents=[self._strat_to_bidder(bne_strategy,
+                                          player_position=i,
+                                          batch_size=self.logging.eval_batch_size,
+                                          enable_action_caching=self.logging.cache_eval_actions)
+                    for i in range(self.n_players)],
+            valuation_observation_sampler = self.sampler,
+            batch_size=self.logging.eval_batch_size,
+            n_players=self.n_players,
+            strategy_to_player_closure=self._strat_to_bidder
+        )
+
+        bne_utility_sampled = self.bne_env.get_reward(self.bne_env.agents[0], redraw_valuations=True)
+
+        print('Utility in BNE (sampled): \t{:.5f}'.format(bne_utility_sampled))
+        print('Using sampled BNE utility.')
+        self.bne_utility = bne_utility_sampled
+        self.bne_utilities = [self.bne_utility] * self.n_models
+
 class SingleItemAsymmetricUniformicAllPayExperiment(SingleItemExperiment):
     def __init__(self, config: ExperimentConfig):
 
         self.config = config
         self.n_players = self.config.setting.n_players
         self.n_items = 1
-        self.input_length = 1
+        # self.input_length = 1
         if not isinstance(self.config.setting.u_lo, list):
             self.u_lo = [float(self.config.setting.u_lo)] * self.n_players
         else:
@@ -871,9 +907,9 @@ class SingleItemAsymmetricUniformicAllPayExperiment(SingleItemExperiment):
         
         self.u_hi: List[float] = [float(self.config.setting.u_hi[i]) for i in range(self.n_players)]
 
-        self.model_sharing = False
+        # self.model_sharing = False
 
-        self.risk = float(self.config.setting.risk)
+        # self.risk = float(self.config.setting.risk)
         self.n_models = self.n_players
         self._bidder2model = list(range(self.n_players))
         self.positive_output_point = torch.tensor([min(self.u_hi)] * self.n_items)
@@ -885,11 +921,25 @@ class SingleItemAsymmetricUniformicAllPayExperiment(SingleItemExperiment):
         name = ['all_pay/single_item/asymmetric/uniform/neutral/']
         return os.path.join(*name)
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
-        return Bidder.uniform(self.u_lo[player_position], self.u_hi[player_position], strategy,
-                              player_position=player_position, batch_size=batch_size,
-                              n_items=self.input_length,
-                              risk=self.risk, cache_actions=cache_actions)
+    def _setup_sampler(self):
+
+        default_batch_size = self.learning.batch_size
+        device = self.hardware.device
+        # setup individual samplers for each bidder
+        bidder_samplers = [
+            UniformSymmetricIPVSampler(
+                self.u_lo[i], self.u_hi[i], 1,
+                self.valuation_size, default_batch_size, device)
+            for i in range(self.n_players)]
+
+        self.sampler = CompositeValuationObservationSampler(
+            self.n_players, self.valuation_size, self.observation_size, bidder_samplers,
+            default_batch_size, device
+            )
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=None, **strat_to_player_kwargs):
+        return Bidder(strategy, player_position=player_position, batch_size=batch_size, **strat_to_player_kwargs)
+
 
     def _setup_mechanism(self):
         print('Setting up the all pay auction mechanism')
@@ -897,57 +947,5 @@ class SingleItemAsymmetricUniformicAllPayExperiment(SingleItemExperiment):
 
     def _check_and_set_known_bne(self):
         return False
-        if self.n_players == 2 and self.risk == 1.0:
-            self._optimal_bid = [partial(_optimal_bid_single_item_asymmetric_all_pay_auction,
-                                        B=self.u_hi[0], B_prime=self.u_hi[1])]         
-  
-            return True
-        else:
-            return False
-
-    def _setup_eval_environment(self):
-        assert self.known_bne
-        assert hasattr(self, '_optimal_bid')
-
-        bne_strategies = [None] * len(self._optimal_bid)
-        self.bne_env = [None] * len(self._optimal_bid)
-        bne_utilities_sampled = [None] * len(self._optimal_bid)
-        for i, bid_function in enumerate(self._optimal_bid):
-            bne_strategies[i] = [ClosureStrategy(partial(bid_function, player_position=j))
-                                 for j in range(self.n_players)]
-
-            self.bne_env[i] = AuctionEnvironment(
-                mechanism=self.mechanism,
-                agents=[self._strat_to_bidder(bne_strategies[i][p], player_position=p,
-                                              batch_size=self.logging.eval_batch_size,
-                                              cache_actions=self.config.logging.cache_eval_actions)
-                        for p in range(self.n_players)],
-                n_players=self.n_players,
-                batch_size=self.logging.eval_batch_size,
-                strategy_to_player_closure=self._strat_to_bidder
-            )
-
-            bne_utilities_sampled[i] = torch.tensor(
-                [self.bne_env[i].get_reward(a, draw_valuations=True) for a in self.bne_env[i].agents])
-
-            print(('Utilities in BNE{} (sampled):' + '\t{:.5f}' * self.n_players + '.') \
-                .format(i + 1,*bne_utilities_sampled[i]))
-
-        if len(set(self.u_lo)) == 1:
-            print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
-
-        print('Debug: eval_batch size: {}'.format(self.bne_env[0].batch_size))
-
-        # TODO Stefan: generalize using analytical/hardcoded utilities over all settings!
-        # In case of 'canonica' overlapping setting, use precomputed bne-utils with higher precision.
-        if len(self.bne_env) == 1 and \
-            self.u_lo[0] == self.u_lo[1] == 5.0 and self.u_hi[0] ==15. and self.u_hi[1] == 25. and \
-            self.bne_env[0].batch_size <= 2**22:
-            # replace by known optimum with higher precision
-            bne_utilities_sampled[0] = torch.tensor([0.9694, 5.0688]) # calculated using 100x batch size above
-            print(f"\tReplacing sampled bne utilities by precalculated utilities with higher precision: {bne_utilities_sampled[0]}")
-
-        self.bne_utilities = bne_utilities_sampled
-
         
 
