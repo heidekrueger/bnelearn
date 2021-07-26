@@ -510,7 +510,8 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
            `_optimal_bid` function.
         """
         if self.risk == 1.0:
-            if len(set(self.u_lo)) != 1:  # BNE for differnt u_lo for each player
+            if self.u_lo[0] != self.u_lo[1]:  # Agents do not share same u_lo
+                # Check for bounds match from Kaplan & Zamir [2015]
                 if self.setting.u_lo == [0, 6] and self.setting.u_hi == [5, 7]:
                     self._optimal_bid = [
                         # BNE 1
@@ -525,7 +526,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                                 u_lo=self.u_lo, u_hi=self.u_hi)
                     ]
                     return True
-            else:  # BNE for fixed u_lo for all players
+            else:  # BNE for shared u_lo for all players from Plum [1992]
                 self._optimal_bid = [partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral,
                                              u_lo=self.u_lo, u_hi=self.u_hi)]
                 return True
