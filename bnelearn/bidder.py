@@ -160,6 +160,15 @@ class Bidder(Player):
             valuations = self._cached_valuations
 
         welfare = self.get_welfare(allocations, valuations)
+
+        # Add regret terms
+        if self.regret != 0.0:
+            *batch_dims, item_dim = range(valuations.dim())
+            regret_mask = (welfare==0) & (valuations.squeeze() <= payments)
+            loser_regret_mask = (welfare==0) & (valuations.squeeze() > payments)
+            welfare[regret_mask] = -self.regret[0] * payments[regret_mask]    
+            welfare[loser_regret_mask] = -self.regret[0] * payments[loser_regret_mask] - self.regret[1] * (valuations.squeeze()[loser_regret_mask] - payments[loser_regret_mask]) 
+
         payoff = welfare - payments
 
         if self.risk == 1.0:

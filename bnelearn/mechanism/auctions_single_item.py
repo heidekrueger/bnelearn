@@ -245,7 +245,6 @@ class SingleItemAllPayAuction(Mechanism):
         payments = bids.reshape(*batch_sizes, n_players) # pay as bid
         allocations = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
 
-        
         # Assign item to the bidder with the highest bid, in case of a tie assign it randomly to one of the winning bidderss
         highest_bids, winning_bidders = bids.max(dim=player_dim, keepdim=True) 
 

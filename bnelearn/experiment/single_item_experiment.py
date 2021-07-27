@@ -857,6 +857,10 @@ class SingleItemSymmetricContestExperiment(UniformSymmetricPriorSingleItemExperi
             name = ['contest/tullock/single_item/symmetric/risk_averse/']
         return os.path.join(*name)
 
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+        return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
+                      risk=self.risk, regret=self.regret)
+
 
     def _setup_eval_environment(self):
         """Determines whether a bne exists and sets up eval environment."""
