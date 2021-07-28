@@ -21,7 +21,7 @@ def test_bne_utility_database():
                                                 'util/bne_database.csv')
     bne_database_backup = pd.read_csv(file_path)
 
-    # Create fake experiment
+    # Create fake experiment -- this will write a line into the bne database upon initialization
     config, exp_class = ConfigurationManager(experiment_type='llg', n_runs=0, n_epochs=0) \
         .set_setting(
             payment_rule='vcg',
