@@ -186,7 +186,7 @@ def run_auction_test(config, exp_class, known_bne):
     config.learning.batch_size = 2 ** 2
     config.logging.eval_batch_size = 2 ** 2
     # Create and run the experiment
-    config.hardware.specific_gpu = 0
+    config.hardware.specific_gpu = 0  # TODO: check cuda availability first
 
     experiment = exp_class(config)
 
