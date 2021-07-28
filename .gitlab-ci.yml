@@ -1,6 +1,7 @@
 stages:
   - test
   - lint
+  - install_env
   - deploy_docs
 
 test:
@@ -70,7 +71,15 @@ lint:
   #artifacts:
   #  paths:
   #    - pylint.txt
-
+install_env:
+  stage: install_env
+  script:
+  - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
+  - conda env remove -n bnelearndocs
+  - conda env create -n bnelearndocs python=3.9 pip setuptools
+  - conda activate bnelearndocs
+  - pip install -r requirements.txt
+  - pip install -e .
 deploy_docs:
   only:
     refs:
@@ -78,7 +87,7 @@ deploy_docs:
   stage: deploy_docs
   script:
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
-  - source activate bnelearn
+  - source activate bnelearndocs
   - cp -r docs/* ~/docs-bnelearn
   - cp -r bnelearn ~/docs-bnelearn
   - cd ~/docs-bnelearn
