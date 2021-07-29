@@ -10,7 +10,7 @@ install_env:
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
   - conda env remove -n bnelearn-test
   - conda create -n bnelearn-test python=3.9
-  - conda activate bnelearn-test
+  - source activate bnelearn-test
   - pip install -r requirements.txt
   - pip install -e .
 
@@ -91,7 +91,7 @@ deploy_docs:
   ## install new conda env for docs
   - conda env remove -n bnelearndocs
   - conda create -n bnelearndocs python=3.9
-  - conda activate bnelearndocs
+  - source activate bnelearndocs
   - pip install -r requirements.txt
   - pip install -e .
   ## move required doc files to location of docs server
