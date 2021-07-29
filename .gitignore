@@ -67,3 +67,4 @@ pylint.txt
 !/docs/make.bat
 !/docs/Makefile
 !/docs/conf.py
+!/docs/run_docs_server.sh
