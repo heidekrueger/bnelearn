@@ -11,6 +11,7 @@ install_env:
   - conda env remove -n bnelearn-test
   - conda create -n bnelearn-test python=3.9
   - source activate bnelearn-test
+  - which pip
   - pip install -r requirements.txt
   - pip install -e .
 
