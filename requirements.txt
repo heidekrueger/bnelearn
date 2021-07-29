@@ -1,12 +1,10 @@
+# -*- coding: utf-8 -*-
 # non-python requirements (for package development only)
 # jq # installable via apt-get; used to automatically clean up ipynb files on commit via git filters.
-
 ## Tested with python==3.9.5
-
--f https://download.pytorch.org/whl/torch_stable.html
+--find-links https://download.pytorch.org/whl/torch_stable.html
 
 cvxpy
-fire
 future
 gurobipy # alternative via conda: gurobi -c gurobi
 jupyterlab
