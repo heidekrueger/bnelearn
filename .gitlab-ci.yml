@@ -91,8 +91,9 @@ deploy_docs:
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
   ## install new conda env for docs
   - conda env remove -n bnelearndocs
-  - conda create -n bnelearndocs python=3.9
+  - conda create -n bnelearndocs python=3.9 pip
   - source activate bnelearndocs
+  - which pip
   - pip install -r requirements.txt
   - pip install -e .
   ## move required doc files to location of docs server
@@ -105,5 +106,6 @@ deploy_docs:
   ## kill the existing docs server and 
   ## run the documentation server in a new tmux session
   - chmod +x run_docs_server.sh
-  - tmux kill-session -t bnelearndocs
+  # kill the session if it exists (but don't throw an error if it doesn't)
+  - tmux kill-session -t bnelearndocs || true
   - tmux new -s bnelearndocs -d 'sh ./run_docs_server.sh'
