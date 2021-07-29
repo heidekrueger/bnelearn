@@ -17,7 +17,7 @@ install_env:
 
 test:
   stage: test
-  needs: [install_env]
+  #needs: [install_env]
   script:
   # this assumes everything is already installed and we are able to load the correct conda env.
   # when setting up the runner user for the first time, make sure it finds the global conda on the machine
@@ -38,7 +38,7 @@ test:
 
 lint:
   stage: lint
-  needs: [install_env]
+  #needs: [install_env]
   script:
     # requires that pylint , pylint-exit and pylint2codeclimate are installed.
     # pylint-exit used as below modifies pylint exit code to prevent false-positive pipeline fails.
@@ -85,9 +85,9 @@ lint:
   #    - pylint.txt
 
 deploy_docs:
-  #only:
-  #  refs:
-  #    - master
+  only:
+   refs:
+     - master
   stage: deploy_docs
   script:
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
