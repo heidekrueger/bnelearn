@@ -1,8 +1,18 @@
 stages:
+  - install_env
   - test
   - lint
-  - install_env
   - deploy_docs
+
+install_env:
+  stage: install_env
+  script:
+  - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
+  - conda env remove -n bnelearn-test
+  - conda env create -n bnelearn-test python=3.9
+  - conda activate bnelearn-test
+  - pip install -r requirements.txt
+  - pip install -e .
 
 test:
   stage: test
@@ -71,25 +81,24 @@ lint:
   #artifacts:
   #  paths:
   #    - pylint.txt
-install_env:
-  stage: install_env
-  script:
-  - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
-  - conda env remove -n bnelearndocs
-  - conda env create -n bnelearndocs python=3.9 pip setuptools
-  - conda activate bnelearndocs
-  - pip install -r requirements.txt
-  - pip install -e .
+
 deploy_docs:
-  only:
-    refs:
-      - master
+  #only:
+  #  refs:
+  #    - master
   stage: deploy_docs
   script:
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
-  - source activate bnelearndocs
+  ## install new conda env for docs
+  - conda env remove -n bnelearndocs
+  - conda env create -n bnelearndocs python=3.9
+  - conda activate bnelearndocs
+  - pip install -r requirements.txt
+  - pip install -e .
+  ## move required doc files to location of docs server
   - cp -r docs/* ~/docs-bnelearn
   - cp -r bnelearn ~/docs-bnelearn
+  ## build the documentation
   - cd ~/docs-bnelearn
   - sphinx-apidoc -f -o . bnelearn
   - make html
