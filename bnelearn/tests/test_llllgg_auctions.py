@@ -1,14 +1,15 @@
 """Testing correctness of LLLLGG combinatorial auction implementations."""
 import pytest
-import torch
-from bnelearn.mechanism import LLLLGGAuction
-import warnings
-
 @pytest.fixture(autouse=True)
 def check_gurobipy():
     pytest.importorskip('gurobipy')      
     if not pytest.gurobi_licence_valid:
         warnings.warn("The Gurobipy is installed but no valid licence available, the test will fail")
+
+import torch
+from bnelearn.mechanism import LLLLGGAuction
+import warnings
+
 
 bids_1 = torch.tensor([[
         #Bundle1, Bundle2
