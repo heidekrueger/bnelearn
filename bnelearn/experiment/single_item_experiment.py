@@ -506,30 +506,33 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         return Bidder(strategy, player_position=player_position, batch_size=batch_size, **strat_to_player_kwargs)
 
     def _check_and_set_known_bne(self):
-        """Checks whether a bne is known for this experiment and sets the corresponding
+        """Checks whether a BNE is known for this experiment and sets the corresponding
            `_optimal_bid` function.
         """
         if self.risk == 1.0:
-            # TODO: checks not fully implemented! there are additional requirements! (which?)
-            if len(set(self.u_lo)) != 1: # BNE for differnt u_lo for each player
-                self._optimal_bid = [
-                    # BNE 1
-                    _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
-                        u_lo=self.u_lo, u_hi=self.u_hi
-                    ),
-                    # BNE 2
-                    partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2,
-                            u_lo=self.u_lo, u_hi=self.u_hi),
-                    # BNE 3
-                    partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3,
-                            u_lo=self.u_lo, u_hi=self.u_hi)
-                ]
-            else: # BNE for fixed u_lo for all players
+            if self.u_lo[0] != self.u_lo[1]:  # Agents do not share same u_lo
+                # Check for bounds match from Kaplan & Zamir [2015]
+                if self.setting.u_lo == [0, 6] and self.setting.u_hi == [5, 7]:
+                    self._optimal_bid = [
+                        # BNE 1
+                        _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
+                            u_lo=self.u_lo, u_hi=self.u_hi
+                        ),
+                        # BNE 2
+                        partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2,
+                                u_lo=self.u_lo, u_hi=self.u_hi),
+                        # BNE 3
+                        partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3,
+                                u_lo=self.u_lo, u_hi=self.u_hi)
+                    ]
+                    return True
+            else:  # BNE for shared u_lo for all players from Plum [1992]
                 self._optimal_bid = [partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral,
                                              u_lo=self.u_lo, u_hi=self.u_hi)]
-            return True
-        else:
-            return super()._check_and_set_known_bne()
+                return True
+
+        # Found no BNE
+        return super()._check_and_set_known_bne()
 
     def _setup_eval_environment(self):
         assert self.known_bne

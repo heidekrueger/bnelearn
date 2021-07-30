@@ -1,4 +1,12 @@
 # Installation
+The installation instructions below are for 
+
+You will need a python (3.9+) environment with `pip` and `setuptools` installed. We strongly recommend using an isolated environment for this project (e.g. using `conda` or `virtualenv`).
+
+1. (recommended but optional) Install the requirements via `pip install -r requirements.txt`.
+    This will install _all_ requirements, including GPU-enabled pytorch, external solvers required for some combinatorial auctions and development tools. (Note that `requirements.txt` will pull the latest stable torch version with cuda that is available at the time of writing (July 2021). You may want to manually install the latest version available for your system, see https://pytorch.org/get-started/locally/ for details.
+1. Install the bnelearn package via `pip install -e .`.
+1. Test your installation via `pytest`. If all tests pass, everything was successfull. (If you see any `XFAIL`s, the installation seems to work, but the tests have determined that you are missing some optional requirements for advanced features, or that your system does not support cuda. In this case, not all features may be available to you.)
 
 **THIS IS OUTDATED BUT MOST THINGS SHOULD STILL WORK**
 
@@ -9,20 +17,6 @@ The framework conceptually consists of the following
   log results to subdirectories (or other places) in tensorboard format.
 * The `R` subdirectory contains scripts for parsing tensorboard logs into R dataframes, in order to create pretty figures. Some of this functionality uses r-tensorflow, see source code for installation instructions.
 
-To use the bnelearn software, the following is required:
-* A local copy of the software (via `git clone`)
-* A python environment that contains all `bnelearn` requirements, especially pytorch.
-    * Tested with python 3.7, pytorch 1.2.0, CUDA 10, cuDNN 7.6.2
-* A running installation of jupyter with access to a Python-kernel of the above environment.
-* For tensorboard vizualizations, a running version of tensorboard
-    * Tested with tb-nightly 1.15.0a20190624. (tensorboard stable 1.14 is incompatible with some of the logging we use.)
-
-The easiest way to achieve the above is to create a conda environment. If you want to use the latest tensorboard features, you may want to create separate environments,
-separating the bnelearn/pytorch and tensorboard/tensorflow because different release schedules
-of pytorch and TensorFlow regularly lead to incompatible dependencies of the latest versions of both frameworks.
-
-There's a standalone Tensorboard installation that can just be installed in the bnelearn pytorch env. However, a full-blown tensorflow installation is
-required for the R parsing to work. _Improve documentation on this._
 
 On srvbichler14, the following two conda envs are installed for all users:
 * `bnelearn` for everyrthing required to run the experiments. (especially pytorch+tensorboard, see requirements.txt)

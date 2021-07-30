@@ -276,9 +276,46 @@ class CustomSummaryWriter(SummaryWriter):
                 raise ValueError('Got list of invalid length.')
 
 
-def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
-    """Write the sampled BNE utilities to disk."""
+def read_bne_utility_database(exp: 'Experiment'):
+    """Check if this setting's BNE has been saved to disk before.
 
+    Args:
+        exp: Experiment
+
+    Returns:
+        db_batch_size: int
+            sample size of a DB entry if found, else -1
+        db_bne_utility: List[n_players]
+            list of the saved BNE utilites
+    """
+    file_path = pkg_resources.resource_filename(__name__, 'bne_database.csv')
+    bne_database = pd.read_csv(file_path)
+
+    # see if we already have a sample
+    setting_database = bne_database[
+        (bne_database.experiment_class == str(type(exp))) &
+        (bne_database.payment_rule == exp.payment_rule) &
+        (bne_database.correlation == exp.correlation) &
+        (bne_database.risk == exp.risk)
+    ]
+
+    # 1. no entry found for this exp
+    if len(setting_database) == 0:
+        return -1, None
+
+    # 2. found entry
+    else:
+        return setting_database['batch_size'].tolist()[0], setting_database.bne_utilities.tolist()
+
+
+def write_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
+    """Write the sampled BNE utilities to disk.
+
+    Args:
+        exp: Experiment
+        bne_utilities_sampled: list
+            BNE utilites that are to be writen to disk
+    """
     file_path = pkg_resources.resource_filename(__name__, 'bne_database.csv')
     bne_database = pd.read_csv(file_path)
 
@@ -293,7 +330,7 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
         (bne_database.risk == exp.risk)
     ]
 
-    # 1. no entry found: make new db entry
+    # No entry found: make new db entry
     if len(setting_database) == 0:
         for player_position in [agent.player_position for agent in exp.bne_env.agents]:
             bne_database = bne_database.append(
@@ -309,12 +346,7 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
                 ignore_index=True
             )
 
-    # 2. found entry: 2.1 smaller batch size
-    elif setting_database['batch_size'].tolist()[0] > bne_env.batch_size:
-        print('Reading high precision utilities in BNE from database.')
-        return setting_database.bne_utilities.tolist()
-
-    # 2.2 overwrite database entry
+    # Overwrite database entry
     else:
         for player_position in [agent.player_position for agent in exp.bne_env.agents]:
             bne_database.loc[
@@ -327,8 +359,4 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
                   player_position, bne_env.batch_size,
                   bne_utilities_sampled[player_position].item()]]
 
-    print('Writing high precision utilities in BNE to database.')
     bne_database.to_csv(file_path, index=False)
-    return None
-
-
