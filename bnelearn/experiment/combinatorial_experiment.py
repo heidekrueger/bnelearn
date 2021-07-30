@@ -236,24 +236,27 @@ class LLGExperiment(LocalGlobalExperiment):
                                          batch_size=self.config.logging.eval_batch_size,
                                          enable_action_caching=self.config.logging.cache_eval_actions)
                     for i in range(self.n_players)],
-            valuation_observation_sampler= self.sampler,
+            valuation_observation_sampler=self.sampler,
             n_players=self.n_players,
             batch_size=self.config.logging.eval_batch_size,
             strategy_to_player_closure=self._strat_to_bidder
         )
 
         self.bne_env = bne_env
-        self.bne_utilities_new_sample = torch.tensor(
-            [bne_env.get_reward(a, redraw_valuations=True) for a in bne_env.agents])
 
-        bne_utilities_database = logging_utils.access_bne_utility_database(self, self.bne_utilities_new_sample)
-        if bne_utilities_database:
-            self.bne_utilities = bne_utilities_database
+        db_batch_size, db_bne_utility = logging_utils.read_bne_utility_database(self)
+
+        # Found higher precision db entry
+        if db_batch_size >= self.config.logging.eval_batch_size:
+            print(f"BNE utility is estimated on larger batch of size {db_batch_size}.")
+            self.bne_utilities = db_bne_utility
         else:
-            self.bne_utilities = self.bne_utilities_new_sample
+            self.bne_utilities = torch.tensor(
+                [bne_env.get_reward(a, redraw_valuations=True) for a in bne_env.agents])
+            logging_utils.write_bne_utility_database(self, self.bne_utilities)
 
         print(f'Setting up BNE env with batch size 2**{np.log2(self.config.logging.eval_batch_size)}.')
-        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*self.bne_utilities_new_sample))
+        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*self.bne_utilities))
         print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
 
     def _get_logdir_hierarchy(self):
