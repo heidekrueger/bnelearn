@@ -4,7 +4,6 @@ import sys
 from typing import Tuple
 import warnings
 
-import gurobipy as grb
 
 # pylint: disable=E1102
 import torch
@@ -959,6 +958,7 @@ class LLLLGGAuction(Mechanism):
         return payments
 
     def _setup_init_model(self, A, beta, b, n_mini_batch, n_player):
+        import gurobipy as grb
         # Begin QP
         m = grb.Model()
         m.setParam('OutputFlag', 0)
@@ -986,6 +986,7 @@ class LLLLGGAuction(Mechanism):
         return m
 
     def _add_objective_min_payments_and_solve(self, model, n_mini_batch, n_player, print_output=False):
+        import gurobipy as grb
         # min p1
         mu = 0
         mu_batch = {}
@@ -1302,6 +1303,7 @@ class CombinatorialAuction(Mechanism):
         assign_i_s: dict of gurobi vars with keys (bidder, bundle), 1 if bundle is assigned to bidder, else 0
                     value of the gurobi var can be accessed with assign_i_s[key].X
         """
+        import gurobipy as grb
         # In the standard case every bidder has to bid on every bundle.
         n_players, n_bundles = bids.shape
         assert n_bundles == len(self.bundles), "Bidder 0 doesn't bid on all bundles"
