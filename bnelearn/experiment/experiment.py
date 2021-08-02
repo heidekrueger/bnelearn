@@ -9,7 +9,7 @@ from sys import platform
 import time
 from abc import ABC, abstractmethod
 from time import perf_counter as timer
-from typing import Iterable, List
+from typing import Iterable, List, Callable
 from collections import deque
 
 import warnings
@@ -70,7 +70,7 @@ class Experiment(ABC):
     ## Equilibrium environment
     bne_utilities: torch.Tensor or List[float]  # dimension: n_players
     bne_env: AuctionEnvironment or List[AuctionEnvironment]
-    _optimal_bid: callable
+    _optimal_bid: Callable or List[Callable]
 
     def __init__(self, config: ExperimentConfig):
         # Configs, params are duplicated for the ease of usage and brevity
@@ -252,7 +252,7 @@ class Experiment(ABC):
                 # TODO Nils: should perhaps always be a list, even when there is only one BNE
                 # TODO Stefan: Yes, we should not do any type conversions here, these should be lists from the beginning.
                 self.bne_env: List[Environment] = [self.bne_env]
-                self._optimal_bid: List[callable] = [self._optimal_bid]
+                self._optimal_bid: List[Callable] = [self._optimal_bid]
                 self.bne_utilities = [self.bne_utilities]
 
             self._setup_plot_equilibirum_data()
