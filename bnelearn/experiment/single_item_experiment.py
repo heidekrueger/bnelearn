@@ -358,15 +358,11 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                 if self.setting.u_lo == [0, 6] and self.setting.u_hi == [5, 7]:
                     self._optimal_bid = [
                         # BNE 1
-                        bne1_kaplan_zhamir(
-                            u_lo=self.u_lo, u_hi=self.u_hi
-                        ),
+                        bne1_kaplan_zhamir(u_lo=self.u_lo, u_hi=self.u_hi),
                         # BNE 2
-                        partial(bne2_kaplan_zhamir,
-                                u_lo=self.u_lo, u_hi=self.u_hi),
+                        partial(bne2_kaplan_zhamir, u_lo=self.u_lo, u_hi=self.u_hi),
                         # BNE 3
-                        partial(bne3_kaplan_zhamir,
-                                u_lo=self.u_lo, u_hi=self.u_hi)
+                        partial(bne3_kaplan_zhamir, u_lo=self.u_lo, u_hi=self.u_hi)
                     ]
                     return True
             else:  # BNE for shared u_lo for all players from Plum [1992]
