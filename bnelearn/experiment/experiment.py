@@ -404,45 +404,11 @@ class Experiment(ABC):
                 torch.random.manual_seed(seed)
                 torch.cuda.manual_seed_all(seed)
                 np.random.seed(seed)
-                if self.logging.stopping_criterion_rel_util_loss_diff:
-                    # stopping_list = np.empty((self.n_models,0))
-                    stopping_criterion_length = self.logging.stopping_criterion_duration
-                    stopping_queue = deque(maxlen=stopping_criterion_length)
-                    stopping_criterion_batch_size = min(self.logging.util_loss_batch_size,
-                                                        self.logging.stopping_criterion_batch_size)
-                    stopping_criterion_grid_size = self.logging.stopping_criterion_grid_size
-                    stopping_criterion_frequency = self.logging.stopping_criterion_frequency
-                    stop = False
 
                 self._init_new_run()
 
                 for epoch in range(self.running.n_epochs + 1):
-                    utilities = self._training_loop(epoch=epoch)
-
-                    # Check stopping criterion
-                    if self.logging.stopping_criterion_rel_util_loss_diff is not None and \
-                            epoch > 0 and not epoch % stopping_criterion_frequency:
-                        start_time = timer()
-
-                        # Compute relative utility loss
-                        loss_ex_ante, _, _ = self._calculate_metrics_util_loss(
-                            create_plot_output=False,
-                            batch_size=stopping_criterion_batch_size,
-                            grid_size=stopping_criterion_grid_size,
-                            epoch=epoch)
-                        rel_util_loss = 1 - utilities / (utilities + torch.tensor(loss_ex_ante))
-                        stopping_queue.append(rel_util_loss)
-
-                        # Check for convergence when enough data is available
-                        if len(stopping_queue) == stopping_queue.maxlen:
-                            values = torch.stack(tuple(stopping_queue))
-                            if self.logging.enable_logging:
-                                stop = self._check_convergence(values, epoch=epoch)
-
-                        self.overhead = self.overhead + timer() - start_time
-                        if stop:
-                            print(f'Stopping criterion reached after {epoch} iterations.')
-                            break
+                    utilities = self._training_loop(epoch=epoch)            
 
                 if self.logging.enable_logging and (
                         self.logging.export_step_wise_linear_bid_function_size is not None):
@@ -476,23 +442,6 @@ class Experiment(ABC):
 
         return not encountered_errors
 
-    def _check_convergence(self, values: torch.Tensor, stopping_criterion: float = None, epoch: int = None):
-        """
-        Checks whether difference in stored values is below stopping criterion
-        for each model and logs per-player differences to tensorboard.
-
-        args:
-            values: Tensor(n_values x n_models)
-        returns: bool (True if stopping criterion fulfilled)
-        """
-        if stopping_criterion is None:
-            stopping_criterion = self.logging.stopping_criterion_rel_util_loss_diff
-
-        diffs = values.max(0)[0] - values.min(0)[0]  # size: n_models
-        log_params = {'stopping_criterion': diffs}
-        self.writer.add_metrics_dict(log_params, self._model_names, epoch, group_prefix='meta')
-
-        return diffs.max().le(stopping_criterion).item()
 
     ########################################################################################################
     ####################################### Moved logging to here ##########################################
@@ -884,8 +833,7 @@ class Experiment(ABC):
 
         Arguments:
             global_step, int: number of completed iterations/epochs. Will usually
-                be equal to `self.running.n_epochs`, except when a stopping
-                criterion is met earlier.
+                be equal to `self.running.n_epochs`
 
         Returns:
             Writes to `self.writer`.
