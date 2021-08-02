@@ -641,8 +641,8 @@ class LLLLGGAuction(Mechanism):
         if rule == 'nearest_vcg':
             if core_solver not in ['gurobi', 'cvxpy', 'qpth', 'mpc']:
                 raise ValueError('Invalid solver.')
-        if core_solver == 'gurobi' and not GUROBI_AVAILABLE:
-            raise GUROBI_IMPORT_ERROR
+        if core_solver == 'gurobi':
+            assert GUROBI_AVAILABLE, "You have selected the gurobi solver, but gurobipy is not installed!"
         self.rule = rule
 
 
