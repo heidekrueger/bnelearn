@@ -6,7 +6,8 @@ You will need a python (3.9+) environment with `pip` and `setuptools` installed.
 1. (recommended but optional) Install the requirements via `pip install -r requirements.txt`.
     This will install _all_ requirements, including GPU-enabled pytorch, external solvers required for some combinatorial auctions and development tools. (Note that `requirements.txt` will pull the latest stable torch version with cuda that is available at the time of writing (July 2021). You may want to manually install the latest version available for your system, see https://pytorch.org/get-started/locally/ for details.
 1. Install the bnelearn package via `pip install -e .`.
-1. Test your installation via `pytest`. If all tests pass, everything was successfull. (If you see any `XFAIL`s, the installation seems to work, but the tests have determined that you are missing some optional requirements for advanced features, or that your system does not support cuda. In this case, not all features may be available to you.)
+1. Test your installation via `pytest`. If all tests pass, everything was successfull.
+   You may also see `SKIP`s or `XFAIL`s: In this case, the, installation seems to work, but the tests have determined that you are missing some optional requirements for advanced features, or that your system does not support cuda. In this case, not all features may be available to you.
 
 **THIS IS OUTDATED BUT MOST THINGS SHOULD STILL WORK**
 
