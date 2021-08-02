@@ -30,6 +30,7 @@ test:
   # saves us around 10-15 seconds.
   # -rxXs: add output about skipped, xfailed, xpassed tests.
   - pytest -rxXs --cov-report term-missing --cov=bnelearn --junitxml=testreport.xml
+
   artifacts:
     when: always
     reports:

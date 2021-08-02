@@ -1,24 +1,29 @@
 import os
 import sys
-
 from typing import Tuple
-import warnings
-
-import gurobipy as grb
+#from time import perf_counter as timer
 
 # pylint: disable=E1102
 import torch
-
+import torch.nn as nn
+# For qpth #pylint:disable=ungrouped-imports
+from qpth.qp import QPFunction
 from tqdm import tqdm
 
-# For qpth #pylint:disable=ungrouped-imports
-import torch.nn as nn
-from qpth.qp import QPFunction
+# Some (but not all) of the features in this module need gurobi,
+# but we still want to be able to use the other features when gurobi is not
+# installed.
+try:
+    import gurobipy as grb
+    GUROBI_AVAILABLE = True
+except ImportError as e:
+    GUROBI_AVAILABLE = False
+    GUROBI_IMPORT_ERROR = e
 
-from .mechanism import Mechanism
-from bnelearn.util import mpc
-#from time import perf_counter as timer
+
 from bnelearn.mechanism.data import LLGData, LLLLGGData
+from bnelearn.util import mpc
+from .mechanism import Mechanism
 
 
 class _OptNet_for_LLLLGG(nn.Module):
@@ -636,6 +641,8 @@ class LLLLGGAuction(Mechanism):
         if rule == 'nearest_vcg':
             if core_solver not in ['gurobi', 'cvxpy', 'qpth', 'mpc']:
                 raise ValueError('Invalid solver.')
+        if core_solver == 'gurobi':
+            assert GUROBI_AVAILABLE, "You have selected the gurobi solver, but gurobipy is not installed!"
         self.rule = rule
 
 

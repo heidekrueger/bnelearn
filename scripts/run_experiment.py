@@ -166,3 +166,4 @@ if __name__ == '__main__':
     experiment = experiment_class(experiment_config)
     experiment.run()
     torch.cuda.empty_cache()
+
