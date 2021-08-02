@@ -108,7 +108,6 @@ def bne1_kaplan_zhamir(u_lo: List, u_hi: List):
 
     def inverse_bid_player_1(bid):
         return 36 / ((2 * bid - 6) * (1 / 5) * np.exp(9 / 4 + 6 / (6 - 2 * bid)) + 24 - 4 * bid)
-
     def inverse_bid_player_2(bid):
         return 6 + 36 / ((2 * bid - 6) * 20 * np.exp(-9 / 4 - 6 / (6 - 2 * bid)) - 4 * bid)
 
@@ -119,9 +118,9 @@ def bne1_kaplan_zhamir(u_lo: List, u_hi: List):
             break
 
     b1 = np.copy(v1) # truthful at beginning
-    b1[u_lo_cut:] = np.array([optimize.broyden1(lambda x: inverse_bid_player_1(x) - v, v)
+    b1[u_lo_cut:] = np.array([optimize.broyden1(lambda x, v=v: inverse_bid_player_1(x) - v, v)
                               for v in v1[u_lo_cut:]])
-    b2 = np.array([optimize.broyden1(lambda x: inverse_bid_player_2(x) - v, v)
+    b2 = np.array([optimize.broyden1(lambda x, v=v: inverse_bid_player_2(x) - v, v)
                    for v in v2])
 
     opt_bid_function = [
