@@ -1,11 +1,4 @@
 """This module tests whether rewards can be calculated correctly in an environment."""
-import pytest
-@pytest.fixture(autouse=True)
-def check_gurobipy():
-    pytest.importorskip('gurobipy')      
-    if not pytest.gurobi_licence_valid:
-        warnings.warn("The Gurobipy is installed but no valid licence available, the test will fail")
-
 import torch
 from bnelearn.strategy import TruthfulStrategy
 from bnelearn.mechanism import FirstPriceSealedBidAuction

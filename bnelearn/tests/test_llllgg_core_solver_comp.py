@@ -1,11 +1,5 @@
 """Testing for identical results from solvers for the LLLLGG combinatorial auction implementations."""
 import pytest
-@pytest.fixture(autouse=True)
-def check_gurobipy():
-    pytest.importorskip('gurobipy')      
-    if not pytest.gurobi_licence_valid:
-        warnings.warn("The Gurobipy is installed but no valid licence available, the test will fail")
-
 import torch
 from bnelearn.mechanism import LLLLGGAuction
 import warnings
@@ -43,7 +37,7 @@ def run_LLLLGG_test(parallel, rule, bids, device, solver_1, solver_2):
         "Payments gap between {} and {}".format(solver_1,solver_2)
 
 @pytest.mark.parametrize("parallel, rule, bids, device", testdata, ids=ids)
-def test_LLLLGG(parallel,rule,bids, device):
+def test_LLLLGG_solver_identical_results(parallel,rule,bids, device, check_gurobi):
     """
     Testing batch_size > 1, VCG 0 prices, FP, global/local winning
     """

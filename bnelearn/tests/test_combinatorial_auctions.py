@@ -1,11 +1,6 @@
 """Testing correctness of LLLLGG combinatorial auction implementations."""
 import pytest
-@pytest.fixture(autouse=True)
-def check_gurobipy():
-    pytest.importorskip('gurobipy')      
-    if not pytest.gurobi_licence_valid:
-        warnings.warn("The Gurobipy is installed but no valid licence available, the test will fail")
-        
+
 import torch
 from bnelearn.mechanism import CombinatorialAuction
 import warnings
@@ -59,7 +54,7 @@ ids, testdata = zip(*[
     ['vcg - multi-item', ('vcg', bids_2, bundles_2, expected_allocation_2, torch.tensor([[0.0, 0.0, 1.8]]))]
 ])
 
-def run_Combinatorial_test(rule, device, bids, bundle, expected_allocation, expected_VCG_payments):
+def run_combinatorial_test(rule, device, bids, bundle, expected_allocation, expected_VCG_payments):
     """Run correctness test for a given LLLLGG rule"""
     
     cuda = device == 'cuda' and torch.cuda.is_available()
@@ -75,8 +70,11 @@ def run_Combinatorial_test(rule, device, bids, bundle, expected_allocation, expe
 
 
 @pytest.mark.parametrize("rule,bids,bundles,expected_allocation,expected_payments", testdata, ids=ids)
-def test_Combinatorial(rule,bids,bundles,expected_allocation,expected_payments):  
+def test_combinatorial(rule,bids,bundles,expected_allocation,expected_payments,
+                       #used pytest fixtures:
+                      check_gurobi
+                      ):  
     """ Tests allocation and payments in combinatorial auctions"""    
-    run_Combinatorial_test(rule, 'cpu', bids, bundles, expected_allocation, expected_payments)
-    run_Combinatorial_test(rule, 'cuda', bids, bundles, expected_allocation, expected_payments)
+    run_combinatorial_test(rule, 'cpu', bids, bundles, expected_allocation, expected_payments)
+    run_combinatorial_test(rule, 'cuda', bids, bundles, expected_allocation, expected_payments)
     
