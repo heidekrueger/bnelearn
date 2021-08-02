@@ -3,189 +3,32 @@
 import os
 import warnings
 from abc import ABC
-from typing import Callable, List
 from functools import partial
-import torch
-import numpy as np
-from scipy import integrate, interpolate
-from scipy import optimize
+from typing import List
 
+import torch
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
-from .experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
-
+from bnelearn.experiment.equilibria import (
+    bne_fpsb_ipv_asymmetric_uniform_overlapping_priors_risk_neutral,
+    bne1_kaplan_zhamir,
+    bne2_kaplan_zhamir,
+    bne3_kaplan_zhamir,
+    bne_fpsb_ipv_symmetric_uniform_prior,
+    bne_2p_affiliated_values,
+    bne_3p_mineral_rights,
+    bne_fpsb_ipv_symmetric_generic_prior_risk_neutral, truthful_bid)
 from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
+from bnelearn.sampler import (AffiliatedValuationObservationSampler,
+                              CompositeValuationObservationSampler,
+                              MineralRightsValuationObservationSampler,
+                              SymmetricIPVSampler, UniformSymmetricIPVSampler)
 from bnelearn.strategy import ClosureStrategy
-from bnelearn.sampler import (
-    CompositeValuationObservationSampler,
-    SymmetricIPVSampler,
-    UniformSymmetricIPVSampler,
-    MineralRightsValuationObservationSampler,
-    AffiliatedValuationObservationSampler
-)
 from bnelearn.util.distribution_util import copy_dist_to_device
+from scipy import integrate
 
-
-###############################################################################
-#######   Known equilibrium bid functions                                ######
-###############################################################################
-# Define known BNE functions top level, so they may be pickled for parallelization
-# These are called millions of times, so each implementation should be
-# setting specific, i.e. there should be NO setting checks at runtime.
-
-def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(
-        valuation: torch.Tensor or np.ndarray or float, n_players: int, prior_cdf: Callable, **kwargs) -> torch.Tensor:
-    if not prior_cdf(torch.tensor(0.0)).device.type == 'cpu':
-        raise ValueError("prior_cdf is required to return CPU-tensors rather than gpu tensors, " + \
-            "otherwise we will encounter errors when using numerical integration via scipy together with " + \
-            "torch.multiprocessing. For now, please provide a cpu-version of the prior-cdf.")
-    if not isinstance(valuation, torch.Tensor):
-        # For float and numpy --> convert to tensor (relevant for plotting)
-        valuation = torch.tensor(valuation, dtype=torch.float)
-    # For float / 0d tensors --> unsqueeze to allow list comprehension below
-    if valuation.dim() == 0:
-        valuation.unsqueeze_(0)
-    # shorthand notation for F^(n-1)
-    Fpowered = lambda v: torch.pow(prior_cdf(torch.tensor(v)), n_players - 1)
-    # do the calculations
-    numerator = torch.tensor(
-        [integrate.quad(Fpowered, 0, v)[0] for v in valuation],
-        device=valuation.device
-    ).reshape(valuation.shape)
-    return valuation - numerator / Fpowered(valuation)
-
- 
-def _optimal_bid_FPSB_UniformSymmetricPriorSingleItem(valuation: torch.Tensor, n: int, r: float, u_lo, u_hi,
-                                                      **kwargs) -> torch.Tensor:
-    return u_lo + (valuation - u_lo) * (n - 1) / (n - 1.0 + r)
-
-
-def _truthful_bid(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
-    return valuation
-
-
-def _optimal_bid_2P_asymmetric_uniform_risk_neutral(valuation: torch.Tensor or float, player_position: int,
-                                                    u_lo: List, u_hi: List):
-    """
-    Optimal bid in this experiment when bidders share same lower bound.
-    Source: https://link.springer.com/article/10.1007/BF01271133
-    """
-
-    if not isinstance(valuation, torch.Tensor):
-        valuation = torch.tensor(valuation, dtype=torch.float)
-    # unsqueeze if simple float
-    if valuation.dim() == 0:
-        valuation.unsqueeze_(0)
-
-    c = 1 / (u_hi[0] - u_lo[0]) ** 2 - 1 / (u_hi[1] - u_lo[0]) ** 2
-    factor = 2 * player_position - 1  # -1 for 0 (weak player), +1 for 1 (strong player)
-    denominator = 1.0 + torch.sqrt(1 + factor * c * (valuation - u_lo[0]) ** 2)
-    bid = u_lo[0] + (valuation - u_lo[0]) / denominator
-    return torch.max(bid, torch.zeros_like(bid))
-
-
-def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(u_lo: List, u_hi: List):
-    """
-    Optimal bid in this experiment when bidders do NOT share same lower bound.
-    Source: Equilibrium 1 of https://link.springer.com/article/10.1007/s40505-014-0049-1
-    """
-    interpol_points = 2**11
-
-    # 1. Solve implicit bid function
-    v1 = np.linspace(u_lo[0], u_hi[0], interpol_points)
-    v2 = np.linspace(u_lo[1], u_hi[1], interpol_points)
-
-    def inverse_bid_player_1(bid):
-        return 36 / ((2 * bid - 6) * (1 / 5) * np.exp(9 / 4 + 6 / (6 - 2 * bid)) + 24 - 4 * bid)
-
-    def inverse_bid_player_2(bid):
-        return 6 + 36 / ((2 * bid - 6) * 20 * np.exp(-9 / 4 - 6 / (6 - 2 * bid)) - 4 * bid)
-
-    u_lo_cut = 0
-    for i in range(interpol_points):
-        if v1[i] > u_lo[1] / 2:
-            u_lo_cut = i
-            break
-
-    b1 = np.copy(v1) # truthful at beginning
-    b1[u_lo_cut:] = np.array([optimize.broyden1(lambda x: inverse_bid_player_1(x) - v, v)
-                              for v in v1[u_lo_cut:]])
-    b2 = np.array([optimize.broyden1(lambda x: inverse_bid_player_2(x) - v, v)
-                   for v in v2])
-
-    opt_bid_function = [
-        interpolate.interp1d(v1, b1, kind=1),
-        interpolate.interp1d(v2, b2, kind=1)
-    ]
-
-    # 2. return interpolation of bid function
-    def _optimal_bid(valuation: torch.Tensor or float, player_position: int):
-        if not isinstance(valuation, torch.Tensor):
-            valuation = torch.tensor(valuation, dtype=torch.float)
-        # unsqueeze if simple float
-        if valuation.dim() == 0:
-            valuation.unsqueeze_(0)
-        bid = torch.tensor(
-            opt_bid_function[player_position](valuation.cpu().numpy()),
-            device=valuation.device,
-            dtype=valuation.dtype
-        )
-        return bid
-
-    return _optimal_bid
-
-
-def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2(
-        valuation: torch.Tensor or float, player_position: int,
-        u_lo: List, u_hi: List):
-    """
-    Optimal bid in this experiment when bidders do NOT share same lower bound.
-    Source: Equilibrium 2 of https://link.springer.com/article/10.1007/s40505-014-0049-1
-    """
-    if not isinstance(valuation, torch.Tensor):
-        valuation = torch.tensor(valuation, dtype=torch.float)
-    # unsqueeze if simple float
-    if valuation.dim() == 0:
-        valuation.unsqueeze_(0)
-
-    if player_position == 0:
-        bids = torch.zeros_like(valuation)
-        bids[valuation > 4] = valuation[valuation > 4] / 2 + 2
-        bids[valuation <= 4] = valuation[valuation <= 4] / 4 + 3
-    else:
-        bids = valuation / 2 + 1
-
-    return bids
-
-
-def _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3(
-        valuation: torch.Tensor or float, player_position: int,
-        u_lo: List, u_hi: List):
-    """
-    Optimal bid in this experiment when bidders do NOT share same lower bound.
-    Source: Equilibrium 3 of https://link.springer.com/article/10.1007/s40505-014-0049-1
-    """
-    if not isinstance(valuation, torch.Tensor):
-        valuation = torch.tensor(valuation, dtype=torch.float)
-    # unsqueeze if simple float
-    if valuation.dim() == 0:
-        valuation.unsqueeze_(0)
-
-    if player_position == 0:
-        bids = valuation / 5 + 4
-    else:
-        bids = 5 * torch.ones_like(valuation)
-
-    return bids
-
-
-def _optimal_bid_single_item_3p_mineral_rights(valuation: torch.Tensor, player_position: int = 0) -> torch.Tensor:
-    return (2 * valuation) / (2 + valuation)
-
-
-def _optimal_bid_single_item_2p_affiliated_observations(valuation: torch.Tensor, player_position: int = 0) -> torch.Tensor:
-    return (2/3) * valuation
+from .experiment import Experiment
 
 
 # TODO: single item experiment should not be abstract and hold all logic for learning.
@@ -267,11 +110,11 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
     def _check_and_set_known_bne(self):
         if self.payment_rule == 'first_price' and self.risk == 1:
             cdf_cpu = copy_dist_to_device(self.common_prior, 'cpu').cdf
-            self._optimal_bid = partial(_optimal_bid_single_item_FPSB_generic_prior_risk_neutral,
+            self._optimal_bid = partial(bne_fpsb_ipv_symmetric_generic_prior_risk_neutral,
                                         n_players=self.n_players, prior_cdf=cdf_cpu)
             return True
         elif self.payment_rule == 'second_price':
-            self._optimal_bid = _truthful_bid
+            self._optimal_bid = truthful_bid
             return True
         else:
             # no bne found, defer to parent
@@ -389,11 +232,11 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
     def _check_and_set_known_bne(self):
         if self.payment_rule == 'first_price':
-            self._optimal_bid = partial(_optimal_bid_FPSB_UniformSymmetricPriorSingleItem,
+            self._optimal_bid = partial(bne_fpsb_ipv_symmetric_uniform_prior,
                                         n=self.n_players, r=self.risk, u_lo=self.u_lo, u_hi=self.u_hi)
             return True
         elif self.payment_rule == 'second_price':
-            self._optimal_bid = _truthful_bid
+            self._optimal_bid = truthful_bid
             return True
         else: # no bne found, defer to parent
             return super()._check_and_set_known_bne()
@@ -515,19 +358,19 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
                 if self.setting.u_lo == [0, 6] and self.setting.u_hi == [5, 7]:
                     self._optimal_bid = [
                         # BNE 1
-                        _optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower(
+                        bne1_kaplan_zhamir(
                             u_lo=self.u_lo, u_hi=self.u_hi
                         ),
                         # BNE 2
-                        partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_2,
+                        partial(bne2_kaplan_zhamir,
                                 u_lo=self.u_lo, u_hi=self.u_hi),
                         # BNE 3
-                        partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral_multi_lower_3,
+                        partial(bne3_kaplan_zhamir,
                                 u_lo=self.u_lo, u_hi=self.u_hi)
                     ]
                     return True
             else:  # BNE for shared u_lo for all players from Plum [1992]
-                self._optimal_bid = [partial(_optimal_bid_2P_asymmetric_uniform_risk_neutral,
+                self._optimal_bid = [partial(bne_fpsb_ipv_asymmetric_uniform_overlapping_priors_risk_neutral,
                                              u_lo=self.u_lo, u_hi=self.u_hi)]
                 return True
 
@@ -640,7 +483,7 @@ class MineralRightsExperiment(SingleItemExperiment):
 
     def _check_and_set_known_bne(self):
         if self.payment_rule == 'second_price' and self.n_players == 3:
-            self._optimal_bid = partial(_optimal_bid_single_item_3p_mineral_rights)
+            self._optimal_bid = partial(bne_3p_mineral_rights)
             return True
         else:
             return super()._check_and_set_known_bne()
@@ -757,7 +600,7 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
 
     def _check_and_set_known_bne(self):
         if self.payment_rule == 'first_price' and self.n_players == 2:
-            self._optimal_bid = partial(_optimal_bid_single_item_2p_affiliated_observations)
+            self._optimal_bid = partial(bne_2p_affiliated_values)
             return True
         else:
             return super()._check_and_set_known_bne()
