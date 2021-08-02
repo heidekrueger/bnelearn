@@ -131,8 +131,7 @@ if __name__ == '__main__':
     #         util_loss_batch_size=2**10,
     #         util_loss_grid_size=2**10,
     #         util_loss_frequency=1000,
-    #         plot_frequency=10,
-    #         stopping_criterion_frequency=100000) \
+    #         plot_frequency=10) \
     #     .set_hardware(specific_gpu=3) \
     #     .get_config()
     experiment_config, experiment_class = ConfigurationManager(

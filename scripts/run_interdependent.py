@@ -32,7 +32,6 @@ if __name__ == '__main__':
     util_loss_frequency = 2000
     util_loss_batch_size = 2**12
     util_loss_grid_size = 2**10
-    stopping_criterion_frequency = 100000  # don't use
 
 
     # def run(experiment_config, experiment_class): # pylint: disable=redefined-outer-name
@@ -98,9 +97,7 @@ if __name__ == '__main__':
     #         util_loss_frequency=util_loss_frequency,
     #         util_loss_batch_size=util_loss_batch_size,
     #         util_loss_grid_size=util_loss_grid_size,
-    #         eval_batch_size=eval_batch_size,
-    #         stopping_criterion_frequency= \
-    #             stopping_criterion_frequency) \
+    #         eval_batch_size=eval_batch_size)
     #     .set_hardware(specific_gpu=specific_gpu) \
     #     .get_config()
     # experiment = experiment_class(experiment_config)
@@ -141,10 +138,7 @@ if __name__ == '__main__':
                                 util_loss_frequency=util_loss_frequency,
                                 util_loss_batch_size=util_loss_batch_size,
                                 util_loss_grid_size=util_loss_grid_size,
-                                eval_batch_size=eval_batch_size,
-                                stopping_criterion_frequency= \
-                                    stopping_criterion_frequency,
-                                ) \
+                                eval_batch_size=eval_batch_size) \
                             .set_hardware(specific_gpu=specific_gpu) \
                             .get_config()
                     experiment = experiment_class(experiment_config)
@@ -192,9 +186,7 @@ if __name__ == '__main__':
     #                                 util_loss_frequency=util_loss_frequency,
     #                                 util_loss_batch_size=util_loss_batch_size,
     #                                 util_loss_grid_size=util_loss_grid_size,
-    #                                 eval_batch_size=eval_batch_size,
-    #                                 stopping_criterion_frequency= \
-    #                                     stopping_criterion_frequency) \
+    #                                 eval_batch_size=eval_batch_size) \
     #                             .set_hardware(specific_gpu=specific_gpu) \
     #                             .get_config()
     #                     experiment = experiment_class(experiment_config)

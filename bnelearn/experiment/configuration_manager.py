@@ -468,9 +468,7 @@ class ConfigurationManager:
                     save_tb_events_to_csv_aggregate: bool = 'None', save_tb_events_to_csv_detailed: bool = 'None',
                     save_tb_events_to_binary_detailed: bool = 'None', save_models: bool = 'None',
                     save_figure_to_disk_png: bool = 'None', save_figure_to_disk_svg: bool = 'None',
-                    save_figure_data_to_disk: bool = 'None', stopping_criterion_rel_util_loss_diff: float = 'None',
-                    stopping_criterion_frequency: int = 'None', stopping_criterion_duration: int = 'None',
-                    stopping_criterion_batch_size: int = 'None', stopping_criterion_grid_size: int = 'None',
+                    save_figure_data_to_disk: bool = 'None',
                     cache_eval_actions: bool = 'None', export_step_wise_linear_bid_function_size: bool = 'None',
                     experiment_dir: str = 'None', experiment_name: str = 'None'):
         """Sets only the parameters of logging which were passed, returns self"""
@@ -557,8 +555,7 @@ class ConfigurationManager:
             util_loss_frequency=100,
             best_response=False,
             eval_batch_size=2 ** 22,
-            cache_eval_actions=True,
-            stopping_criterion_rel_util_loss_diff=0.001)
+            cache_eval_actions=True)
         hardware = HardwareConfig(
             specific_gpu=0,
             cuda=True,
