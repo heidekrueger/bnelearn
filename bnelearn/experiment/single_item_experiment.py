@@ -5,10 +5,11 @@ import warnings
 from abc import ABC
 from typing import Callable, List
 from functools import partial
+import time
 import torch
 import numpy as np
-from scipy import integrate, interpolate
-from scipy import optimize
+from scipy import interpolate, integrate, optimize
+from torchquad import enable_cuda, Simpson
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
@@ -21,11 +22,12 @@ from bnelearn.sampler import (
     CompositeValuationObservationSampler,
     SymmetricIPVSampler,
     UniformSymmetricIPVSampler,
+    GaussianSymmetricIPVSampler,
     MineralRightsValuationObservationSampler,
     AffiliatedValuationObservationSampler
 )
 from bnelearn.util.distribution_util import copy_dist_to_device
-
+from bnelearn.util.metrics import norm_actions
 
 ###############################################################################
 #######   Known equilibrium bid functions                                ######
@@ -36,26 +38,36 @@ from bnelearn.util.distribution_util import copy_dist_to_device
 
 def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(
         valuation: torch.Tensor or np.ndarray or float, n_players: int, prior_cdf: Callable, **kwargs) -> torch.Tensor:
-    if not prior_cdf(torch.tensor(0.0)).device.type == 'cpu':
-        raise ValueError("prior_cdf is required to return CPU-tensors rather than gpu tensors, " + \
-            "otherwise we will encounter errors when using numerical integration via scipy together with " + \
-            "torch.multiprocessing. For now, please provide a cpu-version of the prior-cdf.")
+    # if not prior_cdf(torch.tensor(0.0)).device.type == 'cpu':
+    #     raise ValueError("prior_cdf is required to return CPU-tensors rather than gpu tensors, " + \
+    #         "otherwise we will encounter errors when using numerical integration via scipy together with " + \
+    #         "torch.multiprocessing. For now, please provide a cpu-version of the prior-cdf.")
     if not isinstance(valuation, torch.Tensor):
         # For float and numpy --> convert to tensor (relevant for plotting)
         valuation = torch.tensor(valuation, dtype=torch.float)
     # For float / 0d tensors --> unsqueeze to allow list comprehension below
     if valuation.dim() == 0:
         valuation.unsqueeze_(0)
+
+    # TODO ???
+    # valuation = valuation.relu_()
+
     # shorthand notation for F^(n-1)
-    Fpowered = lambda v: torch.pow(prior_cdf(torch.tensor(v)), n_players - 1)
+    Fpowered = lambda v: torch.pow(prior_cdf(v), n_players - 1)
+
     # do the calculations
-    numerator = torch.tensor(
-        [integrate.quad(Fpowered, 0, v)[0] for v in valuation],
-        device=valuation.device
-    ).reshape(valuation.shape)
+    if valuation.device.type == 'cuda':
+        enable_cuda()
+    simpson = Simpson()
+    numerator = [
+        simpson.integrate(Fpowered, dim=1, N=2**9 + 1, integration_domain=[[0, v.item()]])
+        for v in valuation
+    ]
+    numerator = torch.tensor(numerator, device=valuation.device).view_as(valuation)
+
     return valuation - numerator / Fpowered(valuation)
 
- 
+
 def _optimal_bid_FPSB_UniformSymmetricPriorSingleItem(valuation: torch.Tensor, n: int, r: float, u_lo, u_hi,
                                                       **kwargs) -> torch.Tensor:
     return u_lo + (valuation - u_lo) * (n - 1) / (n - 1.0 + r)
@@ -266,9 +278,9 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
     def _check_and_set_known_bne(self):
         if self.payment_rule == 'first_price' and self.risk == 1:
-            cdf_cpu = copy_dist_to_device(self.common_prior, 'cpu').cdf
+            # cdf_cpu = copy_dist_to_device(self.common_prior, 'cpu').cdf
             self._optimal_bid = partial(_optimal_bid_single_item_FPSB_generic_prior_risk_neutral,
-                                        n_players=self.n_players, prior_cdf=cdf_cpu)
+                                        n_players=self.n_players, prior_cdf=self.common_prior.cdf)
             return True
         elif self.payment_rule == 'second_price':
             self._optimal_bid = _truthful_bid
@@ -279,6 +291,8 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
     def _get_analytical_bne_utility(self) -> torch.Tensor:
         """Calculates utility in BNE from known closed-form solution (possibly using numerical integration)"""
+        # Note: GPU integrals via torchquad do not support non-rectangular bounds
+        # could still loop over bounds but not worth it(?)
         if self.payment_rule == 'first_price' and self.risk == 1:
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
@@ -447,6 +461,13 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
 
         super().__init__(config=config)
 
+    def _setup_sampler(self):
+        self.sampler = GaussianSymmetricIPVSampler(
+            mean=self.valuation_mean, stddev=self.valuation_std,
+            n_players=self.n_players, valuation_size=self.valuation_size,
+            default_batch_size=self.config.learning.batch_size,
+            default_device=self.config.hardware.device
+        )
 
 class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
     def __init__(self, config: ExperimentConfig):

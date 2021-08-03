@@ -11,7 +11,8 @@ import warnings
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
-from scipy import integrate, interpolate
+from scipy import  interpolate
+from torchquad import enable_cuda, Simpson
 
 from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
@@ -110,20 +111,25 @@ def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
                 value_cdf: callable = None,
                 lower_bound: int = 0,
                 epsabs=1e-3
-        ):
+            ):
+            if valuation_cdf(torch.tensor(0.0)).device.type == 'cuda':
+                enable_cuda()
+            simpson = Simpson()
+
             if value_cdf is None:
                 def _value_cdf(x):
-                    return integrate.quad(value_pdf, lower_bound, x, epsabs=epsabs)[0]
+                    return simpson.integrate(value_pdf, dim=1, N=2**9 + 1,
+                                             integration_domain=[[lower_bound, x]])
 
                 value_cdf = _value_cdf
 
             def inner(s, x):
-                return integrate.quad(lambda t: value_pdf(t) / value_cdf(t),
-                                      s, x, epsabs=epsabs)[0]
+                return simpson.integrate(lambda t: value_pdf(t) / value_cdf(t),
+                                         dim=1, N=2**9 + 1, integration_domain=[[s, x]])
 
             def outer(x):
-                return integrate.quad(lambda s: np.exp(-inner(s, x)),
-                                      lower_bound, x, epsabs=epsabs)[0]
+                return simpson.integrate(lambda s: np.exp(-inner(s, x)),
+                                         dim=1, N=2**9 + 1, integration_domain=[[lower_bound, x]])
 
             def bidding(x):
                 if not hasattr(x, '__iter__'):
@@ -244,12 +250,15 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
     # do one-time approximation via integration
     val_lin = np.linspace(u_lo[0], u_hi[0] - eps, opt_bid_batch_size)
 
+    if experiment_config.hardware.device == 'cuda':
+        enable_cuda()
+    simpson = Simpson()
     def integral(theta):
         return np.array(
-            [integrate.quad(
-                lambda x: (1 - value_cdf(x)) ** (n_players - 1), v, u_hi[0],
-                epsabs=eps
-            )[0] for v in theta]
+            [simpson.integrate(
+                lambda x: (1 - value_cdf(x)) ** (n_players - 1),
+                dim=1, N=2**9 + 1, integration_domain=[[v, u_hi[0]]],
+            ) for v in theta]
         )
 
     def opt_bid_100(theta):
