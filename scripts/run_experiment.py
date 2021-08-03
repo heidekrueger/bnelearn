@@ -77,12 +77,12 @@ if __name__ == '__main__':
     # ) \
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .get_config()
-    # experiment_config, experiment_class = ConfigurationManager(
-    #       experiment_type='single_item_asymmetric_uniform_disjunct',
-    #       n_runs=1, n_epochs=200
-    # ) \
-    #     .set_logging(log_root_dir=log_root_dir) \
-    #     .get_config()
+    experiment_config, experiment_class = ConfigurationManager(
+          experiment_type='single_item_asymmetric_uniform_disjunct',
+          n_runs=1, n_epochs=200
+    ) \
+        .set_logging(log_root_dir=log_root_dir) \
+        .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=3) \
     #     .set_setting(gamma=0.5) \
@@ -134,14 +134,14 @@ if __name__ == '__main__':
     #         plot_frequency=10) \
     #     .set_hardware(specific_gpu=3) \
     #     .get_config()
-    experiment_config, experiment_class = ConfigurationManager(
-       experiment_type='llllgg', n_runs=1, n_epochs=200
-    ) \
-        .set_learning(batch_size=2**7) \
-        .set_setting(core_solver='mpc', payment_rule='nearest_vcg') \
-        .set_logging(log_root_dir=log_root_dir, log_metrics={'util_loss': True},
-                     util_loss_frequency=5, plot_frequency=5) \
-        .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(
+    #    experiment_type='llllgg', n_runs=1, n_epochs=200
+    # ) \
+    #     .set_learning(batch_size=2**7) \
+    #     .set_setting(core_solver='mpc', payment_rule='nearest_vcg') \
+    #     .set_logging(log_root_dir=log_root_dir, log_metrics={'util_loss': True},
+    #                  util_loss_frequency=5, plot_frequency=5) \
+    #     .get_config()
 
 
     ### INTERDEPENDENT EXPERIMENTS ###
