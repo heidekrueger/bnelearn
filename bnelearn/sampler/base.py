@@ -267,9 +267,10 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
                                 dtype=torch.float, device = None) -> torch.Tensor:
         """Possibly need to call specific grid sampling"""
-        for g in range(self.n_groups):
-            players = self.group_indices[g]
-            if player_position in players:
-                return self.group_samplers[g].generate_valuation_grid(
-                    player_position, minimum_number_of_points, dtype, device
-                )
+        for g in range(self.n_groups):  # iterate over groups
+            players = self.group_indices[g]  # player_positions within group
+            for i, pos in enumerate(players):  # need to keep track of list index: i != pos
+                if player_position == pos:
+                    return self.group_samplers[g].generate_valuation_grid(
+                        i, minimum_number_of_points, dtype, device
+                    )
