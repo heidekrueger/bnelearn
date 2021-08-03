@@ -228,7 +228,7 @@ class CustomSummaryWriter(SummaryWriter):
 
     def add_metrics_dict(self, metrics_dict: dict, run_suffices: List[str],
                          global_step=None, walltime=None,
-                         group_prefix: str = None):
+                         group_prefix: str = None, metric_tag_mapping: dict = None):
         """
         Args:
             metric_dict (dict): A dict of metrics. Keys are tag names, values are values.
@@ -237,6 +237,14 @@ class CustomSummaryWriter(SummaryWriter):
             run_suffices (List[str]): if each value in metrics_dict is scalar, doesn't need to be supplied.
                 When metrics_dict contains lists/iterables, they must all have the same length which should be equal to
                 the length of run_suffices
+            global_step (int, optional): The step/iteration at which the metrics are being logged.
+            walltime
+            group_prefix (str, optional): If given each metric name will be prepended with this prefix (and a '/'), 
+                which will group tags in tensorboard into categories.
+            metric_tag_mapping (dict, optional): A dactionary that provides a mapping between the metrics (keys of metrics_dict)
+                and the desired tag names in tensorboard. If given, each metric name will be converted to the corresponding tag name.
+                NOTE: bnelearn.util.metrics.MAPPING_METRICS_TAGS contains a standard mapping for common metrics. 
+                These already include (metric-specific) prefixes.
         """
         torch._C._log_api_usage_once("tensorboard.logging.add_scalar")
         walltime = time.time() if walltime is None else walltime
@@ -248,6 +256,11 @@ class CustomSummaryWriter(SummaryWriter):
         l = len(run_suffices)
 
         for key, vals in metrics_dict.items():
+            if metric_tag_mapping:
+                # check if key matches any of the names in the dictionary
+                matches = [k for k in metric_tag_mapping if key.startswith(k)]
+                if matches:
+                    key = key.replace(matches[0], metric_tag_mapping[matches[0]])
             tag = key if not group_prefix else group_prefix + '/' + key
 
             if isinstance(vals, float) or isinstance(vals, int) or (
