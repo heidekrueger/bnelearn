@@ -187,14 +187,15 @@ def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid
 def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                          agent_observations: torch.Tensor,
                          grid_size: int,
-                         opponent_batch_size: int = None):
+                         opponent_batch_size: int = None,
+                         grid_best_response: bool = False):
     #pylint: disable = anomalous-backslash-in-string
     """Estimates a bidder's utility loss in the current state of the
     environment, i.e. the     potential benefit of deviating from the current
     strategy, evaluated at each point of the agent_valuations. therfore, we
     calculate
-    
-    .. math:: 
+
+    .. math::
         \max_{v_i \in V_i} \max_{b_i^* \in A_i} + E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i})) - u(v_i, b_i, b_{-i}(v_{-i}))]
 
     We're conditoning on the agent's observation at `player_position`. That
@@ -208,6 +209,9 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         grid_size: int, stating the number of alternative actions sampled via
             env.agents[player_position].get_valuation_grid(grid_size, True).
         opponent_batch_size: int, specifing the sample size for opponents.
+        grid_best_response: bool, whether or not the BRs live on the grid or
+            possibly come from the actual actions (in case no better response
+            was found on grid).
 
     Returns:
         utility_loss (torch.Tensor, shape: [batch_size]):  the computed
@@ -254,9 +258,13 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     ##### calculate the loss and return best responses ###########
     utility_loss = (br_utility - utility_actual).relu_()
 
-    actual_was_best = (utility_loss == 0)
-    br_actions = actual_was_best.view(-1, action_size) * agent_action_actual + \
-                 actual_was_best.logical_not().view(-1, action_size) * action_alternatives[br_indices]
+    # BR only on grid
+    if grid_best_response:
+        br_actions = action_alternatives[br_indices]
+    else:
+        actual_was_best = (utility_loss == 0).unsqueeze_(1).repeat(1, action_size)
+        br_actions = actual_was_best * agent_action_actual + \
+                 actual_was_best.logical_not() * action_alternatives[br_indices]
 
     return (utility_loss, br_actions)
 

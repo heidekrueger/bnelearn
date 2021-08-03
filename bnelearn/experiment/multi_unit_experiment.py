@@ -27,7 +27,8 @@ from bnelearn.mechanism import (FPSBSplitAwardAuction,
                                 MultiUnitDiscriminatoryAuction,
                                 MultiUnitUniformPriceAuction,
                                 MultiUnitVickreyAuction)
-from bnelearn.sampler import MultiUnitValuationObservationSampler
+from bnelearn.sampler import (MultiUnitValuationObservationSampler,
+                              CompositeValuationObservationSampler)
 from bnelearn.strategy import ClosureStrategy
 
 
@@ -40,20 +41,21 @@ class MultiUnitExperiment(Experiment, ABC):
     """
 
     def __init__(self, config: ExperimentConfig):
-        raise NotImplementedError("Does not yet correspond to #188")
         self.config = config
 
         self.n_units = self.n_items = self.config.setting.n_units
+        self.observation_size = self.valuation_size = self.action_size = self.n_units
         self.n_players = self.config.setting.n_players
         self.payment_rule = self.config.setting.payment_rule
         self.risk = float(self.config.setting.risk)
+
+        # Transfrom bounds to list in case of symmetry
         if len(self.config.setting.u_lo) == 1:
             self.u_lo = self.config.setting.u_lo * self.n_players
-
         if len(self.config.setting.u_hi) == 1:
             self.u_hi = self.config.setting.u_hi * self.n_players
 
-        # Correlated setting?
+        # Handle correlation
         if config.setting.correlation_types == 'additive':
             self.CorrelationDevice = MultiUnitDevice
             self.gamma = self.correlation = float(config.setting.gamma)
@@ -78,6 +80,7 @@ class MultiUnitExperiment(Experiment, ABC):
             # Can't sample cond values here
             self.config.logging.log_metrics['util_loss'] = False
 
+        # Handle model sharing in case of symmetry
         self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
             self.n_models = 1
@@ -90,6 +93,7 @@ class MultiUnitExperiment(Experiment, ABC):
             self.positive_output_point = torch.tensor(
                 [self.u_hi[0]] * self.n_items, dtype=torch.float)
 
+        # Set properties of prior
         self.constant_marginal_values = self.config.setting.constant_marginal_values
         self.item_interest_limit = self.config.setting.item_interest_limit
 
@@ -97,8 +101,6 @@ class MultiUnitExperiment(Experiment, ABC):
             self.pretrain_transform = self.config.setting.pretrain_transform
         else:
             self.pretrain_transform = self.default_pretrain_transform
-
-        self.input_length = self.config.setting.n_units
 
         self.plot_xmin = self.plot_ymin = min(self.u_lo)
         self.plot_xmax = self.plot_ymax = max(self.u_hi)
@@ -109,23 +111,34 @@ class MultiUnitExperiment(Experiment, ABC):
         """
         Standard strat_to_bidder method.
         """
-        correlation_type = 'additive' if hasattr(self, 'correlation_groups') else None
-        return Bidder.uniform(
-            lower=self.u_lo[player_position], upper=self.u_hi[player_position],
-            strategy=strategy,
-            n_items=self.n_units,
-            risk=self.risk,
-            item_interest_limit=self.item_interest_limit,
-            descending_valuations=True,
-            constant_marginal_values=self.constant_marginal_values,
-            player_position=player_position,
-            batch_size=batch_size,
-            enable_action_caching=enable_action_caching,
-            correlation_type=correlation_type
-        )
+        return Bidder(strategy, player_position, batch_size, bid_size=self.n_units,
+                      enable_action_caching=enable_action_caching, risk=self.risk)
 
     def _setup_sampler(self):
-        raise NotImplementedError
+        """
+        `bidder_samplers` could be combined for symmetric priot bounds.
+        """
+        default_batch_size = self.learning.batch_size
+        device = self.hardware.device
+        
+        # if TODO
+        
+        # setup individual samplers for each bidder
+        bidder_samplers = [
+            MultiUnitValuationObservationSampler(
+                n_players=1, n_items=self.n_units,
+                max_demand=self.item_interest_limit,
+                u_lo=self.u_lo[i], u_hi=self.u_hi[i],
+                default_batch_size=self.learning.batch_size,
+                default_device=self.hardware.device
+            )
+            for i in range(self.n_players)
+        ]
+
+        self.sampler = CompositeValuationObservationSampler(
+            self.n_players, self.valuation_size, self.observation_size,
+            bidder_samplers, default_batch_size, device
+        )
 
     def _setup_mechanism(self):
         """Setup the mechanism"""
@@ -170,6 +183,7 @@ class MultiUnitExperiment(Experiment, ABC):
                                           enable_action_caching=self.config.logging.cache_eval_actions)
                     for j, bne_strategy in enumerate(bne_strategies)
                 ],
+                valuation_observation_sampler=self.sampler,
                 n_players=self.n_players,
                 batch_size=self.logging.eval_batch_size,
                 strategy_to_player_closure=self._strat_to_bidder
@@ -189,16 +203,21 @@ class MultiUnitExperiment(Experiment, ABC):
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
-              x_label="valuation", y_label="bid", fmts=['o'],
-              figure_name: str = 'bid_function', plot_points=100):
+              x_label="valuation", y_label="bid", colors=None, fmts=['o'],
+              figure_name: str='bid_function', plot_points=100):
 
         super()._plot(plot_data=plot_data, writer=writer, epoch=epoch,
                       xlim=xlim, ylim=ylim, labels=labels, x_label=x_label,
-                      y_label=y_label, fmts=fmts, figure_name=figure_name,
-                      plot_points=plot_points)
+                      y_label=y_label, colors=colors, fmts=fmts,
+                      figure_name=figure_name, plot_points=plot_points)
 
+        # 3D plot if available
         if self.n_units == 2 and not isinstance(self, SplitAwardExperiment):
-            super()._plot_3d(plot_data, writer, epoch, figure_name)
+            # Discard BNEs as they're making 3d plots more complicated
+            if self.known_bne and plot_data[0].shape[1] > len(self.models):
+                plot_data = [d[:, :len(self.models), :] for d in plot_data]
+            super()._plot_3d(plot_data=plot_data, writer=writer, epoch=epoch,
+                             figure_name=figure_name, labels=labels)
 
     @staticmethod
     def default_pretrain_transform(input_tensor):

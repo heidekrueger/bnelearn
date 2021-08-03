@@ -210,3 +210,11 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         profile[..., self.max_demand:self.n_items] = 0.0
 
         return profile
+
+    def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
+                                dtype=torch.float, device = None) -> torch.Tensor:
+        rectangular_grid = super().generate_valuation_grid(
+            player_position, minimum_number_of_points, dtype, device)
+
+        # transform to triangular grid (valuations are marginally descending)
+        return rectangular_grid.sort(dim=1, descending=True)[0].unique(dim=0)
