@@ -2,6 +2,7 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager
 import pytest
 
 
+@pytest.mark.xfail(reason="LLGFull Experiments not yet implemented.")
 def test_all_experiments_serialization():
     """
     Checks all types of experiments are serialized and deserialized properly with default parameters
