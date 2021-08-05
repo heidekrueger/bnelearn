@@ -1,6 +1,7 @@
 """This module implements samplers for independent-private value auction settings."""
 
 from typing import List, Tuple
+from math import ceil
 
 import torch
 from torch.cuda import _device_t as Device
@@ -160,9 +161,6 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
 
     """
 
-    ## TODO Stefan: We may want to override grid sampling in this class in
-    ## order to sample only from 'triangle' rather than rectangle?
-
     def __init__(self, n_players: int, n_items: int = 1,
                  max_demand: int = None,
                  u_lo: float = 0.0, u_hi: float = 1.0,
@@ -218,3 +216,43 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
 
         # transform to triangular grid (valuations are marginally descending)
         return rectangular_grid.sort(dim=1, descending=True)[0].unique(dim=0)
+
+
+class SplitAwardtValuationObservationSampler(UniformSymmetricIPVSampler):
+    """Sampler for Split-Award, private value settings. Here bidders have two
+    valuations of which one is a linear combination of the other.
+    """
+    def __init__(self, efficiency_parameter: float, **kwargs):
+        super().__init__(n_players=2, **kwargs)
+        self.efficiency_parameter = efficiency_parameter
+        assert self.support_bounds[0, 0, 0] == self.support_bounds[1, 0, 0], \
+            'Bounds not suppoted in this setting.'
+        assert self.support_bounds[0, 0, 1] == self.support_bounds[1, 0, 1], \
+            'Bounds not suppoted in this setting.'
+
+    def _sample(self, batch_sizes, device) -> torch.Tensor:
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
+
+        # create an empty tensor on the output device, then sample in-place
+        sample = torch.empty([*batch_sizes, self.n_players, 2], device=device) \
+            .uniform_(self.base_distribution.low, self.base_distribution.high)
+        sample[..., 0] = sample[..., 1] * self.efficiency_parameter
+        return sample
+
+    def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
+                                dtype=torch.float, device=None) -> torch.Tensor:
+        device = device or self.default_device
+        bounds = self.support_bounds[player_position]
+
+        # dimensionality
+        dims = 2
+        n_points_per_dim = ceil(minimum_number_of_points/dims)
+
+        # create equidistant line along the support
+        line = torch.linspace(bounds[0][0], bounds[0][1], n_points_per_dim,
+                              device=device, dtype=dtype)
+
+        grid = torch.stack((self.efficiency_parameter * line, line), dim=-1) \
+            .view(-1, dims)
+
+        return grid

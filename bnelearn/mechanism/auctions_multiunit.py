@@ -288,55 +288,59 @@ class FPSBSplitAwardAuction(MultiUnitAuction):
         Args:
             bids: torch.Tensor
                 of bids with dimensions (batch_size, n_players, n_bids=2), values = [0,Inf],
-                the first bid is for the 100% share and the second for the 50% share
+                the first bid is for the 50% share and the second for the 100% share
 
         Returns:
             allocation: torch.Tensor, dim (batch_size, b_bundles=2), values = {0,1}
         """
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
-        n_batch, n_players, n_bundles = bids.shape
+        *batch_sizes, n_players, n_bundles = bids.shape
+        total_batch_size = reduce(mul, batch_sizes, 1)
+        bids_flat = bids.view(total_batch_size, n_players, n_bundles)
+
+        device = bids.device
 
         assert n_bundles == 2, "This auction type only allows for two bids per agent."
 
-        winning_bundles = torch.zeros_like(bids)
+        winning_bundles = torch.zeros_like(bids_flat)
 
         if random_tie_break: # randomly change order of bidders
-            idx = torch.randn((n_batch, n_players), device=bids.device).sort(dim=1)[1]
-            bids = batched_index_select(bids, 1, idx)
+            idx = torch.randn((*batch_sizes, n_players), device=device).sort(dim=1)[1]
+            bids_flat = batched_index_select(bids_flat, 1, idx)
 
-        best_100_bids, best_100_indices = bids[:,:,0].min(dim=1)
-        best_50_bids, best_50_indices = bids[:,:,1].topk(2, largest=False, dim=1)
+        best_100_bids, best_100_indices = bids_flat[:,:,1].min(dim=1)
+        best_50_bids, best_50_indices = bids_flat[:,:,0].topk(2, largest=False, dim=1)
 
         sum_of_two_best_50_bids = best_50_bids.sum(dim=1)
-        bid_100_won = best_100_bids < sum_of_two_best_50_bids # tie break: in favor of 50/50
+        bid_100_won = best_100_bids < sum_of_two_best_50_bids  # tie break: in favor of 50/50
 
-        batch_arange = torch.arange(0, n_batch, device=bids.device)
+        batch_arange = torch.arange(0, total_batch_size, device=device)
         winning_bundles[
             batch_arange,
             best_100_indices,
-            torch.zeros_like(best_100_indices)
+            torch.ones_like(best_100_indices)
         ] = 1
         winning_bundles[
             batch_arange,
             best_50_indices[:,0],
-            torch.ones_like(best_100_indices)
+            torch.zeros_like(best_100_indices)
         ] = 1
         winning_bundles[
             batch_arange,
             best_50_indices[:,1],
-            torch.ones_like(best_100_indices)
+            torch.zeros_like(best_100_indices)
         ] = 1
 
-        winning_bundles[bid_100_won,:,1] = 0
-        winning_bundles[~bid_100_won,:,0] = 0
+        winning_bundles[bid_100_won,:,0] = 0
+        winning_bundles[~bid_100_won,:,1] = 0
 
         if random_tie_break: # restore bidder order
             idx_rev = idx.sort(dim=1)[1]
             winning_bundles = batched_index_select(winning_bundles, 1, idx_rev)
-            bids = batched_index_select(bids, 1, idx_rev) # are bids even needed later on?
+            # bids_flat = batched_index_select(bids_flat, 1, idx_rev)  # unused
 
-        return winning_bundles
+        return winning_bundles.view_as(bids)
 
     def _calculate_payments_first_price(self, bids: torch.Tensor, allocations: torch.Tensor):
         """
@@ -350,7 +354,7 @@ class FPSBSplitAwardAuction(MultiUnitAuction):
         Returns:
             payments: torch.Tensor, dim (batch_size, n_bidders), values = [0, Inf]
         """
-        return torch.sum(allocations * bids, dim=2)
+        return torch.sum(allocations * bids, dim=-1)
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """

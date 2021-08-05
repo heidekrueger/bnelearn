@@ -394,7 +394,8 @@ class ConfigurationManager:
         self.running.seeds = seeds
         # Defaults specific to an experiment type
         if self.experiment_type not in ConfigurationManager.experiment_types:
-            raise Exception('The experiment type does not exist')
+            raise Exception('The experiment type does not exist. Available ' + \
+                f'experiments are {ConfigurationManager.experiment_types.keys()}.')
         else:
             ConfigurationManager.experiment_types[self.experiment_type][1](self)
 

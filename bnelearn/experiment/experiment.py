@@ -524,8 +524,8 @@ class Experiment(ABC):
                         a, b = lim[0], lim[1]
                 elif hasattr(self, str_lim[0]):  # use attributes ´self.plot_xmin´ etc.
                     if isinstance(eval('self.' + str(str_lim[0])), list):
-                        a = eval('self.' + str(str_lim[plot_idx]))[0]
-                        b = eval('self.' + str(str_lim[plot_idx]))[1]
+                        a = eval('self.' + str(str_lim[0]))[plot_idx]
+                        b = eval('self.' + str(str_lim[1]))[plot_idx]
                     else:
                         a = eval('self.' + str(str_lim[0]))
                         b = eval('self.' + str(str_lim[1]))
@@ -660,7 +660,7 @@ class Experiment(ABC):
                 for env_idx, _ in enumerate(self.bne_env):
                     o = torch.cat([o, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
-                    labels += [f"BNE {'_' + str(env_idx + 1) if len(self.bne_env) > 1 else ''} agent {j}"
+                    labels += [f"BNE{'_' + str(env_idx + 1) if len(self.bne_env) > 1 else ''} agent {j}"
                                for j in range(len(self.models))]
                     fmts += ['--'] * len(self.models)
 
@@ -795,7 +795,7 @@ class Experiment(ABC):
             plot_data = (observations[:, [b[0] for b in self._model2bidder], :],
                          torch.stack(best_responses, 1))
             labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
-            fmts = ['o'] * len(self.models) 
+            fmts = ['o'] * len(self.models)
             self._plot(plot_data=plot_data, writer=self.writer,
                        ylim=[0, self.sampler.support_bounds.max().item()],
                        figure_name='best_responses', y_label='best response',
