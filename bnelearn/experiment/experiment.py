@@ -3,7 +3,7 @@ This module defines an experiment. It includes logging and plotting since they
 can often be shared by specific experiments.
 """
 
-from bnelearn.sampler import ValuationObservationSampler
+
 import os
 from sys import platform
 import time
@@ -32,6 +32,7 @@ from bnelearn.experiment.configurations import (ExperimentConfig)
 from bnelearn.learner import ESPGLearner, Learner
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import NeuralNetStrategy
+from bnelearn.sampler import ValuationObservationSampler
 
 
 # pylint: disable=unnecessary-pass,unused-argument
@@ -110,7 +111,7 @@ class Experiment(ABC):
         self.n_parameters = None
         self._cur_epoch_log_params = {}
 
-        # TODO: Get rid of these. payment rule should not be part of the 
+        # TODO: Get rid of these. payment rule should not be part of the
         # experiment interface.
         # The following required attrs have already been set in many subclasses in earlier logic.
         # Only set here if they haven't. Don't overwrite.
@@ -126,7 +127,7 @@ class Experiment(ABC):
 
         ### actual logic
         # Inverse of bidder --> model lookup table
-        self._model2bidder: List[List[int]] = [[] for m in range(self.n_models)]
+        self._model2bidder: List[List[int]] = [[] for _ in range(self.n_models)]
         for b_id, m_id in enumerate(self._bidder2model):
             self._model2bidder[m_id].append(b_id)
         self._model_names = self._get_model_names()
@@ -408,7 +409,7 @@ class Experiment(ABC):
                 self._init_new_run()
 
                 for epoch in range(self.running.n_epochs + 1):
-                    utilities = self._training_loop(epoch=epoch)            
+                    utilities = self._training_loop(epoch=epoch)
 
                 if self.logging.enable_logging and (
                         self.logging.export_step_wise_linear_bid_function_size is not None):
@@ -670,7 +671,9 @@ class Experiment(ABC):
         self.overhead = self.overhead + timer() - start_time
         self._cur_epoch_log_params['overhead_hours'] = self.overhead / 3600
         if self.writer:
-            self.writer.add_metrics_dict(self._cur_epoch_log_params, self._model_names, epoch, group_prefix='eval')
+            self.writer.add_metrics_dict(
+                self._cur_epoch_log_params, self._model_names, epoch,
+                group_prefix=None, metric_tag_mapping = metrics.MAPPING_METRICS_TAGS)
         return timer() - start_time
 
     def _calculate_metrics_known_bne(self):
@@ -874,13 +877,6 @@ class Experiment(ABC):
             print(e)
         self.writer.add_hparams(hparam_dict=h_params, metric_dict=self._hparams_metrics,
                                 global_step=global_step)
-
-    # def _log_hyperparams(self, epoch=0):
-    #     """Everything that should be logged on every learning_rate update"""
-    #
-    #     for i, model in enumerate(self.models):
-    #         self.writer.add_text('hyperparameters/neural_net_spec', str(model), epoch)  # ToDO To hyperparams
-    #         self.writer.add_graph(model, self.env.agents[i]._cached_observations)
 
     def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to
