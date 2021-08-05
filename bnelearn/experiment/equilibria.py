@@ -378,10 +378,9 @@ def _optimal_bid_multiuniform3x2limit2(valuation, player_position=None):
     opt_bid[:, 2] = 0
     return opt_bid
 
-
 def _optimal_bid_splitaward2x2_1(experiment_config, payoff_dominant: bool=True):
     """BNE pooling equilibrium in the split-award auction with 2 players and 2
-    lots (as in Anton and Yao, 1992). Actually, this is a contiuum of BNEs of
+    lots (as in Anton and Yao, 1992). Actually, this is a continuum of BNEs of
     which this function returns the upper bound (payoff dominat BNE) and the
     one at the lower bound.
 
