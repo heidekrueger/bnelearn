@@ -450,8 +450,8 @@ class ConfigurationManager:
         return self
 
     # pylint: disable=too-many-arguments, unused-argument
-    def set_learning(self, model_sharing: bool = 'None', learner_hyperparams: dict = 'None',
-                     optimizer_type: str = 'None',
+    def set_learning(self, model_sharing: bool = 'None', learner_type: str = 'None',
+                     learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
@@ -526,6 +526,7 @@ class ConfigurationManager:
             risk=1.0)
         learning = LearningConfig(
             model_sharing=True,
+            learner_type='ESPGLearner',
             learner_hyperparams={'population_size': 64,
                                  'sigma': 1.,
                                  'scale_sigma_by_model_size': True},
