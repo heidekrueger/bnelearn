@@ -15,6 +15,8 @@ import torch
 from scipy import integrate, interpolate
 from torch.utils.tensorboard import SummaryWriter
 
+from logger import Logger
+
 from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
@@ -99,11 +101,18 @@ class MultiUnitExperiment(Experiment, ABC):
             self.pretrain_transform = self.default_pretrain_transform
 
         self.input_length = self.config.setting.n_units
-
-        self.plot_xmin = self.plot_ymin = min(self.u_lo)
-        self.plot_xmax = self.plot_ymax = max(self.u_hi)
+        
+        plot_bounds = {}
+        plot_bounds['plot_xmin'] =  min(self.u_lo)
+        plot_bounds['plot_xmax'] =  max(self.u_hi)
+        plot_bounds['plot_ymin'] =  min(self.u_lo)
+        plot_bounds['plot_ymax'] =  max(self.u_hi)
 
         super().__init__(config=config)
+                
+        if self.logging.enable_logging:
+            self.logger = Logger(logging_config=config.logging_config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
+                                learning_config=config.learning_config, logdir_hierarchy_getter=self._get_logdir_hierarchy)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         """
@@ -216,7 +225,19 @@ class SplitAwardExperiment(MultiUnitExperiment):
         self.config = config
         self.efficiency_parameter = self.config.setting.efficiency_parameter
 
+        # TODO Implicit type conversion, OK?
+        plot_bounds = {}
+        plot_bounds['plot_xmin'] = [self.u_lo[0], self.u_hi[0]]
+        plot_bounds['plot_xmax'] =  [self.setting.efficiency_parameter * self.u_lo[0],
+                          self.setting.eficiency_parameter * self.u_hi[0]]
+        plot_bounds['plot_ymin'] =  [0, 2 * self.u_hi[0]]
+        plot_bounds['plot_ymax'] =  [0, 2 * self.u_hi[0]]
+
         super().__init__(config=config)
+                
+        if self.logging.enable_logging:
+            self.logger = Logger(logging_config=config.logging_config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
+                                learning_config=config.learning_config, logdir_hierarchy_getter=self._get_logdir_hierarchy)
 
         assert all(u_lo > 0 for u_lo in self.config.setting.u_lo), \
             '100% Unit must be valued > 0'
@@ -224,12 +245,6 @@ class SplitAwardExperiment(MultiUnitExperiment):
         self.positive_output_point = torch.tensor(
             [1.2, self.efficiency_parameter * 1.2], dtype=torch.float)
 
-        # ToDO Implicit type conversion, OK?
-        self.plot_xmin = [self.u_lo[0], self.u_hi[0]]
-        self.plot_xmax = [self.setting.efficiency_parameter * self.u_lo[0],
-                          self.setting.efficiency_parameter * self.u_hi[0]]
-        self.plot_ymin = [0, 2 * self.u_hi[0]]
-        self.plot_ymax = [0, 2 * self.u_hi[0]]
 
     def _setup_sampler(self):
         return NotImplementedError

@@ -19,6 +19,8 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
 
+from logger import Logger
+
 from bnelearn.mechanism import (
     LLGAuction, LLGFullAuction, LLLLGGAuction
 )
@@ -28,8 +30,10 @@ from bnelearn.experiment.configurations import ExperimentConfig
 from .experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
 
-import bnelearn.util.logging as logging_utils
+import bnelearn.util.utility_database as utility_database
 from bnelearn.sampler import LLGSampler, LLLLGGSampler
+
+
 
 # maps config correlation_types to LocalGlobalSampler correlation_method arguments
 CORRELATION_METHODS = {
@@ -70,12 +74,18 @@ class LocalGlobalExperiment(Experiment, ABC):
             self.n_models = self.n_players
             self._bidder2model: List[int] = list(range(self.n_players))
 
-        super().__init__(config=config)
+        plot_bounds = {}
+        plot_bounds['plot_xmin'] = min(self.u_lo)
+        plot_bounds['plot_xmax'] = max(self.u_hi)                         
+        plot_bounds['plot_ymin'] = min(self.u_lo)
+        plot_bounds['plot_ymax'] = max(self.u_hi) * 1.05
 
-        self.plot_xmin = min(self.u_lo)
-        self.plot_xmax = max(self.u_hi)
-        self.plot_ymin = self.plot_xmin
-        self.plot_ymax = self.plot_xmax * 1.05
+        super().__init__(config=config)
+                
+        if self.logging.enable_logging:
+            self.logger = Logger(logging_config=config.logging_config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
+                                learning_config=config.learning_config, logdir_hierarchy_getter=self._get_logdir_hierarchy)
+
 
     def _set_valuation_bounds(self):
         """Validates input for uniform valuation bounds and converts
@@ -244,7 +254,7 @@ class LLGExperiment(LocalGlobalExperiment):
 
         self.bne_env = bne_env
 
-        db_batch_size, db_bne_utility = logging_utils.read_bne_utility_database(self)
+        db_batch_size, db_bne_utility = utility_database.read_bne_utility_database(self)
 
         # Found higher precision db entry
         if db_batch_size >= self.config.logging.eval_batch_size:
@@ -253,7 +263,7 @@ class LLGExperiment(LocalGlobalExperiment):
         else:
             self.bne_utilities = torch.tensor(
                 [bne_env.get_reward(a, redraw_valuations=True) for a in bne_env.agents])
-            logging_utils.write_bne_utility_database(self, self.bne_utilities)
+            utility_database.write_bne_utility_database(self, self.bne_utilities)
 
         print(f'Setting up BNE env with batch size 2**{np.log2(self.config.logging.eval_batch_size)}.')
         print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*self.bne_utilities))

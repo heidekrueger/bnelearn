@@ -6,7 +6,7 @@ import pkg_resources
 import pytest
 
 from bnelearn.experiment.configuration_manager import ConfigurationManager
-import bnelearn.util.logging as logging_utils
+import bnelearn.util.utility_database as utility_database
 
 cuda = torch.cuda.is_available()
 
@@ -34,7 +34,7 @@ def test_bne_utility_database():
     exp = exp_class(config)
 
     # Check retrival
-    db_batch_size, db_bne_utility = logging_utils.read_bne_utility_database(exp)
+    db_batch_size, db_bne_utility = utility_database.read_bne_utility_database(exp)
     if db_batch_size > BATCH_SIZE:
         # Unlikly case that excatly this combination of gamma and risk is in DB
         pytest.skip("BNE database test skipped: Please confirm correctness.")

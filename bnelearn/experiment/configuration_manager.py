@@ -8,7 +8,7 @@ from numpy import MAXDIMS
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
-from bnelearn.util import logging as logging_utils
+from logger import Logger
 
 from bnelearn.experiment.configurations import (SettingConfig,
                                                 LearningConfig,
@@ -599,14 +599,14 @@ class ConfigurationManager:
         Tests whether the given config could be serialized and deserialized properly.
         """
         dir_path = os.path.join(os.getcwd(), 'temp')
-        file_path = os.path.join(dir_path, logging_utils._configurations_f_name)
+        file_path = os.path.join(dir_path, Logger._configurations_f_name)
         if not os.path.exists(dir_path):
             try:
                 os.mkdir(dir_path)
             except OSError:
                 print("Creation of the directory %s failed" % dir_path)
 
-        logging_utils.save_experiment_config(experiment_log_dir=dir_path, experiment_configuration=exp_config)
+        Logger.save_experiment_config(experiment_log_dir=dir_path, experiment_configuration=exp_config)
         exp_retrieved_config = ConfigurationManager.load_experiment_config(experiment_log_dir=dir_path)
         ConfigurationManager.get_class_by_experiment_type(exp_retrieved_config.experiment_class)(exp_retrieved_config)
 
@@ -627,7 +627,7 @@ class ConfigurationManager:
         """
         if experiment_log_dir is None:
             experiment_log_dir = os.path.abspath(os.getcwd())
-        f_name = os.path.join(experiment_log_dir, logging_utils._configurations_f_name)
+        f_name = os.path.join(experiment_log_dir, Logger._configurations_f_name)
 
         with open(f_name) as json_file:
             experiment_config_as_dict = json.load(json_file)
