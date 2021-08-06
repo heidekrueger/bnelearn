@@ -1,28 +1,22 @@
-"""
-In this file multi-unit experiments ´MultiUnitExperiment´ and their analytical
-BNEs (if known) are defiened. Also, the ´SplitAwardExperiment´ is implemented as well,
-as it shares most its properties.
+"""In this file multi-unit experiments ´MultiUnitExperiment´ are defined and
+their analytical BNEs (if known) are assigned. Also, the ´SplitAwardExperiment´
+is implemented as well, as it shares most its properties.
 """
 
 import os
 import warnings
 from abc import ABC
-from typing import Callable
 
 import torch
-
-
-from scipy import integrate, interpolate
 from torch.utils.tensorboard import SummaryWriter
 
 from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
+from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
-from bnelearn.experiment.equilibria import (
-    _multiunit_bne, _optimal_bid_multidiscriminatory2x2,
-    _optimal_bid_multidiscriminatory2x2CMV, _optimal_bid_multiuniform2x2,
-    _optimal_bid_multiuniform3x2limit2, _optimal_bid_splitaward2x2_1,
-    _optimal_bid_splitaward2x2_2)
+from bnelearn.experiment.equilibria import (_multiunit_bne,
+                                            _optimal_bid_splitaward2x2_1,
+                                            _optimal_bid_splitaward2x2_2)
 from bnelearn.mechanism import (FPSBSplitAwardAuction,
                                 MultiUnitDiscriminatoryAuction,
                                 MultiUnitUniformPriceAuction,
@@ -33,11 +27,10 @@ from bnelearn.sampler import (MultiUnitValuationObservationSampler,
 from bnelearn.strategy import ClosureStrategy
 
 
-from .experiment import Experiment
-
 
 def _setup_multiunit_eval_environment(exp: Experiment):
-    """Setup the BNE envierment for later evaluation of the learned strategies"""
+    """Setup the BNE envierment for later evaluation of the learned strategies."""
+    # pylint: disable=protected-access
 
     assert exp.known_bne
     assert hasattr(exp, '_optimal_bid')
@@ -193,9 +186,12 @@ class MultiUnitExperiment(Experiment, ABC):
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
-              x_label="valuation", y_label="bid", colors=None, fmts=['o'],
-              figure_name: str='bid_function', plot_points=100):
-
+              x_label="valuation", y_label="bid", fmts=['o'],
+              colors: list = None, figure_name: str = 'bid_function',
+              plot_points: int = 100):
+        """Plotting of multi-unit experiment with possible 3D plot for two unit
+        case.
+        """
         super()._plot(plot_data=plot_data, writer=writer, epoch=epoch,
                       xlim=xlim, ylim=ylim, labels=labels, x_label=x_label,
                       y_label=y_label, colors=colors, fmts=fmts,
@@ -222,12 +218,12 @@ class SplitAwardExperiment(Experiment):
         assert len(set(self.config.setting.u_lo)) == 1, "Only symmetric priors supported!"
         assert len(set(self.config.setting.u_hi)) == 1, "Only symmetric priors supported!"
 
-        assert self.config.setting.n_players == 2, 'Only 2 players are supported!'
+        assert self.config.setting.n_units == 2, 'Only two units (lots) supported!'
+        assert self.config.setting.n_players == 2, 'Only two players are supported!'
 
         assert all(u_lo > 0 for u_lo in self.config.setting.u_lo), \
             '100% Unit must be valued > 0'
 
-        assert self.config.setting.n_units == 2, 'Only two units (lots) supported!'
         # Split-award specific parameters
         self.n_units = self.n_items = self.action_size = \
             self.observation_size = self.valuation_size = self.config.setting.n_units
@@ -269,6 +265,17 @@ class SplitAwardExperiment(Experiment):
         super().__init__(config=config)
 
     def _setup_sampler(self):
+
+        # Handle correlation
+        if self.config.setting.correlation_types in ['independent', None]:
+            self.gamma = self.correlation = 0.0
+            if self.config.setting.gamma is not None \
+                and float(self.config.setting.gamma) > 0:
+                warnings.warn('No correlation selected.')
+        else:
+            raise NotImplementedError('Correlation not implemented.')
+
+        # Setup sampler
         self.sampler = SplitAwardtValuationObservationSampler(
             lo=self.u_lo, hi=self.u_hi, efficiency_parameter=self.efficiency_parameter,
             valuation_size=self.valuation_size,
@@ -285,9 +292,8 @@ class SplitAwardExperiment(Experiment):
 
     def _check_and_set_known_bne(self):
         """check for available BNE strategy"""
-        if self.config.setting.n_units == 2 \
-            and self.config.setting.n_players == 2 \
-            and self.risk == 1:
+        if self.config.setting.n_units == 2 and self.config.setting.n_players == 2 \
+            and self.risk == 1 and self.correlation == 0:
             self._optimal_bid = [
                 _optimal_bid_splitaward2x2_1(self.config.setting, True),
                 _optimal_bid_splitaward2x2_1(self.config.setting, False),
