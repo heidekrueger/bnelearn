@@ -9,8 +9,10 @@ def batched_index_select(input: torch.Tensor, dim: int,
     Extends the torch ´index_select´ function to be used for multiple batches
     at once.
 
+    This code is borrowed from https://discuss.pytorch.org/t/batched-index-select/9115/11.
+
     author:
-        dashesy @ https://discuss.pytorch.org/t/batched-index-select/9115/11
+        dashesy
 
     args:
         input: Tensor which is to be indexed

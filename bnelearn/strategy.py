@@ -116,7 +116,8 @@ class MatrixGameStrategy(Strategy, nn.Module):
         if init_weights is not None:
             self.logits.weight.data = init_weights
             if init_weight_normalization:
-                self.logits.weight.data = self.logits.weight.data/torch.norm(init_weights) #NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
+                self.logits.weight.data = self.logits.weight.data/torch.norm(init_weights) 
+                #NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
 
         # initialize distribution
         self._update_distribution()
@@ -294,7 +295,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
             length of output/action vectorm defaults to 1
             (currently given last for backwards-compatibility)
         dropout (optional): float
-            If not, applies AlphaDropout (https://pytorch.org/docs/stable/nn.html#torch.nn.AlphaDropout)
+            If not 0, applies AlphaDropout (https://pytorch.org/docs/stable/nn.html#torch.nn.AlphaDropout)
             to `dropout` share of nodes in each hidden layer during training.
 
     """
@@ -355,7 +356,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         model_dict = torch.load(path, map_location=device)
 
-        # TODO: Dangerous hack for reloading a startegy
+        # TODO: Dangerous hack for reloading a startegy from disk/pickle
         params = {}
         params["hidden_nodes"] = []
         params["hidden_activations"] = []

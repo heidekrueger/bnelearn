@@ -32,8 +32,8 @@ if __name__ == '__main__':
     # experiment_class = ConfigurationManager \
     #    .get_class_by_experiment_type(experiment_config.experiment_class)
 
-    # Well, path is user-specific
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
+    # path is user-specific
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
 
 
     ### SINGLE ITEM EXPERIMENTS ###
@@ -44,24 +44,51 @@ if __name__ == '__main__':
     #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
     #     .set_learning(pretrain_iters=5) \
     #     .set_logging(eval_batch_size=2**4).get_config()
+    # experiment_config, experiment_class = \
+    #     ConfigurationManager(
+    #         experiment_type='single_item_gaussian_symmetric',
+    #         n_runs=1,
+    #         n_epochs=200
+    #         ) \
+    #     .set_setting(
+    #         # correlation_groups=[[0, 1, 2]],
+    #         # correlation_types='independent',
+    #         # gamma=0.0
+    #         ) \
+    #     .set_logging(
+    #         eval_batch_size=2**18,
+    #         util_loss_batch_size=2**10,
+    #         util_loss_grid_size=2**10,
+    #         util_loss_frequency=10,
+    #         cache_eval_actions=True,
+    #         log_root_dir=log_root_dir,
+    #         save_tb_events_to_csv_detailed=True
+    #         ) \
+    #     .set_learning(
+    #         model_sharing=False
+    #         ) \
+    #     .set_hardware(
+    #         specific_gpu=7
+    #     ) \
+    #     .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
-    #                                                            n_runs=2, n_epochs=2)\
+    #                                                            n_runs=2, n_epochs=200)\
     #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True).get_config()
 
-    # All three next experiments get AssertionError: scalar should be 0D
+    #All three next experiments get AssertionError: scalar should be 0D
     # experiment_config, experiment_class = ConfigurationManager(
     #    experiment_type='single_item_asymmetric_uniform_overlapping',
-    #    n_runs=1, n_epochs=200
+    #    n_runs=1, n_epochs=20000
     # ) \
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .get_config()
-    # experiment_config, experiment_class = ConfigurationManager(
-    #       experiment_type='single_item_asymmetric_uniform_disjunct',
-    #       n_runs=1, n_epochs=200
-    # ) \
-    #     .set_logging(log_root_dir=log_root_dir) \
-    #     .get_config()
+    experiment_config, experiment_class = ConfigurationManager(
+          experiment_type='single_item_asymmetric_uniform_disjunct',
+          n_runs=1, n_epochs=200
+    ) \
+        .set_logging(log_root_dir=log_root_dir) \
+        .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=3) \
     #     .set_setting(gamma=0.5) \
@@ -91,14 +118,14 @@ if __name__ == '__main__':
 
     ### COMBINATRORIAL EXPERIMENTS ###
     # experiment_config, experiment_class = ConfigurationManager(
-    #     experiment_type='llg', n_runs=1, n_epochs=100
+    #     experiment_type='llg', n_runs=1, n_epochs=1000
     # ) \
     #     .set_setting(gamma=0.5) \
     #     .set_logging(
     #        log_root_dir=log_root_dir,
-    #        util_loss_batch_size=2 ** 7,
-    #        util_loss_grid_size=2 ** 6,
-    #        util_loss_frequency=1) \
+    #        util_loss_batch_size=2 ** 10,
+    #        util_loss_grid_size=2 ** 8,
+    #        util_loss_frequency=20) \
     #     .get_config()
     # experiment_config, experiment_class = ConfigurationManager(
     #     experiment_type='llg_full', n_runs=1, n_epochs=10000) \
@@ -110,9 +137,7 @@ if __name__ == '__main__':
     #         util_loss_batch_size=2**10,
     #         util_loss_grid_size=2**10,
     #         util_loss_frequency=1000,
-    #         plot_frequency=10,
-    #         cache_eval_actions=False,
-    #         stopping_criterion_frequency=100000) \
+    #         plot_frequency=10) \
     #     .set_hardware(specific_gpu=3) \
     #     .get_config()
     # experiment_config, experiment_class = ConfigurationManager(
@@ -120,7 +145,8 @@ if __name__ == '__main__':
     # ) \
     #     .set_learning(batch_size=2**7) \
     #     .set_setting(core_solver='mpc', payment_rule='nearest_vcg') \
-    #     .set_logging(log_root_dir=log_root_dir, log_metrics={}) \
+    #     .set_logging(log_root_dir=log_root_dir, log_metrics={'util_loss': True},
+    #                  util_loss_frequency=5, plot_frequency=5) \
     #     .get_config()
 
 
@@ -141,7 +167,6 @@ if __name__ == '__main__':
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .set_hardware(specific_gpu=1) \
     #     .get_config()
-
 
     ### DOUBLE AUCTION EXPERIMENTS ###
     experiment_config, experiment_class = ConfigurationManager(experiment_type='double_auction_single_item_uniform_symmetric', n_runs=1,
@@ -178,3 +203,7 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print('\nKeyboardInterrupt: released memory after interruption')
         torch.cuda.empty_cache()
+    experiment = experiment_class(experiment_config)
+    experiment.run()
+    torch.cuda.empty_cache()
+
