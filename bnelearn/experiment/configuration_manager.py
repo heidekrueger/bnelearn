@@ -8,7 +8,7 @@ from numpy import MAXDIMS
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
-from logger import Logger
+from bnelearn.experiment.logger import Logger
 
 from bnelearn.experiment.configurations import (SettingConfig,
                                                 LearningConfig,

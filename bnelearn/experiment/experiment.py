@@ -26,7 +26,6 @@ from bnelearn.learner import ESPGLearner, Learner
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import NeuralNetStrategy
 from bnelearn.sampler import ValuationObservationSampler
-#from logger import Logger
 
 # pylint: disable=unnecessary-pass,unused-argument
 

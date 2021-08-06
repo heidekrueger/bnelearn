@@ -15,7 +15,7 @@ import torch
 from scipy import integrate, interpolate
 from torch.utils.tensorboard import SummaryWriter
 
-from logger import Logger
+from bnelearn.experiment.logger import Logger
 
 from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
@@ -111,8 +111,10 @@ class MultiUnitExperiment(Experiment, ABC):
         super().__init__(config=config)
                 
         if self.logging.enable_logging:
-            self.logger = Logger(logging_config=config.logging_config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
-                                learning_config=config.learning_config, logdir_hierarchy_getter=self._get_logdir_hierarchy)
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, learning_env=self.env, 
+                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
+                                model_names=self._model_names, models = self.models, logdir_hierarchy=self._get_logdir_hierarchy(), 
+                                sampler=self.sampler, plotter=self._plot)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         """
@@ -236,8 +238,10 @@ class SplitAwardExperiment(MultiUnitExperiment):
         super().__init__(config=config)
                 
         if self.logging.enable_logging:
-            self.logger = Logger(logging_config=config.logging_config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
-                                learning_config=config.learning_config, logdir_hierarchy_getter=self._get_logdir_hierarchy)
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, learning_env=self.env, 
+                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
+                                model_names=self._model_names, models = self.models, logdir_hierarchy=self._get_logdir_hierarchy(), 
+                                sampler=self.sampler, plotter=self._plot)
 
         assert all(u_lo > 0 for u_lo in self.config.setting.u_lo), \
             '100% Unit must be valued > 0'
