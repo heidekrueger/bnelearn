@@ -91,31 +91,6 @@ class MultiUnitExperiment(Experiment, ABC):
         if len(self.config.setting.u_hi) == 1:
             self.u_hi = self.config.setting.u_hi * self.n_players
 
-        # Handle correlation
-        # TODO Nils
-        if config.setting.correlation_types == 'additive':
-            self.CorrelationDevice = MultiUnitDevice
-            self.gamma = self.correlation = float(config.setting.gamma)
-        elif config.setting.correlation_types in ['independent', None]:
-            self.gamma = self.correlation = 0.
-            if config.setting.gamma is not None and float(config.setting.gamma) > 0:
-                warnings.warn('No correlation selected.')
-        else:
-            raise NotImplementedError('Correlation not implemented.')
-        if self.gamma > 0.0:
-            self.correlation_groups = [list(range(self.n_players))]
-            self.correlation_coefficients = [self.gamma]
-            self.correlation_devices = [
-                self.CorrelationDevice(
-                    common_component_dist=torch.distributions.Uniform(
-                        config.setting.u_lo[0], config.setting.u_hi[0]),
-                    batch_size=config.learning.batch_size,
-                    n_common_components=self.n_items,
-                    correlation=self.gamma),
-                ]
-            # Can't sample cond values here
-            self.config.logging.log_metrics['util_loss'] = False
-
         # Handle model sharing in case of symmetry
         self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
@@ -142,18 +117,22 @@ class MultiUnitExperiment(Experiment, ABC):
         super().__init__(config=config)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
-        """
-        Standard strat_to_bidder method.
-        """
+        """Standard `strat_to_bidder` method."""
         return Bidder(strategy, player_position, batch_size, bid_size=self.n_units,
                       enable_action_caching=enable_action_caching, risk=self.risk)
 
     def _setup_sampler(self):
-        """
-        `bidder_samplers` could be combined for symmetric priot bounds.
-        """
         default_batch_size = self.learning.batch_size
         device = self.hardware.device
+
+        # Handle correlation
+        if self.config.setting.correlation_types in ['independent', None]:
+            self.gamma = self.correlation = 0.0
+            if self.config.setting.gamma is not None \
+                and float(self.config.setting.gamma) > 0:
+                warnings.warn('No correlation selected.')
+        else:
+            raise NotImplementedError('Correlation not implemented.')
 
         # Check for symmetric priors
         if len(set(self.u_lo)) == 1 and len(set(self.u_hi)) == 1:
@@ -208,8 +187,8 @@ class MultiUnitExperiment(Experiment, ABC):
     def _get_logdir_hierarchy(self):
         name = ['multi_unit', self.payment_rule, str(self.risk) + 'risk',
                 str(self.n_players) + 'players_' + str(self.n_units) + 'units']
-        if self.gamma > 0:
-            name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
+        # if self.gamma > 0:
+        #     name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
         return os.path.join(*name)
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
@@ -232,9 +211,7 @@ class MultiUnitExperiment(Experiment, ABC):
 
 
 class SplitAwardExperiment(Experiment):
-    """
-    Experiment class of the first-price sealed bid split-award auction.
-    """
+    """Experiment class of the first-price sealed bid split-award auction."""
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
@@ -250,9 +227,10 @@ class SplitAwardExperiment(Experiment):
         assert all(u_lo > 0 for u_lo in self.config.setting.u_lo), \
             '100% Unit must be valued > 0'
 
+        assert self.config.setting.n_units == 2, 'Only two units (lots) supported!'
         # Split-award specific parameters
-        self.n_units = self.n_items = self.action_size = 2
-        self.observation_size = self.valuation_size = 2  # 2nd dim is linear combination of first
+        self.n_units = self.n_items = self.action_size = \
+            self.observation_size = self.valuation_size = self.config.setting.n_units
         self.n_players = self.config.setting.n_players
         self.payment_rule = self.config.setting.payment_rule
         self.risk = float(self.config.setting.risk)
