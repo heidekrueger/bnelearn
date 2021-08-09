@@ -16,6 +16,8 @@ payment for a seller is the amount seller receives for an item.
 """
 
 from typing import Tuple
+from functools import reduce
+from operator import mul
 
 import torch
 
@@ -27,16 +29,20 @@ class kDoubleAuction(DoubleAuctionMechanism):
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
-        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
+        assert bids.dim() >= 3, "Bid tensor must be at least 3D (*batch x players x items)."
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
 
+        # poosibly flaten bids, if there's more than one batch dim
+        *batch_sizes, _, n_items = bids.shape
+        batch_size = reduce(mul, batch_sizes, 1)
+        bids = bids.view(batch_size, self.n_buyers+self.n_sellers, n_items)
+
         batch_dim, player_dim, item_dim = 0, 1, 2
         bids_buyers, bids_sellers = torch.split(bids,[self.n_buyers, self.n_sellers], dim=player_dim)
-        batch_size, _, n_items = bids.shape
-        
+
         # allocate return variables
 
         payments_per_item_buyers = torch.zeros(batch_size, self.n_buyers, n_items, device=self.device)
@@ -68,26 +74,27 @@ class kDoubleAuction(DoubleAuctionMechanism):
                                 ((self.k)*(torch.gather(bids_sorted_buyers, dim=player_dim, index=trade_indx))),
                                 ((1-self.k)*(torch.gather(bids_sorted_sellers, dim=player_dim, index=trade_indx)))
                                )
-        
+
         trade_price_buyers = trade_price*trade_buyers
         trade_price_sellers = trade_price*trade_sellers
 
-        allocations_buyers = allocations_buyers.scatter_(dim=player_dim, index=indx_buyers, 
+        allocations_buyers = allocations_buyers.scatter_(dim=player_dim, index=indx_buyers,
                                                          src=trade_buyers)
-        allocations_sellers = allocations_sellers.scatter_(dim=player_dim, index=indx_sellers, 
+        allocations_sellers = allocations_sellers.scatter_(dim=player_dim, index=indx_sellers,
                                                            src=trade_sellers)
 
-        payments_per_item_buyers = payments_per_item_buyers.scatter_(dim=player_dim, index=indx_buyers, 
+        payments_per_item_buyers = payments_per_item_buyers.scatter_(dim=player_dim, index=indx_buyers,
                                                                      src=trade_price_buyers)
-    
-        payments_per_item_sellers = payments_per_item_sellers.scatter_(dim=player_dim, index=indx_sellers, 
+
+        payments_per_item_sellers = payments_per_item_sellers.scatter_(dim=player_dim, index=indx_sellers,
                                                                        src=trade_price_sellers)
 
         allocations = torch.cat((allocations_buyers, allocations_sellers), dim=player_dim)
-        payments = torch.cat((payments_per_item_buyers, payments_per_item_sellers), 
-                            dim=player_dim).sum(dim=item_dim)
-        
-        return (allocations, payments)
+        payments = torch.cat((payments_per_item_buyers, payments_per_item_sellers),
+                             dim=player_dim).sum(dim=item_dim)
+
+        return (allocations.view(*batch_sizes, self.n_buyers+self.n_sellers, n_items),
+                payments.view(*batch_sizes, self.n_buyers+self.n_sellers))
 
 
 class VickreyDoubleAuction(DoubleAuctionMechanism):
@@ -158,7 +165,7 @@ class VickreyDoubleAuction(DoubleAuctionMechanism):
 
         payments_per_item_buyers = payments_per_item_buyers.scatter_(dim=player_dim, index=indx_buyers, 
                                                                      src=trade_price_buyers)
-    
+
         payments_per_item_sellers = payments_per_item_sellers.scatter_(dim=player_dim, index=indx_sellers, 
                                                                        src=trade_price_sellers)
 
@@ -166,7 +173,7 @@ class VickreyDoubleAuction(DoubleAuctionMechanism):
         allocations = torch.cat((allocations_buyers, allocations_sellers), dim=player_dim)
         payments = torch.cat((payments_per_item_buyers, payments_per_item_sellers), 
                             dim=player_dim).sum(dim=item_dim)
-        
+
         return (allocations, payments)
 
 

@@ -14,7 +14,8 @@ from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
-
+from bnelearn.sampler import (SymmetricIPVSampler, UniformSymmetricIPVSampler)
+from bnelearn.strategy import ClosureStrategy
 from bnelearn.mechanism import kDoubleAuction, VickreyDoubleAuction
 from bnelearn.strategy import ClosureStrategy
 
@@ -46,7 +47,7 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
         self.n_buyers = self.config.setting.n_buyers
         self.n_sellers = self.config.setting.n_sellers
         self.k = self.config.setting.k
-        self.input_length = 1
+        self.observation_size = self.valuation_size = self.action_size = 1
 
         if not hasattr(self, 'payment_rule'):
             self.payment_rule = self.config.setting.payment_rule
@@ -55,8 +56,7 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
 
         if self.config.logging.eval_batch_size < 2 ** 20:
             print(f"Using small eval_batch_size of {self.config.logging.eval_batch_size}. Use at least 2**22 for proper experiment runs!")
-        
-        
+
         self.model_sharing = self.config.learning.model_sharing
 
         if self.model_sharing:
@@ -66,10 +66,9 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
         else:
             self.n_models = self.n_buyers + self.n_sellers
             self._bidder2model: List[int] = list(range(self.n_buyers + self.n_players))
-            
-        
+
         super().__init__(config=config)
-    
+
     #TODO: change labels for agents
     #def _plot(**kwargs):
     #    super()._plot(**kwargs, labels: list = None):
@@ -94,20 +93,19 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
             return 'risk_averse'
         else:
             return 'other'
-    
+
     def _get_model_names(self):
         if self.model_sharing:
             return ['buyers', 'sellers']
         else:
             return super()._get_model_names() #TODO: change model names when model sharing is False
-    
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
 
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0,
+                         enable_action_caching=False) -> Bidder:
         seller = player_position > self.n_buyers - 1
-
-        return Bidder(self.common_prior, strategy, player_position, batch_size, cache_actions=cache_actions,
+        return Bidder(strategy, player_position, batch_size,
+                      enable_action_caching=enable_action_caching,
                       risk=self.risk, seller=seller)
-
 
 
 class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExperiment):
@@ -129,70 +127,63 @@ class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExp
         self.risk_profile = self.get_risk_profile(self.risk)
 
         super().__init__(config=config)
-    
+
     # def _optimal_bid(self, valuation, player_position):
-        
+
     #     if not isinstance(valuation, torch.Tensor):
     #         valuation = torch.tensor(valuation)
-        
+
     #     if self.payment_rule == 'first_price':
     #         if player_position > self.n_buyers - 1:
     #             return _optimal_bid_seller_average(valuation)
     #         else:
     #             return _optimal_bid_buyer_average(valuation)
-        
+
     #     if self.payment_rule == 'k_price':
     #         if player_position > self.n_buyers - 1:
     #             return _optimal_bid_seller_kdouble(valuation, self.k)
     #         else:
     #             return _optimal_bid_buyer_kdouble(valuation, self.k)
-        
+
     #     elif self.payment_rule == 'second_price':
     #         return _truthful_bid(valuation)
-        
+
     #     else:
     #         warnings.warn('optimal bid not implemented for this type')
     #         self.known_bne = False
 
-
     def _check_and_set_known_bne(self):
-        if self.payment_rule in \
-            ['k_price', 'vickrey_price']:
+        if self.payment_rule in ['k_price', 'vickrey_price']:
             return True
         else:
             # no bne found, defer to parent
             return super()._check_and_set_known_bne()
 
-
     def _setup_eval_environment(self):
         """Determines whether a bne exists and sets up eval environment."""
-
-        assert  self.known_bne
-        assert  hasattr(self, '_optimal_bid')
+        assert self.known_bne
+        assert hasattr(self, '_optimal_bid')
 
         bne_strategies = [
             ClosureStrategy(partial(self._optimal_bid, player_position=i))
             for i in range(self.n_players)]
 
-        agents = [self._strat_to_bidder(bne_strategies[i], player_position=i, 
-                                        batch_size=self.config.logging.eval_batch_size)
-                 for i in range(self.n_players)]
-
-        self.known_bne = True
-
         self.bne_env = AuctionEnvironment(
             self.mechanism,
-            agents=agents,
+            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
+                                          batch_size=self.config.logging.eval_batch_size,
+                                          enable_action_caching=self.logging.cache_eval_actions)
+                    for i in range(self.n_players)],
+            valuation_observation_sampler=self.sampler,
             n_players=self.n_players,
             batch_size=self.logging.eval_batch_size,
             strategy_to_player_closure=self._strat_to_bidder
         )
 
         self.bne_utilities = torch.tensor(
-            [self.bne_env.get_reward(a, draw_valuations=True) for a in self.bne_env.agents])
-        
+            [self.bne_env.get_reward(a, redraw_valuations=True) for a in self.bne_env.agents])
+
         print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*self.bne_utilities))
-        print("No closed form solution for BNE utilities available in this setting. Using sampled value as baseline.")
 
 
 class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmetricPriorSingleItemExperiment):
@@ -207,37 +198,44 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
         assert self.config.setting.u_hi is not None, """Prior boundaries not specified!"""
 
         self.valuation_prior = 'uniform'
-        self.u_lo = self.config.setting.u_lo
-        self.u_hi = self.config.setting.u_hi
+        self.u_lo = torch.tensor(self.config.setting.u_lo, dtype=torch.float32,
+            device=self.config.hardware.device)
+        self.u_hi = torch.tensor(self.config.setting.u_hi, dtype=torch.float32,
+            device=self.config.hardware.device)
         self.config.setting.common_prior = \
             torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
 
-        # ToDO Implicit list to float type conversion
-        self.plot_xmin = self.u_lo
-        self.plot_xmax = self.u_hi
+        self.plot_xmin = self.u_lo.cpu().numpy()
+        self.plot_xmax = self.u_hi.cpu().numpy()
         self.plot_ymin = 0
-        self.plot_ymax = self.u_hi * 1.05
+        self.plot_ymax = self.u_hi.cpu().numpy() * 1.05
 
         super().__init__(config=config)
 
+    def _setup_sampler(self):
+        self.sampler = SymmetricIPVSampler(
+            self.common_prior, self.n_players, self.valuation_size,
+            self.config.learning.batch_size, self.config.hardware.device
+        )
+
     def _optimal_bid(self, valuation, player_position):
-        
+
         if not isinstance(valuation, torch.Tensor):
             valuation = torch.tensor(valuation)
-        
+
         if self.payment_rule == 'k_price':
             if player_position > self.n_buyers - 1:
                 return _optimal_bid_seller_kdouble(valuation, self.k, self.u_hi)
             else:
                 return _optimal_bid_buyer_kdouble(valuation, self.k, self.u_hi)
-        
+
         elif self.payment_rule == 'vickrey_price':
             return _truthful_bid(valuation)
-        
+
         else:
             warnings.warn('optimal bid not implemented for this type')
             self.known_bne = False
-    
+
     def _get_logdir_hierarchy(self):
 
         if self.payment_rule == 'k_price':
