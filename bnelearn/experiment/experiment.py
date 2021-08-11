@@ -7,6 +7,7 @@ can often be shared by specific experiments.
 import os
 from sys import platform
 import time
+from inspect import getmembers
 from abc import ABC, abstractmethod
 from time import perf_counter as timer
 from typing import Iterable, List, Callable
@@ -26,10 +27,10 @@ from torch.utils.tensorboard import SummaryWriter
 
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
+import bnelearn.learner as learners
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
 from bnelearn.experiment.configurations import (ExperimentConfig)
-from bnelearn.learner import ESPGLearner, Learner
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import NeuralNetStrategy
 from bnelearn.sampler import ValuationObservationSampler
@@ -171,14 +172,24 @@ class Experiment(ABC):
         pass
 
     def _setup_learners(self):
+        """Setup learner.
+
+        All classes within `bnelearn.learner` are considered.
+        """
+        available_learners = dict(getmembers(learners))
+
+        assert self.learning.learner_type in available_learners.keys(), \
+            f'Learner `{self.learning.learner_type}` unkonwn.'
 
         self.learners = [
-            ESPGLearner(model=model,
-                        environment=self.env,
-                        hyperparams=self.learning.learner_hyperparams,
-                        optimizer_type=self.learning.optimizer,
-                        optimizer_hyperparams=self.learning.optimizer_hyperparams,
-                        strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]})
+            available_learners[self.learning.learner_type](
+                model=model,
+                environment=self.env,
+                hyperparams=self.learning.learner_hyperparams,
+                optimizer_type=self.learning.optimizer,
+                optimizer_hyperparams=self.learning.optimizer_hyperparams,
+                strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
+            )
             for m_id, model in enumerate(self.models)]
 
     def _setup_bidders(self):
