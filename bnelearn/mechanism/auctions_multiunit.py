@@ -1,4 +1,4 @@
-"""Auction mechanism for multi-unit aucttions (where objects are homogeneous)."""
+"""Auction mechanism for multi-unit auctions (where objects are homogeneous)."""
 from typing import Tuple
 import warnings
 from functools import reduce
