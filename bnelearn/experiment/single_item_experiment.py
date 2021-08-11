@@ -214,8 +214,8 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         u_lo = self.config.setting.u_lo
         u_hi = self.config.setting.u_hi
 
-        assert u_lo is not None and len(set(u_lo)) == 1, "Prior boundaries not specified correctly!"
-        assert u_hi is not None and len(set(u_hi)) == 1, "Prior boundaries not specified correctly!"
+        assert u_lo is not None and len(set(u_lo)) == 1, "Invalid prior boundaries. u_lo should be a list of length 1."
+        assert u_hi is not None and len(set(u_hi)) == 1, "Invalid prior boundaries. u_hi should be a list of length 1."
 
         self.valuation_prior = 'uniform'
         self.u_lo = torch.tensor(u_lo[0], dtype=torch.float32,

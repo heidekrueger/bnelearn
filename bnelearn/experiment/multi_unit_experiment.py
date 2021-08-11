@@ -30,7 +30,6 @@ from bnelearn.strategy import ClosureStrategy
 
 def _setup_multiunit_eval_environment(exp: Experiment):
     """Setup the BNE envierment for later evaluation of the learned strategies."""
-    # pylint: disable=protected-access
 
     assert exp.known_bne
     assert hasattr(exp, '_optimal_bid')
@@ -125,34 +124,31 @@ class MultiUnitExperiment(Experiment, ABC):
                 and float(self.config.setting.gamma) > 0:
                 warnings.warn('No correlation selected.')
         else:
-            raise NotImplementedError('Correlation not implemented.')
+            raise NotImplementedError('Correlation not implemented for MultiUnit settings.')
 
         # Check for symmetric priors
         if len(set(self.u_lo)) == 1 and len(set(self.u_hi)) == 1:
+            # Case: Symmetric Priors
             self.sampler = MultiUnitValuationObservationSampler(
                 n_players=self.n_players, n_items=self.n_units,
                 max_demand=self.item_interest_limit,
                 u_lo=self.u_lo[0], u_hi=self.u_hi[0],
                 default_batch_size=default_batch_size,
-                default_device=device
-            )
-
-        # Setup individual samplers for asymmetric bidders
+                default_device=device)
         else:
+            # Case: asymmetric bidders with individual samplers
             bidder_samplers = [
                 MultiUnitValuationObservationSampler(
                     n_players=1, n_items=self.n_units,
                     max_demand=self.item_interest_limit,
                     u_lo=self.u_lo[i], u_hi=self.u_hi[i],
                     default_batch_size=default_batch_size,
-                    default_device=device
-                )
+                    default_device=device)
                 for i in range(self.n_players)
             ]
             self.sampler = CompositeValuationObservationSampler(
                 self.n_players, self.valuation_size, self.observation_size,
-                bidder_samplers, default_batch_size, device
-            )
+                bidder_samplers, default_batch_size, device)
 
     def _setup_mechanism(self):
         """Setup the mechanism"""
