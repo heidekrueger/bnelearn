@@ -11,7 +11,6 @@ import torch
 from bnelearn.strategy import (Strategy, MatrixGameStrategy,
                                FictitiousPlayStrategy, FictitiousNeuralPlayStrategy)
 
-
 class Player(ABC):
     """
         A player in a game, determined by her
@@ -79,11 +78,11 @@ class Bidder(Player):
                  observation_size: int =1,
                  bid_size: int = 1,
                  cuda: str = True,
-                 regret: float = 0.0,
-                 budget: float = 0.0,
                  enable_action_caching: bool = False,
-                 risk: float = 1.0
-                 ):
+                 risk: float = 1.0,
+                 regret = None,
+                 loss = None
+                ):
 
         super().__init__(strategy, player_position, batch_size, cuda)
 
@@ -92,15 +91,14 @@ class Bidder(Player):
         self.bid_size = bid_size
 
         self.risk = risk
+        self.regret = regret
+        self.loss = loss
 
         self._enable_action_caching = enable_action_caching
         self._cached_observations_changed = False # true if new observations drawn since actions calculated
         self._cached_observations = None
         self._cached_valuations_changed = False # true if new observations drawn since actions calculated
         self._cached_valuations = None
-
-        self.regret = regret
-        self.budgets = budget
 
         if self._enable_action_caching:
             self._cached_valuations = torch.zeros(batch_size, valuation_size, device=self.device)
@@ -146,7 +144,7 @@ class Bidder(Player):
             self._cached_valuations_changed = True
 
 
-    def get_utility(self, allocations, payments, valuations=None):
+    def get_utility(self, allocations, payments, winning_bid, valuations=None):
         """
         For a batch of valuations, allocations, and payments of the bidder,
         return their utility.
@@ -160,24 +158,33 @@ class Bidder(Player):
             valuations = self._cached_valuations
 
         welfare = self.get_welfare(allocations, valuations)
-
-        # Add regret terms
-        if self.regret != 0.0:
-            *batch_dims, item_dim = range(valuations.dim())
-            regret_mask = (welfare==0) & (valuations.squeeze() <= payments)
-            loser_regret_mask = (welfare==0) & (valuations.squeeze() > payments)
-            welfare[regret_mask] = -self.regret[0] * payments[regret_mask]    
-            welfare[loser_regret_mask] = -self.regret[0] * payments[loser_regret_mask] - self.regret[1] * (valuations.squeeze()[loser_regret_mask] - payments[loser_regret_mask]) 
-
         payoff = welfare - payments
 
-        if self.risk == 1.0:
-            return payoff
+        if self.risk == 1.0 and self.regret != None:
 
-        # payoff^alpha not well defined in negative domain for risk averse agents
-        # the following is a memory-saving implementation of
-        #return payoff.relu()**self.risk - (-payoff).relu()**self.risk
-        return payoff.relu().pow_(self.risk).sub_(payoff.neg_().relu_().pow_(self.risk))
+            # check for regret 
+            if self.regret != None:
+                regret = self.regret(allocations, payments, valuations, winning_bid)
+                payoff = payoff + regret
+
+            return payoff
+        elif self.risk != 1.0:
+
+            # payoff^alpha not well defined in negative domain for risk averse agents
+            # the following is a memory-saving implementation of
+            #return payoff.relu()**self.risk - (-payoff).relu()**self.risk
+            payoff = payoff.relu().pow_(self.risk).sub_(payoff.neg_().relu_().pow_(self.risk))
+
+            # check for regret 
+            if self.regret != None:
+                regret = self.regret(allocations, payments, valuations, winning_bid)
+                payoff = payoff + regret
+
+            return payoff
+        elif self.loss != None:
+            return self.loss(valuations, allocations, payoff)
+        else:
+            return payoff
 
     def get_welfare(self, allocations, valuations=None):
         """For a batch of allocations return the player's welfare.
@@ -231,10 +238,6 @@ class Bidder(Player):
             # we have updated the cached actions, so we can disable the
             # flag that they need to be recomputed.
             self._cached_observations_changed = False
-
-        # If bidder has budget, action is relativ to budget => scale
-        if self.budgets != 0.0:
-            actions = actions * self.budgets
 
         return actions
 

@@ -406,9 +406,13 @@ def ex_interim_utility(
     agent_allocations = allocations[..., player_position, :].type(torch.bool)
     agent_payments = payments[..., player_position]
     agent_valuations = cv[..., player_position, :]
+
+    *batch_dims, payment_dim = range(payments.dim())
+    highest_bids, _ = payments.max(dim=payment_dim)
+
     # shape of utility: *agent_batch_sizes x opponent_batch_size
     utility = agent.get_utility(
-        agent_allocations, agent_payments, agent_valuations
+        agent_allocations, agent_payments, highest_bids, agent_valuations
         )
 
     # expectation over opponent batches

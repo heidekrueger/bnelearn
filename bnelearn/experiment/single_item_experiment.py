@@ -842,9 +842,11 @@ class SingleItemSymmetricContestExperiment(UniformSymmetricPriorSingleItemExperi
         self.config.setting.common_prior = \
             torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
         
-        self.regret = self.config.setting.regret
+        self.regret_coefficients = self.config.setting.regret
+        self.loss_coef = self.config.setting.loss
 
         super().__init__(config)
+
 
     def _get_logdir_hierarchy(self):
         if self.risk == 1.0 and self.payment_rule == "all_pay":
@@ -858,9 +860,36 @@ class SingleItemSymmetricContestExperiment(UniformSymmetricPriorSingleItemExperi
         return os.path.join(*name)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
-        return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
-                      risk=self.risk, regret=self.regret)
+        loss = None
+        regret = None
+        if self.loss_coef != None:
+            loss = partial(self._loss)
+        
+        if regret != None:
+            regret = partial(self._regret)
 
+        return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
+                      risk=1.0, regret=regret, loss=loss)
+
+    def _regret(self, allocations, payments, valuations, winning_bid):
+        regret = torch.zeros_like(payments)
+        regret_mask = (allocations.squeeze()==0) & (winning_bid <= payments)
+        loser_regret_mask = (allocations.squeeze()==0) & (winning_bid > payments)
+        regret[regret_mask] = -self.regret_coefficients[0] * payments[regret_mask]    
+        regret[loser_regret_mask] = -self.regret_coefficients[0] * payments[loser_regret_mask] - self.regret_coefficients[1] * (valuations.squeeze()[loser_regret_mask] - winning_bid[loser_regret_mask]) 
+        return regret
+
+    def _loss(self, valuations, allocations, payoff):
+        reference_sampler = torch.distributions.uniform.Uniform(self.u_lo, self.u_hi)
+        reference_points = reference_sampler.cdf(valuations) ** (self.n_players-1)
+        reference_points.squeeze_()
+        mask_good_win_dimension = (allocations.squeeze() == 1)
+        mask_good_los_dimension = (allocations.squeeze() == 0)
+        # win item 
+        payoff[mask_good_win_dimension] = payoff[mask_good_win_dimension] + self.loss_coef[0] * (1- reference_points[mask_good_win_dimension]) * valuations.squeeze()[mask_good_win_dimension]
+        # loose item
+        payoff[mask_good_los_dimension] = payoff[mask_good_los_dimension] - self.loss_coef[0] * self.loss_coef[1] * reference_points[mask_good_los_dimension] * valuations.squeeze()[mask_good_los_dimension]
+        return payoff
 
     def _setup_eval_environment(self):
         """Determines whether a bne exists and sets up eval environment."""
@@ -911,7 +940,9 @@ class SingleItemAsymmetricUniformicAllPayExperiment(SingleItemExperiment):
         
         self.u_hi: List[float] = [float(self.config.setting.u_hi[i]) for i in range(self.n_players)]
 
-        # self.model_sharing = False
+        self.regret = self.config.setting.regret
+        self.loss = self.config.setting.loss
+        self.risk = float(config.setting.risk)
 
         # self.risk = float(self.config.setting.risk)
         self.n_models = self.n_players
@@ -941,8 +972,10 @@ class SingleItemAsymmetricUniformicAllPayExperiment(SingleItemExperiment):
             default_batch_size, device
             )
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=None, **strat_to_player_kwargs):
-        return Bidder(strategy, player_position=player_position, batch_size=batch_size, **strat_to_player_kwargs)
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+        return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
+                      risk=self.risk, regret=self.regret, loss=self.loss, n_players=self.n_players,
+                      prior_limits=[self.u_lo, self.u_hi])
 
 
     def _setup_mechanism(self):

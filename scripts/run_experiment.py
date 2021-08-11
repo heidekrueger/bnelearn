@@ -69,9 +69,9 @@ if __name__ == '__main__':
     #     .set_hardware(specific_gpu=2).get_config()
 
     experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_symmetric_uniform_all_pay', n_runs=1, n_epochs=3500) \
-        .set_setting(n_players=2, regret=[0.25, 0.5]) \
-        .set_learning(pretrain_iters = 500, batch_size=2**16) \
-        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True, eval_batch_size=2**16, util_loss_grid_size=2**10, util_loss_batch_size=2**12, util_loss_frequency=1000, stopping_criterion_frequency=100000) \
+        .set_setting(n_players=2, loss=[1, 1.42]) \
+        .set_learning(pretrain_iters = 500, batch_size=2**15) \
+        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True, eval_batch_size=2**15, util_loss_grid_size=2**10, util_loss_batch_size=2**12, util_loss_frequency=1000, stopping_criterion_frequency=100000, best_response=True) \
         .set_hardware(specific_gpu=3).get_config()
 
 

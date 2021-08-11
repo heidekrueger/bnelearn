@@ -66,6 +66,7 @@ class SettingConfig:
     # All-Pay auctions & Contests
     budgets: List[float] = None 
     regret: float = None  
+    loss: float = None
 
 
 @dataclass

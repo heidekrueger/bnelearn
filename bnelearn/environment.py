@@ -307,8 +307,10 @@ class AuctionEnvironment(Environment):
         agent_allocation = allocations[:, player_position, :]
         agent_payment = payments[:,player_position]
 
+        highest_bids, _ = payments.max(dim=1)
+
         # average over batch against this opponent
-        agent_utility = agent.get_utility(agent_allocation, agent_payment, agent_valuation)
+        agent_utility = agent.get_utility(agent_allocation, agent_payment, highest_bids, agent_valuation)
 
         # regularize
         agent_utility -= regularize * agent_bid.mean()

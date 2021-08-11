@@ -487,7 +487,7 @@ class ConfigurationManager:
                     correlation_coefficients: List[float] = 'None', n_units: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None', regret: float = 'None',):
+                    core_solver: str = 'None', regret: float = 'None', loss: float = 'None',):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
