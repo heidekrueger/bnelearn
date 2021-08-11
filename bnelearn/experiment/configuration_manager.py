@@ -139,8 +139,8 @@ class ConfigurationManager:
 
     def _init_single_item_uniform_symmetric(self):
         self.learning.model_sharing = True
-        self.setting.u_lo = 0
-        self.setting.u_hi = 1
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1]
 
     def _init_single_item_gaussian_symmetric(self):
         self.learning.model_sharing = True
@@ -162,8 +162,8 @@ class ConfigurationManager:
         self.setting.correlation_groups = [[0, 1, 2]]
         self.setting.correlation_types = 'corr_type'
         self.setting.correlation_coefficients = [1.0]
-        self.setting.u_lo = 0
-        self.setting.u_hi = 1
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1]
         self.setting.payment_rule = 'second_price'
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
@@ -175,8 +175,8 @@ class ConfigurationManager:
         self.setting.correlation_groups = [[0, 1]]
         self.setting.correlation_types = 'corr_type'
         self.setting.correlation_coefficients = [1.0]
-        self.setting.u_lo = 0
-        self.setting.u_hi = 1
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1]
         self.setting.payment_rule = 'first_price'
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
@@ -212,18 +212,18 @@ class ConfigurationManager:
     #
     #     return self
 
-    def _init_llg_full(self):
-        self.learning.model_sharing = False
-        self.setting.u_lo = [0, 0, 0]
-        self.setting.u_hi = [1, 1, 2]
-        self.setting.n_players = 3
-        self.setting.payment_rule = 'first_price'
-        self.setting.correlation_groups = [[0, 1], [2]]
-        self.setting.gamma = 0.0
-        self.logging.log_metrics = {'opt': True,
-                                    'util_loss': True,
-                                    'efficiency': False,
-                                    'revenue': False}
+    # def _init_llg_full(self):
+    #     self.learning.model_sharing = False
+    #     self.setting.u_lo = [0, 0, 0]
+    #     self.setting.u_hi = [1, 1, 2]
+    #     self.setting.n_players = 3
+    #     self.setting.payment_rule = 'first_price'
+    #     self.setting.correlation_groups = [[0, 1], [2]]
+    #     self.setting.gamma = 0.0
+    #     self.logging.log_metrics = {'opt': True,
+    #                                 'util_loss': True,
+    #                                 'efficiency': False,
+    #                                 'revenue': False}
 
     def _init_llllgg(self):
         self.logging.util_loss_batch_size = 2 ** 12
@@ -374,8 +374,8 @@ class ConfigurationManager:
            (AffiliatedObservationsExperiment, _init_affiliated_observations, _post_init_affiliated_observations),
         'llg':
             (LLGExperiment, _init_llg, _post_init_llg),
-        'llg_full':
-            (LLGFullExperiment, _init_llg_full, _post_init_llg),
+        # 'llg_full':
+        #     (LLGFullExperiment, _init_llg_full, _post_init_llg),
         'llllgg':
             (LLLLGGExperiment, _init_llllgg, _post_init_llllgg),
         'multiunit':
@@ -394,7 +394,8 @@ class ConfigurationManager:
         self.running.seeds = seeds
         # Defaults specific to an experiment type
         if self.experiment_type not in ConfigurationManager.experiment_types:
-            raise Exception('The experiment type does not exist')
+            raise Exception('The experiment type does not exist. Available ' + \
+                f'experiments are {ConfigurationManager.experiment_types.keys()}.')
         else:
             ConfigurationManager.experiment_types[self.experiment_type][1](self)
 
@@ -676,8 +677,8 @@ class ConfigurationManager:
 
             dist_str = str(experiment_config.setting.common_prior).split('(')[0]
             if dist_str == 'Uniform':
-                experiment_config.setting.common_prior = DISTRIBUTIONS[dist_str](experiment_config.setting.u_lo,
-                                                                                 experiment_config.setting.u_hi)
+                experiment_config.setting.common_prior = DISTRIBUTIONS[dist_str](experiment_config.setting.u_lo[0],
+                                                                                 experiment_config.setting.u_hi[0])
             elif dist_str == 'Normal':
                 experiment_config.setting.common_prior = DISTRIBUTIONS[dist_str](
                     experiment_config.setting.valuation_mean,

@@ -378,55 +378,54 @@ def _optimal_bid_multiuniform3x2limit2(valuation, player_position=None):
     opt_bid[:, 2] = 0
     return opt_bid
 
-def _optimal_bid_splitaward2x2_1(experiment_config):
-    """ BNE pooling equilibrium in the split-award auction with 2 players and
-        2 lots (as in Anton and Yao, 1992)
+def _optimal_bid_splitaward2x2_1(experiment_config, payoff_dominant: bool=True):
+    """BNE pooling equilibrium in the split-award auction with 2 players and 2
+    lots (as in Anton and Yao, 1992). Actually, this is a continuum of BNEs of
+    which this function returns the upper bound (payoff dominat BNE) and the
+    one at the lower bound.
 
         Returns callable.
     """
-
     efficiency_parameter = experiment_config.efficiency_parameter
-    u_lo = experiment_config.u_lo
-    u_hi = experiment_config.u_hi
+    u_lo = experiment_config.u_lo[0]
+    u_hi = experiment_config.u_hi[0]
 
     # cut off bids at top
-    cut_off = 4 * u_hi[0]
+    _CUT_OFF = 4 * u_hi
 
-    # @NILS: problem: value_cdf only accepts cpu-tensors now -- before you entered floats
-    # or gpu-tensors
-    #dist = torch.distributions.Uniform(u_lo[0], u_hi[0])
-    #value_cdf = lambda theta: dist.cdf(torch.tensor(theta))
-    value_cdf = lambda theta: (theta - u_lo[0]) / (u_hi[0] - u_lo[0])
+    def _optimal_bid(valuation, player_position=None):
 
-    def _optimal_bid(valuation, player_position=None, return_payoff_dominant=True):
-        sigma_bounds = torch.ones_like(valuation, device=valuation.device)
-        sigma_bounds[:, 0] = efficiency_parameter * u_hi[0]
-        sigma_bounds[:, 1] = (1 - efficiency_parameter) * u_lo[0]
-        # [:,0]: lower bound and [:,1] upper
+        device = valuation.device
+        dist = torch.distributions.Uniform(torch.tensor(u_lo, device=device),
+                                            torch.tensor(u_hi, device=device))
+        value_cdf = dist.cdf
 
-        _p_sigma = (1 - efficiency_parameter) * u_lo[0]  # highest possible p_sigma
+        sigma_bounds = torch.ones((valuation.shape[0], 2), device=device)
+        sigma_bounds[:, 1] = efficiency_parameter * u_hi
+        sigma_bounds[:, 0] = (1 - efficiency_parameter) * u_lo
+
+        _p_sigma = (1 - efficiency_parameter) * u_lo  # highest possible p_sigma
 
         def G(theta):
-            return _p_sigma + (_p_sigma - u_hi[0] * efficiency_parameter * value_cdf(theta)) \
-                   / (1 - value_cdf(theta))
+            return _p_sigma + (_p_sigma - u_hi * efficiency_parameter * value_cdf(theta)) \
+                    / (1 - value_cdf(theta))
 
         wta_bounds = 2 * sigma_bounds
-        wta_bounds[:, 1] = G(valuation[:, 0])
+        wta_bounds[:, 0] = G(valuation[:, 1])
 
-        payoff_dominant_bid = torch.cat(
-            (wta_bounds[:, 1].unsqueeze(0).t_(), sigma_bounds[:, 1].unsqueeze(0).t_()),
+        action_idx = 1 if payoff_dominant else 0
+        bid = torch.cat(
+            (sigma_bounds[:, action_idx].view(-1, 1),
+            wta_bounds[:, action_idx].view(-1, 1)),
             axis=1
         )
-        payoff_dominant_bid[payoff_dominant_bid > cut_off] = cut_off
-
-        if return_payoff_dominant:
-            return payoff_dominant_bid
-        return {'sigma_bounds': sigma_bounds, 'wta_bounds': wta_bounds}
+        bid[bid > _CUT_OFF] = _CUT_OFF
+        return bid
 
     return _optimal_bid
 
 def _optimal_bid_splitaward2x2_2(experiment_config):
-    """ BNE WTA equilibrium in the split-award auction with 2 players and
+    """BNE WTA equilibrium in the split-award auction with 2 players and
         2 lots (as in Anton and Yao Proposition 4, 1992).
 
         Returns callable.
@@ -434,53 +433,50 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
     print('Warning: BNE is approximated on CPU.')
 
     efficiency_parameter = experiment_config.efficiency_parameter
-    u_lo = experiment_config.u_lo
-    u_hi = experiment_config.u_hi
+    u_lo = experiment_config.u_lo[0]
+    u_hi = experiment_config.u_hi[0]
     n_players = experiment_config.n_players
 
     def value_cdf(value):
         value = np.array(value)
-        result = (value - u_lo[0]) / (u_hi[0] - u_lo[0])
+        result = (value - u_lo) / (u_hi - u_lo)
         return result.clip(0, 1)
 
     # CONSTANTS
-    opt_bid_batch_size = 2 ** 12
-    eps = 1e-4
+    opt_bid_batch_size = 2**12
+    _EPS = 1e-4
 
-    opt_bid = np.zeros((opt_bid_batch_size, experiment_config.n_units))
+    opt_bid = np.zeros((opt_bid_batch_size, 2))
 
     # do one-time approximation via integration
-    val_lin = np.linspace(u_lo[0], u_hi[0] - eps, opt_bid_batch_size)
+    val_lin = np.linspace(u_lo, u_hi - _EPS, opt_bid_batch_size)
 
     def integral(theta):
         return np.array(
             [integrate.quad(
-                lambda x: (1 - value_cdf(x)) ** (n_players - 1), v, u_hi[0],
-                epsabs=eps
+                lambda x: (1 - value_cdf(x))**(n_players - 1), v, u_hi,
+                epsabs=_EPS
             )[0] for v in theta]
         )
 
     def opt_bid_100(theta):
-        return theta + (integral(theta) / (
-            (1 - value_cdf(theta)) ** (n_players - 1)))
+        return theta + (integral(theta) / ((1 - value_cdf(theta))**(n_players - 1)))
 
-    opt_bid[:, 0] = opt_bid_100(val_lin)
-    opt_bid[:, 1] = opt_bid_100(val_lin) - efficiency_parameter * u_lo[0]  # or more
+    opt_bid[:, 1] = opt_bid_100(val_lin)
+    opt_bid[:, 0] = opt_bid[:, 1] - efficiency_parameter * u_lo  # or more
 
     opt_bid_function = [
-        interpolate.interp1d(val_lin, opt_bid[:, 0], fill_value='extrapolate'),
-        interpolate.interp1d(val_lin, opt_bid[:, 1], fill_value='extrapolate')
+        interpolate.interp1d(val_lin, opt_bid[:, 1], fill_value='extrapolate'),
+        interpolate.interp1d(val_lin, opt_bid[:, 0], fill_value='extrapolate')
     ]
 
     # use interpolation of opt_bid done on first batch
     def _optimal_bid(valuation, player_position=None):
-        bid = torch.tensor(
-            [opt_bid_function[0](valuation[:,0].cpu().numpy()),
-             opt_bid_function[1](valuation[:,0].cpu().numpy())
-            ],
-            device = valuation.device,
-            dtype = valuation.dtype
-        ).t_()
+        bid = torch.empty((valuation.shape[0], 2), device=valuation.device,
+                          dtype=valuation.dtype)
+        val = valuation[:, 1].cpu().numpy()
+        bid[:, 0] = torch.tensor(opt_bid_function[1](val), device=valuation.device)
+        bid[:, 1] = torch.tensor(opt_bid_function[0](val), device=valuation.device)
         bid[bid < 0] = 0
         return bid
 
