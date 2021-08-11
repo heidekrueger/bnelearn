@@ -27,43 +27,49 @@ from bnelearn.sampler import (MultiUnitValuationObservationSampler,
 from bnelearn.strategy import ClosureStrategy
 
 
+class _MultiUnitSetupEvalMixin(ABC):
+    r"""Mixinthat provides a common implementation of `_setup_eval_environment`
+       for both `MultiUnitExperiment` and `SplitAwardExperiment`.
+    """
+    # Mixin class --> false positives in pylint.
+    # pylint: disable=no-member,attribute-defined-outside-init,access-member-before-definition
 
-def _setup_multiunit_eval_environment(exp: Experiment):
-    """Setup the BNE envierment for later evaluation of the learned strategies."""
+    def _setup_eval_environment(self):
+        """Setup the BNE envierment for later evaluation of the learned strategies."""
 
-    assert exp.known_bne
-    assert hasattr(exp, '_optimal_bid')
+        assert self.known_bne
+        assert hasattr(self, '_optimal_bid')
 
-    if not isinstance(exp._optimal_bid, list):
-        exp._optimal_bid = [exp._optimal_bid]
+        if not isinstance(self._optimal_bid, list):
+            self._optimal_bid = [self._optimal_bid]
 
-    # set up list for multiple bne
-    exp.bne_env = [None] * len(exp._optimal_bid)
-    exp.bne_utilities = [None] * len(exp._optimal_bid)
+        # set up list for multiple bne
+        self.bne_env = [None] * len(self._optimal_bid)
+        self.bne_utilities = [None] * len(self._optimal_bid)
 
-    for i, strat in enumerate(exp._optimal_bid):
-        bne_strategies = [ClosureStrategy(strat) for _ in range(exp.n_players)]
+        for i, strat in enumerate(self._optimal_bid):
+            bne_strategies = [ClosureStrategy(strat) for _ in range(self.n_players)]
 
-        exp.bne_env[i] = AuctionEnvironment(
-            mechanism=exp.mechanism,
-            agents=[
-                exp._strat_to_bidder(bne_strategy, exp.logging.eval_batch_size, j,
-                                     enable_action_caching=exp.config.logging.cache_eval_actions)
-                for j, bne_strategy in enumerate(bne_strategies)
-            ],
-            valuation_observation_sampler=exp.sampler,
-            n_players=exp.n_players,
-            batch_size=exp.logging.eval_batch_size,
-            strategy_to_player_closure=exp._strat_to_bidder
-        )
+            self.bne_env[i] = AuctionEnvironment(
+                mechanism=self.mechanism,
+                agents=[
+                    self._strat_to_bidder(bne_strategy, self.logging.eval_batch_size, j,
+                                        enable_action_caching=self.config.logging.cache_eval_actions)
+                    for j, bne_strategy in enumerate(bne_strategies)
+                ],
+                valuation_observation_sampler=self.sampler,
+                n_players=self.n_players,
+                batch_size=self.logging.eval_batch_size,
+                strategy_to_player_closure=self._strat_to_bidder
+            )
 
-        exp.bne_utilities[i] = [exp.bne_env[i].get_reward(agent, redraw_valuations=True)
-                                for agent in exp.bne_env[i].agents]
+            self.bne_utilities[i] = [self.bne_env[i].get_reward(agent, redraw_valuations=True)
+                                    for agent in self.bne_env[i].agents]
 
     print('BNE envs have been set up.')
 
 
-class MultiUnitExperiment(Experiment, ABC):
+class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
     """
     Experiment class for the standard multi-unit auctions.
     """
@@ -170,9 +176,6 @@ class MultiUnitExperiment(Experiment, ABC):
             return self._optimal_bid is not None
         return super()._check_and_set_known_bne()
 
-    def _setup_eval_environment(self):
-        _setup_multiunit_eval_environment(self)
-
     def _get_logdir_hierarchy(self):
         name = ['multi_unit', self.payment_rule, str(self.risk) + 'risk',
                 str(self.n_players) + 'players_' + str(self.n_units) + 'units']
@@ -202,7 +205,7 @@ class MultiUnitExperiment(Experiment, ABC):
                              figure_name=figure_name, labels=labels)
 
 
-class SplitAwardExperiment(Experiment):
+class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
     """Experiment class of the first-price sealed bid split-award auction."""
 
     def __init__(self, config: ExperimentConfig):
@@ -297,9 +300,6 @@ class SplitAwardExperiment(Experiment):
             ]
             return True
         return super()._check_and_set_known_bne()
-
-    def _setup_eval_environment(self):
-        _setup_multiunit_eval_environment(self)
 
     def pretrain_transform(self, input_tensor):
         """Pretrain transformation for this setting"""
