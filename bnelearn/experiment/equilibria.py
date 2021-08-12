@@ -243,7 +243,7 @@ def bne_2p_affiliated_values(
 ### Multi-Unit Equilibria                              ###
 ###############################################################################
 
-def bne_multiunit_auction_factory(setting, payment_rule) -> Callable or None:
+def multiunit_bne_factory(setting, payment_rule) -> Callable or None:
     """
     Factory method that returns the known BNE strategy function for the standard multi-unit auctions
     (split-award is NOT one of the) as callable if available and None otherwise.

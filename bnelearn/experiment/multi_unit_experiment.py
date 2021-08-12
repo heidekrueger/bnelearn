@@ -14,7 +14,7 @@ from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
-from bnelearn.experiment.equilibria import (bne_multiunit_auction_factory,
+from bnelearn.experiment.equilibria import (multiunit_bne_factory,
                                             bne_splitaward_2x2_1,
                                             bne_splitaward_2x2_2)
 from bnelearn.mechanism import (FPSBSplitAwardAuction,
@@ -172,7 +172,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
     def _check_and_set_known_bne(self):
         """check for available BNE strategy"""
         if self.correlation in [0.0, None] and self.config.setting.correlation_types in ['independent', None]:
-            self._optimal_bid = bne_multiunit_auction_factory(self.config.setting, self.config.setting.payment_rule)
+            self._optimal_bid = multiunit_bne_factory(self.config.setting, self.config.setting.payment_rule)
             return self._optimal_bid is not None
         return super()._check_and_set_known_bne()
 
