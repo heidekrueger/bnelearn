@@ -1,4 +1,7 @@
-"""This module contains implementations of known Bayes-Nash equilibria in several specific settings."""
+"""This module contains implementations of known Bayes-Nash equilibrium bid 
+    functions in several specific settings.
+    Whenever possible, 
+"""
 from typing import Callable, List, Union
 
 import torch
@@ -34,14 +37,14 @@ def bne_fpsb_ipv_symmetric_generic_prior_risk_neutral(
     # For float / 0d tensors --> unsqueeze to allow list comprehension below
     if valuation.dim() == 0:
         valuation.unsqueeze_(0)
-    # shorthand notation for F^(n-1)
-    Fpowered = lambda v: torch.pow(prior_cdf(torch.tensor(v)), n_players - 1)
+    # F^(n-1)
+    cdf_powered = lambda v: torch.pow(prior_cdf(torch.tensor(v)), n_players - 1)
     # do the calculations
     numerator = torch.tensor(
-        [integrate.quad(Fpowered, 0, v)[0] for v in valuation],
+        [integrate.quad(cdf_powered, 0, v)[0] for v in valuation],
         device=valuation.device
     ).reshape(valuation.shape)
-    return valuation - numerator / Fpowered(valuation)
+    return valuation - numerator / cdf_powered(valuation)
 
 
 def bne_fpsb_ipv_symmetric_uniform_prior(
@@ -233,34 +236,30 @@ def bne_2p_affiliated_values(
 ## the experiment classes.
 
 
-
 ###############################################################################
 ### Multi-Unit Equilibria                              ###
 ###############################################################################
 
-def _multiunit_bne(setting, payment_rule) -> Callable or None:
+def bne_multiunit_auction_factory(setting, payment_rule) -> Callable or None:
     """
-    Method that returns the known BNE strategy for the standard multi-unit auctions
+    Factory method that returns the known BNE strategy function for the standard multi-unit auctions
     (split-award is NOT one of the) as callable if available and None otherwise.
     """
 
-    if  float(setting.risk) != 1:
-        return None  # Only know BNE for risk neutral bidders
-
     if payment_rule in ('vcg', 'vickrey'):
-        def truthful(valuation, player_position=None):  # pylint: disable=unused-argument
-            return valuation
-        return truthful
+        return truthful_bid
 
-    if (setting.correlation_types not in [None, 'independent'] or
-            setting.risk != 1):
+    if setting.correlation_types not in [None, 'independent'] or \
+            setting.risk != 1:
+        # Aside from VCG, equilibria are only known for independent priors and
+        # quasilinear/risk-neutral utilities.
         return None
 
     if payment_rule in ('first_price', 'discriminatory'):
         if setting.n_units == 2 and setting.n_players == 2:
             if not setting.constant_marginal_values:
                 print('BNE is only approximated roughly!')
-                return _optimal_bid_multidiscriminatory2x2
+                return _bne_multiunit_discriminatory_2x2
             else:
                 # TODO get valuation_cdf from experiment_config
                 # return _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf)
@@ -268,15 +267,16 @@ def _multiunit_bne(setting, payment_rule) -> Callable or None:
 
     if payment_rule == 'uniform':
         if setting.n_units == 2 and setting.n_players == 2:
-            return _optimal_bid_multiuniform2x2()
+            return _bne_multiunit_uniform_2x2()
         if (setting.n_units == 3 and setting.n_players == 2
                 and setting.item_interest_limit == 2):
-            return _optimal_bid_multiuniform3x2limit2
+            return _bne_multiunit_uniform_3x2_limit2
 
     return None
 
-def _optimal_bid_multidiscriminatory2x2(valuation, player_position=None):
-    """BNE strategy in the multi-unit discriminatory price auction 2 players and 2 units"""
+def _bne_multiunit_discriminatory_2x2(valuation, player_position=None):
+    """BNE strategy in the multi-unit discriminatory price auction with
+    2 players and 2 units"""
 
     def b_approx(v, s, t):
         b = torch.clone(v)
@@ -296,7 +296,7 @@ def _optimal_bid_multidiscriminatory2x2(valuation, player_position=None):
     opt_bid = opt_bid.sort(dim=1, descending=True)[0]
     return opt_bid
 
-def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
+def _bne_multiunit_discriminatory_2x2_cmv(valuation_cdf):
     """ BNE strategy in the multi-unit discriminatory price auction 2 players and 2 units
         with constant marginal valuations
     """
@@ -313,16 +313,13 @@ def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
 
     elif isinstance(valuation_cdf, torch.distributions.normal.Normal):
 
-        def muda_tb_cmv_bne(
-                value_pdf: callable,
-                value_cdf: callable = None,
-                lower_bound: int = 0,
-                epsabs=1e-3
-        ):
+        def muda_tb_cmv_bne(value_pdf: callable,
+                            value_cdf: callable = None,
+                            lower_bound: int = 0,
+                            epsabs=1e-3) -> Callable:
             if value_cdf is None:
                 def _value_cdf(x):
                     return integrate.quad(value_pdf, lower_bound, x, epsabs=epsabs)[0]
-
                 value_cdf = _value_cdf
 
             def inner(s, x):
@@ -336,8 +333,7 @@ def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
             def bidding(x):
                 if not hasattr(x, '__iter__'):
                     return x - outer(x)
-                else:
-                    return np.array([xi - outer(xi) for xi in x])
+                return np.array([xi - outer(xi) for xi in x])
 
             return bidding
 
@@ -352,7 +348,7 @@ def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
 
     return _optimal_bid
 
-def _optimal_bid_multiuniform2x2():
+def _bne_multiunit_uniform_2x2():
     """ Returns two BNE strategies List[callable] in the multi-unit uniform price auction
         with 2 players and 2 units.
     """
@@ -369,16 +365,16 @@ def _optimal_bid_multiuniform2x2():
 
     return [opt_bid_1, opt_bid_2]
 
-def _optimal_bid_multiuniform3x2limit2(valuation, player_position=None):
+def _bne_multiunit_uniform_3x2_limit2(valuation, player_position=None):
     """ BNE strategy in the multi-unit uniform price auction with 3 units and
-        2 palyers that are both only interested in 2 units
+        2 palyers that are both only interested in winning 2 units
     """
     opt_bid = torch.clone(valuation)
     opt_bid[:, 1] = opt_bid[:, 1] ** 2
     opt_bid[:, 2] = 0
     return opt_bid
 
-def _optimal_bid_splitaward2x2_1(experiment_config, payoff_dominant: bool=True):
+def bne_splitaward_2x2_1(experiment_config, payoff_dominant: bool=True):
     """BNE pooling equilibrium in the split-award auction with 2 players and 2
     lots (as in Anton and Yao, 1992). Actually, this is a continuum of BNEs of
     which this function returns the upper bound (payoff dominat BNE) and the
@@ -424,7 +420,7 @@ def _optimal_bid_splitaward2x2_1(experiment_config, payoff_dominant: bool=True):
 
     return _optimal_bid
 
-def _optimal_bid_splitaward2x2_2(experiment_config):
+def bne_splitaward_2x2_2(experiment_config):
     """BNE WTA equilibrium in the split-award auction with 2 players and
         2 lots (as in Anton and Yao Proposition 4, 1992).
 

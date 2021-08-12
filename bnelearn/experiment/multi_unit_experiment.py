@@ -14,9 +14,9 @@ from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
-from bnelearn.experiment.equilibria import (_multiunit_bne,
-                                            _optimal_bid_splitaward2x2_1,
-                                            _optimal_bid_splitaward2x2_2)
+from bnelearn.experiment.equilibria import (bne_multiunit_auction_factory,
+                                            bne_splitaward_2x2_1,
+                                            bne_splitaward_2x2_2)
 from bnelearn.mechanism import (FPSBSplitAwardAuction,
                                 MultiUnitDiscriminatoryAuction,
                                 MultiUnitUniformPriceAuction,
@@ -172,7 +172,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
     def _check_and_set_known_bne(self):
         """check for available BNE strategy"""
         if self.correlation in [0.0, None] and self.config.setting.correlation_types in ['independent', None]:
-            self._optimal_bid = _multiunit_bne(self.config.setting, self.config.setting.payment_rule)
+            self._optimal_bid = bne_multiunit_auction_factory(self.config.setting, self.config.setting.payment_rule)
             return self._optimal_bid is not None
         return super()._check_and_set_known_bne()
 
@@ -294,9 +294,9 @@ class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
         if self.config.setting.n_units == 2 and self.config.setting.n_players == 2 \
             and self.risk == 1 and self.correlation == 0:
             self._optimal_bid = [
-                _optimal_bid_splitaward2x2_1(self.config.setting, True),
-                _optimal_bid_splitaward2x2_1(self.config.setting, False),
-                _optimal_bid_splitaward2x2_2(self.config.setting)
+                bne_splitaward_2x2_1(self.config.setting, True),
+                bne_splitaward_2x2_1(self.config.setting, False),
+                bne_splitaward_2x2_2(self.config.setting)
             ]
             return True
         return super()._check_and_set_known_bne()
