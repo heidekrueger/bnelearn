@@ -1,6 +1,9 @@
 """This module contains implementations of known Bayes-Nash equilibrium bid 
     functions in several specific settings.
-    Whenever possible, 
+    Whenever possible, the bid functions are fully vectorized.
+
+    NOTE: This module contains a mix of direct implementations of bid functions,
+    and factory methods that create and return the bid function as a callable object.
 """
 from typing import Callable, List, Union
 
