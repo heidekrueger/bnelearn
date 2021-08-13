@@ -14,9 +14,9 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 batch_size = 2**20
 
 # for first test: outer x 1
-conditional_outer_batch_size = 2**12
+conditional_outer_batch_size = 2**13
 # for second test: few x inner
-conditional_inner_batch_size = 2**10
+conditional_inner_batch_size = 2**10  # TODO @Stefan unused?
 
 
 ids, test_cases = zip(*[
@@ -70,8 +70,8 @@ def test_affiliated_values(n_players, valuation_size, u_lo, u_hi):
 
     expected_valuation_mean = torch.tensor([[v_mean]*valuation_size]*n_players, device=v.device)
     expected_valuation_std = torch.tensor([[v_std]*valuation_size]*n_players, device=v.device)
-    expected_observation_mean =  torch.tensor([[o_mean]*valuation_size]*n_players, device=o.device)
-    expected_observation_std =  torch.tensor([[o_std]*valuation_size]*n_players, device=o.device)
+    expected_observation_mean = torch.tensor([[o_mean]*valuation_size]*n_players, device=o.device)
+    expected_observation_std = torch.tensor([[o_std]*valuation_size]*n_players, device=o.device)
 
     assert torch.allclose(v.mean(dim=0), expected_valuation_mean, rtol = _RTOL), \
         "unexpected valuation sample mean!"
@@ -80,10 +80,10 @@ def test_affiliated_values(n_players, valuation_size, u_lo, u_hi):
         "unexpected observation sample mean!"
 
     assert torch.allclose(v.std(dim=0), expected_valuation_std, rtol = _RTOL), \
-        "unexpected sample mean!"
+        "unexpected valuation sample stddev!"
 
     assert torch.allclose(o.std(dim=0), expected_observation_std, rtol = _RTOL), \
-        "unexpected sample mean!"
+        "unexpected observation sample stddev!"
 
     ## test manual dimensionalities and devices
     # draw explicitly on cpu
@@ -92,7 +92,7 @@ def test_affiliated_values(n_players, valuation_size, u_lo, u_hi):
 
 
     # draw alternative batch size
-    v,o = s.draw_profiles(batch_sizes = conditional_outer_batch_size)
+    v, o = s.draw_profiles(batch_sizes = conditional_outer_batch_size)
     assert v.shape[0] == conditional_outer_batch_size and  \
         o.shape[0] == conditional_outer_batch_size, \
         "explicit batch_size was not respected!"

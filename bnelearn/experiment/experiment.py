@@ -7,6 +7,7 @@ can often be shared by specific experiments.
 import os
 from sys import platform
 import time
+from inspect import getmembers
 from abc import ABC, abstractmethod
 from time import perf_counter as timer
 from typing import Iterable, List, Callable
@@ -26,10 +27,10 @@ from torch.utils.tensorboard import SummaryWriter
 
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
+import bnelearn.learner as learners
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
 from bnelearn.experiment.configurations import (ExperimentConfig)
-from bnelearn.learner import ESPGLearner, Learner
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import NeuralNetStrategy
 from bnelearn.sampler import ValuationObservationSampler
@@ -171,14 +172,24 @@ class Experiment(ABC):
         pass
 
     def _setup_learners(self):
+        """Setup learner.
+
+        All classes within `bnelearn.learner` are considered.
+        """
+        available_learners = dict(getmembers(learners))
+
+        assert self.learning.learner_type in available_learners.keys(), \
+            f'Learner `{self.learning.learner_type}` unkonwn.'
 
         self.learners = [
-            ESPGLearner(model=model,
-                        environment=self.env,
-                        hyperparams=self.learning.learner_hyperparams,
-                        optimizer_type=self.learning.optimizer,
-                        optimizer_hyperparams=self.learning.optimizer_hyperparams,
-                        strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]})
+            available_learners[self.learning.learner_type](
+                model=model,
+                environment=self.env,
+                hyperparams=self.learning.learner_hyperparams,
+                optimizer_type=self.learning.optimizer,
+                optimizer_hyperparams=self.learning.optimizer_hyperparams,
+                strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
+            )
             for m_id, model in enumerate(self.models)]
 
     def _setup_bidders(self):
@@ -525,8 +536,8 @@ class Experiment(ABC):
                         a, b = lim[0], lim[1]
                 elif hasattr(self, str_lim[0]):  # use attributes ´self.plot_xmin´ etc.
                     if isinstance(eval('self.' + str(str_lim[0])), list):
-                        a = eval('self.' + str(str_lim[plot_idx]))[0]
-                        b = eval('self.' + str(str_lim[plot_idx]))[1]
+                        a = eval('self.' + str(str_lim[0]))[plot_idx]
+                        b = eval('self.' + str(str_lim[1]))[plot_idx]
                     else:
                         a = eval('self.' + str(str_lim[0]))
                         b = eval('self.' + str(str_lim[1]))
@@ -545,7 +556,8 @@ class Experiment(ABC):
         return fig
 
     # TODO: stefan only uses self in output_dir, nowhere else --> can we move this to utils.plotting? etc?
-    def _plot_3d(self, plot_data, writer, epoch, figure_name):
+    def _plot_3d(self, plot_data, writer, epoch, labels: list = None,
+                 figure_name: str = 'bid_function'):
         """
         Creating 3d plots. Provide grid if no plot_data is provided
         Args
@@ -556,13 +568,18 @@ class Experiment(ABC):
         independent_var = plot_data[0]
         dependent_var = plot_data[1]
         batch_size, n_models, n_bundles = independent_var.shape
-        assert n_bundles == 2, "cannot plot != 2 bundles"
+        assert n_bundles == 2, "cannot 3d plot != 2 bundles"
         n_plots = dependent_var.shape[2]
+
+        if labels is None:
+            labels = ['model ' + str(i) for i in range(n_models)]
+
         # create the plot
         fig = plt.figure()
-        for model in range(n_models):
+        for label, model in zip(labels, range(n_models)):
             for plot in range(n_plots):
-                ax = fig.add_subplot(n_models, n_plots, model * n_plots + plot + 1, projection='3d')
+                ax = fig.add_subplot(n_models, n_plots, model * n_plots + plot + 1,
+                                     projection='3d')
                 ax.plot_trisurf(
                     independent_var[:, model, 0].detach().cpu().numpy(),
                     independent_var[:, model, 1].detach().cpu().numpy(),
@@ -573,13 +590,14 @@ class Experiment(ABC):
                 )
                 ax.zaxis.set_major_locator(LinearLocator(10))
                 ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
-                ax.set_title('model {}, bundle {}'.format(model, plot))
+                ax.set_title(f'{label}, bundle {plot}')
                 ax.view_init(20, -135)
-        fig.suptitle('iteration {}'.format(epoch), size=16)
+        fig.suptitle(f'iteration {epoch}', size=16)
         fig.tight_layout()
 
-        logging_utils.process_figure(fig, epoch=epoch, figure_name=figure_name + '_3d', tb_group='eval',
-                                     tb_writer=writer, display=self.logging.plot_show_inline,
+        logging_utils.process_figure(fig, epoch=epoch, figure_name=figure_name + '_3d',
+                                     tb_group='eval', tb_writer=writer,
+                                     display=self.logging.plot_show_inline,
                                      output_dir=self.run_log_dir,
                                      save_png=self.logging.save_figure_to_disk_png,
                                      save_svg=self.logging.save_figure_to_disk_svg)
@@ -654,7 +672,7 @@ class Experiment(ABC):
                 for env_idx, _ in enumerate(self.bne_env):
                     o = torch.cat([o, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
-                    labels += ['BNE {} agent {}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
+                    labels += [f"BNE{'_' + str(env_idx + 1) if len(self.bne_env) > 1 else ''} agent {j}"
                                for j in range(len(self.models))]
                     fmts += ['--'] * len(self.models)
 
@@ -709,7 +727,6 @@ class Experiment(ABC):
             )
 
         return utility_vs_bne, epsilon_relative, epsilon_absolute
-
 
     def _calculate_metrics_action_space_norms(self):
         """
