@@ -56,6 +56,47 @@ class ClosureStrategy(Strategy):
         if self._mute:
             sys.stderr = open(os.devnull, 'w')
 
+    def _play_parallel(self, inputs, pool_size):
+        """Evaluate the closure in parallel via cpu multiprocessing."""
+        in_device = inputs.device
+
+        # calculate necessary shape by calling closure once for a single input
+        _, *other_dims = self.closure(inputs[:1]).shape
+        out_shape = torch.Size([inputs.shape[0], *other_dims])
+
+        # determine chunk-size -----
+        # if providing the tensor by itself, pool.map will iterate over individual elements
+        # and just communicate multiple of those elements to a worker at once.
+        # so instead, we'll split the tensor into a list of tensors ourselves and provide that
+        # as the iterator.
+        # we'll use the same chunk-size heuristic as in python.multiprocessing
+        # see https://stackoverflow.com/questions/53751050
+        chunksize, extra = divmod(inputs.shape[0], pool_size*4)
+        if extra:
+            chunksize += 1
+
+        # move input to cpu and split into chunks
+        split_tensor = inputs.cpu().split(chunksize)
+        n_chunks = len(split_tensor)
+
+        #torch.multiprocessing.set_sharing_strategy('file_system') # needed for very large number of chunks
+
+        with torch.multiprocessing.Pool(pool_size, initializer=self.__mute) as p:
+            # as we handled chunks ourselves, each element of our list should be an individual chunk,
+            # so the pool.map will get argument chunksize=1
+            # The following code is wrapped to produce progess bar, without it simplifies to:
+            # result = p.map(self.closure, split_tensor, chunksize=1)
+            result = list(tqdm(
+                p.imap(self.closure, split_tensor, chunksize=1),
+                total = n_chunks, unit='chunks',
+                desc = 'Calculating strategy for batch_size {} with {} processes, chunk size of {}'.format(
+                    inputs.shape[0], pool_size, chunksize)
+                ))
+
+        # finally stitch the tensor back together
+        result = torch.cat(result).view(out_shape).to(in_device)
+        return result
+
     def play(self, inputs):
         pool_size = 1
 
@@ -63,52 +104,20 @@ class ClosureStrategy(Strategy):
             # detect appropriate pool size
             pool_size = min(self.parallel, max(1, math.ceil(inputs.shape[0]/2**10)))
 
-        # parallel version
+        # parallel evaluation using multiprocessing (useful if closure isn't vectorized)
         if pool_size > 1:
-            in_device = inputs.device
-
-            # calculate necessary shape by calling closure once for a single input
-            _, *other_dims = self.closure(inputs[:1]).shape
-            out_shape = torch.Size([inputs.shape[0], *other_dims])
-
-            # determine chunk-size -----
-            # if providing the tensor by itself, pool.map will iterate over individual elements
-            # and just communicate multiple of those elements to a worker at once.
-            # so instead, we'll split the tensor into a list of tensors ourselves and provide that
-            # as the iterator.
-            # we'll use the same chunk-size heuristic as in python.multiprocessing
-            # see https://stackoverflow.com/questions/53751050
-            chunksize, extra = divmod(inputs.shape[0], pool_size*4)
-            if extra:
-                chunksize += 1
-
-            # move input to cpu and split into chunks
-            split_tensor = inputs.cpu().split(chunksize)
-            n_chunks = len(split_tensor)
-
-            #torch.multiprocessing.set_sharing_strategy('file_system') # needed for very large number of chunks
-
-            with torch.multiprocessing.Pool(pool_size, initializer=self.__mute) as p:
-                # as we handled chunks ourselves, each element of our list should be an individual chunk,
-                # so the pool.map will get argument chunksize=1
-                # The following code is wrapped to produce progess bar, without it simplifies to:
-                # result = p.map(self.closure, split_tensor, chunksize=1)
-                result = list(tqdm(
-                    p.imap(self.closure, split_tensor, chunksize=1),
-                    total = n_chunks, unit='chunks',
-                    desc = 'Calculating strategy for batch_size {} with {} processes, chunk size of {}'.format(
-                        inputs.shape[0], pool_size, chunksize)
-                    ))
-
-            # finally stitch the tensor back together
-            result = torch.cat(result).view(out_shape).to(in_device)
-            return result
+            return self._play_parallel(inputs, pool_size)
 
         # serial version on single processor
         return self.closure(inputs)
 
 class MatrixGameStrategy(Strategy, nn.Module):
-    """ A dummy neural network that encodes and returns a mixed strategy"""
+    """ A dummy "neural network" that encodes a multinomial probability distribution
+        over discrete actions. In this case, the neural net takes a fixed dummy input of 1,
+        and its weights corresponding directly to action probabilities.
+
+        `forward` returns the action probabilities, `play` directly returns sampled action indices.
+    """
     def __init__(self, n_actions, init_weights = None, init_weight_normalization = False):
         nn.Module.__init__(self)
         self.logits = nn.Linear(1, n_actions, bias=False)
@@ -116,13 +125,14 @@ class MatrixGameStrategy(Strategy, nn.Module):
         if init_weights is not None:
             self.logits.weight.data = init_weights
             if init_weight_normalization:
-                self.logits.weight.data = self.logits.weight.data/torch.norm(init_weights) 
+                self.logits.weight.data = self.logits.weight.data/torch.norm(init_weights)
                 #NOTE 11/2020: torch.norm deprecated in 1.7 favor of torch.linalg.norm, but do not change for backward compability
 
         # initialize distribution
         self._update_distribution()
 
     def _update_distribution(self):
+        """Updates the """
         self.device = next(self.parameters()).device
         probs = self.forward(torch.ones(1,  device=self.device)).detach()
         self.distribution = Categorical(probs=probs)
@@ -138,7 +148,6 @@ class MatrixGameStrategy(Strategy, nn.Module):
 
         self._update_distribution()
         # is of shape batch size x 1
-        # TODO: this is probably slow AF. fix when needed.
         return self.distribution.sample(inputs.shape)
 
     def to(self, device):
