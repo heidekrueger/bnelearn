@@ -30,8 +30,8 @@ if __name__ == '__main__':
     evaluation_module = CurveEvaluation(data_location, evaluation_method)
 
     risk_bound = [0.1, 1.0]
-    regret_beta_bound = [0.0, 0.0]
-    regret_gamma_bound = [0.0, 0.0]
+    regret_beta_bound = [0.1, 0.5]
+    regret_gamma_bound = [0.1, 0.5]
     loss_eta_bound = [0.0, 0.0]
     loss_lambda_bound = [0.0, 0.0]
 

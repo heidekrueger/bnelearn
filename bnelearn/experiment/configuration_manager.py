@@ -267,7 +267,7 @@ class ConfigurationManager:
 
     def _init_single_item_symmetric_uniform_all_pay(self):
         self.setting.u_lo = 0
-        self.setting.u_hi = 1
+        self.setting.u_hi = 100
         self.learning.model_sharing = True
         self.setting.payment_rule = 'all_pay'
 

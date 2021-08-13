@@ -100,9 +100,6 @@ class Experiment(ABC):
         self.v_opt: torch.Tensor = None
         self.b_opt: torch.Tensor = None
 
-        # Blotto specific variables
-        self.budget = False
-
         self._hparams_metrics = {}
         ### Save locally - can haves
         # Logging
@@ -198,9 +195,7 @@ class Experiment(ABC):
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
                 ensure_positive_output=self.positive_output_point.to('cpu'),  # models init. on cpu
-                output_length=self.action_size,
-                budget=self.budget
-            ).to(self.hardware.device)
+                output_length=self.action_size).to(self.hardware.device)
 
         self.bidders = [
             self._strat_to_bidder(strategy=self.models[m_id], batch_size=self.learning.batch_size, player_position=i)
