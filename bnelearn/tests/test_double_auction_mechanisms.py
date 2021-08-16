@@ -22,12 +22,12 @@ def get_da_mechanism(rule: str, n_buyers, n_sellers, k, cuda):
     if rule == 'k_price':
         return kDoubleAuction(n_buyers=n_buyers, n_sellers=n_sellers, k=k, cuda=cuda)
     elif rule == 'vickrey_price':
-        return VickreyDoubleAuction(n_buyers=n_buyers, n_sellers=n_sellers, cuda=cuda)
+        return VickreyDoubleAuction(n_buyers=n_buyers, n_sellers=n_sellers, cuda=cuda, k=k)
     else:
         raise ValueError('No valid double auction mechanism type chosen!')
 
 
-def run_BilateralBargaining_mechanism_test(rule: str, k: float, device, expected_payments):
+def run_BilateralBargaining_mechanism_test(rule: str, device, expected_payments, k: float=0.5):
     """Run correctness test for the kDoubleAuction in the bilarteral bargaining case"""
     cuda = device == 'cuda' and torch.cuda.is_available()
     n_buyers = 1
@@ -43,6 +43,12 @@ def run_BilateralBargaining_mechanism_test(rule: str, k: float, device, expected
     assert torch.equal(payments, expected_payments.to(device))
 
     # Test whether the auction also accepts multiple batch dimensions
+    if rule == 'vickrey_price':
+        print('Multiple batch dimension not tested for vickrey double auction!')
+    else:
+        run_test_for_multiple_batch_dimension(device, expected_payments, game)
+
+def run_test_for_multiple_batch_dimension(device, expected_payments, game):
     def add_dim(tensor):
         repititions = 2
         return tensor.clone().unsqueeze(0).repeat_interleave(repititions,0)
@@ -55,7 +61,7 @@ def run_BilateralBargaining_mechanism_test(rule: str, k: float, device, expected
         """auction did not handle multiple batch dims correctly!"""
 
 def test_BilateralBargaining_kDoubleAuction():
-    """FP should run on CPU and GPU and return expected results."""
+    """k Double Auction should run on CPU and GPU and return expected results."""
 
     k_0_expected_payments = torch.tensor([
         [0.5 , 0.5],
@@ -86,3 +92,16 @@ def test_BilateralBargaining_kDoubleAuction():
 
     run_BilateralBargaining_mechanism_test(rule='k_price', k=1., device='cpu', expected_payments=k_1_expected_payments)
     run_BilateralBargaining_mechanism_test(rule='k_price', k=1., device='cuda', expected_payments=k_1_expected_payments)
+
+def test_BilateralBargaining_vickreyAuction():
+    """Vickrey Double Auction should run on CPU and GPU and return expected results."""
+
+    expected_payments = torch.tensor([
+        [0.5 , 1.0],
+        [3. , 7.],
+        [3. , 3.],
+        [0. , 0.]
+        ])
+
+    run_BilateralBargaining_mechanism_test(rule='vickrey_price', device='cpu', expected_payments=expected_payments)
+    run_BilateralBargaining_mechanism_test(rule='vickrey_price', device='cuda', expected_payments=expected_payments)
