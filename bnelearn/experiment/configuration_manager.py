@@ -270,6 +270,12 @@ class ConfigurationManager:
         self.setting.n_buyers = 1
         self.setting.n_sellers = 1
         self.setting.k = 0.5
+        self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
+                                    'efficiency': True,
+                                    'individual_rationality': True,
+                                    'incentive_compatibility': True,
+                                    'budget_balance': True}
 
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
@@ -286,7 +292,8 @@ class ConfigurationManager:
         if self.logging.experiment_name:
             self.logging.experiment_dir += ' ' + str(self.logging.experiment_name)
 
-        valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue']
+        valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue', 'individual_rationality',
+                             'incentive_compatibility', 'budget_balance']
         if self.logging.log_metrics is not None:
             for metric in self.logging.log_metrics:
                 assert metric in valid_log_metrics, "Metric not known."

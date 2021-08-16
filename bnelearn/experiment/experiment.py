@@ -634,6 +634,18 @@ class Experiment(ABC):
             self._cur_epoch_log_params['revenue'] = \
                 self.env.get_revenue(self.env)
 
+        if self.logging.log_metrics['budget_balance'] and (epoch % self.logging.util_loss_frequency) == 0:
+            self._cur_epoch_log_params['budget_deficit'], self._cur_epoch_log_params['budget_surplus'] = \
+                self.env.get_budget_balance(self.env)
+
+        if self.logging.log_metrics['individual_rationality'] and (epoch % self.logging.util_loss_frequency) == 0:
+            self._cur_epoch_log_params['individual_rationality'] = \
+                self.env.get_individual_rationality(self.env)
+
+        if self.logging.log_metrics['incentive_compatibility'] and (epoch % self.logging.util_loss_frequency) == 0:
+            self._cur_epoch_log_params['incentive_compatibility'] = \
+                self.env.get_incentive_compatibility(self.env)
+
         # plotting
         if epoch % self.logging.plot_frequency == 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))

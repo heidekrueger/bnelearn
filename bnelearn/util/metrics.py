@@ -17,30 +17,35 @@ ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even batch_size=1 leads to OOM!"
 
 ## defines a mapping of internal metrics and their desired tensorboard output tags
 MAPPING_METRICS_TAGS = {
-    'utilities':            'market/utilities',
-    'efficiency':           'market/efficiency',
-    'revenue':              'market/revenue',
-    'update_norm':          'learner_info/update_norm',
-    'util_loss_ex_ante':    'eval/util_loss_ex_ante',
-    'util_loss_ex_interim': 'eval/util_loss_ex_interim',
+    'utilities':               'market/utilities',
+    'efficiency':              'market/efficiency',
+    'revenue':                 'market/revenue',
+    'budget_deficit':          'market/budget_deficit',
+    'budget_surplus':          'market/budget_surplus',
+    'individual_rationality':  'market/individual_rationality',
+    'incentive_compatibility': 'market/incentive_compatibility',
+
+    'update_norm':             'learner_info/update_norm',
+    'util_loss_ex_ante':       'eval/util_loss_ex_ante',
+    'util_loss_ex_interim':    'eval/util_loss_ex_interim',
     'estimated_relative_ex_ante_util_loss': 'eval/estimated_relative_ex_ante_util_loss',
-    'utility_vs_bne':       'eval_vs_bne/utility_vs_bne',
-    'epsilon_relative':     'eval_vs_bne/epsilon_relative',
-    'epsilon_absolute':     'eval_vs_bne/epsilon_absolute',
-    'L_2':                  'eval_vs_bne/L_2',
-    'L_inf':                'eval_vs_bne/L_inf',
-    'overhead_hours':       'meta/overhead_hours',
-    
+    'utility_vs_bne':          'eval_vs_bne/utility_vs_bne',
+    'epsilon_relative':        'eval_vs_bne/epsilon_relative',
+    'epsilon_absolute':        'eval_vs_bne/epsilon_absolute',
+    'L_2':                     'eval_vs_bne/L_2',
+    'L_inf':                   'eval_vs_bne/L_inf',
+    'overhead_hours':          'meta/overhead_hours',
+
     # won't actually be logged
-    'prev_params':          'learner_info/prev_params'
+    'prev_params':             'learner_info/prev_params'
 }
 
 # aliases of tf tags for plotting/publications
 #pylint: disable=anomalous-backslash-in-string
 ALIASES_LATEX = {
+    'market/utilities':            '$u$',
     'market/efficiency':           '$\mathcal{E}$',
     'market/revenue':              '$\mathcal{R}$',
-    'market/utilities':            '$u$',
 
     'eval/util_loss_ex_ante':    '$\hat \ell$',
     'eval/util_loss_ex_interim': '$\hat \epsilon$',
