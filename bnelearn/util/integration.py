@@ -25,7 +25,7 @@ def cum_integrate(f: callable, domains: torch.tensor, lower_bound: float=0.0,
     batch_size = domains.shape[0]
 
     # sort domains
-    domains_sorted, index_sorted = domains.squeeze().sort()
+    domains_sorted, index_sorted = domains.flatten().sort()
 
     # grid interpolation for the N evaluation points per integral
     lower_bound = torch.cat(

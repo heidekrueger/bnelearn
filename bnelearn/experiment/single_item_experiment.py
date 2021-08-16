@@ -7,8 +7,10 @@ from functools import partial
 from typing import List
 
 import torch
+from scipy import integrate
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
+from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.experiment.equilibria import (
     bne_fpsb_ipv_asymmetric_uniform_overlapping_priors_risk_neutral,
@@ -26,9 +28,7 @@ from bnelearn.sampler import (AffiliatedValuationObservationSampler,
                               SymmetricIPVSampler, UniformSymmetricIPVSampler)
 from bnelearn.strategy import ClosureStrategy
 from bnelearn.util.distribution_util import copy_dist_to_device
-from scipy import integrate
 
-from .experiment import Experiment
 
 
 # TODO: single item experiment should not be abstract and hold all logic for learning.
@@ -109,9 +109,9 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
     def _check_and_set_known_bne(self):
         if self.payment_rule == 'first_price' and self.risk == 1:
-            # cdf_cpu = copy_dist_to_device(self.common_prior, 'cpu').cdf
+            cdf_cpu = copy_dist_to_device(self.common_prior, 'cpu').cdf
             self._optimal_bid = partial(bne_fpsb_ipv_symmetric_generic_prior_risk_neutral,
-                                        n_players=self.n_players, prior_cdf=self.common_prior.cdf)
+                                        n_players=self.n_players, prior_cdf=cdf_cpu)
             return True
         elif self.payment_rule == 'second_price':
             self._optimal_bid = truthful_bid
@@ -122,8 +122,6 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
     def _get_analytical_bne_utility(self) -> torch.Tensor:
         """Calculates utility in BNE from known closed-form solution (possibly using numerical integration)"""
-        # Note: GPU integrals via torchquad do not support non-rectangular bounds
-        # could still loop over bounds but not worth it(?)
         if self.payment_rule == 'first_price' and self.risk == 1:
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
@@ -282,20 +280,19 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
         self.valuation_mean = torch.tensor(
             self.config.setting.valuation_mean, dtype=torch.float32,
             device=self.config.hardware.device)
+        self.valuation_std = torch.tensor(
+            self.config.setting.valuation_std, dtype=torch.float32,
+            device=self.config.hardware.device)
+        self.config.setting.common_prior = \
+            torch.distributions.normal.Normal(loc=self.valuation_mean, scale=self.valuation_std)
 
         self.plot_xmin = int(max(0, self.valuation_mean - 3 * self.valuation_std))
         self.plot_xmax = int(self.valuation_mean + 3 * self.valuation_std)
+        self.plot_ymin = 0
         self.plot_ymax = 20 if self.config.setting.payment_rule == 'first_price' else self.plot_xmax
 
         super().__init__(config=config)
 
-    def _setup_sampler(self):
-        self.sampler = GaussianSymmetricIPVSampler(
-            mean=self.valuation_mean, stddev=self.valuation_std,
-            n_players=self.n_players, valuation_size=self.valuation_size,
-            default_batch_size=self.config.learning.batch_size,
-            default_device=self.config.hardware.device
-        )
 
 class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
     def __init__(self, config: ExperimentConfig):

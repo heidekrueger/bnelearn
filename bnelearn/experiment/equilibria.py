@@ -3,7 +3,7 @@ from typing import Callable, List, Union
 
 import torch
 import numpy as np
-from scipy import interpolate, integrate, optimize
+from scipy import interpolate, optimize
 from bnelearn.util.distribution_util import copy_dist_to_device
 from bnelearn.util.integration import cum_integrate
 ###############################################################################
@@ -427,7 +427,8 @@ def _optimal_bid_splitaward2x2_2(experiment_config):
             torch.tensor(u_hi[0], device=device)).cdf
 
         integral_function = lambda x: torch.pow(1 - valuation_cdf(x), n_players - 1)
-        integral = - cum_integrate(integral_function, valuation[:, [1]], lower_bound=u_hi[0] - 1e-4)
+        integral = - cum_integrate(integral_function, valuation[:, [1]],
+                                   lower_bound=u_hi[0] - 1e-4)
 
         opt_bid_100 = valuation[:, [1]] + integral \
             / torch.pow(1 - valuation_cdf(valuation[:, [1]]), n_players - 1)
