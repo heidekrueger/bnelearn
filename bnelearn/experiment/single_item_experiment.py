@@ -28,6 +28,7 @@ from bnelearn.sampler import (
 )
 from bnelearn.util.distribution_util import copy_dist_to_device
 from bnelearn.util.metrics import norm_actions
+from bnelearn.util.integration import cum_integrate
 
 ###############################################################################
 #######   Known equilibrium bid functions                                ######
@@ -45,25 +46,12 @@ def _optimal_bid_single_item_FPSB_generic_prior_risk_neutral(
     if not isinstance(valuation, torch.Tensor):
         # For float and numpy --> convert to tensor (relevant for plotting)
         valuation = torch.tensor(valuation, dtype=torch.float)
-    # For float / 0d tensors --> unsqueeze to allow list comprehension below
-    if valuation.dim() == 0:
-        valuation.unsqueeze_(0)
-
-    # TODO ???
-    # valuation = valuation.relu_()
 
     # shorthand notation for F^(n-1)
     Fpowered = lambda v: torch.pow(prior_cdf(v), n_players - 1)
 
-    # do the calculations
-    if valuation.device.type == 'cuda':
-        enable_cuda()
-    simpson = Simpson()
-    numerator = [
-        simpson.integrate(Fpowered, dim=1, N=2**9 + 1, integration_domain=[[0, v.item()]])
-        for v in valuation
-    ]
-    numerator = torch.tensor(numerator, device=valuation.device).view_as(valuation)
+    # calculate numerator integrals
+    numerator = cum_integrate(Fpowered, valuation)
 
     return valuation - numerator / Fpowered(valuation)
 

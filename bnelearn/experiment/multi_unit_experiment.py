@@ -25,6 +25,7 @@ from bnelearn.mechanism import (
 from bnelearn.strategy import ClosureStrategy
 
 from bnelearn.sampler import MultiUnitValuationObservationSampler
+from bnelearn.util.integration import cum_integrate
 
 
 ###############################################################################
@@ -69,7 +70,9 @@ def _multiunit_bne(setting, payment_rule):
     return None
 
 def _optimal_bid_multidiscriminatory2x2(valuation, player_position=None):
-    """BNE strategy in the multi-unit discriminatory price auction 2 players and 2 units"""
+    """BNE strategy in the multi-unit discriminatory price auction 2 players
+    and 2 units.
+    """
 
     def b_approx(v, s, t):
         b = torch.clone(v)
@@ -90,63 +93,47 @@ def _optimal_bid_multidiscriminatory2x2(valuation, player_position=None):
     return opt_bid
 
 def _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf):
-    """ BNE strategy in the multi-unit discriminatory price auction 2 players and 2 units
-        with constant marginal valuations
+    """BNE strategy in the multi-unit discriminatory price auction 2 players
+    and 2 units with constant marginal valuations. See Anwar 2007, prop. 2.
     """
-    n_players = 2
-
-    if not valuation_cdf(torch.tensor(0.0)).device.type == 'cpu':
-        raise ValueError("valuation_cdf is required to return CPU-tensors rather than gpu tensors, " + \
-            "otherwise we will encounter errors when using numerical integration via scipy together with " + \
-            "torch.multiprocessing. For now, please provide a cpu-version of the prior-cdf.")
-
     if isinstance(valuation_cdf, torch.distributions.uniform.Uniform):
         def _optimal_bid(valuation, player_position=None):
-            return valuation / 2
+            return valuation / 2.0
+        return _optimal_bid
 
-    elif isinstance(valuation_cdf, torch.distributions.normal.Normal):
+    elif valuation_cdf == torch.distributions.normal.Normal.cdf:
+        valuation_pdf = torch.distributions.normal.Normal.pdf
 
-        def muda_tb_cmv_bne(
-                value_pdf: callable,
-                value_cdf: callable = None,
-                lower_bound: int = 0,
-                epsabs=1e-3
-            ):
-            if valuation_cdf(torch.tensor(0.0)).device.type == 'cuda':
-                enable_cuda()
-            simpson = Simpson()
+    else:
+        raise NotImplementedError('BNE not implmented for this prior.')
 
-            if value_cdf is None:
-                def _value_cdf(x):
-                    return simpson.integrate(value_pdf, dim=1, N=2**9 + 1,
-                                             integration_domain=[[lower_bound, x]])
+    def _optimal_bid(valuation, player_position=None):
+        batch_size, n_items = valuation.shape
+        device = valuation.device
+        N = 64  # integration bounds
 
-                value_cdf = _value_cdf
+        opt_bid = torch.zeros_like(valuation)
+        for item in range(n_items):
+            domains_bounds = torch.cat(
+                [
+                    torch.zeros((batch_size+1, N), device=device),
+                    valuation[:, [item]]
+                ],
+                axis=1)
+            for n in range(1, N+1):
+                domains_bounds[:, n] = domains_bounds[:, 0] \
+                    + (n / (N + 1)) * (domains_bounds[:, -1] - domains_bounds[:, 0])
 
-            def inner(s, x):
-                return simpson.integrate(lambda t: value_pdf(t) / value_cdf(t),
-                                         dim=1, N=2**9 + 1, integration_domain=[[s, x]])
+            # TODO: check bounds
+            inner_function = lambda t: valuation_pdf(t) / valuation_cdf(t)
+            inner_integral = torch.trapz(inner_function(domains_bounds), domains_bounds)
 
-            def outer(x):
-                return simpson.integrate(lambda s: np.exp(-inner(s, x)),
-                                         dim=1, N=2**9 + 1, integration_domain=[[lower_bound, x]])
+            outer = torch.exp(-inner_integral)
+            outer_integral = torch.trapz(outer, domains_bounds)
 
-            def bidding(x):
-                if not hasattr(x, '__iter__'):
-                    return x - outer(x)
-                else:
-                    return np.array([xi - outer(xi) for xi in x])
+            opt_bid[:, item] = valuation[:, [item]] - outer_integral
 
-            return bidding
-
-        bidding = muda_tb_cmv_bne(lambda x: torch.exp(valuation_cdf.log_prob(x)).cpu().numpy(),
-                                  lambda x: valuation_cdf.cdf(x).cpu().numpy())
-
-        def _optimal_bid(valuation, player_position=None):
-            opt_bid = np.zeros_like(valuation.cpu().numpy())
-            for agent in range(n_players):
-                opt_bid[agent] = bidding(valuation[agent, :])
-            return torch.tensor(opt_bid)
+        return opt_bid
 
     return _optimal_bid
 
@@ -168,8 +155,8 @@ def _optimal_bid_multiuniform2x2():
     return [opt_bid_1, opt_bid_2]
 
 def _optimal_bid_multiuniform3x2limit2(valuation, player_position=None):
-    """ BNE strategy in the multi-unit uniform price auction with 3 units and
-        2 palyers that are both only interested in 2 units
+    """BNE strategy in the multi-unit uniform price auction with 3 units and 2
+    palyers that are both only interested in 2 units
     """
     opt_bid = torch.clone(valuation)
     opt_bid[:, 1] = opt_bid[:, 1] ** 2
@@ -177,10 +164,8 @@ def _optimal_bid_multiuniform3x2limit2(valuation, player_position=None):
     return opt_bid
 
 def _optimal_bid_splitaward2x2_1(experiment_config):
-    """ BNE pooling equilibrium in the split-award auction with 2 players and
-        2 lots (as in Anton and Yao, 1992)
-
-        Returns callable.
+    """BNE pooling equilibrium in the split-award auction with 2 players and 2
+    lots (as in Anton and Yao, 1992).
     """
 
     efficiency_parameter = experiment_config.efficiency_parameter
@@ -224,64 +209,29 @@ def _optimal_bid_splitaward2x2_1(experiment_config):
     return _optimal_bid
 
 def _optimal_bid_splitaward2x2_2(experiment_config):
-    """ BNE WTA equilibrium in the split-award auction with 2 players and
-        2 lots (as in Anton and Yao Proposition 4, 1992).
-
-        Returns callable.
+    """BNE WTA equilibrium in the split-award auction with 2 players and 2
+    lots. See Anton and Yao, proposition 4, 1992.
     """
-    print('Warning: BNE is approximated on CPU.')
-
     efficiency_parameter = experiment_config.efficiency_parameter
     u_lo = experiment_config.u_lo
     u_hi = experiment_config.u_hi
     n_players = experiment_config.n_players
+    valuation_cdf = torch.distributions.Uniform.cdf
 
-    def value_cdf(value):
-        value = np.array(value)
-        result = (value - u_lo[0]) / (u_hi[0] - u_lo[0])
-        return result.clip(0, 1)
-
-    # CONSTANTS
-    opt_bid_batch_size = 2 ** 12
-    eps = 1e-4
-
-    opt_bid = np.zeros((opt_bid_batch_size, experiment_config.n_units))
-
-    # do one-time approximation via integration
-    val_lin = np.linspace(u_lo[0], u_hi[0] - eps, opt_bid_batch_size)
-
-    if experiment_config.hardware.device == 'cuda':
-        enable_cuda()
-    simpson = Simpson()
-    def integral(theta):
-        return np.array(
-            [simpson.integrate(
-                lambda x: (1 - value_cdf(x)) ** (n_players - 1),
-                dim=1, N=2**9 + 1, integration_domain=[[v, u_hi[0]]],
-            ) for v in theta]
-        )
-
-    def opt_bid_100(theta):
-        return theta + (integral(theta) / (
-            (1 - value_cdf(theta)) ** (n_players - 1)))
-
-    opt_bid[:, 0] = opt_bid_100(val_lin)
-    opt_bid[:, 1] = opt_bid_100(val_lin) - efficiency_parameter * u_lo[0]  # or more
-
-    opt_bid_function = [
-        interpolate.interp1d(val_lin, opt_bid[:, 0], fill_value='extrapolate'),
-        interpolate.interp1d(val_lin, opt_bid[:, 1], fill_value='extrapolate')
-    ]
-
-    # use interpolation of opt_bid done on first batch
     def _optimal_bid(valuation, player_position=None):
-        bid = torch.tensor(
-            [opt_bid_function[0](valuation[:,0].cpu().numpy()),
-             opt_bid_function[1](valuation[:,0].cpu().numpy())
-            ],
-            device = valuation.device,
-            dtype = valuation.dtype
-        ).t_()
+        batch_size = valuation.shape[0]
+        device = valuation.device
+        opt_bid = np.zeros_like(valuation)
+
+        integral_function = lambda x: torch.pow(1 - valuation_cdf(x), n_players - 1)
+        integral = - cum_integrate(integral_function, valuation[:, 0], lower_bound=u_hi[1])
+
+        opt_bid_100 = valuation[:, 0] + integral \
+            / torch.pow(1 - valuation_cdf(valuation[:, 0]), n_players - 1)
+
+        bid = torch.cat(
+            [opt_bid_100, opt_bid_100 - efficiency_parameter * u_lo[0]],
+            axis=1)
         bid[bid < 0] = 0
         return bid
 

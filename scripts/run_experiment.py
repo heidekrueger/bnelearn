@@ -28,16 +28,17 @@ if __name__ == '__main__':
     log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
 
     # Run exps that contain integration
-    experiment_types = ['single_item_gaussian_symmetric']  # ['multiunit', 'split_award']
+    experiment_types = ['splitaward']  # ['single_item_gaussian_symmetric', 'multiunit', 'splitaward']
     for experiment_type in experiment_types:
         experiment_config, experiment_class = \
             ConfigurationManager(
                 experiment_type=experiment_type,
                 n_runs=1,
-                n_epochs=0
+                n_epochs=200
                 ) \
             .set_setting(
-                payment_rule='first_price' if experiment_type == 'multiunit' else 'None'
+                payment_rule='first_price' if experiment_type == 'multiunit' else 'None',
+                constant_marginal_values=True,
                 # correlation_groups=[[0, 1, 2]],
                 # correlation_types='independent',
                 # gamma=0.0
