@@ -2,6 +2,8 @@
 import pytest
 import torch
 from bnelearn.mechanism import LLGAuction, LLGFullAuction
+import warnings
+
 
 bids = torch.tensor([
     [1., 1., 2.1], # global bidder wins

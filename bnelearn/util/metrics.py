@@ -15,11 +15,52 @@ from bnelearn.strategy import Strategy
 _CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
 ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even batch_size=1 leads to OOM!"
 
+## defines a mapping of internal metrics and their desired tensorboard output tags
+MAPPING_METRICS_TAGS = {
+    'utilities':            'market/utilities',
+    'efficiency':           'market/efficiency',
+    'revenue':              'market/revenue',
+    'update_norm':          'learner_info/update_norm',
+    'util_loss_ex_ante':    'eval/util_loss_ex_ante',
+    'util_loss_ex_interim': 'eval/util_loss_ex_interim',
+    'estimated_relative_ex_ante_util_loss': 'eval/estimated_relative_ex_ante_util_loss',
+    'utility_vs_bne':       'eval_vs_bne/utility_vs_bne',
+    'epsilon_relative':     'eval_vs_bne/epsilon_relative',
+    'epsilon_absolute':     'eval_vs_bne/epsilon_absolute',
+    'L_2':                  'eval_vs_bne/L_2',
+    'L_inf':                'eval_vs_bne/L_inf',
+    'overhead_hours':       'meta/overhead_hours',
+
+    # won't actually be logged
+    'prev_params':          'learner_info/prev_params'
+}
+
+# aliases of tf tags for plotting/publications
+#pylint: disable=anomalous-backslash-in-string
+ALIASES_LATEX = {
+    'market/efficiency':           '$\mathcal{E}$',
+    'market/revenue':              '$\mathcal{R}$',
+    'market/utilities':            '$u$',
+
+    'eval/util_loss_ex_ante':    '$\hat \ell$',
+    'eval/util_loss_ex_interim': '$\hat \epsilon$',
+    'eval/estimated_relative_ex_ante_util_loss': '$\hat{\mathcal{L}}$',
+
+    'eval_vs_bne/L_2':                  '$L_2$',
+    'eval_vs_bne/L_inf':                '$L_\infty$',
+    'eval_vs_bne/epsilon_absolute':     '$\epsilon_\text{abs}$',
+    'eval_vs_bne/epsilon_relative':     '$\mathcal{L}$',
+    'eval_vs_bne/utility_vs_bne':       '$\hat u(\beta_i, \beta^*_{-i})$',
+
+    'meta/overhead_hours':       '$T$',
+
+    'learning_info/update_norm':          '$|\Delta \theta|$'
+}
+
 
 def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> float:
-    r"""
-    Calculates the approximate "mean" Lp-norm between two action vectors.
-    
+    r"""Calculates the approximate "mean" Lp-norm between two action vectors.
+
     .. math::
         \sum_i=1^n(1/n * |b1 - b2|^p)^{1/p}
 
@@ -37,9 +78,9 @@ def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> float:
     return (torch.dist(b1, b2, p=p)*(1./n)**(1/p)).detach()
 
 def norm_strategies(strategy1: Strategy, strategy2: Strategy, valuations: torch.Tensor, p: float=2) -> float:
-    r"""
-    Calculates the approximate "mean" Lp-norm between two strategies approximated
-    via Monte-Carlo integration on a sample of valuations that have been drawn according to the prior.
+    r"""Calculates the approximate "mean" Lp-norm between two strategies
+    approximated via Monte-Carlo integration on a sample of valuations that
+    have been drawn according to the prior.
 
     The function Lp norm is given by
 
@@ -49,9 +90,10 @@ def norm_strategies(strategy1: Strategy, strategy2: Strategy, valuations: torch.
     With Monte-Carlo Integration this is approximated by
 
     .. math::
-        (|V|/n * \sum_i^n(|s1(v) - s2(v)|^p) )^{1/p}  
+        (|V|/n * \sum_i^n(|s1(v) - s2(v)|^p) )^{1/p}
 
-    where |V| is the volume of the set V. Here, we ignore the volume. This gives us the RMSE for L2, supremum for Linfty, etc.
+    where |V| is the volume of the set V. Here, we ignore the volume. This
+    gives us the RMSE for L2, supremum for Linfty, etc.
     """
     b1 = strategy1.play(valuations)
     b2 = strategy2.play(valuations)
@@ -64,12 +106,13 @@ def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: fl
 
     This helper function is useful when recalculating an action vector is prohibitive and it should be reused.
 
-    Input:
+    Args:
         strategy: Strategy
         actions: torch.Tensor
         valuations: torch.Tensor
         p: float=2
-        componentwise: bool=False, only returns smallest norm of all output dimensions if true
+        componentwise: bool=False, only returns smallest norm of all output
+            dimensions if true
     Returns:
         norm: (scalar Tensor)
     """
@@ -86,15 +129,18 @@ def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: fl
 
 
 def _create_grid_bid_profiles(bidder_position: int, grid: torch.Tensor, bid_profile: torch.Tensor):
-    """Given an original bid profile, creates a tensor of (grid_size * batch_size) batches of bid profiles,
-       where for each original batch, the player's bid is replaced by each possible bid in the grid.
+    """Given an original bid profile, creates a tensor of (grid_size *
+    batch_size) batches of bid profiles, where for each original batch, the
+    player's bid is replaced by each possible bid in the grid.
 
-    Input:
+    Args:
         bidder_position: int - the player who's bids will be replaced
-        grid: FloatTensor (grid_size x n_items): tensor of possible bids to be evaluated
+        grid: FloatTensor (grid_size x n_items): tensor of possible bids to
+            be evaluated
         bid_profile: FloatTensor (batch_size x n_players x n_items)
     Returns:
-        bid_profile: FloatTensor (grid_size*batch_size x n_players x n_items)
+        bid_profile: FloatTensor (grid_size*batch_size x n_players x
+            n_items)
     """
     # version with size checks: (slower)
     # batch_size, _, n_items = bid_profile.shape #batch x player x item
@@ -118,11 +164,11 @@ def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid
 
     Estimates a bidder's ex post util_loss in the current bid_profile vs a potential grid,
         i.e. the potential benefit of having deviated from the current strategy, as:
-        
+
     .. math::
         util\_loss = max(0, BR(v_i, b_-i) - u_i(b_i, b_-i))
-        
-    Input:
+
+    Args:
         mechanism
         player_valuations: the valuations of the player that is to be evaluated
         bid_profile: (batch_size x n_player x n_items)
@@ -135,7 +181,8 @@ def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid
         player_position (optional): specific position in which the player will be evaluated
             (defaults to player_position of bidder)
         half_precision: (optional, bool) Whether to use half precision tensors. default: false
-    Output:
+
+    Returns:
         util_loss (batch_size)
 
     Useful: To get the memory used by a tensor (in MB): :math:`(tensor.element\_size() * tensor.nelement())/(1024*1024)`
@@ -172,7 +219,7 @@ def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid
     utility_grid = bidder.get_utility(
         a_i, p_i, bidder_valuations.repeat_interleave(grid_size, dim=0)
         ).view(grid_size, batch_size)
-    best_response_utility, best_response = utility_grid.max(0)
+    best_response_utility, _ = utility_grid.max(0)
 
     ## Evaluate actual bids
     allocation, payments = mechanism.play(bid_profile)
@@ -187,14 +234,15 @@ def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid
 def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                          agent_observations: torch.Tensor,
                          grid_size: int,
-                         opponent_batch_size: int = None):
+                         opponent_batch_size: int = None,
+                         grid_best_response: bool = False):
     #pylint: disable = anomalous-backslash-in-string
     """Estimates a bidder's utility loss in the current state of the
     environment, i.e. the     potential benefit of deviating from the current
     strategy, evaluated at each point of the agent_valuations. therfore, we
     calculate
-    
-    .. math:: 
+
+    .. math::
         \max_{v_i \in V_i} \max_{b_i^* \in A_i} + E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i})) - u(v_i, b_i, b_{-i}(v_{-i}))]
 
     We're conditoning on the agent's observation at `player_position`. That
@@ -208,6 +256,9 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         grid_size: int, stating the number of alternative actions sampled via
             env.agents[player_position].get_valuation_grid(grid_size, True).
         opponent_batch_size: int, specifing the sample size for opponents.
+        grid_best_response: bool, whether or not the BRs live on the grid or
+            possibly come from the actual actions (in case no better response
+            was found on grid).
 
     Returns:
         utility_loss (torch.Tensor, shape: [batch_size]):  the computed
@@ -228,7 +279,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     # ensure we are not propagating any gradients (may cause memory leaks)
     agent_observations = agent_observations.detach().clone()
 
-    agent_batch_size, observation_size = agent_observations.shape
+    agent_batch_size, _ = agent_observations.shape
     opponent_batch_size = opponent_batch_size or agent_batch_size
 
     ####### get actual utility #############################
@@ -243,8 +294,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         minimum_number_of_points=grid_size,
         dtype=agent_action_actual.dtype, device=agent_action_actual.device
     )
-    # grid may be larger than requested size, due to shape constraints
-    actual_grid_size, action_size = action_alternatives.shape
+    action_size = action_alternatives.shape[-1]
 
     br_utility, br_indices =  \
         _calculate_best_responses_with_dynamic_mini_batching(
@@ -254,9 +304,13 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     ##### calculate the loss and return best responses ###########
     utility_loss = (br_utility - utility_actual).relu_()
 
-    actual_was_best = (utility_loss == 0)
-    br_actions = actual_was_best.view(-1, action_size) * agent_action_actual + \
-                 actual_was_best.logical_not().view(-1, action_size) * action_alternatives[br_indices]
+    # BR only on grid
+    if grid_best_response:
+        br_actions = action_alternatives[br_indices]
+    else:
+        actual_was_best = (utility_loss == 0).unsqueeze_(1).repeat(1, action_size)
+        br_actions = actual_was_best * agent_action_actual + \
+                 actual_was_best.logical_not() * action_alternatives[br_indices]
 
     return (utility_loss, br_actions)
 
@@ -301,7 +355,8 @@ def _calculate_best_responses_with_dynamic_mini_batching(
                 raise e
             if mini_batch_size <= 1:
                 traceback.print_exc()
-                raise RuntimeError(ERR_MSG_OOM_SINGLE_BATCH)
+                # pylint: disable = raise-missing-from
+                raise RuntimeError(ERR_MSG_OOM_SINGLE_BATCH) 
 
             print("\t... failed (OOM). Decreasing mini batch size.")
             mini_batch_size = int(mini_batch_size / 2)
@@ -317,11 +372,12 @@ def _get_best_responses_among_alternatives(
 
     Returns:
         br_utility (torch.FloatTensor of size [agent_batch_size])
-        br_indices (torch.IntTensor of size [agent_batch_size]): the indices of the best actions in action_alternatives
+        br_indices (torch.IntTensor of size [agent_batch_size]): the indices of
+            the best actions in action_alternatives
     """
 
     grid_size, action_size = action_alternatives.shape
-    agent_batch_size, observation_size = agent_observations.shape
+    agent_batch_size, _ = agent_observations.shape
     device = env.mechanism.device
 
     ## grid_size x agent_batch_size x action_size
@@ -372,7 +428,7 @@ def ex_interim_utility(
     mechanism = env.mechanism
     agent = env.agents[player_position]
 
-    *batch_dims, action_dim = range(agent_actions.dim())
+    *batch_dims, _ = range(agent_actions.dim())
     *agent_batch_sizes, action_size = agent_actions.shape
     assert agent_observations.shape[:len(batch_dims)] == torch.Size(agent_batch_sizes), \
         """observations and actions must have the same batch sizes!"""

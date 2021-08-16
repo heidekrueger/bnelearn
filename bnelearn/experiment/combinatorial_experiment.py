@@ -311,7 +311,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
     def _check_and_set_known_bne(self):
         return self.payment_rule in ['vcg', 'mrcs_favored']
 
-    def _optimal_bid(self, valuation, player_position):  # pylint: disable=method-hidden
+    def _optimal_bid(self, valuation, player_position):
         """Equilibrium bid functions.
 
         Payment rule `mrcs_favored` is from Beck & Ott (minimum revenue core
@@ -376,6 +376,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
             warnings.warn('optimal bid not implemented for this correlation type')
 
         self.known_bne = False
+        return None
 
     ## TODO Issue #216: Relevant actions deprecated. The Sampler will be responsible for
     ## drawing valid valuations and observations.

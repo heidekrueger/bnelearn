@@ -192,8 +192,10 @@ def run_auction_test(config, exp_class, known_bne):
 
     assert experiment.known_bne == known_bne, \
         "known_bne setting is not as expected!"
+
     success = experiment.run()
     assert success, "One or more errors were caught during the experiment runs! (See test logs.)"
+
 
 
 @pytest.mark.parametrize("config, exp_class, known_bne", zip(*testdata_si), ids=ids_si)
@@ -206,7 +208,6 @@ def test_local_global_auctions(config, exp_class, known_bne):
     run_auction_test(config, exp_class, known_bne)
 
 
-@pytest.mark.xfail(reason="MultiUnit not yet implemented.")
 @pytest.mark.parametrize("config, exp_class, known_bne", zip(*testdata_mu), ids=ids_mu)
 def test_multi_unit_auctions(config, exp_class, known_bne):
     run_auction_test(config, exp_class, known_bne)

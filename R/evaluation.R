@@ -1,3 +1,6 @@
+## NOTE Stefan 2021/08/02: We removed the stopping criterion from the code base, this old script by Paul has not been updated accordingly, so it may fail.
+
+
 ###################### Analyse detailed data#################
 ## Compute stopping criterium and times for any bidder type
 # Compute \hat{L} and in which epochs the stopping criteria are met for each subrun
@@ -7,22 +10,7 @@ tb_stop <- tb_full %>%
          epoch%%stop_criterium_interval==0,
          epoch <= results_epoch) %>% 
   mutate(# Compute \hat{L} = 1 - u(beta_i)/u(BR)
-         eval_util_loss_rel_estimate = 1 - eval_utilities/(eval_utilities+eval_util_loss_ex_ante)) %>% 
-  group_by(run,subrun) %>% 
-  mutate(stopping_crit_diff = (pmax(eval_util_loss_ex_ante, 
-                                if_else(is.na(lag(eval_util_loss_ex_ante, n=1L)), 9, 
-                                        lag(eval_util_loss_ex_ante, n=1L)),
-                                if_else(is.na(lag(eval_util_loss_ex_ante, n=2L)), 99, 
-                                        lag(eval_util_loss_ex_ante, n=2L)),na.rm=TRUE) - 
-                                 pmin(eval_util_loss_ex_ante,
-                                      if_else(is.na(lag(eval_util_loss_ex_ante, n=1L)), 9, 
-                                              lag(eval_util_loss_ex_ante, n=1L)),
-                                      if_else(is.na(lag(eval_util_loss_ex_ante, n=2L)), 99, 
-                                              lag(eval_util_loss_ex_ante, n=2L)), na.rm = TRUE))) %>% 
-  ungroup() %>% 
-  mutate(stop_diff_1 = if_else(stopping_crit_diff < stop_criterium_1,TRUE, FALSE),
-         stop_diff_2 = if_else(stopping_crit_diff < stop_criterium_2,TRUE, FALSE)) %>% 
-  select(c(names(.)[1:3],"stopping_crit_diff","stop_diff_1","stop_diff_2"))
+         eval_util_loss_rel_estimate = 1 - eval_utilities/(eval_utilities+eval_util_loss_ex_ante))
 
 # compute times and epochs until convergence and total runtime
 tb_runtime <- tb_full %>% 
@@ -34,6 +22,9 @@ tb_runtime <- tb_full %>%
   mutate(runtime = wall_time - wall_time[1] - eval_overhead_hours) %>% 
   ungroup() %>% 
   select(c("run","epoch","runtime"))
+
+
+
 
 tb_stop <- merge(tb_runtime, tb_stop, by=(c("run", "epoch"))) 
 
@@ -61,22 +52,10 @@ tb_stop_print <- tb_stop %>%
   filter(subrun == type_names[1]) %>% 
   group_by(run) %>% 
   mutate(subrun = ".",
-         stop_diff_1_e = stop_diff_1 * epoch,
-         stop_diff_2_e = stop_diff_2 * epoch,
-         stop_diff_1_e = if_else(stop_diff_1_e>min(stop_diff_1_e[stop_diff_1_e>0]),
-                                 0,stop_diff_1_e),
-         stop_diff_2_e = if_else(stop_diff_2_e>min(stop_diff_2_e[stop_diff_2_e>0]),
-                                 0,stop_diff_2_e),
-         stop_diff_1_t = (stop_diff_1 * runtime)/60,
-         stop_diff_1_t = if_else(stop_diff_1_t>min(stop_diff_1_t[stop_diff_1_t>0]),
-                                 0,stop_diff_1_t),
-         stop_diff_2_t = (stop_diff_2 * runtime)/60,
-         stop_diff_2_t = if_else(stop_diff_2_t>min(stop_diff_2_t[stop_diff_2_t>0]),
-                                 0,stop_diff_2_t),
          time = if_else(runtime<max(runtime),
                         0,max(runtime)/60)) %>%
   ungroup() %>% 
-  select(-c("runtime","stopping_crit_diff","stop_diff_2","stop_diff_1","epoch"))
+  select(-c("runtime","epoch"))
 # transform to long format
 tb_stop_print <- tb_stop_print %>% 
   pivot_longer(cols=-c(run,subrun),names_to="tag",values_to="value",values_drop_na = TRUE) %>% 
@@ -159,6 +138,4 @@ tb_final %>%
          eval_util_loss_ex_interim, eval_util_loss_rel_estimate, contains("stop_diff_2_e"), contains("stop_diff_1_e"), time) %>%
   arrange(-row_number()) %>% 
   kable("latex", booktabs = T)
-
-
 
