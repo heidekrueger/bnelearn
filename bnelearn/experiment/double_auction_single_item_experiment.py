@@ -78,7 +78,7 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
         if self.payment_rule == 'k_price':
             self.mechanism = kDoubleAuction(cuda=self.hardware.cuda, k = self.k,
                                             n_buyers=self.n_buyers, n_sellers=self.n_sellers)
-        elif self.payment_rule == 'vickrey_price':
+        elif self.payment_rule == 'vcg':
             self.mechanism = VickreyDoubleAuction(cuda=self.hardware.cuda, k = self.k,
                                                   n_buyers=self.n_buyers, n_sellers=self.n_sellers)
         else:
@@ -198,9 +198,9 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
         assert self.config.setting.u_hi is not None, """Prior boundaries not specified!"""
 
         self.valuation_prior = 'uniform'
-        self.u_lo = torch.tensor(self.config.setting.u_lo, dtype=torch.float32,
+        self.u_lo = torch.tensor(self.config.setting.u_lo[0], dtype=torch.float32,
             device=self.config.hardware.device)
-        self.u_hi = torch.tensor(self.config.setting.u_hi, dtype=torch.float32,
+        self.u_hi = torch.tensor(self.config.setting.u_hi[0], dtype=torch.float32,
             device=self.config.hardware.device)
         self.config.setting.common_prior = \
             torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
