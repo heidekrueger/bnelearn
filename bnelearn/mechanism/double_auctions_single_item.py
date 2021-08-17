@@ -101,11 +101,16 @@ class VickreyDoubleAuction(DoubleAuctionMechanism):
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
-        assert bids.dim() == 3, "Bid tensor must be 3d (batch x players x items)"
+        assert bids.dim() >= 3, "Bid tensor must be at least 3D (*batch x players x items)."
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
+
+        # poosibly flaten bids, if there's more than one batch dim
+        *batch_sizes, _, n_items = bids.shape
+        batch_size = reduce(mul, batch_sizes, 1)
+        bids = bids.view(batch_size, self.n_buyers+self.n_sellers, n_items)
 
         batch_dim, player_dim, item_dim = 0, 1, 2
         bids_buyers, bids_sellers = torch.split(bids,[self.n_buyers, self.n_sellers], dim=player_dim)
@@ -174,7 +179,8 @@ class VickreyDoubleAuction(DoubleAuctionMechanism):
         payments = torch.cat((payments_per_item_buyers, payments_per_item_sellers), 
                             dim=player_dim).sum(dim=item_dim)
 
-        return (allocations, payments)
+        return (allocations.view(*batch_sizes, self.n_buyers+self.n_sellers, n_items),
+            payments.view(*batch_sizes, self.n_buyers+self.n_sellers))
 
 
 

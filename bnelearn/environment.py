@@ -6,7 +6,7 @@ implements reward allocation to agents.
 """
 
 from abc import ABC, abstractmethod
-from typing import Callable, Set, Iterable, Tuple
+from typing import Callable, Set, Iterable, List, Tuple
 from copy import copy
 
 import torch
@@ -404,7 +404,8 @@ class AuctionEnvironment(Environment):
 
         return payments.sum(axis=1).float().mean()
 
-    def get_efficiency(self, redraw_valuations: bool=False) -> float:
+    def get_efficiency(self, redraw_valuations: bool=False,
+                       batch_size: int=2**13) -> float:
         """Average percentage that the actual welfare reaches of the maximal
         possible welfare over a batch.
 
@@ -417,7 +418,7 @@ class AuctionEnvironment(Environment):
                 the maximale possible welfare. Averaged over batch.
 
         """
-        batch_size = min(self.sampler.default_batch_size, 2 ** 13)
+        batch_size = min(self.sampler.default_batch_size, batch_size)
 
         if redraw_valuations:
             self.draw_valuations()
@@ -429,42 +430,71 @@ class AuctionEnvironment(Environment):
 
         # Calculate actual welfare under the current strategies
         bid_profile = torch.zeros(batch_size, self.n_players, action_length,
-                                  device=self.mechanism.device)
+                                device=self.mechanism.device)
         for pos, bid in self._generate_agent_actions():
             bid_profile[:, pos, :] = bid[:batch_size, ...]
         actual_allocations, _ = self.mechanism.play(bid_profile)
-        actual_welfare = torch.zeros(batch_size, device=self.mechanism.device)
-        for a in self.agents:
-            actual_welfare += a.get_welfare(
-                actual_allocations[:batch_size, a.player_position],
-                valuations[..., a.player_position, :]
-            )
 
-        # Calculate counterfactual welfare under truthful strategies
-        # Note: This assumes max. welfare is reached under truthful strategies
-        maximum_allocations, _ = self.mechanism.play(valuations)
-        maximum_welfare = torch.zeros_like(actual_welfare)
-        for a in self.agents:
-            maximum_welfare += a.get_welfare(
-                maximum_allocations[:batch_size, a.player_position],
-                valuations[..., a.player_position, :]
-            )
+        # Efficiency of two-sided markets (double-acutions)
+        if DoubleAuctionMechanism in type(self.mechanism).__bases__:
+            if self.mechanism.n_buyers == 1 and self.mechanism.n_sellers == 1:
+                """A bilateral bargaining mechanism is ex post efficient iff the
+                probability of trade is 1 if the buyer reports a higher value than
+                the seller and 0 otherwise.
+                """
+                allocated_to_highest_reported_value = \
+                    actual_allocations[..., 0, 0] == (bid_profile[..., 0, 0] > bid_profile[..., 1, 0])
+                efficiency = allocated_to_highest_reported_value.float().mean().float()
 
-        efficiency = actual_welfare / maximum_welfare
-        efficiency[maximum_welfare == 0] = 1  # full eff. when no welfare gain was possible
+            else:
+                raise NotImplementedError('Efficiency for double auctions ' + \
+                    'only implemented for the bilateral bargaining case.')
 
-        return efficiency.mean().float()
+        # Efficiency of single-sided markets
+        else:
+            actual_welfare = torch.zeros(batch_size, device=self.mechanism.device)
+            for a in self.agents:
+                actual_welfare += a.get_welfare(
+                    actual_allocations[:batch_size, a.player_position],
+                    valuations[..., a.player_position, :]
+                )
 
-    def get_budget_balance(self, redraw_valuations: bool=False):
+            # Calculate counterfactual welfare under truthful strategies
+            # Note: This assumes max. welfare is reached under truthful strategies
+            maximum_allocations, _ = self.mechanism.play(valuations)
+            maximum_welfare = torch.zeros_like(actual_welfare)
+            for a in self.agents:
+                maximum_welfare += a.get_welfare(
+                    maximum_allocations[:batch_size, a.player_position],
+                    valuations[..., a.player_position, :]
+                )
+
+            efficiency = actual_welfare / maximum_welfare
+            efficiency[maximum_welfare == 0] = 1  # full eff. when no welfare gain was possible
+            efficiency = efficiency.mean().float()
+
+        return efficiency
+
+    def get_budget_balance(self, redraw_valuations: bool=False,
+                           batch_size: int=2**13) -> [float, float]:
         """Measure minimal and maximal difference from zero when adding up all
         payments, should be zero under BB.
+
+        Args:
+            redraw_valuations (:bool:) whether or not to redraw the valuations
+                of the agents.
+            batch_size (:int:) maximal batch size for BB calculation.
+
+        Returns:
+            budget_balance (:list:) maximal budget superplus and maximal budget
+                defictit over considered batch.
         """
 
         # Single sided auctions are budget balanced by definition
         if not DoubleAuctionMechanism in type(self.mechanism).__bases__:
             return 0, 0
 
-        batch_size = min(self.sampler.default_batch_size, 2 ** 13)
+        batch_size = min(batch_size, self.batch_size)
 
         if redraw_valuations:
             self.draw_valuations()
@@ -482,47 +512,102 @@ class AuctionEnvironment(Environment):
         payments_sellers = payments[..., self.mechanism.n_buyers:].sum(axis=1)
         budget = (payments_buyers - payments_sellers)
 
-        return budget.min(), budget.max()
+        return [(-budget.min()).relu(), budget.max().relu()]
 
-    def get_individual_rationality(self, redraw_valuations: bool=False):
-        """Check that minimal utility over prior is non-negative."""
-        return [self.get_reward(a, redraw_valuations, aggregate=False).min() for a in self.agents]
+    def get_individual_rationality(self, redraw_valuations: bool=False,
+                                   batch_size: int=2**10) -> List[float]:
+        """Calculate individual rationality.
 
-    def get_incentive_compatibility(self, redraw_valuations: bool=False,
-                                    batch_size: int=2**10, grid_size: int=2**10):
-        """If the other agent reports the true value, then the best response is
-        to report the true value too: Set opponent to truthful and then measure
-        L2 of best response to truthful (static metric - independent of learning).
+        Definition: IR requires that each agent has non-negative expected
+        utility after they know their own valuation, but before they learn the
+        other's valuation (interim).
+
+        Measurement: Check that minimal utility over prior is non-negative.
+
+        TODO: Do we want this metric to be considering the current strategies
+        as is the case currently?! (It would be cleaner to calc. the maximum
+        utility per valuation over a grid of all alternative actionsm and then
+        take the minimum.)
+
+        Args:
+            redraw_valuations (:bool:) whether or not to redraw the valuations
+                of the agents.
+            batch_size (:int:) maximal batch size for IR calculation.
+
+        Returns:
+            individual_rationality (:list:) of minimal utility over prior for
+                each agent.
         """
+        batch_size = min(batch_size, self.batch_size)
+
         if redraw_valuations:
             self.draw_valuations()
 
-        L_2_to_truthful = [None] * len(self.agents)
+        return [
+            - metrics.ex_interim_utility(
+                self, player_position=a.player_position,
+                agent_observations=self._observations[:batch_size, a.player_position, :],
+                agent_actions=a.get_action(self._observations[:batch_size, a.player_position, :]),
+                opponent_batch_size=batch_size,
+                device=self.mechanism.device
+            ).min()
+            for a in self.agents
+        ]
+
+    def get_incentive_compatibility(self, redraw_valuations: bool=False,
+                                    batch_size: int=2**10, grid_size: int=2**10) -> List[float]:
+        r"""Measure if mechansim is incentive compatible.
+
+        Definition of incentive compatiblity:
+        * Informal: A mechanism is (Bayesian) incentive compatible if honest
+        reporting forms an BNE. E.g., in an IC mechanism, each individual can
+        maximize her expected utility by reporting truthful, given that the
+        other is expected to report truthful.
+        * Formal: Iff for all $v$ and $v'$: $u(v, b=v) \geq u(v, b=v')$.
+
+        Measurement: Set all agents to truthful and measure the utility loss.
+        Positive values mean that we found actions different from truthful that
+        lead to higher utility.
+
+        Ususally, IC can be assumed b/c for any BNE of any bargaining, there
+        is an equivalent IC direct mechanism that yields the same outocmes
+        (revelation principle).
+
+        Args:
+            redraw_valuations (:bool:) whether or not to redraw the valuations
+                of the agents.
+            batch_size (:int:) maximal batch size for IR calculation.
+            grid_size (:int:) number of alternative actions to consider.
+
+        Returns:
+            incentive_compatibility (:list:) of average utility loss over batch
+                when reporting truthfully for each agent.
+
+        Note:
+            Should be static and independent of learning.
+        """
+        batch_size = min(batch_size, self.batch_size)
+
+        if redraw_valuations:
+            self.draw_valuations()
 
         actual_strategies = [copy(a.strategy) for a in self.agents]
-        for agent in self.agents:  # all agents truthfull
-            agent.strategy = TruthfulStrategy()
+        for a in self.agents:  # all agents truthfull
+            a.strategy = TruthfulStrategy()
 
         with torch.no_grad():  # don't need any gradient information here
-            # check incentive compatibility for all agents individually
-            for i, agent in enumerate(self.agents):
-                # calculate best responses
-                _, best_responses = metrics.ex_interim_util_loss(
-                    env=self,
-                    player_position=agent.player_position,
-                    agent_observations=self._observations[:batch_size, agent.player_position, :],
+            utility_loss, _ = zip(*[
+                metrics.ex_interim_util_loss(
+                    env=self, player_position=a.player_position,
+                    agent_observations=self._observations[:batch_size, a.player_position, :],
                     grid_size=grid_size
                 )
+                for a in self.agents
+            ])
 
-                # calculate deviaation from truhful
-                L_2_to_truthful[i] = metrics.norm_strategy_and_actions(
-                    strategy=TruthfulStrategy(),
-                    actions=best_responses,
-                    valuations=self._observations[:batch_size, agent.player_position, :],
-                    p=2
-                )
+        ex_ante_util_loss = [l.mean() for l in utility_loss]
 
-        for i, agent in enumerate(self.agents):  # restore strategies
-            agent.strategy = actual_strategies[i]
+        for i, a in enumerate(self.agents):  # restore strategies
+            a.strategy = actual_strategies[i]
 
-        return L_2_to_truthful
+        return ex_ante_util_loss
