@@ -19,9 +19,9 @@ expected_allocation = torch.tensor([
 
 def get_da_mechanism(rule: str, n_buyers, n_sellers, k, cuda):
     if rule == 'k_price':
-        return kDoubleAuction(n_buyers=n_buyers, n_sellers=n_sellers, k=k, cuda=cuda)
+        return kDoubleAuction(n_buyers=n_buyers, n_sellers=n_sellers, k_value=k, cuda=cuda)
     elif rule == 'vickrey_price':
-        return VickreyDoubleAuction(n_buyers=n_buyers, n_sellers=n_sellers, cuda=cuda, k=k)
+        return VickreyDoubleAuction(n_buyers=n_buyers, n_sellers=n_sellers, cuda=cuda)
     else:
         raise ValueError('No valid double auction mechanism type chosen!')
 
