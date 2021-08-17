@@ -1,6 +1,5 @@
 import pytest
 import torch
-from torch._C import Value
 from bnelearn.mechanism.double_auctions_single_item import kDoubleAuction, VickreyDoubleAuction
 
 
