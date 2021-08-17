@@ -42,10 +42,7 @@ def run_BilateralBargaining_mechanism_test(rule: str, device, expected_payments,
     assert torch.equal(payments, expected_payments.to(device))
 
     # Test whether the auction also accepts multiple batch dimensions
-    if rule == 'vickrey_price':
-        print('Multiple batch dimension not tested for vickrey double auction!')
-    else:
-        run_test_for_multiple_batch_dimension(device, expected_payments, game)
+    run_test_for_multiple_batch_dimension(device, expected_payments, game)
 
 def run_test_for_multiple_batch_dimension(device, expected_payments, game):
     def add_dim(tensor):
