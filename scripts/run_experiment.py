@@ -187,7 +187,7 @@ if __name__ == '__main__':
             util_loss_frequency=10,
             best_response=True,
             log_root_dir=log_root_dir,
-        )\
+        ) \
         .set_learning(
             pretrain_iters=5,
         ) \

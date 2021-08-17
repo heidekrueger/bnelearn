@@ -7,13 +7,16 @@ implements reward allocation to agents.
 
 from abc import ABC, abstractmethod
 from typing import Callable, Set, Iterable, Tuple
+from copy import copy
 
 import torch
 
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism, DoubleAuctionMechanism
-from bnelearn.strategy import Strategy
+from bnelearn.strategy import Strategy, TruthfulStrategy
 from bnelearn.sampler import ValuationObservationSampler
+import bnelearn.util.metrics as metrics
+
 
 class Environment(ABC):
     """Environment
@@ -457,7 +460,7 @@ class AuctionEnvironment(Environment):
         payments, should be zero under BB.
         """
 
-        # Single sided auction are budget balanced per definition
+        # Single sided auctions are budget balanced by definition
         if not DoubleAuctionMechanism in type(self.mechanism).__bases__:
             return 0, 0
 
@@ -485,10 +488,41 @@ class AuctionEnvironment(Environment):
         """Check that minimal utility over prior is non-negative."""
         return [self.get_reward(a, redraw_valuations, aggregate=False).min() for a in self.agents]
 
-    def get_incentive_compatibility(self, redraw_valuations: bool=False):
+    def get_incentive_compatibility(self, redraw_valuations: bool=False,
+                                    batch_size: int=2**10, grid_size: int=2**10):
         """If the other agent reports the true value, then the best response is
         to report the true value too: Set opponent to truthful and then measure
         L2 of best response to truthful (static metric - independent of learning).
         """
-        # TODO
-        return -1
+        if redraw_valuations:
+            self.draw_valuations()
+
+        L_2_to_truthful = [None] * len(self.agents)
+
+        actual_strategies = [copy(a.strategy) for a in self.agents]
+        for agent in self.agents:  # all agents truthfull
+            agent.strategy = TruthfulStrategy()
+
+        with torch.no_grad():  # don't need any gradient information here
+            # check incentive compatibility for all agents individually
+            for i, agent in enumerate(self.agents):
+                # calculate best responses
+                _, best_responses = metrics.ex_interim_util_loss(
+                    env=self,
+                    player_position=agent.player_position,
+                    agent_observations=self._observations[:batch_size, agent.player_position, :],
+                    grid_size=grid_size
+                )
+
+                # calculate deviaation from truhful
+                L_2_to_truthful[i] = metrics.norm_strategy_and_actions(
+                    strategy=TruthfulStrategy(),
+                    actions=best_responses,
+                    valuations=self._observations[:batch_size, agent.player_position, :],
+                    p=2
+                )
+
+        for i, agent in enumerate(self.agents):  # restore strategies
+            agent.strategy = actual_strategies[i]
+
+        return L_2_to_truthful
