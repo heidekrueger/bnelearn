@@ -3,8 +3,10 @@ import time
 from sys import platform
 from time import perf_counter as timer
 
+from bnelearn.experiment.configurations import * # needed for e.g json serialization 
 import torch
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import bnelearn.util.metrics as metrics
 
@@ -18,21 +20,22 @@ class Logger:
     """
     Helper class encapsulating all the logging and plotting logic for the Experiment
     """
-    def __init__(self, config: ExperimentConfig, known_bne: bool, plot_bounds: dict, learning_env, evaluation_env, _model2bidder, n_models,
-                model_names, models, logdir_hierarchy, sampler, plotter):
+    def __init__(self, config: ExperimentConfig, known_bne: bool, plot_bounds: dict, evaluation_env, _model2bidder, n_models,
+                model_names, logdir_hierarchy, sampler, plotter, optimal_bid):
         self.config = config
         self.logging = config.logging
         self.learning = config.learning
         
         # fields depending on initialization in subclasses
         self.bne_env = evaluation_env
-        self.env = learning_env
+        self.env = None
+        self.bne_utilities = None
         self._model2bidder = _model2bidder
         self.n_models = n_models   
         self.model_names = model_names
-        self.models = models
+        self.models = None
         self.sampler = sampler
-        self._max_util_loss: float = None # is it in the right place here? 
+        self._optimal_bid = optimal_bid
         self.plot_xmin = plot_bounds['plot_xmin']
         self.plot_xmax = plot_bounds['plot_xmax']
         self.plot_ymin = plot_bounds['plot_ymin']
@@ -75,7 +78,11 @@ class Logger:
     
 
 
-    def init_new_run(self):
+    def init_new_run(self, models, env, bne_utilities):
+        self.models = models
+        self.env = env
+        self.bne_utilities = bne_utilities
+
         if self.logging.log_metrics['opt'] and hasattr(self, 'bne_env'):
             if not isinstance(self.bne_env, list):
                 # TODO Nils: should perhaps always be a list, even when there is only one BNE
@@ -94,13 +101,23 @@ class Logger:
         print('Stating run...')
     
         # Create summary writer object and create output dirs if necessary
-        self._initialize_logging()
+        output_dir = self.run_log_dir
+        os.makedirs(output_dir, exist_ok=False)
+        if self.logging.save_figure_to_disk_png:
+            os.mkdir(os.path.join(output_dir, 'png'))
+        if self.logging.save_figure_to_disk_svg:
+            os.mkdir(os.path.join(output_dir, 'svg'))
+        if self.logging.save_models:
+            os.mkdir(os.path.join(output_dir, 'models'))
+        self.writer = CustomSummaryWriter(output_dir, flush_secs=30)
+
+        print('\tLogging to {}.'.format(output_dir))
+
         self.fig = plt.figure()
 
         tic = timer()
         # self._log_experiment_params()
         # self._log_hyperparams()
-        # self._log_experiment_params()
         self.save_experiment_config(self.experiment_log_dir, self.config)
         self.log_git_commit_hash()
         elapsed = timer() - tic
@@ -216,22 +233,6 @@ class Logger:
 
         del self.writer  # make this explicit to force cleanup and closing of tb-logfiles
         self.writer = None
-
-
-    def _initialize_logging(self):
-        """Creates output directories if necessary and
-        initializes the self.writer object for writing tensorboard logs.
-        """
-        output_dir = self.run_log_dir
-        os.makedirs(output_dir, exist_ok=False)
-        if self.logging.save_figure_to_disk_png:
-            os.mkdir(os.path.join(output_dir, 'png'))
-        if self.logging.save_figure_to_disk_svg:
-            os.mkdir(os.path.join(output_dir, 'svg'))
-        if self.logging.save_models:
-            os.mkdir(os.path.join(output_dir, 'models'))
-        self.writer = CustomSummaryWriter(output_dir, flush_secs=30)
-        print('\tLogging to {}.'.format(output_dir))
 
 
     def _setup_plot_equilibirum_data(self):
@@ -515,6 +516,8 @@ class Logger:
         This function reads all tensorboard event log files in subdirectories and converts their content into
         a single csv file containing info of all runs.
         """
+        from tensorboard.backend.event_processing.event_accumulator import EventAccumulator, STORE_EVERYTHING_SIZE_GUIDANCE        
+
         if not self.logging.save_tb_events_to_csv_detailed and not self.logging.save_tb_events_to_csv_aggregate and not \
             self.logging.save_tb_events_to_binary_detailed:
             return
@@ -527,12 +530,12 @@ class Logger:
         all_tb_events = {'run': [], 'subrun': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []}
         last_epoch_tb_events = {'run': [], 'subrun': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []}
         for run in runs:
-            subruns = [x.name for x in os.scandir(os.path.join(experiment_dir, run))
+            subruns = [x.name for x in os.scandir(os.path.join(self.experiment_log_dir, run))
                     if x.is_dir() and any(file.startswith('events.out.tfevents')
-                                            for file in os.listdir(os.path.join(experiment_dir, run, x.name)))]
+                                            for file in os.listdir(os.path.join(self.experiment_log_dir, run, x.name)))]
             subruns.append('.')  # also read global logs
             for subrun in subruns:
-                ea = EventAccumulator(os.path.join(experiment_dir, run, subrun),
+                ea = EventAccumulator(os.path.join(self.experiment_log_dir, run, subrun),
                                     size_guidance=STORE_EVERYTHING_SIZE_GUIDANCE).Reload()
 
                 tags = ea.Tags()['scalars']
@@ -559,15 +562,15 @@ class Logger:
         last_epoch_tb_events = pd.DataFrame(last_epoch_tb_events)
 
         if self.logging.save_tb_events_to_csv_detailed:
-            f_name = os.path.join(self.experiment_log_dir, f'{_full_log_file_name}.csv')
+            f_name = os.path.join(self.experiment_log_dir, f'{Logger._full_log_file_name}.csv')
             all_tb_events.to_csv(f_name, index=False)
 
         if self.logging.save_tb_events_to_csv_aggregate:
-            f_name = os.path.join(self.experiment_log_dir, f'{_aggregate_log_file_name}.csv')
+            f_name = os.path.join(self.experiment_log_dir, f'{Logger._aggregate_log_file_name}.csv')
             last_epoch_tb_events.to_csv(f_name, index=False)
 
         if self.logging.save_tb_events_to_binary_detailed:
-            f_name = os.path.join(self.experiment_log_dir, f'{_full_log_file_name}.pkl')
+            f_name = os.path.join(self.experiment_log_dir, f'{Logger._full_log_file_name}.pkl')
             all_tb_events.to_pickle(f_name)
         
         # print_aggregate_tensorboard_logs(self.experiment_log_dir)
@@ -595,14 +598,14 @@ class Logger:
 
     def log_git_commit_hash(self):
         """Saves the hash of the current git commit into experiment_dir."""
-
+        import subprocess
         # Will leave it here as a comment in case we'll ever need to log the full dependency tree or the environment.
         # os.system('pipdeptree --json-tree > dependencies.json')
         # os.system('conda env export > environment.yml')
 
         try:
             commit_hash = str(subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip())[2:-1]
-            with open(os.path.join(self.experiment_log_dir, f'{_git_commit_hash_file_name}.txt'), "w") as text_file:
+            with open(os.path.join(self.experiment_log_dir, f'{Logger._git_commit_hash_file_name}.txt'), "w") as text_file:
                 text_file.write(commit_hash)
         except Exception as e:
             warnings.warn("Failed to retrieve and log the git commit hash.")
@@ -634,7 +637,7 @@ class Logger:
         Prints in a tabular form the aggregate log from all the runs in the current experiment,
         reads data from the csv file in the experiment directory
         """
-        f_name = os.path.join(experiment_dir, f'{_aggregate_log_file_name}.csv')
+        f_name = os.path.join(experiment_dir, f'{Logger._aggregate_log_file_name}.csv')
         df = pd.read_csv(f_name)
         print('Aggregate log:')
         print(df.to_markdown())
@@ -647,7 +650,8 @@ class Logger:
         :param experiment_log_dir: full path except for the file name
         :param experiment_configuration: experiment configuration as given by ConfigurationManager
         """
-        f_name = os.path.join(experiment_log_dir, _configurations_f_name)
+        
+        f_name = os.path.join(experiment_log_dir, Logger._configurations_f_name)
 
         temp_cp = experiment_configuration.setting.common_prior
         temp_ha = experiment_configuration.learning.hidden_activations

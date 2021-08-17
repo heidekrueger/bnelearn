@@ -52,14 +52,6 @@ class Experiment(ABC):
     positive_output_point: torch.Tensor  # shape must be valid model input
     input_length: int
 
-    ## Fields required for plotting
-    #plot_xmin: float
-    #plot_xmax: float
-    #plot_ymin: float
-    #plot_ymax: float
-    #_max_util_loss: float
-    ## Optional - set only in some settings
-
     ## Equilibrium environment
     bne_utilities: torch.Tensor or List[float]  # dimension: n_players
     bne_env: AuctionEnvironment or List[AuctionEnvironment]
@@ -213,7 +205,7 @@ class Experiment(ABC):
         self._setup_learners()
 
         if self.logger is not None:
-            self.logger.init_new_run()
+            self.logger.init_new_run(models = self.models, env = self.env, bne_utilities = self.bne_utilities)
 
 
     def _exit_run(self, global_step=None):

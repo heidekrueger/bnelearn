@@ -236,10 +236,10 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 #self, config: ExperimentConfig, known_bne: bool, plot_bounds: dict, learning_env, evaluation_env, _model2bidder, n_models,
                 #model_names, models, logdir_hierarchy, sampler, plotter):                
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, learning_env=self.env, 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
                                 evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, models = self.models, logdir_hierarchy=self._get_logdir_hierarchy(), 
-                                sampler=self.sampler, plotter=self._plot)
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+                                sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
     def _check_and_set_known_bne(self):
         if self.payment_rule == 'first_price':
@@ -303,10 +303,10 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
         super().__init__(config=config)
         
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, learning_env=self.env, 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
                                 evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, models = self.models, logdir_hierarchy=self._get_logdir_hierarchy(), 
-                                sampler=self.sampler, plotter=self._plot)
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+                                sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
 class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
     def __init__(self, config: ExperimentConfig):
@@ -343,10 +343,10 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         super().__init__(config=config)
         
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, learning_env=self.env, 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
                                 evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, models = self.models, logdir_hierarchy=self._get_logdir_hierarchy(), 
-                                sampler=self.sampler, plotter=self._plot)
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+                                sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
     def _setup_sampler(self):
 
@@ -482,10 +482,10 @@ class MineralRightsExperiment(SingleItemExperiment):
         super().__init__(config=config)
         
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, learning_env=self.env, 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
                                 evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, models = self.models, logdir_hierarchy=self._get_logdir_hierarchy(), 
-                                sampler=self.sampler, plotter=self._plot)
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+                                sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
     def _setup_sampler(self):
 
@@ -606,10 +606,10 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         super().__init__(config=config)
         
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, learning_env=self.env, 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
                                 evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, models = self.models, logdir_hierarchy=self._get_logdir_hierarchy(), 
-                                sampler=self.sampler, plotter=self._plot)
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+                                sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
     def _setup_sampler(self):
 

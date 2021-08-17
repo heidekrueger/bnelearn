@@ -66,9 +66,9 @@ if __name__ == '__main__':
     #     ) \
     #     .get_config()
 
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
-    #                                                            n_runs=2, n_epochs=200)\
-    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True).get_config()
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
+                                                               n_runs=2, n_epochs=400)\
+        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True).get_config()
 
     #All three next experiments get AssertionError: scalar should be 0D
     # experiment_config, experiment_class = ConfigurationManager(
@@ -77,12 +77,12 @@ if __name__ == '__main__':
     # ) \
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .get_config()
-    experiment_config, experiment_class = ConfigurationManager(
-          experiment_type='single_item_asymmetric_uniform_disjunct',
-          n_runs=1, n_epochs=200
-    ) \
-        .set_logging(log_root_dir=log_root_dir) \
-        .get_config()
+    #experiment_config, experiment_class = ConfigurationManager(
+    #      experiment_type='single_item_asymmetric_uniform_disjunct',
+    #      n_runs=1, n_epochs=200
+    #) \
+    #    .set_logging(log_root_dir=log_root_dir) \
+    #    .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=3) \
     #     .set_setting(gamma=0.5) \

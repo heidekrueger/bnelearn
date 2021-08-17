@@ -111,10 +111,10 @@ class MultiUnitExperiment(Experiment, ABC):
         super().__init__(config=config)
                 
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, learning_env=self.env, 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds,  
                                 evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, models = self.models, logdir_hierarchy=self._get_logdir_hierarchy(), 
-                                sampler=self.sampler, plotter=self._plot)
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+                                sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         """
@@ -238,10 +238,10 @@ class SplitAwardExperiment(MultiUnitExperiment):
         super().__init__(config=config)
                 
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, learning_env=self.env, 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
                                 evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, models = self.models, logdir_hierarchy=self._get_logdir_hierarchy(), 
-                                sampler=self.sampler, plotter=self._plot)
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+                                sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
         assert all(u_lo > 0 for u_lo in self.config.setting.u_lo), \
             '100% Unit must be valued > 0'
