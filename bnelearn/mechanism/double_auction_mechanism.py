@@ -1,3 +1,5 @@
+from functools import reduce
+from operator import mul
 # -*- coding: utf-8 -*-
 
 """
@@ -34,3 +36,13 @@ class DoubleAuctionMechanism(Mechanism, ABC):
     def run(self, bids):
         """Alias for play for double auction mechanisms"""
         raise NotImplementedError()
+    
+    def _reshape_for_multiple_batch_dims(self, bids):
+        *batch_sizes, _, n_items = bids.shape
+        batch_size = reduce(mul, batch_sizes, 1)
+        bids = bids.view(batch_size, self.n_buyers+self.n_sellers, n_items)
+        return bids,batch_sizes,n_items,batch_size
+
+    def _combine_allocations_and_payments(self, batch_sizes, n_items, allocations, payments):
+        return (allocations.view(*batch_sizes, self.n_buyers+self.n_sellers, n_items),
+                payments.view(*batch_sizes, self.n_buyers+self.n_sellers))
