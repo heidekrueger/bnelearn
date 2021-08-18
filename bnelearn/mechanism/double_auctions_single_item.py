@@ -80,94 +80,6 @@ class VickreyDoubleAuction(DeterministicDoubleAuctionMechanism):
         trade_indx_inc_sellers[trade_indx_inc_sellers < (self.n_sellers - 1)] += 1     
 
         trade_price_indx_buyers = torch.gather(bids_dict["bids_sorted_init_buyers"], dim=params_dict["player_dim"], index=trade_indx)
-        trade_price_indx_sellers = torch.gather(bids_dict["bids_sorted_init_buyers"], dim=params_dict["player_dim"], index=trade_indx)
-
-        trade_price_indx_inc_buyers = torch.gather(bids_dict["bids_sorted_init_buyers"], dim=params_dict["player_dim"], index=trade_indx_inc_buyers)
-        trade_price_indx_inc_sellers = torch.gather(bids_dict["bids_sorted_init_buyers"], dim=params_dict["player_dim"], index=trade_indx_inc_sellers)
-
-        trade_price_init_buyers = torch.max(trade_price_indx_sellers, trade_price_indx_inc_buyers)
-        trade_price_init_sellers = torch.min(trade_price_indx_buyers, trade_price_indx_inc_sellers)
-
-        trade_price_buyers = torch.where((trade_indx > 0) & (trade_indx < (self.n_buyers - 1)), 
-                                         trade_price_init_buyers, trade_price_indx_sellers) * trade_buyers
-        trade_price_sellers = torch.where((trade_indx > 0) & (trade_indx < (self.n_sellers - 1)), 
-                                          trade_price_init_sellers, trade_price_indx_buyers) * trade_sellers
-                                          
-        return trade_price_buyers,trade_price_sellers
-
-    """ def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-
-        assert bids.dim() >= 3, "Bid tensor must be at least 3d (*batch x players x items)"
-        assert (bids >= 0).all().item(), "All bids must be nonnegative."
-
-        # move bids to gpu/cpu if necessary
-        bids = bids.to(self.device)
-        *batch_sizes, _, n_items = bids.shape
-        batch_size = reduce(mul, batch_sizes, 1)
-
-        # flaten bids, if there are multiple batch dims
-        bids = self._reshape_for_multiple_batch_dims(bids)
-        _, player_dim, item_dim = 0, 1, 2
-
-        bids_buyers, bids_sellers = self._split_bids_into_buyers_and_sellers(bids, player_dim)
-
-        bids_buyers, bids_sellers = self._split_bids_into_buyers_and_sellers(bids, player_dim)
-
-        indx_buyers, bids_sorted_buyers, bids_sorted_init_buyers = self._sort_bids_with_tracked_indices(player_dim, bids_buyers, descending=True)
-        indx_sellers, bids_sorted_sellers, bids_sorted_init_sellers = self._sort_bids_with_tracked_indices(player_dim, bids_sellers, descending=False)
-
-        trading_indices, trade_buyers, trade_sellers = self._determine_combined_and_splitted_trading_indices(n_items, batch_size, bids_sorted_buyers, bids_sorted_sellers)
-
-        trade_indx = self._determine_break_even_trading_index(player_dim, trading_indices)
-
-        trade_price_buyers, trade_price_sellers = self._determine_individual_trade_prices(trade_buyers, trade_sellers, player_dim, trade_indx, bids_sorted_init_buyers, bids_sorted_init_sellers)
-
-        allocations = self._determine_allocations(n_items, batch_size, player_dim, indx_buyers, indx_sellers, trade_buyers, trade_sellers)
-
-        payments = self._determine_payments(n_items, batch_size, player_dim, item_dim, indx_buyers, indx_sellers, trade_price_buyers, trade_price_sellers)
-
-        return self._combine_allocations_and_payments(batch_sizes, n_items, allocations, payments) """
-    
-    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-
-        assert bids.dim() >= 3, "Bid tensor must be at least 3D (*batch x players x items)."
-        assert (bids >= 0).all().item(), "All bids must be nonnegative."
-
-        # move bids to gpu/cpu if necessary
-        bids = bids.to(self.device)
-        *batch_sizes, _, n_items = bids.shape
-        # flaten bids, if there are multiple batch dims
-        bids = self._reshape_for_multiple_batch_dims(bids)
-        params_dict = {
-            "batch_sizes": batch_sizes,
-            "batch_size": reduce(mul, batch_sizes, 1),
-            "player_dim": 1,
-            "item_dim": 2,
-            "n_items": n_items,
-            "bids": bids
-        }
-        bids_dict = {
-            "bids": bids
-        }
-        indices_dict = {}
-
-        self._add_bid_and_indice_variants_to_dicts(params_dict, bids_dict, indices_dict)
-
-        trade_buyers, trade_sellers = self._determine_combined_and_splitted_trading_indices(
-            params_dict, bids_dict, indices_dict)
-
-        trade_indx = self._determine_break_even_trading_index(params_dict["player_dim"], indices_dict["trading_indices"])
-
-        """ trade_price_buyers, trade_price_sellers = self._determine_individual_trade_prices(
-            trade_buyers, trade_sellers, params_dict, bids_dict, indices_dict) """
-
-        trade_indx_inc_buyers = trade_indx.clone().detach()
-        trade_indx_inc_buyers[trade_indx_inc_buyers < (self.n_buyers - 1)] += 1
-
-        trade_indx_inc_sellers = trade_indx.clone().detach()
-        trade_indx_inc_sellers[trade_indx_inc_sellers < (self.n_sellers - 1)] += 1     
-
-        trade_price_indx_buyers = torch.gather(bids_dict["bids_sorted_init_buyers"], dim=params_dict["player_dim"], index=trade_indx)
         trade_price_indx_sellers = torch.gather(bids_dict["bids_sorted_init_sellers"], dim=params_dict["player_dim"], index=trade_indx)
 
         trade_price_indx_inc_buyers = torch.gather(bids_dict["bids_sorted_init_buyers"], dim=params_dict["player_dim"], index=trade_indx_inc_buyers)
@@ -180,32 +92,8 @@ class VickreyDoubleAuction(DeterministicDoubleAuctionMechanism):
                                          trade_price_init_buyers, trade_price_indx_sellers) * trade_buyers
         trade_price_sellers = torch.where((trade_indx > 0) & (trade_indx < (self.n_sellers - 1)), 
                                           trade_price_init_sellers, trade_price_indx_buyers) * trade_sellers
-
-        payments_per_item_buyers = torch.zeros(params_dict["batch_size"], self.n_buyers, n_items, device=self.device)
-        allocations_buyers = torch.zeros(params_dict["batch_size"], self.n_buyers, n_items, device=self.device)
-
-        payments_per_item_sellers = torch.zeros(params_dict["batch_size"], self.n_sellers, n_items, device=self.device)
-        allocations_sellers = torch.zeros(params_dict["batch_size"], self.n_sellers, n_items, device=self.device)
-        allocations_buyers = allocations_buyers.scatter_(dim=params_dict["player_dim"], index=indices_dict["indx_buyers"], 
-                                                         src=trade_buyers)
-        allocations_sellers = allocations_sellers.scatter_(dim=params_dict["player_dim"], index=indices_dict["indx_sellers"], 
-                                                           src=trade_sellers)
-
-        payments_per_item_buyers = payments_per_item_buyers.scatter_(dim=params_dict["player_dim"], index=indices_dict["indx_buyers"], 
-                                                                     src=trade_price_buyers)
-
-        payments_per_item_sellers = payments_per_item_sellers.scatter_(dim=params_dict["player_dim"], index=indices_dict["indx_sellers"], 
-                                                                       src=trade_price_sellers)
-
-        allocations = torch.cat((allocations_buyers, allocations_sellers), dim=params_dict["player_dim"])
-        payments = torch.cat((payments_per_item_buyers, payments_per_item_sellers), 
-                            dim=params_dict["player_dim"]).sum(dim=params_dict["item_dim"])
-    
-
-        return self._combine_allocations_and_payments(allocations, payments, params_dict)
-
-
-
+                                          
+        return trade_price_buyers,trade_price_sellers
 
 # class McAfeeDoubleAuction(DoubleAuctionMechanism):
 
