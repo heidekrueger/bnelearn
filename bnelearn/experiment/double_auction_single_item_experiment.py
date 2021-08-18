@@ -76,7 +76,7 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
     def _setup_mechanism(self):
         
         if self.payment_rule == 'k_price':
-            self.mechanism = kDoubleAuction(cuda=self.hardware.cuda, k = self.k,
+            self.mechanism = kDoubleAuction(cuda=self.hardware.cuda, k_value = self.k,
                                             n_buyers=self.n_buyers, n_sellers=self.n_sellers)
         elif self.payment_rule == 'vickrey_price':
             self.mechanism = VickreyDoubleAuction(cuda=self.hardware.cuda, k = self.k,
