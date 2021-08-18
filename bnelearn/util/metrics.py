@@ -8,7 +8,6 @@ import torch
 from tqdm import tqdm
 
 from bnelearn.bidder import Bidder
-from bnelearn.environment import AuctionEnvironment
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import Strategy
 
@@ -231,7 +230,7 @@ def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid
     return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
 
 
-def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
+def ex_interim_util_loss(env: "AuctionEnvironment", player_position: int,
                          agent_observations: torch.Tensor,
                          grid_size: int,
                          opponent_batch_size: int = None):
@@ -356,7 +355,7 @@ def _calculate_best_responses_with_dynamic_mini_batching(
     return br_utility, br_indices
 
 def _get_best_responses_among_alternatives(
-        env: AuctionEnvironment, player_position: int,
+        env: "AuctionEnvironment", player_position: int,
         agent_observations: torch.Tensor, action_alternatives: torch.Tensor,
         opponent_batch_size: int) -> Tuple[torch.Tensor, torch.IntTensor]:
     """For a batch of observations for the given player, calculates the
@@ -391,7 +390,7 @@ def _get_best_responses_among_alternatives(
 
 
 def ex_interim_utility(
-        env: AuctionEnvironment, player_position: int,
+        env: "AuctionEnvironment", player_position: int,
         agent_observations: torch.Tensor, agent_actions: torch.Tensor,
         opponent_batch_size: int, device) -> torch.Tensor:
     """

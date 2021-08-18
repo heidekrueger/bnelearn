@@ -15,7 +15,7 @@ from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism, DoubleAuctionMechanism
 from bnelearn.strategy import Strategy, TruthfulStrategy
 from bnelearn.sampler import ValuationObservationSampler
-import bnelearn.util.metrics as metrics
+from bnelearn.util.metrics import ex_interim_utility, ex_interim_util_loss
 
 
 class Environment(ABC):
@@ -544,7 +544,7 @@ class AuctionEnvironment(Environment):
             self.draw_valuations()
 
         return [
-            - metrics.ex_interim_utility(
+            - ex_interim_utility(
                 self, player_position=a.player_position,
                 agent_observations=self._observations[:batch_size, a.player_position, :],
                 agent_actions=a.get_action(self._observations[:batch_size, a.player_position, :]),
@@ -597,7 +597,7 @@ class AuctionEnvironment(Environment):
 
         with torch.no_grad():  # don't need any gradient information here
             utility_loss, _ = zip(*[
-                metrics.ex_interim_util_loss(
+                ex_interim_util_loss(
                     env=self, player_position=a.player_position,
                     agent_observations=self._observations[:batch_size, a.player_position, :],
                     grid_size=grid_size
