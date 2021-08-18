@@ -384,12 +384,11 @@ class AuctionEnvironment(Environment):
         """Returns the average seller revenue over a batch.
 
         Args:
-            redraw_valuations (bool): whether or not to redraw the valuations of
-                the agents.
+            redraw_valuations (:bool:) whether or not to redraw the valuations
+                of the agents.
 
         Returns:
-            revenue (float): average of seller revenue over a batch of games.
-
+            revenue (:float:) average of seller revenue over a batch of games.
         """
         if redraw_valuations:
             self.draw_valuations()
@@ -412,13 +411,13 @@ class AuctionEnvironment(Environment):
         Args:
             redraw_valuations (:bool:) whether or not to redraw the valuations
                 of the agents.
+            batch_size (:int:) maximal batch size for efficiency calculation.
 
         Returns:
-            efficiency (:float:) Percentage that the actual welfare reaches of
+            efficiency (:float:) percentage that the actual welfare reaches of
                 the maximale possible welfare. Averaged over batch.
-
         """
-        batch_size = min(self.sampler.default_batch_size, batch_size)
+        batch_size = min(self.batch_size, batch_size)
 
         if redraw_valuations:
             self.draw_valuations()
@@ -444,7 +443,7 @@ class AuctionEnvironment(Environment):
                 """
                 allocated_to_highest_reported_value = \
                     actual_allocations[..., 0, 0] == (bid_profile[..., 0, 0] > bid_profile[..., 1, 0])
-                efficiency = allocated_to_highest_reported_value.float().mean().float()
+                efficiency = allocated_to_highest_reported_value.float().mean()
 
             else:
                 raise NotImplementedError('Efficiency for double auctions ' + \
@@ -471,14 +470,19 @@ class AuctionEnvironment(Environment):
 
             efficiency = actual_welfare / maximum_welfare
             efficiency[maximum_welfare == 0] = 1  # full eff. when no welfare gain was possible
-            efficiency = efficiency.mean().float()
+            efficiency = efficiency.mean()
 
         return efficiency
 
     def get_budget_balance(self, redraw_valuations: bool=False,
                            batch_size: int=2**13) -> [float, float]:
-        """Measure minimal and maximal difference from zero when adding up all
-        payments, should be zero under BB.
+        """Calculate deviation from a budget balnced market.
+
+        Definition: A market is budget balanced when payments from buyers and
+        sellers add up to zero. This may not hold for two-sided markets.
+
+        Measurement: Measure minimal and maximal difference from zero when
+        adding up all payments, should be zero under BB.
 
         Args:
             redraw_valuations (:bool:) whether or not to redraw the valuations
@@ -501,15 +505,16 @@ class AuctionEnvironment(Environment):
 
         action_length = self.agents[0].bid_size
 
-        # Calculate actual welfare under the current strategies
+        # Calculate payments under the current strategies
         bid_profile = torch.zeros(batch_size, self.n_players, action_length,
                                   device=self.mechanism.device)
         for pos, bid in self._generate_agent_actions():
             bid_profile[:, pos, :] = bid[:batch_size, ...]
         _, payments = self.mechanism.play(bid_profile)
 
-        payments_buyers = payments[..., :self.mechanism.n_buyers].sum(axis=1)
-        payments_sellers = payments[..., self.mechanism.n_buyers:].sum(axis=1)
+        # Differentiate sellers' and buyers' payments
+        payments_buyers = payments[..., :self.mechanism.n_buyers].sum(axis=-1)
+        payments_sellers = payments[..., self.mechanism.n_buyers:].sum(axis=-1)
         budget = (payments_buyers - payments_sellers)
 
         return [(-budget.min()).relu(), budget.max().relu()]
