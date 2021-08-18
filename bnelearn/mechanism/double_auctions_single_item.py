@@ -15,15 +15,12 @@ payment for a seller is the amount seller receives for an item.
 
 """
 import torch
-from typing import Tuple
-from functools import reduce
-from operator import mul
 
 from .double_auction_mechanism import DeterministicDoubleAuctionMechanism
 
 
 class kDoubleAuction(DeterministicDoubleAuctionMechanism):
-
+    """Implements the k-Double Auction mechanism."""
     def __init__(self, n_buyers, n_sellers, k_value, **kwargs):
         super().__init__(n_buyers, n_sellers, **kwargs)
         self.k_value = k_value
@@ -60,6 +57,7 @@ class kDoubleAuction(DeterministicDoubleAuctionMechanism):
 
 
 class VickreyDoubleAuction(DeterministicDoubleAuctionMechanism):
+    """Implements the Vickrey Double Auction mechanism."""
     def _determine_combined_and_splitted_trading_indices(self, params_dict, bids_dict, indices_dict):
         trading_indices = self._determine_trading_indices(
             bids_dict["bids_sorted_buyers"], bids_dict["bids_sorted_sellers"])
