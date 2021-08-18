@@ -9,7 +9,7 @@ import torch
 from .mechanism import Mechanism
 from functools import reduce
 from operator import mul
-from typing import Tuple
+from typing import Tuple, Dict
 
 
 class DoubleAuctionMechanism(Mechanism, ABC):
@@ -51,62 +51,68 @@ class DeterministicDoubleAuctionMechanism(DoubleAuctionMechanism, ABC):
         *batch_sizes, _, n_items = bids.shape
         # flaten bids, if there are multiple batch dims
         bids = self._reshape_for_multiple_batch_dims(bids)
-        params_dict = {
-            "batch_sizes": batch_sizes,
-            "batch_size": reduce(mul, batch_sizes, 1),
-            "player_dim": 1,
-            "item_dim": 2,
-            "n_items": n_items,
-            "bids": bids
-        }
-        bids_dict = {
-            "bids": bids
-        }
-        indices_dict = {}
 
-        self._add_bid_and_indice_variants_to_dicts(params_dict, bids_dict, indices_dict)
+        sorted_bids_and_indices_dict, params_dict = self._determine_bid_and_indice_variants(batch_sizes, n_items, bids)
 
         trade_buyers, trade_sellers = self._determine_combined_and_splitted_trading_indices(
-            params_dict, bids_dict, indices_dict)
+            params_dict, sorted_bids_and_indices_dict)
 
         trade_price_buyers, trade_price_sellers = self._determine_individual_trade_prices(
-            trade_buyers, trade_sellers, params_dict, bids_dict, indices_dict)
+            trade_buyers, trade_sellers, params_dict, sorted_bids_and_indices_dict)
 
-        allocations = self._determine_allocations(trade_buyers, trade_sellers, params_dict, indices_dict)
+        allocations = self._determine_allocations(trade_buyers, trade_sellers, params_dict, sorted_bids_and_indices_dict)
 
-        payments = self._determine_payments(trade_price_buyers, trade_price_sellers, params_dict, indices_dict)
+        payments = self._determine_payments(trade_price_buyers, trade_price_sellers, params_dict, sorted_bids_and_indices_dict)
 
         return self._combine_allocations_and_payments(allocations, payments, params_dict)
     
     @abstractmethod
-    def _determine_individual_trade_prices(self, trade_buyers, trade_sellers, params_dict, bids_dict, indices_dict):
+    def _determine_individual_trade_prices(self, trade_buyers, trade_sellers, params_dict, sorted_bids_and_indices_dict):
         """This returns tensors of the individual trade prices of buyers and sellers"""
         raise NotImplementedError()
     
     @abstractmethod
-    def _determine_combined_and_splitted_trading_indices(self, params_dict, bids_dict, indices_dict):
+    def _determine_combined_and_splitted_trading_indices(self, params_dict, sorted_bids_and_indices_dict):
         """This returns tensors of the trading indices of buyers and sellers"""
         raise NotImplementedError()
     
-    def _add_bid_and_indice_variants_to_dicts(self, params_dict, bids_dict, indices_dict):
-        bids_buyers, bids_sellers = self._split_bids_into_buyers_and_sellers(bids_dict["bids"], params_dict["player_dim"])
+    def _determine_bid_and_indice_variants(self, batch_sizes, n_items, bids):
+        params_dict = self._create_params_dict(batch_sizes, n_items)
+        bids_buyers, bids_sellers = self._split_bids_into_buyers_and_sellers(bids, params_dict["player_dim"])
         indx_buyers, bids_sorted_buyers, bids_sorted_init_buyers = self._sort_bids_with_tracked_indices(params_dict["player_dim"], bids_buyers, descending=True)
         indx_sellers, bids_sorted_sellers, bids_sorted_init_sellers = self._sort_bids_with_tracked_indices(params_dict["player_dim"], bids_sellers, descending=False)
-        self._add_bid_variants_to_bid_dict(bids_dict, bids_buyers, bids_sellers, bids_sorted_buyers, bids_sorted_init_buyers, bids_sorted_sellers, bids_sorted_init_sellers)
-        self._add_indx_variants_to_indice_dict(indices_dict, indx_buyers, indx_sellers)
-
-    def _add_indx_variants_to_indice_dict(self, indices_dict, indx_buyers, indx_sellers):
-        indices_dict["indx_buyers"] = indx_buyers
-        indices_dict["indx_sellers"] = indx_sellers
-
-    def _add_bid_variants_to_bid_dict(self, bids_dict, bids_buyers, bids_sellers, bids_sorted_buyers, bids_sorted_init_buyers, bids_sorted_sellers, bids_sorted_init_sellers):
-        bids_dict["bids_buyers"] = bids_buyers
-        bids_dict["bids_sellers"] = bids_sellers
-        bids_dict["bids_sorted_buyers"] = bids_sorted_buyers
-        bids_dict["bids_sorted_sellers"] = bids_sorted_sellers
-        bids_dict["bids_sorted_init_buyers"] = bids_sorted_init_buyers
-        bids_dict["bids_sorted_init_sellers"] = bids_sorted_init_sellers
+        sorted_bids_and_indices_dict = self._create_sorted_bids_and_indices_dict(
+            bids_buyers, bids_sellers,
+            bids_sorted_buyers,
+            bids_sorted_init_buyers,
+            bids_sorted_sellers,
+            bids_sorted_init_sellers,
+            indx_buyers, indx_sellers)
+        return sorted_bids_and_indices_dict, params_dict
     
+    def _create_params_dict(self, batch_sizes, n_items) -> Dict:
+        return {
+            "batch_sizes": batch_sizes,
+            "batch_size": reduce(mul, batch_sizes, 1),
+            "player_dim": 1,
+            "item_dim": 2,
+            "n_items": n_items
+        }
+    
+    def _create_sorted_bids_and_indices_dict(self, 
+    bids_buyers, bids_sellers, bids_sorted_buyers, bids_sorted_init_buyers, bids_sorted_sellers,
+    bids_sorted_init_sellers,  indx_buyers, indx_sellers) -> Dict:
+        return {
+                "bids_buyers": bids_buyers,
+                "bids_sellers": bids_sellers,
+                "bids_sorted_buyers": bids_sorted_buyers,
+                "bids_sorted_sellers": bids_sorted_sellers,
+                "bids_sorted_init_buyers": bids_sorted_init_buyers,
+                "bids_sorted_init_sellers": bids_sorted_init_sellers,
+                "indx_buyers": indx_buyers,
+                "indx_sellers": indx_sellers,
+                }
+
     def _reshape_for_multiple_batch_dims(self, bids):
         *batch_sizes, _, n_items = bids.shape
         batch_size = reduce(mul, batch_sizes, 1)
@@ -131,7 +137,7 @@ class DeterministicDoubleAuctionMechanism(DoubleAuctionMechanism, ABC):
     def _determine_trading_indices(self, bids_sorted_buyers, bids_sorted_sellers):
         """This function expects sorted tensors of buyers and sellers and determines
         which agents are going to trade depending on their bids."""
-        trade = torch.ge(bids_sorted_buyers, bids_sorted_sellers).type(torch.float)
+        trade = torch.ge(bids_sorted_buyers, bids_sorted_sellers).type(torch.bool)
         return trade
     
     def _sort_bids_with_tracked_indices(self, player_dim, bids, descending: bool):
@@ -150,21 +156,21 @@ class DeterministicDoubleAuctionMechanism(DoubleAuctionMechanism, ABC):
         trade_indx[min_trade_val == 1] = self.min_player_dim - 1
         return trade_indx
     
-    def _determine_payments(self, trade_price_buyers, trade_price_sellers, params_dict, indices_dict):
+    def _determine_payments(self, trade_price_buyers, trade_price_sellers, params_dict, sorted_bids_and_indices_dict):
         payments_per_item_buyers = self._scatter_values_to_indices(
-            (params_dict["batch_size"], self.n_buyers, params_dict["n_items"]), indices_dict["indx_buyers"], trade_price_buyers, params_dict["player_dim"])
+            (params_dict["batch_size"], self.n_buyers, params_dict["n_items"]), sorted_bids_and_indices_dict["indx_buyers"], trade_price_buyers, params_dict["player_dim"])
         payments_per_item_sellers = self._scatter_values_to_indices(
-            (params_dict["batch_size"], self.n_sellers, params_dict["n_items"]), indices_dict["indx_sellers"], trade_price_sellers, params_dict["player_dim"])
+            (params_dict["batch_size"], self.n_sellers, params_dict["n_items"]), sorted_bids_and_indices_dict["indx_sellers"], trade_price_sellers, params_dict["player_dim"])
 
         payments = torch.cat((payments_per_item_buyers, payments_per_item_sellers),
-                             dim=params_dict["player_dim"]).sum(dim=params_dict["item_dim"])  
+                             dim=params_dict["player_dim"]).sum(dim=params_dict["item_dim"])
         return payments
 
-    def _determine_allocations(self, trade_buyers, trade_sellers, params_dict, indices_dict):
+    def _determine_allocations(self, trade_buyers, trade_sellers, params_dict, sorted_bids_and_indices_dict):
         allocations_buyers = self._scatter_values_to_indices(
-            (params_dict["batch_size"], self.n_buyers, params_dict["n_items"]), indices_dict["indx_buyers"], trade_buyers, params_dict["player_dim"])
+            (params_dict["batch_size"], self.n_buyers, params_dict["n_items"]), sorted_bids_and_indices_dict["indx_buyers"], trade_buyers, params_dict["player_dim"])
         allocations_sellers = self._scatter_values_to_indices(
-            (params_dict["batch_size"], self.n_sellers, params_dict["n_items"]), indices_dict["indx_sellers"], trade_sellers, params_dict["player_dim"])
+            (params_dict["batch_size"], self.n_sellers, params_dict["n_items"]), sorted_bids_and_indices_dict["indx_sellers"], trade_sellers, params_dict["player_dim"])
         allocations = torch.cat((allocations_buyers, allocations_sellers), dim=params_dict["player_dim"])
         return allocations
     

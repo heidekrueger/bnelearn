@@ -25,24 +25,23 @@ class kDoubleAuction(DeterministicDoubleAuctionMechanism):
         super().__init__(n_buyers, n_sellers, **kwargs)
         self.k_value = k_value
 
-    def _determine_combined_and_splitted_trading_indices(self, params_dict, bids_dict, indices_dict):
+    def _determine_combined_and_splitted_trading_indices(self, params_dict, sorted_bids_and_indices_dict):
         trading_indices = self._determine_trading_indices(
-            bids_dict["bids_sorted_buyers"], bids_dict["bids_sorted_sellers"])
+            sorted_bids_and_indices_dict["bids_sorted_buyers"], sorted_bids_and_indices_dict["bids_sorted_sellers"])
 
         trade_buyers = self._broadcast_trading_indices(
             params_dict["n_items"], self.n_buyers, params_dict["batch_size"], trading_indices)
         trade_sellers = self._broadcast_trading_indices(
             params_dict["n_items"], self.n_sellers, params_dict["batch_size"], trading_indices)
-        indices_dict["trading_indices"] = trading_indices
+        sorted_bids_and_indices_dict["trading_indices"] = trading_indices
         return trade_buyers,trade_sellers
 
-    def _determine_individual_trade_prices(self, trade_buyers, trade_sellers, params_dict, bids_dict, indices_dict):
-        trade_prices, trade_indx = self._calc_trade_prices(
+    def _determine_individual_trade_prices(self, trade_buyers, trade_sellers, params_dict, sorted_bids_and_indices_dict):
+        trade_prices = self._calc_trade_prices(
             params_dict["player_dim"],
-             bids_dict["bids_sorted_buyers"],
-              bids_dict["bids_sorted_sellers"],
-               indices_dict["trading_indices"])
-        indices_dict["trade_indx"] = trade_indx
+             sorted_bids_and_indices_dict["bids_sorted_buyers"],
+              sorted_bids_and_indices_dict["bids_sorted_sellers"],
+               sorted_bids_and_indices_dict["trading_indices"])
         trade_price_buyers = trade_prices*trade_buyers
         trade_price_sellers = trade_prices*trade_sellers
         return trade_price_buyers,trade_price_sellers
@@ -53,42 +52,42 @@ class kDoubleAuction(DeterministicDoubleAuctionMechanism):
                                 ((self.k_value)*(torch.gather(bids_sorted_buyers, dim=player_dim, index=trade_indx))),
                                 ((1-self.k_value)*(torch.gather(bids_sorted_sellers, dim=player_dim, index=trade_indx)))
                                )
-        return trade_price, trade_indx
+        return trade_price
 
 
 class VickreyDoubleAuction(DeterministicDoubleAuctionMechanism):
     """Implements the Vickrey Double Auction mechanism."""
-    def _determine_combined_and_splitted_trading_indices(self, params_dict, bids_dict, indices_dict):
+    def _determine_combined_and_splitted_trading_indices(self, params_dict, sorted_bids_and_indices_dict):
         trading_indices = self._determine_trading_indices(
-            bids_dict["bids_sorted_buyers"], bids_dict["bids_sorted_sellers"])
+            sorted_bids_and_indices_dict["bids_sorted_buyers"], sorted_bids_and_indices_dict["bids_sorted_sellers"])
 
         trade_buyers = self._broadcast_trading_indices(
             params_dict["n_items"], self.n_buyers, params_dict["batch_size"], trading_indices)
         trade_sellers = self._broadcast_trading_indices(
             params_dict["n_items"], self.n_sellers, params_dict["batch_size"], trading_indices)
-        indices_dict["trading_indices"] = trading_indices
+        sorted_bids_and_indices_dict["trading_indices"] = trading_indices
         return trade_buyers,trade_sellers
     
-    def _determine_individual_trade_prices(self, trade_buyers, trade_sellers, params_dict, bids_dict, indices_dict):
-        trade_indx = self._determine_break_even_trading_index(params_dict["player_dim"], indices_dict["trading_indices"])
+    def _determine_individual_trade_prices(self, trade_buyers, trade_sellers, params_dict, sorted_bids_and_indices_dict):
+        trade_indx = self._determine_break_even_trading_index(params_dict["player_dim"], sorted_bids_and_indices_dict["trading_indices"])
         trade_indx_inc_buyers = trade_indx.clone().detach()
         trade_indx_inc_buyers[trade_indx_inc_buyers < (self.n_buyers - 1)] += 1
 
         trade_indx_inc_sellers = trade_indx.clone().detach()
-        trade_indx_inc_sellers[trade_indx_inc_sellers < (self.n_sellers - 1)] += 1     
+        trade_indx_inc_sellers[trade_indx_inc_sellers < (self.n_sellers - 1)] += 1
 
-        trade_price_indx_buyers = torch.gather(bids_dict["bids_sorted_init_buyers"], dim=params_dict["player_dim"], index=trade_indx)
-        trade_price_indx_sellers = torch.gather(bids_dict["bids_sorted_init_sellers"], dim=params_dict["player_dim"], index=trade_indx)
+        trade_price_indx_buyers = torch.gather(sorted_bids_and_indices_dict["bids_sorted_init_buyers"], dim=params_dict["player_dim"], index=trade_indx)
+        trade_price_indx_sellers = torch.gather(sorted_bids_and_indices_dict["bids_sorted_init_sellers"], dim=params_dict["player_dim"], index=trade_indx)
 
-        trade_price_indx_inc_buyers = torch.gather(bids_dict["bids_sorted_init_buyers"], dim=params_dict["player_dim"], index=trade_indx_inc_buyers)
-        trade_price_indx_inc_sellers = torch.gather(bids_dict["bids_sorted_init_sellers"], dim=params_dict["player_dim"], index=trade_indx_inc_sellers)
+        trade_price_indx_inc_buyers = torch.gather(sorted_bids_and_indices_dict["bids_sorted_init_buyers"], dim=params_dict["player_dim"], index=trade_indx_inc_buyers)
+        trade_price_indx_inc_sellers = torch.gather(sorted_bids_and_indices_dict["bids_sorted_init_sellers"], dim=params_dict["player_dim"], index=trade_indx_inc_sellers)
 
         trade_price_init_buyers = torch.max(trade_price_indx_sellers, trade_price_indx_inc_buyers)
         trade_price_init_sellers = torch.min(trade_price_indx_buyers, trade_price_indx_inc_sellers)
 
-        trade_price_buyers = torch.where((trade_indx > 0) & (trade_indx < (self.n_buyers - 1)), 
+        trade_price_buyers = torch.where((trade_indx > 0) & (trade_indx < (self.n_buyers - 1)),
                                          trade_price_init_buyers, trade_price_indx_sellers) * trade_buyers
-        trade_price_sellers = torch.where((trade_indx > 0) & (trade_indx < (self.n_sellers - 1)), 
+        trade_price_sellers = torch.where((trade_indx > 0) & (trade_indx < (self.n_sellers - 1)),
                                           trade_price_init_sellers, trade_price_indx_buyers) * trade_sellers
                                           
         return trade_price_buyers,trade_price_sellers
