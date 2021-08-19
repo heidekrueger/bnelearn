@@ -9,6 +9,8 @@ import torch.nn as nn
 # For qpth #pylint:disable=ungrouped-imports
 from qpth.qp import QPFunction
 from tqdm import tqdm
+from functools import reduce
+from operator import mul
 
 # Some (but not all) of the features in this module need gurobi,
 # but we still want to be able to use the other features when gurobi is not
@@ -701,8 +703,8 @@ class LLLLGGAuction(Mechanism):
         #candidate_solutions might be on solver device that is different from self_device
         solutions = self.candidate_solutions.to(self.device)
 
-        n_batch, n_players, n_bundles = bids.shape
-        bids_flat = bids.view(n_batch, n_players * n_bundles)
+        *batch_sizes, n_players, n_bundles = bids.shape
+        bids_flat = bids.view(reduce(mul, batch_sizes, 1), n_players * n_bundles)
         solutions_welfare = torch.mm(bids_flat, torch.transpose(solutions, 0, 1))
         welfare, solution = torch.max(solutions_welfare, dim=1)  # maximizes over all possible allocations
         winning_bundles = solutions.index_select(0, solution)
