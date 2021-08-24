@@ -3,20 +3,17 @@
 import os
 import warnings
 from abc import ABC
-from typing import Callable, List
+from typing import List
 from functools import partial
 import torch
-import numpy as np
-from scipy import integrate, interpolate
-from scipy import optimize
 
-from bnelearn.bidder import Bidder
+from bnelearn.bidder import Bidder, LogUtilityBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.sampler import (SymmetricIPVSampler, UniformSymmetricIPVSampler)
 from bnelearn.strategy import ClosureStrategy
-from bnelearn.mechanism import kDoubleAuction, VickreyDoubleAuction
+from bnelearn.mechanism import kDoubleAuction, VickreyDoubleAuction, RandomizedDoubleAuctionMechanism
 from bnelearn.strategy import ClosureStrategy
 
 
@@ -39,6 +36,9 @@ def _truthful_bid(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
 
 
 class DoubleAuctionSingleItemExperiment(Experiment, ABC):
+    """Double Auction Experiment that supports single item markets (aka. 
+    bilateral bargaining).
+    """
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
@@ -69,12 +69,11 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
 
         super().__init__(config=config)
 
-    #TODO: change labels for agents
-    #def _plot(**kwargs):
-    #    super()._plot(**kwargs, labels: list = None):
+    def _plot(self, **kwargs):
+        kwargs['labels'] = self._get_model_names()
+        super()._plot(**kwargs)
 
     def _setup_mechanism(self):
-        
         if self.payment_rule == 'k_price':
             self.mechanism = kDoubleAuction(cuda=self.hardware.cuda, k_value = self.k,
                                             n_buyers=self.n_buyers, n_sellers=self.n_sellers)
@@ -95,10 +94,12 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
             return 'other'
 
     def _get_model_names(self):
-        if self.model_sharing:
-            return ['buyers', 'sellers']
+        if self.model_sharing or self.n_players == 2:
+            return ['buyer'  + ('s' if self.n_buyers  > 1 else ''),
+                    'seller' + ('s' if self.n_sellers > 1 else '')]
         else:
-            return super()._get_model_names() #TODO: change model names when model sharing is False
+            return [f'buyer {i}'  for i in range(self.n_buyers) ] \
+                 + [f'seller {i}' for i in range(self.n_sellers)]
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0,
                          enable_action_caching=False) -> Bidder:
@@ -109,7 +110,8 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
 
 
 class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExperiment):
-    """A Single Item Experiment that has the same valuation prior for all participating bidders.
+    """A Single Item Experiment that has the same valuation prior for all
+    participating bidders.
     """
 
     def __init__(self, config: ExperimentConfig):
@@ -187,6 +189,9 @@ class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExp
 
 
 class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmetricPriorSingleItemExperiment):
+    """Double Auction Experiment specifically for uniform symmetric priors and
+    a single item.
+    """
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
@@ -213,6 +218,7 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
         super().__init__(config=config)
 
     def _setup_sampler(self):
+        # TODO: `UniformSymmetricIPVSampler` should be used
         self.sampler = SymmetricIPVSampler(
             self.common_prior, self.n_players, self.valuation_size,
             self.config.learning.batch_size, self.config.hardware.device
@@ -244,4 +250,55 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
         else:
             name = ['double_auction','single_item', self.payment_rule, self.valuation_prior,
                     'symmetric', self.risk_profile, str(self.n_buyers) + 'b' + str(self.n_sellers) + 's']
+        return os.path.join(*name)
+
+
+class BilateralBargainingRandomExperiment(DoubleAuctionUniformSymmetricPriorSingleItemExperiment):
+    """Implements the bilateral bargaining random mechanism setup from Garratt
+    and Pycia [2020], Example 1.
+    """
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        self.n_players = self.config.setting.n_players
+        self.n_items = 1
+        self.n_buyers = self.config.setting.n_buyers
+        self.n_sellers = self.config.setting.n_sellers
+        self.observation_size = self.valuation_size = self.action_size = 1
+
+        if not hasattr(self, 'payment_rule'):
+            self.payment_rule = self.config.setting.payment_rule
+
+        # Prior
+        self.valuation_prior = 'uniform'
+        self.u_lo = torch.tensor(self.config.setting.u_lo[0], dtype=torch.float32,
+            device=self.config.hardware.device)
+        self.u_hi = torch.tensor(self.config.setting.u_hi[0], dtype=torch.float32,
+            device=self.config.hardware.device)
+        self.config.setting.common_prior = \
+            torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
+
+        if self.config.learning.model_sharing:
+            print("Model sharing not possible.")
+        self.model_sharing = False
+
+        super().__init__(config=config)
+
+    def _setup_mechanism(self):
+        if self.payment_rule == 'efficient_random':
+            self.mechanism = RandomizedDoubleAuctionMechanism(
+                cuda=self.hardware.cuda, u_lo=self.u_lo, u_hi=self.u_hi,
+                probabilistic_allocation=False)
+        else:
+            raise ValueError('Invalid Mechanism type!')
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0,
+                         enable_action_caching=False) -> Bidder:
+        seller = player_position > self.n_buyers - 1
+        return LogUtilityBidder(strategy=strategy, player_position=player_position,
+                                batch_size=batch_size,
+                                enable_action_caching=enable_action_caching,
+                                seller=seller)
+
+    def _get_logdir_hierarchy(self):
+        name = ['bilateral_bargaining_random']
         return os.path.join(*name)

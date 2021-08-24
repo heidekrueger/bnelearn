@@ -14,9 +14,10 @@ allocation for a seller is 1 when the seller sells an item.
 payment for a seller is the amount seller receives for an item.
 
 """
+from typing import Tuple
 import torch
 
-from .double_auction_mechanism import DeterministicDoubleAuctionMechanism
+from .double_auction_mechanism import DoubleAuctionMechanism, DeterministicDoubleAuctionMechanism
 
 
 class kDoubleAuction(DeterministicDoubleAuctionMechanism):
@@ -166,3 +167,84 @@ class VickreyDoubleAuction(DeterministicDoubleAuctionMechanism):
 #                             dim=player_dim).sum(dim=item_dim)
         
 #         return (allocations, payments)
+
+
+class RandomizedDoubleAuctionMechanism(DoubleAuctionMechanism):
+    """Randomized bilateral bargaining mechanism from Garratt and Pycia [2020],
+    Example 1.
+    """
+
+    def __init__(self, probabilistic_allocation: bool, u_lo: float, u_hi: float,
+                 **kwargs):
+        self.probabilistic_allocation = probabilistic_allocation
+        self.u_lo = u_lo
+        self.u_hi = u_hi
+        self.n_integral_evaluations: int = 10
+        super().__init__(n_buyers=1, n_sellers=1, **kwargs)
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+
+        assert bids.dim() >= 3, "Bid tensor must be at least 3D (*batch x players x items)."
+        # assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+        *batch_sizes, _, _ = bids.shape
+        # flaten bids, if there are multiple batch dims
+        bids = self._reshape_for_multiple_batch_dims(bids)
+        buyer_bids = bids[:, 0, :]
+        seller_asks = bids[:, 1, :]
+
+        # probability of trade for reported values
+        trade_probability = self._determine_trade_probability(seller_asks, buyer_bids)
+
+        # fixed payments that are independent of trade
+        payments = self._determine_payments(seller_asks, buyer_bids)
+
+        if not self.probabilistic_allocation:
+            trade_probability = torch.zeros_like(trade_probability).uniform_() \
+                < trade_probability
+
+        # transform trade prob to a separate seller and buyer allocation
+        allocations = torch.cat([1 - trade_probability.float(), trade_probability], axis=1)
+
+        return self._combine_allocations_and_payments(
+            allocations, payments, {"batch_sizes": batch_sizes, "n_items": 1})
+
+    def _determine_payments(self, seller_asks: torch.Tensor,
+                            buyer_bids: torch.Tensor) -> torch.Tensor:
+        """Calculate the payments for given asks and bids."""
+        payments = torch.zeros((seller_asks.shape[0], 2), device=seller_asks.device)
+
+        sum_of_reported_values = seller_asks + buyer_bids
+        payments[:, [0]] = seller_asks / sum_of_reported_values  # payments buyer
+        payments[:, [1]] = buyer_bids / sum_of_reported_values  # payments seller
+
+        return payments
+
+    def _determine_trade_probability(self, seller_asks: torch.Tensor,
+                                     buyer_bids: torch.Tensor) -> torch.Tensor:
+        """Calculate the probability of trade for given asks and bids."""
+        inner = lambda alpha, x: torch.div(
+            (-1)**alpha * (torch.log(self.u_hi + x) - torch.log(self.u_lo + x)), x)
+
+        # helper function to create equidistant grid for both integrals
+        mean = (self.u_hi + self.u_lo) / 2.
+        def _get_bounds(b):
+            domains_bounds =  torch.cat(
+                [b.repeat(1, self.n_integral_evaluations), mean * torch.ones_like(b)],
+                axis=1)
+
+            for n in range(1, self.n_integral_evaluations):
+                domains_bounds[:, n] = domains_bounds[:, 0] \
+                    + (float(n) / (self.n_integral_evaluations)) \
+                    * (domains_bounds[:, -1] - domains_bounds[:, 0])
+            return domains_bounds
+
+        seller_bound = _get_bounds(seller_asks)
+        buyer_bound = _get_bounds(buyer_bids)
+
+        integral_seller = (1./(self.u_hi - self.u_lo)) * torch.trapz(inner(0, seller_bound), seller_bound)
+        integral_buyer = (1./(self.u_hi - self.u_lo)) * torch.trapz(inner(1, buyer_bound), buyer_bound)
+
+        return (0.5 - integral_seller - integral_buyer).clip(0, 1).view(-1, 1)

@@ -205,24 +205,26 @@ if __name__ == '__main__':
     ### DOUBLE AUCTION EXPERIMENTS ###
     experiment_config, experiment_class = \
         ConfigurationManager(
-            experiment_type='double_auction_single_item_uniform_symmetric',
+            experiment_type='bilateral_bargaining_random',
             n_runs=1,
             n_epochs=2000
         ) \
         .set_setting(
             # risk=1.0,
-            payment_rule='k_price',
-            k=0.5,
+            # payment_rule='k_price',
+            # k=0.5,
         ) \
         .set_logging(
             eval_batch_size=2**22,
-            util_loss_batch_size=2**8,
-            util_loss_grid_size=2*10,
-            util_loss_frequency=25,
+            util_loss_batch_size=2**11,
+            util_loss_grid_size=2*11,
+            util_loss_frequency=100,
+            plot_frequency=100,
             best_response=True,
             log_root_dir=log_root_dir,
         )\
         .set_learning(
+            # learner_type='PGLearner',
             pretrain_iters=5,
         ) \
         .set_hardware(
@@ -240,18 +242,18 @@ if __name__ == '__main__':
     # experiment_config.learning.batch_size = 2 ** 2
     # experiment_config.logging.eval_batch_size = 2 ** 2
 
-    try:
-        experiment = experiment_class(experiment_config)
+    # try:
+    #     experiment = experiment_class(experiment_config)
 
-        # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
-        if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
-            experiment.run()
-        else:
-            raise Exception('Unable to perform the correct serialization')
+    #     # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
+    #     if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
+    #         experiment.run()
+    #     else:
+    #         raise Exception('Unable to perform the correct serialization')
 
-    except KeyboardInterrupt:
-        print('\nKeyboardInterrupt: released memory after interruption')
-        torch.cuda.empty_cache()
+    # except KeyboardInterrupt:
+    #     print('\nKeyboardInterrupt: released memory after interruption')
+    #     torch.cuda.empty_cache()
     experiment = experiment_class(experiment_config)
     experiment.run()
     torch.cuda.empty_cache()

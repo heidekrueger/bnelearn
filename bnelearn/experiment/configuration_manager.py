@@ -26,7 +26,8 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
                                                         AffiliatedObservationsExperiment)
-from bnelearn.experiment.double_auction_single_item_experiment import DoubleAuctionUniformSymmetricPriorSingleItemExperiment
+from bnelearn.experiment.double_auction_single_item_experiment import (DoubleAuctionUniformSymmetricPriorSingleItemExperiment,
+                                                                       BilateralBargainingRandomExperiment)
 
 # TODO: server-specific constant hardcoded. We need a more dynamic way to do this.
 # See gitlab issue #218
@@ -272,6 +273,15 @@ class ConfigurationManager:
         self.setting.n_sellers = 1
         self.setting.k = 0.5
 
+    def _init_bilateral_bargaining_random(self):
+        self.setting.payment_rule = 'efficient_random'
+        self.learning.model_sharing = True
+        self.setting.u_lo = [2]
+        self.setting.u_hi = [100]
+        self.setting.n_players = 2
+        self.setting.n_buyers = 1
+        self.setting.n_sellers = 1
+
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
         # Learning
@@ -368,6 +378,9 @@ class ConfigurationManager:
     def _post_init_double_auction_single_item_uniform_symmetric(self):
         pass
 
+    def _post_init_bilateral_bargaining_random(self):
+        pass
+
     experiment_types = {
         'single_item_uniform_symmetric':
             (UniformSymmetricPriorSingleItemExperiment, _init_single_item_uniform_symmetric,
@@ -397,7 +410,10 @@ class ConfigurationManager:
             (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
         'double_auction_single_item_uniform_symmetric':
             (DoubleAuctionUniformSymmetricPriorSingleItemExperiment, _init_double_auction_single_item_uniform_symmetric,
-            _post_init_double_auction_single_item_uniform_symmetric)
+            _post_init_double_auction_single_item_uniform_symmetric),
+        'bilateral_bargaining_random':
+            (BilateralBargainingRandomExperiment, _init_bilateral_bargaining_random,
+            _post_init_bilateral_bargaining_random),
         }
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):

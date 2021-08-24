@@ -279,3 +279,27 @@ class CombinatorialBidder(Bidder):
 
         welfare = (valuations * allocations).sum(dim=item_dimension)
         return welfare
+
+
+class LogUtilityBidder(Bidder):
+    """Bidder with logarithmic utility."""
+
+    def __init__(self, **kwargs):
+        if 'risk' in kwargs.keys() and not kwargs['risk'] in [1, None]:
+            print('Risk aversion not supported for this utility.')
+        super().__init__(**kwargs)
+
+    def get_utility(self, allocations, payments, valuations=None):
+        r"""Separable utility of the form
+        .. math::
+        u(v, a, p) = va + \log(p)
+        """
+        if valuations is None:
+            valuations = self._cached_valuations
+
+        # # Inital money holdings (irrelevant for ex post utility - only for gain)
+        # inital_money_holding_buyer = (1.0 + torch.exp(51))**(-1.0)
+        # inital_money_holding_seller = 1 - inital_money_holding_buyer
+
+        welfare = self.get_welfare(allocations, valuations)
+        return welfare + torch.log(payments)
