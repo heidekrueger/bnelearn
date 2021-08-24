@@ -127,10 +127,6 @@ class Environment(ABC):
         """
         pass #pylint: disable=unnecessary-pass
 
-    def is_empty(self):
-        """True if no agents in the environment"""
-        return len(self) == 0
-
 
 class MatrixGameEnvironment(Environment):
     """ An environment for matrix games.

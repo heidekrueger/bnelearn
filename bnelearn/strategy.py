@@ -362,7 +362,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
     @classmethod
     def load(cls, path: str, device='cpu'):
         """
-        Initializes a saved NeuralNetStrategy from ´path´.
+        Deserializes a saved NeuralNetStrategy from ´path´.
         """
 
         model_dict = torch.load(path, map_location=device)
