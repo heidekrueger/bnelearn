@@ -42,10 +42,13 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
-        self.n_players = self.config.setting.n_players
         self.n_items = 1
+
         self.n_buyers = self.config.setting.n_buyers
         self.n_sellers = self.config.setting.n_sellers
+        self.n_players = self.n_buyers + self.n_sellers
+        assert self.n_players == self.config.setting.n_players
+
         self.k = self.config.setting.k
         self.observation_size = self.valuation_size = self.action_size = 1
 
@@ -114,10 +117,13 @@ class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExp
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
-        self.n_players = self.config.setting.n_players
         self.n_items = 1
+
         self.n_buyers = self.config.setting.n_buyers
         self.n_sellers = self.config.setting.n_sellers
+        self.n_players = self.n_buyers + self.n_sellers
+        assert self.n_players == self.config.setting.n_players
+
         self.k = self.config.setting.k
 
         self.common_prior = self.config.setting.common_prior

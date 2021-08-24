@@ -8,6 +8,7 @@ implements reward allocation to agents.
 from abc import ABC, abstractmethod
 from typing import Callable, Set, Iterable, List, Tuple
 from copy import copy
+import inspect
 
 import torch
 
@@ -16,6 +17,7 @@ from bnelearn.mechanism import MatrixGame, Mechanism, DoubleAuctionMechanism
 from bnelearn.strategy import Strategy, TruthfulStrategy
 from bnelearn.sampler import ValuationObservationSampler
 from bnelearn.util.metrics import ex_interim_utility, ex_interim_util_loss
+from bnelearn.util.tensor_util import all_combinations
 
 
 class Environment(ABC):
@@ -422,27 +424,31 @@ class AuctionEnvironment(Environment):
         if redraw_valuations:
             self.draw_valuations()
 
-        # pylint: disable=protected-access
-        valuations = self._valuations[:batch_size, :, :]
-
-        action_length = self.agents[0].bid_size
-
-        # Calculate actual welfare under the current strategies
-        bid_profile = torch.zeros(batch_size, self.n_players, action_length,
-                                device=self.mechanism.device)
-        for pos, bid in self._generate_agent_actions():
-            bid_profile[:, pos, :] = bid[:batch_size, ...]
-        actual_allocations, _ = self.mechanism.play(bid_profile)
-
         # Efficiency of two-sided markets (double-acutions)
-        if DoubleAuctionMechanism in type(self.mechanism).__bases__:
+        if DoubleAuctionMechanism in inspect.getmro(type(self.mechanism)):
             if self.mechanism.n_buyers == 1 and self.mechanism.n_sellers == 1:
-                """A bilateral bargaining mechanism is ex post efficient iff the
-                probability of trade is 1 if the buyer reports a higher value than
-                the seller and 0 otherwise.
+                """Def 1 (M&S). A bilateral bargaining mechanism is ex post
+                efficient iff the buyer gets the object whenever her valuation
+                is higher, and the seller keeps the object whenever her
+                valuation is higher.
+
+                Def 2. A bilateral bargaining mechanism is ex post efficient
+                iff the probability of trade is 1 if the buyer reports a higher
+                value than the seller and 0 otherwise.
+
+                Note:
+                    Should be static and independent of strategies.
                 """
+                # let each valuation of one agent compete against all vluationns
+                # of the opponents
+                truthful_bid_profile = all_combinations(self._observations[:batch_size, ...])
+                allocations, _ = self.mechanism.play(truthful_bid_profile)
+
                 allocated_to_highest_reported_value = \
-                    actual_allocations[..., 0, 0] == (bid_profile[..., 0, 0] > bid_profile[..., 1, 0])
+                    allocations[..., 0, 0] == \
+                        (truthful_bid_profile[..., 0, 0] > truthful_bid_profile[..., 1, 0])
+                # ``allocated to buyer'' == ``buyer reported higher value''
+
                 efficiency = allocated_to_highest_reported_value.float().mean()
 
             else:
@@ -451,6 +457,19 @@ class AuctionEnvironment(Environment):
 
         # Efficiency of single-sided markets
         else:
+
+            # pylint: disable=protected-access
+            valuations = self._valuations[:batch_size, :, :]
+
+            action_length = self.agents[0].bid_size
+
+            # Calculate actual welfare under the current strategies
+            bid_profile = torch.zeros(batch_size, self.n_players, action_length,
+                                      device=self.mechanism.device)
+            for pos, bid in self._generate_agent_actions():
+                bid_profile[:, pos, :] = bid[:batch_size, ...]
+            actual_allocations, _ = self.mechanism.play(bid_profile)
+
             actual_welfare = torch.zeros(batch_size, device=self.mechanism.device)
             for a in self.agents:
                 actual_welfare += a.get_welfare(
@@ -475,7 +494,7 @@ class AuctionEnvironment(Environment):
         return efficiency
 
     def get_budget_balance(self, redraw_valuations: bool=False,
-                           batch_size: int=2**13) -> [float, float]:
+                           batch_size: int=2**10) -> [float, float]:
         """Calculate deviation from a budget balnced market.
 
         Definition: A market is budget balanced when payments from buyers and
@@ -492,10 +511,13 @@ class AuctionEnvironment(Environment):
         Returns:
             budget_balance (:list:) maximal budget superplus and maximal budget
                 defictit over considered batch.
+
+        Note:
+            Should be static and independent of strategies.
         """
 
         # Single sided auctions are budget balanced by definition
-        if not DoubleAuctionMechanism in type(self.mechanism).__bases__:
+        if not DoubleAuctionMechanism in inspect.getmro(type(self.mechanism)):
             return 0, 0
 
         batch_size = min(batch_size, self.batch_size)
@@ -503,13 +525,8 @@ class AuctionEnvironment(Environment):
         if redraw_valuations:
             self.draw_valuations()
 
-        action_length = self.agents[0].bid_size
-
-        # Calculate payments under the current strategies
-        bid_profile = torch.zeros(batch_size, self.n_players, action_length,
-                                  device=self.mechanism.device)
-        for pos, bid in self._generate_agent_actions():
-            bid_profile[:, pos, :] = bid[:batch_size, ...]
+        # Calculate all combinations of bids
+        bid_profile = all_combinations(self._observations[:batch_size, ...])
         _, payments = self.mechanism.play(bid_profile)
 
         # Differentiate sellers' and buyers' payments
@@ -529,11 +546,6 @@ class AuctionEnvironment(Environment):
 
         Measurement: Check that minimal utility over prior is non-negative.
 
-        TODO: Do we want this metric to be considering the current strategies
-        as is the case currently?! (It would be cleaner to calc. the maximum
-        utility per valuation over a grid of all alternative actionsm and then
-        take the minimum.)
-
         Args:
             redraw_valuations (:bool:) whether or not to redraw the valuations
                 of the agents.
@@ -542,22 +554,36 @@ class AuctionEnvironment(Environment):
         Returns:
             individual_rationality (:list:) of minimal utility over prior for
                 each agent.
+
+        Note:
+            Should be static and independent of strategies.
         """
         batch_size = min(batch_size, self.batch_size)
 
         if redraw_valuations:
             self.draw_valuations()
 
-        return [
+        actual_strategies = [copy(a.strategy) for a in self.agents]
+        for a in self.agents:  # all agents truthfull
+            a.strategy = TruthfulStrategy()
+
+        individual_rationality = [
             - ex_interim_utility(
                 self, player_position=a.player_position,
-                agent_observations=self._observations[:batch_size, a.player_position, :],
-                agent_actions=a.get_action(self._observations[:batch_size, a.player_position, :]),
+                agent_observations=self._observations
+                    [:batch_size, a.player_position, :],
+                agent_actions=a.get_action(self._observations
+                    [:batch_size, a.player_position, :]),
                 opponent_batch_size=batch_size,
                 device=self.mechanism.device
             ).min()
             for a in self.agents
         ]
+
+        for i, a in enumerate(self.agents):  # restore strategies
+            a.strategy = actual_strategies[i]
+
+        return individual_rationality
 
     def get_incentive_compatibility(self, redraw_valuations: bool=False,
                                     batch_size: int=2**10, grid_size: int=2**10) -> List[float]:
@@ -570,9 +596,9 @@ class AuctionEnvironment(Environment):
         other is expected to report truthful.
         * Formal: Iff for all $v$ and $v'$: $u(v, b=v) \geq u(v, b=v')$.
 
-        Measurement: Set all agents to truthful and measure the utility loss.
-        Positive values mean that we found actions different from truthful that
-        lead to higher utility.
+        Measurement: Set all agents to truthful and measure the utility loss on
+        a grid over the current player's valuations. Positive values mean that
+        we found actions different from truthful that lead to higher utility.
 
         Ususally, IC can be assumed b/c for any BNE of any bargaining, there
         is an equivalent IC direct mechanism that yields the same outocmes
@@ -589,7 +615,7 @@ class AuctionEnvironment(Environment):
                 when reporting truthfully for each agent.
 
         Note:
-            Should be static and independent of learning.
+            Should be static and independent of strategies.
         """
         batch_size = min(batch_size, self.batch_size)
 
@@ -604,7 +630,8 @@ class AuctionEnvironment(Environment):
             utility_loss, _ = zip(*[
                 ex_interim_util_loss(
                     env=self, player_position=a.player_position,
-                    agent_observations=self._observations[:batch_size, a.player_position, :],
+                    agent_observations=self._observations[
+                        :batch_size, a.player_position, :],
                     grid_size=grid_size
                 )
                 for a in self.agents
