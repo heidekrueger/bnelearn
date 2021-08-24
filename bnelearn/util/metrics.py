@@ -1,19 +1,14 @@
 """This module implements metrics that may be interesting."""
 
-import traceback
-from math import ceil
 from typing import Tuple
 
 import torch
-from tqdm import tqdm
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import Strategy
-
-_CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
-ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even batch_size=1 leads to OOM!"
+from bnelearn.util.tensor_util import apply_with_dynamic_mini_batching
 
 ## defines a mapping of internal metrics and their desired tensorboard output tags
 MAPPING_METRICS_TAGS = {
@@ -296,10 +291,13 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     )
     action_size = action_alternatives.shape[-1]
 
-    br_utility, br_indices =  \
-        _calculate_best_responses_with_dynamic_mini_batching(
-            env, player_position,
-            agent_observations, action_alternatives, opponent_batch_size)
+    get_br_utily_and_index = lambda obs: _get_best_responses_among_alternatives(
+        env, player_position, obs, action_alternatives, opponent_batch_size)
+    br_utility, br_indices = apply_with_dynamic_mini_batching(
+        function=get_br_utily_and_index,
+        args=agent_observations,
+        n_outputs=2, dtypes=[action_alternatives.dtype, torch.long])
+
 
     ##### calculate the loss and return best responses ###########
     utility_loss = (br_utility - utility_actual).relu_()
@@ -313,55 +311,6 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                  actual_was_best.logical_not() * action_alternatives[br_indices]
 
     return (utility_loss, br_actions)
-
-def _calculate_best_responses_with_dynamic_mini_batching(
-        env, player_position, agent_observations, action_alternatives, opponent_batch_size):
-    """This function wraps _get_best_responses_among_alternatives with
-    error handling for Out-Of-Memory problems.
-
-    Starting with the full batch, this method will cut the mini_batch_size
-    in half until the operation suceeds (or a different non OOM error occurs.)
-    """
-    ## start with full batch
-    device = agent_observations.device
-    agent_batch_size = agent_observations.shape[0]
-
-    br_utility = torch.empty(agent_batch_size,
-                             dtype=action_alternatives.dtype, device=device)
-    br_indices = torch.empty(agent_batch_size, dtype = torch.long, device=device)
-
-    mini_batch_size = agent_batch_size
-    calculation_successful = False
-
-    while not calculation_successful:
-        try:
-            print(f"Trying util loss calculation with batch_size {mini_batch_size}...")
-            mini_observations = agent_observations.split(mini_batch_size)
-            for i, mini_observation in tqdm(enumerate(mini_observations),
-                                            total =ceil(len(mini_observations))):
-                # get the indices corresponding to this mini batch
-                indices= slice(i*mini_batch_size, (i+1)*mini_batch_size)
-
-                br_utility[indices], br_indices[indices] =  \
-                    _get_best_responses_among_alternatives(
-                        env, player_position,
-                        mini_observation, action_alternatives,
-                        opponent_batch_size)
-
-            calculation_successful = True
-            print("\t ... success!")
-        except RuntimeError as e:
-            if not str(e).startswith(_CUDA_OOM_ERR_MSG_START):
-                raise e
-            if mini_batch_size <= 1:
-                traceback.print_exc()
-                # pylint: disable = raise-missing-from
-                raise RuntimeError(ERR_MSG_OOM_SINGLE_BATCH) 
-
-            print("\t... failed (OOM). Decreasing mini batch size.")
-            mini_batch_size = int(mini_batch_size / 2)
-
-    return br_utility, br_indices
 
 def _get_best_responses_among_alternatives(
         env: AuctionEnvironment, player_position: int,
