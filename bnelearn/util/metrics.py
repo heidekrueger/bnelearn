@@ -10,9 +10,6 @@ from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import Strategy
 from bnelearn.util.tensor_util import apply_with_dynamic_mini_batching
 
-_CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
-ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even batch_size=1 leads to OOM!"
-
 ## defines a mapping of internal metrics and their desired tensorboard output tags
 MAPPING_METRICS_TAGS = {
     'utilities':            'market/utilities',

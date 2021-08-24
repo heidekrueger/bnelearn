@@ -46,9 +46,13 @@ def apply_with_dynamic_mini_batching(
         dtypes: List[type]=[torch.float]
     ) -> List[torch.Tensor]:
     """Apply the function `function` batch wise to the tensor argument `args`
-    with error handling for Out-Of-Memory problems. Starting with the full
+    with error handling for CUDA Out-Of-Memory problems. Starting with the full
     batch, this method will cut the batch size in half until the operation
-    suceeds (or a different non OOM error occurs).
+    suceeds (or a non-CUDA-OOM error occurs).
+
+    NOTE: The automatic error handling applies to CUDA memory limits only. This
+    function does not provide any benefits when processing on CPU with regular
+    RAM.
 
     Args:
         function :callable: function to be evaluated.
