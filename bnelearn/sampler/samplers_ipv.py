@@ -170,7 +170,8 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
             n_players
             n_items: the number of items
             max_demand: the maximal number of items a bidder is interested in winning.
-            constant_marginal_values: whether or not the values are constant
+            constant_marginal_values: whether or not all values should be
+                constant (i.e. to enforce additive valuations on homogenous goods.)
             u_lo: lower bound for uniform distribution
             u_hi: upper bound for uniform distribtuion
             default_batch_size
