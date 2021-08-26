@@ -160,29 +160,32 @@ class Bidder(Player):
         welfare = self.get_welfare(allocations, valuations)
         payoff = welfare - payments
 
-        if self.risk == 1.0 and self.regret != None:
+        # check for regret 
+            #if self.regret != None:
+            #    regret = self.regret(allocations, payments, valuations, winning_bid)
+            #    payoff = payoff + regret
+
+        if self.risk == 1.0 and self.regret == None and self.loss == None:      
+            return payoff
+        elif self.risk != 1.0:
 
             # check for regret 
             if self.regret != None:
                 regret = self.regret(allocations, payments, valuations, winning_bid)
                 payoff = payoff + regret
-
-            return payoff
-        elif self.risk != 1.0:
 
             # payoff^alpha not well defined in negative domain for risk averse agents
             # the following is a memory-saving implementation of
             #return payoff.relu()**self.risk - (-payoff).relu()**self.risk
             payoff = payoff.relu().pow_(self.risk).sub_(payoff.neg_().relu_().pow_(self.risk))
 
-            # check for regret 
-            if self.regret != None:
-                regret = self.regret(allocations, payments, valuations, winning_bid)
-                payoff = payoff + regret
-
             return payoff
         elif self.loss != None:
             return self.loss(valuations, allocations, payoff)
+        elif self.regret != None:
+            regret = self.regret(allocations, payments, valuations, winning_bid)
+            payoff = payoff + regret
+            return payoff
         else:
             return payoff
 

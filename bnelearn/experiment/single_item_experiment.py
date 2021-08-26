@@ -5,6 +5,7 @@ import warnings
 from abc import ABC
 from typing import Callable, List
 from functools import partial
+from numpy.lib.arraysetops import isin
 import torch
 import numpy as np
 from scipy import integrate, interpolate
@@ -265,8 +266,11 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.common_prior = self.config.setting.common_prior
         self.positive_output_point = torch.stack([self.common_prior.mean] * action_size)
 
-        self.risk = float(self.config.setting.risk)
-        self.risk_profile = self.get_risk_profile(self.risk)
+        if isinstance(self.config.setting.risk, list):
+            self.risk = self.config.setting.risk
+        else:
+            self.risk = float(self.config.setting.risk)
+            self.risk_profile = self.get_risk_profile(self.risk)
 
         self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
@@ -849,7 +853,9 @@ class SingleItemSymmetricContestExperiment(UniformSymmetricPriorSingleItemExperi
 
 
     def _get_logdir_hierarchy(self):
-        if self.risk == 1.0 and self.payment_rule == "all_pay":
+        if isinstance(self.risk, list):
+            name = ['contest/all_pay/single_item/asymmetric_utility/']
+        elif self.risk == 1.0 and self.payment_rule == "all_pay":
             name = ['contest/all_pay/single_item/symmetric/neutral/']
         elif self.risk < 1.0 and self.payment_rule == "all_pay":
             name = ['contest/all_pay/single_item/symmetric/risk_averse/']
@@ -863,32 +869,53 @@ class SingleItemSymmetricContestExperiment(UniformSymmetricPriorSingleItemExperi
         loss = None
         regret = None
         if self.loss_coef != None:
-            loss = partial(self._loss)
+            loss = partial(self._loss,player_position=player_position)
         
         if regret != None:
-            regret = partial(self._regret)
+            regret = partial(self._regret, player_position=player_position)
+
+        if isinstance(self.risk, list):
+            risk = self.risk[player_position]
+        else:
+            risk = self.risk
 
         return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
-                      risk=1.0, regret=regret, loss=loss)
+                      risk=risk, regret=regret, loss=loss)
 
-    def _regret(self, allocations, payments, valuations, winning_bid):
+    def _regret(self, allocations, payments, valuations, winning_bid, player_position):
+
+        if isinstance(self.regret_coefficients[0], list):
+            regret_beta = self.regret_coefficients[player_position][0]
+            regret_gamma = self.regret_coefficients[player_position][1]
+        else:
+            regret_beta = self.regret_coefficients[0]
+            regret_gamma = self.regret_coefficients[1]
+
         regret = torch.zeros_like(payments)
         regret_mask = (allocations.squeeze()==0) & (winning_bid <= payments)
         loser_regret_mask = (allocations.squeeze()==0) & (winning_bid > payments)
-        regret[regret_mask] = -self.regret_coefficients[0] * payments[regret_mask]    
-        regret[loser_regret_mask] = -self.regret_coefficients[0] * payments[loser_regret_mask] - self.regret_coefficients[1] * (valuations.squeeze()[loser_regret_mask] - winning_bid[loser_regret_mask]) 
+        regret[regret_mask] = -regret_beta * payments[regret_mask]    
+        regret[loser_regret_mask] = -regret_beta * payments[loser_regret_mask] - regret_gamma * (valuations.squeeze()[loser_regret_mask] - winning_bid[loser_regret_mask]) 
         return regret
 
-    def _loss(self, valuations, allocations, payoff):
+    def _loss(self, valuations, allocations, payoff, player_position):
+
+        if isinstance(self.loss_coef[0], list):
+            loss_eta = self.loss_coef[player_position][0]
+            loss_lambda = self.loss_coef[player_position][1]
+        else:
+            loss_eta = self.loss_coef[0]
+            loss_lambda = self.loss_coef[1]
+
         reference_sampler = torch.distributions.uniform.Uniform(self.u_lo, self.u_hi)
         reference_points = reference_sampler.cdf(valuations) ** (self.n_players-1)
         reference_points.squeeze_()
         mask_good_win_dimension = (allocations.squeeze() == 1)
         mask_good_los_dimension = (allocations.squeeze() == 0)
         # win item 
-        payoff[mask_good_win_dimension] = payoff[mask_good_win_dimension] + self.loss_coef[0] * (1- reference_points[mask_good_win_dimension]) * valuations.squeeze()[mask_good_win_dimension]
+        payoff[mask_good_win_dimension] = payoff[mask_good_win_dimension] + loss_eta * (1 - reference_points[mask_good_win_dimension]) * valuations.squeeze()[mask_good_win_dimension]
         # loose item
-        payoff[mask_good_los_dimension] = payoff[mask_good_los_dimension] - self.loss_coef[0] * self.loss_coef[1] * reference_points[mask_good_los_dimension] * valuations.squeeze()[mask_good_los_dimension]
+        payoff[mask_good_los_dimension] = payoff[mask_good_los_dimension] - loss_eta * loss_lambda * reference_points[mask_good_los_dimension] * valuations.squeeze()[mask_good_los_dimension]
         return payoff
 
     def _setup_eval_environment(self):
