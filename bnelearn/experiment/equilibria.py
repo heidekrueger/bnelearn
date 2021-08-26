@@ -366,22 +366,24 @@ def _bne_multiunit_uniform_3x2_limit2(valuation, player_position=None):
     opt_bid[:, 2] = 0
     return opt_bid
 
-def bne_splitaward_2x2_1(experiment_config, payoff_dominant: bool=True):
-    """BNE pooling equilibrium in the split-award auction with 2 players and 2
-    lots (as in Anton and Yao, 1992). Actually, this is a continuum of BNEs of
-    which this function returns the upper bound (payoff dominat BNE) and the
-    one at the lower bound.
+def bne_splitaward_2x2_1_factory(experiment_config, payoff_dominant: bool=True):
+    """Factory method returning the BNE pooling equilibrium in the split-award
+    auction with 2 players and 2 lots (as in Anton and Yao, 1992).
+    
+    Actually, this is a continuum of BNEs of which this function returns the
+    upper bound (payoff dominat BNE) and the one at the lower bound.
 
-        Returns callable.
+    Returns:
+        optimal_bid (callable): The equilibrium bid function.
     """
     efficiency_parameter = experiment_config.efficiency_parameter
     u_lo = experiment_config.u_lo[0]
     u_hi = experiment_config.u_hi[0]
 
-    # cut off bids at top
-    _CUT_OFF = 4 * u_hi
+    # clip bids at top
+    clip_cutoff = 4 * u_hi
 
-    def _optimal_bid(valuation, player_position=None):
+    def optimal_bid(valuation, player_position=None):
 
         device = valuation.device
         dist = torch.distributions.Uniform(torch.tensor(u_lo, device=device),
@@ -392,10 +394,10 @@ def bne_splitaward_2x2_1(experiment_config, payoff_dominant: bool=True):
         sigma_bounds[:, 1] = efficiency_parameter * u_hi
         sigma_bounds[:, 0] = (1 - efficiency_parameter) * u_lo
 
-        _p_sigma = (1 - efficiency_parameter) * u_lo  # highest possible p_sigma
+        p_sigma = (1 - efficiency_parameter) * u_lo  # highest possible p_sigma
 
         def G(theta):
-            return _p_sigma + (_p_sigma - u_hi * efficiency_parameter * value_cdf(theta)) \
+            return p_sigma + (p_sigma - u_hi * efficiency_parameter * value_cdf(theta)) \
                     / (1 - value_cdf(theta))
 
         wta_bounds = 2 * sigma_bounds
@@ -407,32 +409,32 @@ def bne_splitaward_2x2_1(experiment_config, payoff_dominant: bool=True):
             wta_bounds[:, action_idx].view(-1, 1)),
             axis=1
         )
-        bid[bid > _CUT_OFF] = _CUT_OFF
+        bid[bid > clip_cutoff] = clip_cutoff
         return bid
 
-    return _optimal_bid
+    return optimal_bid
 
 
-def bne_splitaward_2x2_2(experiment_config):
-    """BNE WTA equilibrium in the split-award auction with 2 players and
-        2 lots (as in Anton and Yao Proposition 4, 1992).
+def bne_splitaward_2x2_2_factory(experiment_config):
+    """Factory method returning the BNE WTA equilibrium in the split-award 
+    auction with 2 players and 2 lots (as in Anton and Yao Proposition 4, 1992).
 
-        Returns callable.
+    Returns:
+        optimal_bid (callable): The equilibrium bid function.
     """
     efficiency_parameter = experiment_config.efficiency_parameter
     u_lo = experiment_config.u_lo
     u_hi = experiment_config.u_hi
     n_players = experiment_config.n_players
 
-    def _optimal_bid(valuation, player_position=None):
+    def optimal_bid(valuation, player_position=None):
         device = valuation.device
-        opt_bid = torch.zeros_like(valuation)
         valuation_cdf = torch.distributions.Uniform(
             torch.tensor(u_lo[0], device=device),
             torch.tensor(u_hi[0], device=device)).cdf
 
-        integral_function = lambda x: torch.pow(1 - valuation_cdf(x), n_players - 1)
-        integral = - cumulatively_integrate(integral_function, 
+        integrand = lambda x: torch.pow(1 - valuation_cdf(x), n_players - 1)
+        integral = - cumulatively_integrate(integrand, 
                                             upper_bounds = valuation[:, [1]],
                                             lower_bound=u_hi[0] - 1e-4)
 
@@ -445,6 +447,6 @@ def bne_splitaward_2x2_2(experiment_config):
         opt_bid[opt_bid < 0] = 0
         return opt_bid
 
-    return _optimal_bid
+    return optimal_bid
 
 ###############################################################################
