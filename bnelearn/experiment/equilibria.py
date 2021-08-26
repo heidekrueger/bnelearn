@@ -10,8 +10,7 @@ from typing import Callable, List, Union
 import torch
 import numpy as np
 from scipy import interpolate, optimize
-from bnelearn.util.distribution_util import copy_dist_to_device
-from bnelearn.util.integration import cum_integrate
+from bnelearn.util.integration import cumulatively_integrate
 ###############################################################################
 #######   Known equilibrium bid functions                                ######
 ###############################################################################
@@ -40,7 +39,7 @@ def bne_fpsb_ipv_symmetric_generic_prior_risk_neutral(
     Fpowered = lambda v: torch.pow(prior_cdf(v), n_players - 1)
 
     # calculate numerator integrals
-    numerator = cum_integrate(Fpowered, valuation)
+    numerator = cumulatively_integrate(Fpowered, upper_bounds = valuation)
 
     return valuation - numerator / Fpowered(valuation)
 
@@ -433,8 +432,9 @@ def bne_splitaward_2x2_2(experiment_config):
             torch.tensor(u_hi[0], device=device)).cdf
 
         integral_function = lambda x: torch.pow(1 - valuation_cdf(x), n_players - 1)
-        integral = - cum_integrate(integral_function, valuation[:, [1]],
-                                   lower_bound=u_hi[0] - 1e-4)
+        integral = - cumulatively_integrate(integral_function, 
+                                            upper_bounds = valuation[:, [1]],
+                                            lower_bound=u_hi[0] - 1e-4)
 
         opt_bid_100 = valuation[:, [1]] + integral \
             / torch.pow(1 - valuation_cdf(valuation[:, [1]]), n_players - 1)
