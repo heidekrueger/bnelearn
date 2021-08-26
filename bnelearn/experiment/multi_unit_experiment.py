@@ -14,9 +14,9 @@ from bnelearn.bidder import Bidder, ReverseBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
-from bnelearn.experiment.equilibria import (_multiunit_bne,
-                                            _optimal_bid_splitaward2x2_1,
-                                            _optimal_bid_splitaward2x2_2)
+from bnelearn.experiment.equilibria import (multiunit_bne_factory,
+                                            bne_splitaward_2x2_1,
+                                            bne_splitaward_2x2_2)
 from bnelearn.mechanism import (FPSBSplitAwardAuction,
                                 MultiUnitDiscriminatoryAuction,
                                 MultiUnitUniformPriceAuction,
@@ -106,6 +106,8 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
         # Set properties of prior
         self.constant_marginal_values = self.config.setting.constant_marginal_values
         self.item_interest_limit = self.config.setting.item_interest_limit
+        self.config.setting.common_prior = \
+            torch.distributions.uniform.Uniform(self.u_lo[0], self.u_hi[0])
 
         if self.config.setting.pretrain_transform is not None:
             self.pretrain_transform = self.config.setting.pretrain_transform
@@ -139,6 +141,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
             self.sampler = MultiUnitValuationObservationSampler(
                 n_players=self.n_players, n_items=self.n_units,
                 max_demand=self.item_interest_limit,
+                constant_marginal_values=self.constant_marginal_values,
                 u_lo=self.u_lo[0], u_hi=self.u_hi[0],
                 default_batch_size=default_batch_size,
                 default_device=device)
@@ -148,6 +151,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
                 MultiUnitValuationObservationSampler(
                     n_players=1, n_items=self.n_units,
                     max_demand=self.item_interest_limit,
+                    constant_marginal_values=self.constant_marginal_values,
                     u_lo=self.u_lo[i], u_hi=self.u_hi[i],
                     default_batch_size=default_batch_size,
                     default_device=device)
@@ -173,7 +177,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
     def _check_and_set_known_bne(self):
         """check for available BNE strategy"""
         if self.correlation in [0.0, None] and self.config.setting.correlation_types in ['independent', None]:
-            self._optimal_bid = _multiunit_bne(self.config.setting, self.config.setting.payment_rule)
+            self._optimal_bid = multiunit_bne_factory(self.config.setting, self.config.setting.payment_rule)
             return self._optimal_bid is not None
         return super()._check_and_set_known_bne()
 
@@ -198,7 +202,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
                       figure_name=figure_name, plot_points=plot_points)
 
         # 3D plot if available
-        if self.n_units == 2:
+        if self.n_units == 2 and not self.constant_marginal_values:
             # Discard BNEs as they're making 3d plots more complicated
             if self.known_bne and plot_data[0].shape[1] > len(self.models):
                 plot_data = [d[:, :len(self.models), :] for d in plot_data]
@@ -295,9 +299,9 @@ class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
         if self.config.setting.n_units == 2 and self.config.setting.n_players == 2 \
             and self.risk == 1 and self.correlation == 0:
             self._optimal_bid = [
-                _optimal_bid_splitaward2x2_1(self.config.setting, True),
-                _optimal_bid_splitaward2x2_1(self.config.setting, False),
-                _optimal_bid_splitaward2x2_2(self.config.setting)
+                bne_splitaward_2x2_1(self.config.setting, True),
+                bne_splitaward_2x2_1(self.config.setting, False),
+                bne_splitaward_2x2_2(self.config.setting)
             ]
             return True
         return super()._check_and_set_known_bne()
