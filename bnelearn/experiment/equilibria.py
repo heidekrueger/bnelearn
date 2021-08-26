@@ -36,12 +36,12 @@ def bne_fpsb_ipv_symmetric_generic_prior_risk_neutral(
         valuation = torch.tensor(valuation, dtype=torch.float)
 
     # shorthand notation for F^(n-1)
-    Fpowered = lambda v: torch.pow(prior_cdf(v), n_players - 1)
+    cdf_powered = lambda v: torch.pow(prior_cdf(v), n_players - 1)
 
     # calculate numerator integrals
-    numerator = cumulatively_integrate(Fpowered, upper_bounds = valuation)
+    numerator = cumulatively_integrate(cdf_powered, upper_bounds = valuation)
 
-    return valuation - numerator / Fpowered(valuation)
+    return valuation - numerator / cdf_powered(valuation)
 
 
 def bne_fpsb_ipv_symmetric_uniform_prior(
