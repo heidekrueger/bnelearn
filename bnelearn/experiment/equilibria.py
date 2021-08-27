@@ -303,8 +303,8 @@ def _bne_multiunit_discriminatory_2x2_cmv(prior):
 
         raise NotImplementedError('BNE not implmented for this prior.')
 
-    elif isinstance(prior, torch.distributions.normal.Normal):
-        valuation_pdf = prior.pdf
+    elif isinstance(prior, torch.distributions.Distribution):
+        valuation_pdf = lambda x: torch.exp(prior.log_prob(x))
         valuation_cdf = prior.cdf
 
     else:
@@ -413,7 +413,6 @@ def bne_splitaward_2x2_1_factory(experiment_config, payoff_dominant: bool=True):
         return bid
 
     return optimal_bid
-
 
 def bne_splitaward_2x2_2_factory(experiment_config):
     """Factory method returning the BNE WTA equilibrium in the split-award 

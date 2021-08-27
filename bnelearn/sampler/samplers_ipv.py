@@ -211,7 +211,8 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         profile[..., self.max_demand:self.n_items] = 0.0
         # valuations are constant
         if self._constant_marginal_values:
-            profile[..., :, 1:] = profile[..., :, [0]].repeat(*[1]*(len(profile.shape) - 1), profile.shape[-1] - 1)
+            profile[..., :, 1:] = profile[..., :, [0]] \
+                .repeat(*[1]*(len(profile.shape) - 1), profile.shape[-1] - 1)
         return profile
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,

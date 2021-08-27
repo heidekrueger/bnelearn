@@ -15,8 +15,8 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.experiment.equilibria import (multiunit_bne_factory,
-                                            bne_splitaward_2x2_1,
-                                            bne_splitaward_2x2_2)
+                                            bne_splitaward_2x2_1_factory,
+                                            bne_splitaward_2x2_2_factory)
 from bnelearn.mechanism import (FPSBSplitAwardAuction,
                                 MultiUnitDiscriminatoryAuction,
                                 MultiUnitUniformPriceAuction,
