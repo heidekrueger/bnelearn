@@ -299,9 +299,9 @@ class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
         if self.config.setting.n_units == 2 and self.config.setting.n_players == 2 \
             and self.risk == 1 and self.correlation == 0:
             self._optimal_bid = [
-                bne_splitaward_2x2_1(self.config.setting, True),
-                bne_splitaward_2x2_1(self.config.setting, False),
-                bne_splitaward_2x2_2(self.config.setting)
+                bne_splitaward_2x2_1_factory(self.config.setting, True),
+                bne_splitaward_2x2_1_factory(self.config.setting, False),
+                bne_splitaward_2x2_2_factory(self.config.setting)
             ]
             return True
         return super()._check_and_set_known_bne()

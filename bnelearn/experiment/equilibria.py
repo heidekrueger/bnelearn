@@ -291,24 +291,19 @@ def _bne_multiunit_discriminatory_2x2(valuation, player_position=None):
     opt_bid = opt_bid.sort(dim=1, descending=True)[0]
     return opt_bid
 
-def _bne_multiunit_discriminatory_2x2_cmv(prior):
-    """ BNE strategy in the multi-unit discriminatory price auction 2 players and 2 units
-        with constant marginal valuations
+def _bne_multiunit_discriminatory_2x2_cmv(prior: torch.distributions.Distribution) -> Callable:
+    """BNE strategy in the multi-unit discriminatory price auction with two
+    players, two units, and with constant marginal valuations.
     """
+    # Simplify computation for uniform prior case
     if isinstance(prior, torch.distributions.uniform.Uniform):
         if prior.low == 0 and prior.high == 1:
             def _optimal_bid(valuation, player_position=None):
                 return valuation / 2.0
             return _optimal_bid
 
-        raise NotImplementedError('BNE not implmented for this prior.')
-
-    elif isinstance(prior, torch.distributions.Distribution):
-        valuation_pdf = lambda x: torch.exp(prior.log_prob(x))
-        valuation_cdf = prior.cdf
-
-    else:
-        raise NotImplementedError('BNE not implmented for this prior.')
+    valuation_pdf = lambda x: torch.exp(prior.log_prob(x))
+    valuation_cdf = prior.cdf
 
     def _optimal_bid(valuation, player_position=None):
         batch_size, n_items = valuation.shape
