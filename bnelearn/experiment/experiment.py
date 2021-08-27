@@ -192,6 +192,18 @@ class Experiment(ABC):
             )
             for m_id, model in enumerate(self.models)]
 
+    @abstractmethod
+    def pretrain_transform(self, player_position: int) -> callable:
+        """Some experiments need specific pretraining transformations.
+
+        Args:
+            player_position (:int:) the player for which the transformation is
+                requested.
+
+        Returns
+            (:callable:) pretraining transformation
+        """
+
     def _setup_bidders(self):
         """
         1. Create and save the models and bidders

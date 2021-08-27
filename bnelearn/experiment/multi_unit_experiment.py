@@ -306,17 +306,16 @@ class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
             return True
         return super()._check_and_set_known_bne()
 
-    def pretrain_transform(self, input_tensor):
-        """Pretrain transformation for this setting"""
-        temp = torch.clone(input_tensor)
-        if input_tensor.shape[1] == 1:
-            output_tensor = torch.cat((
-                temp,
-                self.efficiency_parameter * temp
-            ), 1)
-        else:
-            output_tensor = temp
-        return output_tensor
+    def pretrain_transform(self, player_position):
+        def transform(input_tensor):
+            temp = torch.clone(input_tensor)
+            if input_tensor.shape[1] == 1:
+                output_tensor = torch.cat(
+                    (temp, self.efficiency_parameter * temp), 1)
+            else:
+                output_tensor = temp
+            return output_tensor
+        return transform
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=False):
         """Standard strat_to_bidder method, but with ReverseBidder"""
