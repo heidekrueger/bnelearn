@@ -1,3 +1,6 @@
+"""Auction mechanism for combinatorial auctions (where bidders are interested
+in bundles of items).
+"""
 import os
 import sys
 from typing import Tuple
@@ -625,7 +628,7 @@ class LLGFullAuction(Mechanism):
             welfare: torch.Tensor, dims (batch_size), values = [0, Inf].
 
         """
-        batch_dim, player_dim, item_dim = 0, 1, 2
+        _, player_dim, item_dim = 0, 1, 2
         # welfare per batch and per player (reduced all items)
         welfare = (valuations * allocations).sum(axis=item_dim)
         # exclude players and sum over remaining

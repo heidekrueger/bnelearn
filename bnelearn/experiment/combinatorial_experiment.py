@@ -27,7 +27,7 @@ from bnelearn.mechanism import (
 from bnelearn.bidder import Bidder, CombinatorialBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
-from .experiment import Experiment
+from bnelearn.experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
 
 import bnelearn.util.logging as logging_utils
@@ -336,11 +336,11 @@ class LLGFullExperiment(LocalGlobalExperiment):
             if player_position == 1:
                 return torch.cat([
                     torch.zeros_like(valuation),  # item A
-                    valuation,  # item B
-                    valuation], axis=1)  # bundle {A, B}
+                    valuation,                    # item B
+                    valuation], axis=1)           # bundle {A, B}
             if player_position == 2:
                 return torch.cat([
-                    torch.zeros_like(valuation),  # TODO ?
+                    torch.zeros_like(valuation),
                     torch.zeros_like(valuation),
                     valuation], axis=1)
 
