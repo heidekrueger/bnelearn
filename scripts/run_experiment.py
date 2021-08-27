@@ -111,24 +111,24 @@ if __name__ == '__main__':
     #    n_runs=1, n_epochs=20000
     # ) \
     #     .set_logging(log_root_dir=log_root_dir) \
+    # #     .get_config()
+    # experiment_config, experiment_class = \
+    #     ConfigurationManager(
+    #         experiment_type='single_item_uniform_symmetric',
+    #         n_runs=1, n_epochs=500
+    #     ) \
+    #     .set_learning(
+    #         learner_type='PGLearner',
+    #         pretrain_iters=500
+    #     ) \
+    #     .set_logging(
+    #         eval_batch_size=2**18,
+    #         util_loss_batch_size=2**10,
+    #         util_loss_grid_size=2**10,
+    #         util_loss_frequency=50,
+    #         plot_frequency=10,
+    #         log_root_dir=log_root_dir) \
     #     .get_config()
-    experiment_config, experiment_class = \
-        ConfigurationManager(
-            experiment_type='single_item_uniform_symmetric',
-            n_runs=1, n_epochs=500
-        ) \
-        .set_learning(
-            learner_type='PGLearner',
-            pretrain_iters=500
-        ) \
-        .set_logging(
-            eval_batch_size=2**18,
-            util_loss_batch_size=2**10,
-            util_loss_grid_size=2**10,
-            util_loss_frequency=50,
-            plot_frequency=10,
-            log_root_dir=log_root_dir) \
-        .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=3) \
     #     .set_setting(gamma=0.5) \
@@ -140,23 +140,28 @@ if __name__ == '__main__':
     #     .get_config()
 
     # RuntimeError: Sizes of tensors must match
+
     experiment_config, experiment_class = \
         ConfigurationManager(
-            experiment_type='multiunit', n_runs=1, n_epochs=2000
+            experiment_type='llg_full',
+            n_runs=1, n_epochs=500,
+            seeds=[69]
         ) \
         .set_setting(
-            payment_rule='uniform',
+            payment_rule='mrcs_favored',
         ) \
         .set_learning(
+            batch_size=2**15,
             model_sharing=True,
-            pretrain_iters=100,
+            pretrain_iters=500,
         ) \
         .set_logging(
-            eval_batch_size=2**18,
-            util_loss_batch_size=2**9,
+            eval_batch_size=2**10,
+            util_loss_batch_size=2**8,
             util_loss_grid_size=2**10,
             util_loss_frequency=50,
             best_response=True,
+            plot_frequency=25,
             cache_eval_actions=True,
             log_root_dir=log_root_dir,
         ) \

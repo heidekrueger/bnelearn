@@ -211,7 +211,9 @@ class Experiment(ABC):
             ).to(self.hardware.device)
 
         self.bidders = [
-            self._strat_to_bidder(strategy=self.models[m_id], batch_size=self.learning.batch_size, player_position=i)
+            self._strat_to_bidder(strategy=self.models[m_id],
+                                  batch_size=self.learning.batch_size,
+                                  player_position=i)
             for i, m_id in enumerate(self._bidder2model)]
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
@@ -223,14 +225,15 @@ class Experiment(ABC):
             if hasattr(self, 'pretrain_transform'):
                 pretrain_transform = self.pretrain_transform  # pylint: disable=no-member
             else:
-                pretrain_transform = None
+                pretrain_transform = lambda x: None
 
             _, obs = self.sampler.draw_profiles()
 
             for i, model in enumerate(self.models):
                 pos = self._model2bidder[i][0]
-                model.pretrain(obs[:, pos, :],
-                               self.learning.pretrain_iters, pretrain_transform)
+                model.pretrain(obs[:, pos, :], self.learning.pretrain_iters,
+                               # bidder specific pretraining (e.g. for LLGFull)
+                               pretrain_transform(self._model2bidder[i][0]))
 
     def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding
@@ -308,10 +311,16 @@ class Experiment(ABC):
             # dim: [points, models, valuation_size]
             # get one representative player for each model
             model_players = [m[0] for m in self._model2bidder]
+
+            if self.observation_size == self.action_size:
+                generate_gird = self.sampler.generate_valuation_grid
+            else:
+                generate_gird = self.sampler.generate_reduced_grid
+
             self.v_opt[bne_id] = torch.stack(
-                [self.sampler.generate_valuation_grid(i, self.plot_points)
-                 for i in model_players],
+                [generate_gird(i, self.plot_points) for i in model_players],
                 dim=1)
+
             self.b_opt[bne_id] = torch.stack(
                 [self._optimal_bid[bne_id](
                     self.v_opt[bne_id][:, model_id, :],
@@ -666,14 +675,15 @@ class Experiment(ABC):
             b = torch.stack([self.env.agents[b[0]].get_action(o[:, i, ...])
                              for i, b in enumerate(self._model2bidder)], dim=1)
 
-            labels = ['NPGA agent {}'.format(i) for i in range(len(self.models))]
+            labels = [f'NPGA {self._get_model_names()[i]}' for i in range(len(self.models))]
             fmts = ['o'] * len(self.models)
             if self.known_bne and self.logging.log_metrics['opt']:
                 for env_idx, _ in enumerate(self.bne_env):
                     o = torch.cat([o, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
-                    labels += [f"BNE{'_' + str(env_idx + 1) if len(self.bne_env) > 1 else ''} agent {j}"
-                               for j in range(len(self.models))]
+                    labels += [
+                        f"BNE{'_' + str(env_idx + 1) if len(self.bne_env) > 1 else ''} {self._get_model_names()[j]}"
+                        for j in range(len(self.models))]
                     fmts += ['--'] * len(self.models)
 
             self._plot(plot_data=(o, b), writer=self.writer, figure_name='bid_function',

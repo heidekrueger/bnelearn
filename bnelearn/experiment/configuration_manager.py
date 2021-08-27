@@ -212,18 +212,18 @@ class ConfigurationManager:
     #
     #     return self
 
-    # def _init_llg_full(self):
-    #     self.learning.model_sharing = False
-    #     self.setting.u_lo = [0, 0, 0]
-    #     self.setting.u_hi = [1, 1, 2]
-    #     self.setting.n_players = 3
-    #     self.setting.payment_rule = 'first_price'
-    #     self.setting.correlation_groups = [[0, 1], [2]]
-    #     self.setting.gamma = 0.0
-    #     self.logging.log_metrics = {'opt': True,
-    #                                 'util_loss': True,
-    #                                 'efficiency': False,
-    #                                 'revenue': False}
+    def _init_llg_full(self):
+        self.learning.model_sharing = False
+        self.setting.u_lo = [0, 0, 0]
+        self.setting.u_hi = [1, 1, 2]
+        self.setting.n_players = 3
+        self.setting.payment_rule = 'mrcs_favored'
+        self.setting.correlation_groups = [[0, 1], [2]]
+        self.setting.gamma = 0.0
+        self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
+                                    'efficiency': False,
+                                    'revenue': False}
 
     def _init_llllgg(self):
         self.logging.util_loss_batch_size = 2 ** 12
@@ -346,6 +346,12 @@ class ConfigurationManager:
             self.setting.u_hi.insert(0, self.setting.u_hi[0])
         self.setting.u_hi[-1] = self.setting.n_players - 1
 
+    def _post_init_llg_full(self):
+        if self.learning.model_sharing:
+            warnings.warn("Model sharing not possible in this setting.")
+            self.learning.model_sharing = False
+        self._post_init_llg()
+
     def _post_init_llllgg(self):
         pass
 
@@ -374,8 +380,8 @@ class ConfigurationManager:
            (AffiliatedObservationsExperiment, _init_affiliated_observations, _post_init_affiliated_observations),
         'llg':
             (LLGExperiment, _init_llg, _post_init_llg),
-        # 'llg_full':
-        #     (LLGFullExperiment, _init_llg_full, _post_init_llg),
+        'llg_full':
+            (LLGFullExperiment, _init_llg_full, _post_init_llg_full),
         'llllgg':
             (LLLLGGExperiment, _init_llllgg, _post_init_llllgg),
         'multiunit':
