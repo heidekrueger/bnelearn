@@ -192,9 +192,9 @@ class Experiment(ABC):
             )
             for m_id, model in enumerate(self.models)]
 
-    @abstractmethod
     def pretrain_transform(self, player_position: int) -> callable:
-        """Some experiments need specific pretraining transformations.
+        """Some experiments need specific pretraining transformations. In
+        general, no transformation (aka. the identity function) is fine.
 
         Args:
             player_position (:int:) the player for which the transformation is
@@ -203,6 +203,7 @@ class Experiment(ABC):
         Returns
             (:callable:) pretraining transformation
         """
+        return lambda x: x
 
     def _setup_bidders(self):
         """
@@ -234,18 +235,13 @@ class Experiment(ABC):
         if self.learning.pretrain_iters > 0:
             print('Pretraining...')
 
-            if hasattr(self, 'pretrain_transform'):
-                pretrain_transform = self.pretrain_transform  # pylint: disable=no-member
-            else:
-                pretrain_transform = lambda x: None
-
             _, obs = self.sampler.draw_profiles()
 
             for i, model in enumerate(self.models):
                 pos = self._model2bidder[i][0]
                 model.pretrain(obs[:, pos, :], self.learning.pretrain_iters,
                                # bidder specific pretraining (e.g. for LLGFull)
-                               pretrain_transform(self._model2bidder[i][0]))
+                               self.pretrain_transform(self._model2bidder[i][0]))
 
     def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding

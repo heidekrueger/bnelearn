@@ -24,7 +24,7 @@ import torch
 from bnelearn.mechanism import (
     LLGAuction, LLGFullAuction, LLLLGGAuction
 )
-from bnelearn.bidder import Bidder
+from bnelearn.bidder import Bidder, CombinatorialBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
 from .experiment import Experiment
@@ -450,6 +450,18 @@ class LLGFullExperiment(LocalGlobalExperiment):
 
     def _get_model_names(self):
         return ['local 1', 'local 2', 'global']
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0,
+                         enable_action_caching=False):
+        return CombinatorialBidder(
+            strategy=strategy,
+            player_position=player_position,
+            batch_size=batch_size,
+            valuation_size=self.valuation_size,
+            observation_size=self.observation_size,
+            risk=self.risk,
+            enable_action_caching=enable_action_caching
+        )
 
     def _plot(self, **kwargs):  # pylint: disable=arguments-differ
         kwargs['x_label'] = ['item A', 'item B', 'bundle']

@@ -112,17 +112,20 @@ ids_lg, *testdata_lg = zip(*[
                                         correlation_types='Bernoulli_weights', gamma=1.0)
                            .get_config(),
         True],
-
-
     [
-        '6-LLLLGG-fp-no_model_sharing',
+        '6-LLG-full',
+        *ConfigurationManager(experiment_type='llg_full', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
+                           .get_config(),
+        True],
+    [
+        '7-LLLLGG-fp-no_model_sharing',
         *ConfigurationManager(experiment_type='llllgg', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
                            .set_learning(model_sharing=False)
                            .get_config(),
         False
     ],
     [
-        '7-LLLLGG-vcg',
+        '8-LLLLGG-vcg',
         *ConfigurationManager(experiment_type='llllgg', n_runs=N_RUNS, n_epochs=N_EPOCHS_LLLLGG) \
                            .set_setting(payment_rule='vcg')
                            .get_config(),
