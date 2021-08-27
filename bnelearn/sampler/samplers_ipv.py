@@ -162,7 +162,7 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
     """
 
     def __init__(self, n_players: int, n_items: int = 1,
-                 max_demand: int = None,
+                 max_demand: int = None, constant_marginal_values: bool = False,
                  u_lo: float = 0.0, u_hi: float = 1.0,
                  default_batch_size: int = 1, default_device = None):
         """
@@ -170,6 +170,8 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
             n_players
             n_items: the number of items
             max_demand: the maximal number of items a bidder is interested in winning.
+            constant_marginal_values: whether or not all values should be
+                constant (i.e. to enforce additive valuations on homogenous goods.)
             u_lo: lower bound for uniform distribution
             u_hi: upper bound for uniform distribtuion
             default_batch_size
@@ -185,6 +187,7 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         assert u_lo >= 0, "valuations must be nonnegative"
         assert u_hi > u_lo, "upper bound must larger than lower bound"
 
+        self._constant_marginal_values = constant_marginal_values
         self._u_lo = u_lo
         self._u_hi = u_hi
 
@@ -206,7 +209,10 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         profile, _ = profile.sort(dim=-1, descending=True)
         # valuations beyond the limit are 0
         profile[..., self.max_demand:self.n_items] = 0.0
-
+        # valuations are constant
+        if self._constant_marginal_values:
+            profile[..., :, 1:] = profile[..., :, [0]] \
+                .repeat(*[1]*(len(profile.shape) - 1), profile.shape[-1] - 1)
         return profile
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,

@@ -152,7 +152,7 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.Tensor, bid_prof
 
 
 def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid_profile: torch.Tensor, bidder: Bidder,
-                      grid: torch.Tensor, half_precision = False, player_position: int = None):
+                      grid: torch.Tensor, half_precision = False):
     r"""
     # TODO: do we really need this or can we delete it in general?
     # If we decide to keep it, check implementation in detail! (Removing many many todos in the body)

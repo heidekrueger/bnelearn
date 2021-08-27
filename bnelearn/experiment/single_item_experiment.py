@@ -7,8 +7,10 @@ from functools import partial
 from typing import List
 
 import torch
+from scipy import integrate
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
+from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.experiment.equilibria import (
     bne_fpsb_ipv_asymmetric_uniform_overlapping_priors_risk_neutral,
@@ -26,9 +28,7 @@ from bnelearn.sampler import (AffiliatedValuationObservationSampler,
                               SymmetricIPVSampler, UniformSymmetricIPVSampler)
 from bnelearn.strategy import ClosureStrategy
 from bnelearn.util.distribution_util import copy_dist_to_device
-from scipy import integrate
 
-from .experiment import Experiment
 
 
 # TODO: single item experiment should not be abstract and hold all logic for learning.
