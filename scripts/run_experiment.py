@@ -77,12 +77,24 @@ if __name__ == '__main__':
     # ) \
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .get_config()
-    #experiment_config, experiment_class = ConfigurationManager(
-    #      experiment_type='single_item_asymmetric_uniform_disjunct',
-    #      n_runs=1, n_epochs=200
-    #) \
-    #    .set_logging(log_root_dir=log_root_dir) \
-    #    .get_config()
+
+    experiment_config, experiment_class = \
+        ConfigurationManager(
+            experiment_type='single_item_uniform_symmetric',
+            n_runs=1, n_epochs=500
+        ) \
+        .set_learning(
+            learner_type='PGLearner',
+            pretrain_iters=500
+        ) \
+        .set_logging(
+            eval_batch_size=2**18,
+            util_loss_batch_size=2**10,
+            util_loss_grid_size=2**10,
+            util_loss_frequency=50,
+            plot_frequency=10,
+            log_root_dir=log_root_dir) \
+        .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=3) \
     #     .set_setting(gamma=0.5) \
@@ -94,9 +106,31 @@ if __name__ == '__main__':
     #     .get_config()
 
     # RuntimeError: Sizes of tensors must match
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit',n_runs=1, n_epochs=200) \
-    #     .set_logging(log_root_dir=log_root_dir) \
-    #     .get_config()
+    experiment_config, experiment_class = \
+        ConfigurationManager(
+            experiment_type='multiunit', n_runs=1, n_epochs=2000
+        ) \
+        .set_setting(
+            payment_rule='uniform',
+        ) \
+        .set_learning(
+            model_sharing=True,
+            pretrain_iters=100,
+        ) \
+        .set_logging(
+            eval_batch_size=2**18,
+            util_loss_batch_size=2**9,
+            util_loss_grid_size=2**10,
+            util_loss_frequency=50,
+            best_response=True,
+            cache_eval_actions=True,
+            log_root_dir=log_root_dir,
+        ) \
+        .set_hardware(
+            specific_gpu=7
+        ) \
+        .get_config()
+
     # experiment_config, experiment_class = ConfigurationManager(
     #       experiment_type='splitaward',n_runs=1, n_epochs=200
     # ) \
@@ -109,6 +143,7 @@ if __name__ == '__main__':
     #                  save_tb_events_to_csv_detailed=True) \
     #     .set_setting().set_learning().set_hardware() \
     #     .get_config()
+
 
     ### COMBINATRORIAL EXPERIMENTS ###
     # experiment_config, experiment_class = ConfigurationManager(
@@ -165,4 +200,3 @@ if __name__ == '__main__':
     experiment = experiment_class(experiment_config)
     experiment.run()
     torch.cuda.empty_cache()
-

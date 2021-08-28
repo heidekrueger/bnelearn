@@ -214,13 +214,16 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
     def __init__(self, config: ExperimentConfig):
         self.config = config
 
-        assert self.config.setting.u_lo is not None, """Prior boundaries not specified!"""
-        assert self.config.setting.u_hi is not None, """Prior boundaries not specified!"""
+        u_lo = self.config.setting.u_lo
+        u_hi = self.config.setting.u_hi
+
+        assert u_lo is not None and len(set(u_lo)) == 1, "Invalid prior boundaries. u_lo should be a list of length 1."
+        assert u_hi is not None and len(set(u_hi)) == 1, "Invalid prior boundaries. u_hi should be a list of length 1."
 
         self.valuation_prior = 'uniform'
-        self.u_lo = torch.tensor(self.config.setting.u_lo, dtype=torch.float32,
+        self.u_lo = torch.tensor(u_lo[0], dtype=torch.float32,
             device=self.config.hardware.device)
-        self.u_hi = torch.tensor(self.config.setting.u_hi, dtype=torch.float32,
+        self.u_hi = torch.tensor(u_hi[0], dtype=torch.float32,
             device=self.config.hardware.device)
         self.config.setting.common_prior = \
             torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
@@ -326,10 +329,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         self.n_models = self.n_players
         self._bidder2model: List[int] = list(range(self.n_players))
 
-        if not isinstance(self.config.setting.u_lo, list):
-            self.u_lo = [float(self.config.setting.u_lo)] * self.n_players
-        else:
-            self.u_lo: List[float] = [float(self.config.setting.u_lo[i]) for i in range(self.n_players)]
+        self.u_lo: List[float] = [float(self.config.setting.u_lo[i]) for i in range(self.n_players)]
         self.u_hi: List[float] = [float(self.config.setting.u_hi[i]) for i in range(self.n_players)]
         assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
         self.positive_output_point = torch.tensor([min(self.u_hi)] * n_items)
@@ -448,13 +448,20 @@ class MineralRightsExperiment(SingleItemExperiment):
     For risk-neutral agents, a unique BNE is known.
     """
 
-    def __init__(self,  config: ExperimentConfig):
+    def __init__(self, config: ExperimentConfig):
         self.n_players = config.setting.n_players
+
+        u_lo = config.setting.u_lo
+        u_hi = config.setting.u_hi
+
+        assert len(set(u_lo)) == 1, "Symmetric prior supported only!"
+        assert len(set(u_hi)) == 1, "Symmetric prior supported only!"
+
         self.n_items = 1
 
         self.valuation_prior = 'uniform'
-        self.u_lo = float(config.setting.u_lo)
-        self.u_hi = float(config.setting.u_hi)
+        self.u_lo = float(u_lo[0])
+        self.u_hi = float(u_hi[0])
         self.common_prior = torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
         self.positive_output_point = torch.tensor([(self.u_lo+self.u_hi)/2] * self.n_items)
 
@@ -571,13 +578,19 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
     """
 
     def __init__(self,  config: ExperimentConfig):
-
         self.n_players = config.setting.n_players
+
+        u_lo = config.setting.u_lo
+        u_hi = config.setting.u_hi
+
+        assert len(set(u_lo)) == 1, "Symmetric prior supported only!"
+        assert len(set(u_hi)) == 1, "Symmetric prior supported only!"
+
         self.n_items = 1
 
         self.valuation_prior = 'uniform'
-        self.u_lo = float(config.setting.u_lo)
-        self.u_hi = float(config.setting.u_hi)
+        self.u_lo = float(u_lo[0])
+        self.u_hi = float(u_hi[0])
         self.common_prior = torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
         self.positive_output_point = torch.stack([self.common_prior.mean] * self.n_items)
 

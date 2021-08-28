@@ -11,7 +11,6 @@ from torch.cuda import _device_t as Device
 class ValuationObservationSampler(ABC):
     """Provides functionality to draw valuation and observation profiles."""
 
-
     def __init__(self, n_players, valuation_size, observation_size,
                  support_bounds,
                  default_batch_size = 1, default_device = None):
@@ -35,7 +34,8 @@ class ValuationObservationSampler(ABC):
         return batch_sizes
 
     @abstractmethod
-    def draw_profiles(self, batch_sizes: Union[int, List[int]] = None, device=None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def draw_profiles(self, batch_sizes: Union[int, List[int]] = None,
+                      device=None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws and returns a batch of valuation and observation profiles.
 
         Kwargs:
@@ -263,3 +263,14 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
                     self.group_samplers[g].draw_profiles([*outer_batches, inner_batch], device)
 
         return cv, co
+
+    def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
+                                dtype=torch.float, device = None) -> torch.Tensor:
+        """Possibly need to call specific grid sampling"""
+        for g in range(self.n_groups):  # iterate over groups
+            players = self.group_indices[g]  # player_positions within group
+            for i, pos in enumerate(players):  # need to keep track of list index: i != pos
+                if player_position == pos:
+                    return self.group_samplers[g].generate_valuation_grid(
+                        i, minimum_number_of_points, dtype, device
+                    )

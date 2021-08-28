@@ -74,20 +74,14 @@ class LocalGlobalExperiment(Experiment, ABC):
             self.n_models = self.n_players
             self._bidder2model: List[int] = list(range(self.n_players))
 
-        plot_bounds = {}
-        plot_bounds['plot_xmin'] = min(self.u_lo)
-        plot_bounds['plot_xmax'] = max(self.u_hi)                         
-        plot_bounds['plot_ymin'] = min(self.u_lo)
-        plot_bounds['plot_ymax'] = max(self.u_hi) * 1.05
+        self.plot_bounds = {}
+        self.plot_bounds['plot_xmin'] = min(self.u_lo)
+        self.plot_bounds['plot_xmax'] = max(self.u_hi)                         
+        self.plot_bounds['plot_ymin'] = min(self.u_lo)
+        self.plot_bounds['plot_ymax'] = max(self.u_hi) * 1.05
 
         super().__init__(config=config)
                 
-        if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
-                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
-                                sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
-
 
     def _set_valuation_bounds(self):
         """Validates input for uniform valuation bounds and converts
@@ -146,6 +140,12 @@ class LLGExperiment(LocalGlobalExperiment):
         super().__init__(config=config,
                          n_players=3, n_local= 2,
                          valuation_size=1, observation_size=1, action_size=1)
+        
+        if self.logging.enable_logging:
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=self.plot_bounds,  
+                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+                                sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
     def _setup_sampler(self):
 
@@ -282,7 +282,6 @@ class LLGExperiment(LocalGlobalExperiment):
         return os.path.join(*name)
 
 
-
 class LLGFullExperiment(LocalGlobalExperiment):
     """A combinatorial experiment with 2 local and 1 global bidder and 2 items.
 
@@ -312,6 +311,13 @@ class LLGFullExperiment(LocalGlobalExperiment):
         super().__init__(config=config,
                          n_players=3, n_local=2,
                          valuation_size=3, observation_size=1, action_size=3)
+
+        if self.logging.enable_logging:
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=self.plot_bounds,  
+                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+                                sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid, valuation_size=self.valuation_size, 
+                                epoch_logger=self._evaluate_and_log_epoch)
 
     def _setup_mechanism(self):
         self.mechanism = LLGFullAuction(rule=self.payment_rule,
@@ -404,15 +410,16 @@ class LLGFullExperiment(LocalGlobalExperiment):
     #         )
     #     return super().relevant_actions()
 
-    def _evaluate_and_log_epoch(self, epoch: int) -> float:
+    @staticmethod
+    def _evaluate_and_log_epoch(writer, env, valuation_size, epoch: int) -> float:
         # TODO keep track of time as in super()
-        for name, agent in zip(['local 1', 'local 2', 'global'], self.env.agents):
-            self.writer.add_histogram(
+        for name, agent in zip(['local 1', 'local 2', 'global'], env.agents):
+            writer.add_histogram(
                 tag="allocations/" + name,
-                values=self.env.get_allocation(agent),
+                values=env.get_allocation(agent),
                 # TODO Stefan @ Nils: this said self.n_items before, I changed it to valuations, but not sure if it should be
                 # maybe observations or actions instead??
-                bins=2*self.valuation_size-1,
+                bins=2*valuation_size-1,
                 global_step=epoch
             )
         return super()._evaluate_and_log_epoch(epoch)
@@ -498,6 +505,12 @@ class LLLLGGExperiment(LocalGlobalExperiment):
         super().__init__(config=config,
                          n_players=6, n_local=4,
                          valuation_size=2, observation_size=2, action_size=2)
+
+        if self.logging.enable_logging:
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=self.plot_bounds,  
+                                 _model2bidder=self._model2bidder, n_models=self.n_models, 
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+                                sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid) 
 
     def _setup_sampler(self):
         default_batch_size = self.config.learning.batch_size

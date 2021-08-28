@@ -20,14 +20,15 @@ class Logger:
     """
     Helper class encapsulating all the logging and plotting logic for the Experiment
     """
-    def __init__(self, config: ExperimentConfig, known_bne: bool, plot_bounds: dict, evaluation_env, _model2bidder, n_models,
-                model_names, logdir_hierarchy, sampler, plotter, optimal_bid):
+    def __init__(self, config: ExperimentConfig, known_bne: bool, plot_bounds: dict,  _model2bidder, n_models,
+                model_names, logdir_hierarchy, sampler, plotter, optimal_bid, evaluation_env = None, valuation_size=None, epoch_logger=None):
         self.config = config
         self.logging = config.logging
         self.learning = config.learning
         
         # fields depending on initialization in subclasses
         self.bne_env = evaluation_env
+        self.valuation_size = valuation_size
         self.env = None
         self.bne_utilities = None
         self._model2bidder = _model2bidder
@@ -43,6 +44,10 @@ class Logger:
         self.known_bne = known_bne
         if not known_bne:
             self.logging.log_metrics['opt'] = False
+
+        # This is the best I can think of without recreating logger subclasses jsut because there is one time (in combinatorial auctions),
+        # when there is additional logic in logging epoch info     
+        self.epoch_logger = epoch_logger
 
         # A method which would get an approptiate implementation from an experiment subcalass
         self._plot = plotter 
@@ -141,6 +146,9 @@ class Logger:
             - Stefan todos / understanding quesitons
             - TODO: takes log_params. can it be
         """
+        if self.epoch_logger:
+            self.epoch_logger(writer=self.writer, env=self.env, valuation_size=self.valuation_size, epoch=epoch)
+
         # pylint: disable=attribute-defined-outside-init
         self._cur_epoch_log_params = {
             'utilities': utilities.detach(),
@@ -207,7 +215,7 @@ class Logger:
                 for env_idx, _ in enumerate(self.bne_env):
                     o = torch.cat([o, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
-                    labels += ['BNE {} agent {}'.format('_' + str(env_idx + 1) if len(self.bne_env) > 1 else '', j)
+                    labels += [f"BNE{'_' + str(env_idx + 1) if len(self.bne_env) > 1 else ''} agent {j}"
                                for j in range(len(self.models))]
                     fmts += ['--'] * len(self.models)
 

@@ -67,6 +67,7 @@ class SettingConfig:
 @dataclass
 class LearningConfig:
     model_sharing: bool
+    learner_type: str
     learner_hyperparams: dict
     optimizer_type: str
     optimizer_hyperparams: dict
