@@ -194,7 +194,8 @@ class Experiment(ABC):
 
     def pretrain_transform(self, player_position: int) -> callable:
         """Some experiments need specific pretraining transformations. In
-        general, no transformation (aka. the identity function) is fine.
+        most cases, pretraining to the truthful bid (i.e. the identity function)
+        is sufficient.
 
         Args:
             player_position (:int:) the player for which the transformation is
@@ -321,12 +322,12 @@ class Experiment(ABC):
             model_players = [m[0] for m in self._model2bidder]
 
             if self.observation_size == self.action_size:
-                generate_gird = self.sampler.generate_valuation_grid
+                generate_grid = self.sampler.generate_valuation_grid
             else:
-                generate_gird = self.sampler.generate_reduced_grid
+                generate_grid = self.sampler.generate_reduced_grid
 
             self.v_opt[bne_id] = torch.stack(
-                [generate_gird(i, self.plot_points) for i in model_players],
+                [generate_grid(i, self.plot_points) for i in model_players],
                 dim=1)
 
             self.b_opt[bne_id] = torch.stack(

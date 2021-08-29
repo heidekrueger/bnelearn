@@ -329,16 +329,16 @@ class LLGFullAuction(Mechanism):
         global bidder.
 
         Args:
-            bids (:obj:`torch.Tensor`): of bids with dimensions (batch_size,
+            bids (:obj:`torch.Tensor`): of bids with dimensions (*batch_sizes,
                 n_players, 3).
 
         Returns:
             (allocation, payments) (:obj:`tuple` of :obj:`torch.Tensor`):
-                allocation: tensor of dimension (n_batches x n_players x 3)
-                payments: tensor of dimension (n_batches x n_players)
+                allocation: tensor of dimension (*batche_sizes x n_players x 3)
+                payments: tensor of dimension (*batch_sizes x n_players)
 
         """
-        assert bids.dim() >= 3, "Bid tensor must be 3d (batch x players x 3)"
+        assert bids.dim() >= 3, "Bid tensor must be at least 3d (*batches x players x 3)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
         # name dimensions for readibility

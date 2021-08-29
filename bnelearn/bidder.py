@@ -251,7 +251,7 @@ class CombinatorialBidder(Bidder):
             self.output_length = self.bid_size
 
     def get_welfare(self, allocations, valuations: torch.Tensor=None) -> torch.Tensor:
-        assert allocations.dim() >= 2  # batch_size x items
+        assert allocations.dim() >= 2  # *batch_sizes x items
         if valuations is None:
             valuations = self._cached_valuations
 
