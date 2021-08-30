@@ -27,7 +27,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 #import bnelearn.util.logging as logging_utils
 #import bnelearn.util.metrics as metrics
-#import bnelearn.learner as learners
+import bnelearn.learner as learners
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
@@ -171,7 +171,7 @@ class Experiment(ABC):
                 self.observation_size,
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
-                ensure_positive_output=self.positive_output_point.to('cpu'),  # models init. on cpu
+                ensure_positive_output=self.positive_output_point,
                 output_length=self.action_size
             ).to(self.hardware.device)
 
@@ -444,4 +444,3 @@ class Experiment(ABC):
 
         self.logger.process_figure(fig, epoch=epoch, figure_name=figure_name + '_3d', tb_group='eval', tb_writer=writer)
         return fig
-

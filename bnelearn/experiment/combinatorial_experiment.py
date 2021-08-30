@@ -510,7 +510,9 @@ class LLLLGGExperiment(LocalGlobalExperiment):
             self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=self.plot_bounds,  
                                  _model2bidder=self._model2bidder, n_models=self.n_models, 
                                 model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
-                                sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid) 
+                                sampler=self.sampler, plotter=self._plot, optimal_bid = lambda : None) 
+        # Not sure passing a lambda returning None for optimal bid is fine, 
+        # but I didn't think of anythink better since this class doesn't have an optimal bid function.
 
     def _setup_sampler(self):
         default_batch_size = self.config.learning.batch_size

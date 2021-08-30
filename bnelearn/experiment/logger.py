@@ -45,7 +45,7 @@ class Logger:
         if not known_bne:
             self.logging.log_metrics['opt'] = False
 
-        # This is the best I can think of without recreating logger subclasses jsut because there is one time (in combinatorial auctions),
+        # This is the best I can think of without recreating logger subclasses just because there is one time (in combinatorial auctions),
         # when there is additional logic in logging epoch info     
         self.epoch_logger = epoch_logger
 
