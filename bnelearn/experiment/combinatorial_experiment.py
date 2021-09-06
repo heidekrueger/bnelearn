@@ -199,9 +199,9 @@ class LLGExperiment(LocalGlobalExperiment):
                 bid_if_positive = 2. / (2. + self.gamma) * (
                     valuation - (3. - np.sqrt(9 - (1. - self.gamma) ** 2)) / (1. - self.gamma))
                 return torch.max(torch.zeros_like(valuation), bid_if_positive)
-            warnings.warn('optimal bid not implemented for this payment rule')
+            raise NotImplementedError('Optimal bid not implemented for this payment rule.')
         else:
-            warnings.warn('optimal bid not implemented for this correlation type')
+            raise NotImplementedError('Optimal bid not implemented for this correlation type.')
 
         self.known_bne = False
 
@@ -319,7 +319,12 @@ class LLGFullExperiment(LocalGlobalExperiment):
                                       default_device=default_device)
 
     def _check_and_set_known_bne(self):
-        return self.payment_rule in ['vcg', 'mrcs_favored']
+        if self.payment_rule == 'vcg':
+            return True
+        if self.payment_rule == 'mrcs_favored' \
+            and self.config.setting.correlation_types in ['independent', None]:
+            return True
+        return super()._check_and_set_known_bne()
 
     def _optimal_bid(self, valuation, player_position):  # pylint: disable=method-hidden
         """Equilibrium bid functions.
@@ -345,7 +350,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
                     valuation], axis=1)
 
         ### Favored bidder 1:
-        if self.config.setting.correlation_types in ['independent'] and player_position == 0:
+        if self.config.setting.correlation_types in ['independent', None] and player_position == 0:
             if self.payment_rule == 'vcg':
                 return torch.cat([
                     valuation,
@@ -393,9 +398,9 @@ class LLGFullExperiment(LocalGlobalExperiment):
                 bids[bids < 0] = 0  # b_A is somewhat inprecise
                 return bids
 
-            warnings.warn('optimal bid not implemented for this payment rule')
+            raise NotImplementedError('Optimal bid not implemented for this payment rule.')
         else:
-            warnings.warn('optimal bid not implemented for this correlation type')
+            raise NotImplementedError('Optimal bid not implemented for this correlation type.')
 
     def pretrain_transform(self, player_position: int) -> callable:
         """Transformation during pretraining: Bidders are single-minded in this

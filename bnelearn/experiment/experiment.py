@@ -96,7 +96,7 @@ class Experiment(ABC):
         self.models: Iterable[torch.nn.Module] = None
         self.bidders: Iterable[Bidder] = None
         self.env: Environment = None
-        self.learners: Iterable[Learner] = None
+        self.learners: Iterable[learners.Learner] = None
 
         # These are set on first _log_experiment
         self.v_opt: torch.Tensor = None
@@ -156,7 +156,7 @@ class Experiment(ABC):
         Defaults to agent{ids of agents that use the model} but may be overwritten by subclasses.
         """
         if self.n_models == 1:
-            return []
+            return ['bidder']
         return ['bidder' + str(bidders[0]) if len(bidders) == 1 else
                 'bidders' + ''.join([str(b) for b in bidders])
                 for bidders in self._model2bidder]
@@ -827,7 +827,7 @@ class Experiment(ABC):
         if self.logging.best_response:
             plot_data = (observations[:, [b[0] for b in self._model2bidder], :],
                          torch.stack(best_responses, 1))
-            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
+            labels = [f'{self._get_model_names()[i]}' for i in range(len(self.models))]
             fmts = ['o'] * len(self.models)
             self._plot(plot_data=plot_data, writer=self.writer,
                        ylim=[0, self.sampler.support_bounds.max().item()],
@@ -857,7 +857,7 @@ class Experiment(ABC):
             util_losses = torch.stack(list(util_losses), dim=1).unsqueeze_(-1)
             observations = self.env._observations[:batch_size, :, :]
             plot_data = (observations[:, [b[0] for b in self._model2bidder], :], util_losses)
-            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
+            labels = [f'{self._get_model_names()[i]}' for i in range(len(self.models))]
             fmts = ['o'] * len(self.models)
             self._plot(plot_data=plot_data, writer=self.writer,
                        ylim=[0, max(self._max_util_loss).detach().item()],
