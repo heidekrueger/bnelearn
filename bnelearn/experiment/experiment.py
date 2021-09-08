@@ -2,11 +2,6 @@
 This module defines an experiment. It includes logging and plotting since they
 can often be shared by specific experiments.
 """
-
-
-#import os
-#from sys import platform
-#import time
 from inspect import getmembers
 
 from abc import ABC, abstractmethod
@@ -25,9 +20,8 @@ from mpl_toolkits.mplot3d import Axes3D  # pylint: disable=unused-import
 
 from torch.utils.tensorboard import SummaryWriter
 
-#import bnelearn.util.logging as logging_utils
-#import bnelearn.util.metrics as metrics
-import bnelearn.learner as learners
+# TODO Shouldn't it be jsut learner? Cause there is a an undefined reference to learner below
+import bnelearn.learner as learners 
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
@@ -60,6 +54,12 @@ class Experiment(ABC):
     mechanism: Mechanism
     positive_output_point: torch.Tensor  # shape must be valid model input
     input_length: int
+
+     ## Fields required for plotting
+    plot_xmin: float
+    plot_xmax: float
+    plot_ymin: float
+    plot_ymax: float
 
     ## Equilibrium environment
     bne_utilities: torch.Tensor or List[float]  # dimension: n_players

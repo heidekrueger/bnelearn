@@ -24,51 +24,16 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager  # py
 
 if __name__ == '__main__':
 
-    # path is user-specific
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
-
-    # Run exps that contain integration
-    experiment_types = ['splitaward']  # ['single_item_gaussian_symmetric', 'multiunit', 'splitaward']
-    for experiment_type in experiment_types:
-        experiment_config, experiment_class = \
-            ConfigurationManager(
-                experiment_type=experiment_type,
-                n_runs=1,
-                n_epochs=200
-                ) \
-            .set_setting(
-                payment_rule='first_price' if experiment_type == 'multiunit' else 'None',
-                constant_marginal_values=True,
-                # correlation_groups=[[0, 1, 2]],
-                # correlation_types='independent',
-                # gamma=0.0
-                ) \
-            .set_logging(
-                eval_batch_size=2**9,
-                util_loss_batch_size=2**9,
-                util_loss_grid_size=2**10,
-                util_loss_frequency=50,
-                best_response=True,
-                cache_eval_actions=True,
-                log_root_dir=log_root_dir,
-                ) \
-            .set_learning(
-                # model_sharing=False
-                ) \
-            .set_hardware(
-                specific_gpu=4,
-                max_cpu_threads=1,
-            ) \
-            .get_config()
-        experiment = experiment_class(experiment_config)
-        experiment.run()
-        torch.cuda.empty_cache()
+    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
+    #     fire.Fire()
 
     # Run from a file
     # experiment_config = logging.get_experiment_config_from_configurations_log()
     # experiment_class = ConfigurationManager \
     #    .get_class_by_experiment_type(experiment_config.experiment_class)
 
+    # path is user-specific
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
 
 
     ### SINGLE ITEM EXPERIMENTS ###
@@ -232,6 +197,12 @@ if __name__ == '__main__':
     #     .set_hardware(specific_gpu=1) \
     #     .get_config()
 
-    # experiment = experiment_class(experiment_config)
-    # experiment.run()
-    # torch.cuda.empty_cache()
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=3) \
+        .set_setting(gamma=0.5) \
+        .set_logging(log_root_dir=log_root_dir,  util_loss_batch_size=2 ** 7, util_loss_grid_size=2 ** 6,
+                     util_loss_frequency=1).get_config()
+
+
+    experiment = experiment_class(experiment_config)
+    experiment.run()
+    torch.cuda.empty_cache()

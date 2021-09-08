@@ -227,20 +227,17 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         self.config.setting.common_prior = \
             torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
 
-        # TODO Implicit list to float type conversion
-        plot_bounds = {}
-        plot_bounds['plot_xmin'] =  self.u_lo.cpu()
-        plot_bounds['plot_xmax'] =  self.u_hi.cpu()
-        plot_bounds['plot_ymin'] =  0
-        plot_bounds['plot_ymax'] =  self.u_hi.cpu() * 1.05
+        # TODO Implicit list to float type conversion        
+        self.plot_xmin =  self.u_lo.cpu()
+        self.plot_xmax =  self.u_hi.cpu()
+        self.plot_ymin =  0
+        self.plot_ymax =  self.u_hi.cpu() * 1.05
 
-        super().__init__(config=config)
-#self, config: ExperimentConfig, known_bne: bool, plot_bounds: dict, learning_env, evaluation_env, _model2bidder, n_models,
-                #model_names, models, logdir_hierarchy, sampler, plotter):                
+        super().__init__(config=config)        
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
-                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne,
+                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models,
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(),
                                 sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
     def _check_and_set_known_bne(self):
@@ -295,19 +292,19 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
             device=self.config.hardware.device)
         self.config.setting.common_prior = \
             torch.distributions.normal.Normal(loc=self.valuation_mean, scale=self.valuation_std)
-
-        plot_bounds = {}
-        plot_bounds['plot_xmin'] =  int(max(0, self.valuation_mean - 3 * self.valuation_std))
-        plot_bounds['plot_xmax'] =  int(self.valuation_mean + 3 * self.valuation_std)
-        plot_bounds['plot_ymin'] =  0
-        plot_bounds['plot_ymax'] =  20 if self.config.setting.payment_rule == 'first_price' else plot_bounds['plot_xmax']
+        
+        self.plot_xmin =  int(max(0, self.valuation_mean - 3 * self.valuation_std))
+        self.plot_xmax =  int(self.valuation_mean + 3 * self.valuation_std)
+        self.plot_ymin =  0
+        self.plot_ymax =  20 if self.config.setting.payment_rule == 'first_price' \
+                                else self.plot_xmax
 
         super().__init__(config=config)
         
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
-                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, 
+                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models,
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(),
                                 sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
 class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
@@ -332,19 +329,18 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         self.u_hi: List[float] = [float(self.config.setting.u_hi[i]) for i in range(self.n_players)]
         assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
         self.positive_output_point = torch.tensor([min(self.u_hi)] * n_items)
-
-        plot_bounds = {}
-        plot_bounds['plot_xmin'] =  min(self.u_lo)
-        plot_bounds['plot_xmax'] =  max(self.u_hi)
-        plot_bounds['plot_ymin'] =  min(self.u_lo) * 0.90
-        plot_bounds['plot_ymax'] =  max(self.u_hi) * 1.05
+    
+        self.plot_xmin =  min(self.u_lo)
+        self.plot_xmax =  max(self.u_hi)
+        self.plot_ymin =  min(self.u_lo) * 0.90
+        self.plot_ymax =  max(self.u_hi) * 1.05
 
         super().__init__(config=config)
         
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
-                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, 
+                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models,
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(),
                                 sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
     def _setup_sampler(self):
@@ -479,16 +475,15 @@ class MineralRightsExperiment(SingleItemExperiment):
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
 
-        plot_bounds = {}
-        plot_bounds['plot_xmin'] =  self.u_lo
-        plot_bounds['plot_xmax'] =  self.u_hi * 2
-        plot_bounds['plot_ymin'] =  0
-        plot_bounds['plot_ymax'] =  self.u_hi * 1.1
+        self.plot_xmin =  self.u_lo
+        self.plot_xmax =  self.u_hi * 2
+        self.plot_ymin =  0
+        self.plot_ymax =  self.u_hi * 1.1
 
         super().__init__(config=config)
         
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, 
                                 evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
                                 model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
                                 sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
@@ -608,19 +603,18 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         else:
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
-
-        plot_bounds = {}
-        plot_bounds['plot_xmin'] =  self.u_lo
-        plot_bounds['plot_xmax'] =  self.u_hi
-        plot_bounds['plot_ymin'] =  0
-        plot_bounds['plot_ymax'] =  self.u_hi
+        
+        self.plot_xmin =  self.u_lo
+        self.plot_xmax =  self.u_hi
+        self.plot_ymin =  0
+        self.plot_ymax =  self.u_hi
 
         super().__init__(config=config)
         
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
-                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne,
+                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models,
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(),
                                 sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
     def _setup_sampler(self):

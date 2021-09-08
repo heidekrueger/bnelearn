@@ -1,17 +1,21 @@
+"""
+Logger is supposed to handle all I/O operations
+"""
 import os
 import time
 from sys import platform
 from time import perf_counter as timer
+import warnings
 
-from bnelearn.experiment.configurations import * # needed for e.g json serialization 
+from typing import List, Callable
 import torch
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import bnelearn.util.metrics as metrics
 
-from typing import Iterable, List, Callable
-from bnelearn.experiment.configurations import ExperimentConfig
+# needed for e.g json serialization
+from bnelearn.experiment.configurations import EnhancedJSONEncoder, ExperimentConfig
+import bnelearn.util.metrics as metrics
 from bnelearn.util.custom_summary_writer import CustomSummaryWriter
 from bnelearn.environment import Environment
 from bnelearn.bidder import Bidder
@@ -20,37 +24,35 @@ class Logger:
     """
     Helper class encapsulating all the logging and plotting logic for the Experiment
     """
-    def __init__(self, config: ExperimentConfig, known_bne: bool, plot_bounds: dict,  _model2bidder, n_models,
-                model_names, logdir_hierarchy, sampler, plotter, optimal_bid, evaluation_env = None, valuation_size=None, epoch_logger=None):
+    def __init__(self, config: ExperimentConfig, known_bne: bool, _model2bidder,
+                 n_models, model_names, logdir_hierarchy, sampler, plotter, optimal_bid,
+                 evaluation_env = None, valuation_size=None, epoch_logger=None):
         self.config = config
         self.logging = config.logging
         self.learning = config.learning
-        
+
         # fields depending on initialization in subclasses
         self.bne_env = evaluation_env
         self.valuation_size = valuation_size
         self.env = None
         self.bne_utilities = None
         self._model2bidder = _model2bidder
-        self.n_models = n_models   
+        self.n_models = n_models
         self.model_names = model_names
         self.models = None
         self.sampler = sampler
         self._optimal_bid = optimal_bid
-        self.plot_xmin = plot_bounds['plot_xmin']
-        self.plot_xmax = plot_bounds['plot_xmax']
-        self.plot_ymin = plot_bounds['plot_ymin']
-        self.plot_ymax = plot_bounds['plot_ymax']        
         self.known_bne = known_bne
         if not known_bne:
             self.logging.log_metrics['opt'] = False
 
-        # This is the best I can think of without recreating logger subclasses just because there is one time (in combinatorial auctions),
-        # when there is additional logic in logging epoch info     
+        # This is the best I can think of without recreating logger subclasses just
+        # because there is one time (in combinatorial auctions),
+        # when there is additional logic in logging epoch info
         self.epoch_logger = epoch_logger
 
         # A method which would get an approptiate implementation from an experiment subcalass
-        self._plot = plotter 
+        self._plot = plotter
 
         # Global Stuff that should be initiated here
         self.plot_frequency = self.logging.plot_frequency
@@ -74,13 +76,12 @@ class Logger:
             self.util_loss_grid_size = self.logging.util_loss_grid_size
         self.n_parameters = None
         self._cur_epoch_log_params = {}
-        
-        self.run_log_dir = None        
+
+        self.run_log_dir = None
         # sets log dir for experiment. Individual runs will log to subdirectories of this.
         self.experiment_log_dir = os.path.join(self.logging.log_root_dir,
                                                logdir_hierarchy,
                                                self.logging.experiment_dir)
-    
 
 
     def init_new_run(self, models, env, bne_utilities):
@@ -91,7 +92,8 @@ class Logger:
         if self.logging.log_metrics['opt'] and hasattr(self, 'bne_env'):
             if not isinstance(self.bne_env, list):
                 # TODO Nils: should perhaps always be a list, even when there is only one BNE
-                # TODO Stefan: Yes, we should not do any type conversions here, these should be lists from the beginning.
+                # TODO Stefan: Yes, we should not do any type conversions here,
+                # these should be lists from the beginning.
                 self.bne_env: List[Environment] = [self.bne_env]
                 self._optimal_bid: List[Callable] = [self._optimal_bid]
                 self.bne_utilities = [self.bne_utilities]
@@ -104,7 +106,7 @@ class Logger:
         plt.rcParams['figure.figsize'] = [8, 5]
 
         print('Stating run...')
-    
+
         # Create summary writer object and create output dirs if necessary
         output_dir = self.run_log_dir
         os.makedirs(output_dir, exist_ok=False)
@@ -126,7 +128,7 @@ class Logger:
         self.save_experiment_config(self.experiment_log_dir, self.config)
         self.log_git_commit_hash()
         elapsed = timer() - tic
-        
+
         self.overhead += elapsed
 
 
@@ -147,7 +149,8 @@ class Logger:
             - TODO: takes log_params. can it be
         """
         if self.epoch_logger:
-            self.epoch_logger(writer=self.writer, env=self.env, valuation_size=self.valuation_size, epoch=epoch)
+            self.epoch_logger(writer=self.writer, env=self.env,
+                                valuation_size=self.valuation_size, epoch=epoch)
 
         # pylint: disable=attribute-defined-outside-init
         self._cur_epoch_log_params = {
@@ -158,14 +161,16 @@ class Logger:
         start_time = timer()
 
         # calculate infinity-norm of update step
-        new_params = [torch.nn.utils.parameters_to_vector(model.parameters()) for model in self.models]
+        new_params = \
+            [torch.nn.utils.parameters_to_vector(model.parameters()) for model in self.models]
         self._cur_epoch_log_params['update_norm'] = [
             (new_params[i] - self._cur_epoch_log_params['prev_params'][i]).norm(float('inf'))
             for i in range(self.n_models)]
         del self._cur_epoch_log_params['prev_params']
 
         # logging metrics
-        # TODO: should just check if logging is enabled in general... if bne_exists and we log, we always want this
+        # TODO: should just check if logging is enabled in general...
+        # if bne_exists and we log, we always want this
         if self.known_bne and self.logging.log_metrics['opt']:
             utility_vs_bne, epsilon_relative, epsilon_absolute = self._calculate_metrics_known_bne()
             L_2, L_inf = self._calculate_metrics_action_space_norms()
@@ -178,7 +183,8 @@ class Logger:
                 self._cur_epoch_log_params['L_2' + n] = L_2[i]
                 self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
 
-        if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
+        if self.logging.log_metrics['util_loss'] and \
+            (epoch % self.logging.util_loss_frequency) == 0:
             create_plot_output = epoch % self.logging.plot_frequency == 0
             self._cur_epoch_log_params['util_loss_ex_ante'], \
             self._cur_epoch_log_params['util_loss_ex_interim'], \
@@ -187,7 +193,8 @@ class Logger:
             print("\tcurrent est. ex-interim loss:" + str(
                 [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
 
-        if self.logging.log_metrics['efficiency'] and (epoch % self.logging.util_loss_frequency) == 0:
+        if self.logging.log_metrics['efficiency'] and \
+            (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['efficiency'] = \
                 self.env.get_efficiency(self.env)
 
@@ -215,7 +222,8 @@ class Logger:
                 for env_idx, _ in enumerate(self.bne_env):
                     o = torch.cat([o, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
-                    labels += [f"BNE{'_' + str(env_idx + 1) if len(self.bne_env) > 1 else ''} agent {j}"
+                    labels += \
+                        [f"BNE{'_' + str(env_idx + 1) if len(self.bne_env) > 1 else ''} agent {j}"
                                for j in range(len(self.models))]
                     fmts += ['--'] * len(self.models)
 
@@ -229,7 +237,7 @@ class Logger:
                 self._cur_epoch_log_params, self.model_names, epoch,
                 group_prefix=None, metric_tag_mapping = metrics.MAPPING_METRICS_TAGS)
         elapsed_overhead = timer() - start_time
-        print('epoch {}:\toverhead {:.3f}s'.format(epoch, elapsed_overhead), end="\r")    
+        print('epoch {}:\toverhead {:.3f}s'.format(epoch, elapsed_overhead), end="\r")
 
 
     def exit_run(self, global_step=None):
@@ -280,9 +288,9 @@ class Logger:
     def _calculate_metrics_known_bne(self):
         """
         Compare performance to BNE and return:
-            utility_vs_bne: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
-            epsilon_relative: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
-            epsilon_absolute: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
+            utility_vs_bne: List[Tensor] of length `len(self.bne_env)`,length of Tensor `n_models`
+            epsilon_relative: List[Tensor] of length `len(self.bne_env)`,length of Tensor `n_models`
+            epsilon_absolute: List[Tensor] of length `len(self.bne_env)`,length of Tensor `n_models`
 
         These are all lists of lists. The outer list corrsponds to which BNE is comapred
         (usually there's only one BNE). Each inner list is of length `self.n_models`.
@@ -326,7 +334,8 @@ class Logger:
         return norm of the best action dimension.
 
         Returns:
-            L_2 and L_inf: each a List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
+            L_2 and L_inf: each a List[Tensor] of length `len(self.bne_env)`,
+            length of Tensor `n_models`.
         """
 
         L_2 = [None] * len(self.bne_env)
@@ -334,7 +343,8 @@ class Logger:
         for bne_idx, bne_env in enumerate(self.bne_env):
             # shorthand for model to agent
 
-            # we are only using m2a locally within this loop, so we can safely ignore the following pylint warning:
+            # we are only using m2a locally within this loop,
+            # so we can safely ignore the following pylint warning:
             # pylint: disable=cell-var-from-loop
 
             m2a = lambda m: bne_env.agents[self._model2bidder[m][0]]
@@ -425,7 +435,8 @@ class Logger:
             if not hasattr(self, '_max_util_loss'):
                 self._max_util_loss = ex_interim_max_util_loss
 
-            # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
+            # Transform to output with dim(batch_size, n_models, n_bundle),
+            # for util_losses n_bundle=1
             util_losses = torch.stack(list(util_losses), dim=1).unsqueeze_(-1)
             observations = self.env._observations[:batch_size, :, :]
             plot_data = (observations[:, [b[0] for b in self._model2bidder], :], util_losses)
@@ -456,12 +467,14 @@ class Logger:
             self.writer.add_text('hyperparameters/neural_net_spec', str(model))
             self.writer.add_graph(model, self.env._observations[:, i, :])
 
-        h_params = {'hyperparameters/batch_size': self.learning.batch_size,
-                    'hyperparameters/pretrain_iters': self.learning.pretrain_iters,
-                    'hyperparameters/hidden_nodes': str(self.learning.hidden_nodes),
-                    'hyperparameters/hidden_activations': str(self.learning.hidden_activations),
-                    'hyperparameters/optimizer_hyperparams': str(self.learning.optimizer_hyperparams),
-                    'hyperparameters/optimizer_type': self.learning.optimizer_type}
+        h_params = {
+            'hyperparameters/batch_size': self.learning.batch_size,
+            'hyperparameters/pretrain_iters': self.learning.pretrain_iters,
+            'hyperparameters/hidden_nodes': str(self.learning.hidden_nodes),
+            'hyperparameters/hidden_activations': str(self.learning.hidden_activations),
+            'hyperparameters/optimizer_hyperparams': str(self.learning.optimizer_hyperparams),
+            'hyperparameters/optimizer_type': self.learning.optimizer_type
+        }
 
         ignored_metrics = ['utilities', 'update_norm', 'overhead_hours']
         filtered_metrics = filter(lambda elem: elem[0] not in ignored_metrics,
@@ -481,8 +494,9 @@ class Logger:
                                 global_step=global_step)
 
     def _save_models(self, directory):
-        # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to
-        # use it to make nicer plots for a publication? --> will be done elsewhere. Logging. Assigned to @Hlib/@Stefan
+        # TODO: maybe we should also log out all pointwise  util_losses in the ending-epoch
+        # to disk to use it to make nicer plots for a publication? --> will be done elsewhere.
+        # Logging. Assigned to @Hlib/@Stefan
         for model, player_position in zip(self.models, self._model2bidder):
             name = 'model_' + str(player_position[0]) + '.pt'
             torch.save(model.state_dict(), os.path.join(directory, 'models', name))
@@ -505,7 +519,7 @@ class Logger:
         for bidder in bidders:
             val = bidder.get_valuation_grid(n_points=None, step=step,
                                             dtype=torch.float64, extended_valuation_grid=True)
-            bid = bidder.strategy.forward(val.to(torch.float32)).to(torch.float64)            
+            bid = bidder.strategy.forward(val.to(torch.float32)).to(torch.float64)
             cat = torch.cat((val, bid), axis=1)
             file_dir = self.run_log_dir + '/bidder_' + str(bidder.player_position) + '_export.csv'
             np.savetxt(file_dir, cat.detach().cpu().numpy(), fmt='%1.16f', delimiter=",")
@@ -517,16 +531,19 @@ class Logger:
     _git_commit_hash_file_name = 'git_hash'
 
     # based on https://stackoverflow.com/a/57411105/4755970
-    # experiment must be the directory immediately above the runs and each run must have the same shape.
+    # experiment must be the directory immediately above the runs
+    # and each run must have the same shape.
     # No aggregation of multiple subdirectories for now.
     def tabulate_tensorboard_logs(self):
         """
-        This function reads all tensorboard event log files in subdirectories and converts their content into
-        a single csv file containing info of all runs.
+        This function reads all tensorboard event log files in subdirectories
+        and converts their content into a single csv file containing info of all runs.
         """
-        from tensorboard.backend.event_processing.event_accumulator import EventAccumulator, STORE_EVERYTHING_SIZE_GUIDANCE        
+        from tensorboard.backend.event_processing.event_accumulator \
+            import EventAccumulator, STORE_EVERYTHING_SIZE_GUIDANCE
 
-        if not self.logging.save_tb_events_to_csv_detailed and not self.logging.save_tb_events_to_csv_aggregate and not \
+        if not self.logging.save_tb_events_to_csv_detailed and not \
+            self.logging.save_tb_events_to_csv_aggregate and not \
             self.logging.save_tb_events_to_binary_detailed:
             return
         print('Tabulating tensorboard logs...', end=' ')
@@ -535,12 +552,17 @@ class Logger:
         runs = [x.name for x in os.scandir(self.experiment_log_dir) if
                 x.is_dir() and not x.name.startswith('.') and not x.name == 'alternative']
 
-        all_tb_events = {'run': [], 'subrun': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []}
-        last_epoch_tb_events = {'run': [], 'subrun': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []}
+        all_tb_events = {
+            'run': [], 'subrun': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []
+            }
+        last_epoch_tb_events = {
+            'run': [], 'subrun': [], 'tag': [], 'epoch': [], 'value': [], 'wall_time': []
+            }
         for run in runs:
             subruns = [x.name for x in os.scandir(os.path.join(self.experiment_log_dir, run))
-                    if x.is_dir() and any(file.startswith('events.out.tfevents')
-                                            for file in os.listdir(os.path.join(self.experiment_log_dir, run, x.name)))]
+            if x.is_dir() and any(file.startswith('events.out.tfevents')
+                for file in os.listdir(os.path.join(self.experiment_log_dir, run, x.name)))]
+
             subruns.append('.')  # also read global logs
             for subrun in subruns:
                 ea = EventAccumulator(os.path.join(self.experiment_log_dir, run, subrun),
@@ -580,7 +602,7 @@ class Logger:
         if self.logging.save_tb_events_to_binary_detailed:
             f_name = os.path.join(self.experiment_log_dir, f'{Logger._full_log_file_name}.pkl')
             all_tb_events.to_pickle(f_name)
-        
+
         # print_aggregate_tensorboard_logs(self.experiment_log_dir)
         print('finished tabulating logs.')
 
@@ -607,26 +629,31 @@ class Logger:
     def log_git_commit_hash(self):
         """Saves the hash of the current git commit into experiment_dir."""
         import subprocess
-        # Will leave it here as a comment in case we'll ever need to log the full dependency tree or the environment.
+        # Will leave it here as a comment in case we'll ever need to log the full
+        # dependency tree or the environment.
         # os.system('pipdeptree --json-tree > dependencies.json')
         # os.system('conda env export > environment.yml')
 
         try:
             commit_hash = str(subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip())[2:-1]
-            with open(os.path.join(self.experiment_log_dir, f'{Logger._git_commit_hash_file_name}.txt'), "w") as text_file:
+            with open(os.path.join(self.experiment_log_dir, \
+                f'{Logger._git_commit_hash_file_name}.txt'), "w") as text_file:
                 text_file.write(commit_hash)
         except Exception as e:
             warnings.warn("Failed to retrieve and log the git commit hash.")
+            print(e)
 
     @staticmethod
     def print_full_tensorboard_logs(experiment_dir, first_row: int = 0, last_row=None):
         """
-        Prints in a tabular form the full log from all the runs in the current experiment, reads data from a pkl file
+        Prints in a tabular form the full log from all the runs in the current experiment,
+        reads data from a pkl file
         in the experiment directory
         :param first_row: the first row to be printed if the full log is used
         :param last_row: the last row to be printed if the full log is used
         """
-        f_name = os.path.join(experiment_dir, f'{_full_log_file_name}.pkl')
+        import pickle
+        f_name = os.path.join(experiment_dir, f'{Logger._full_log_file_name}.pkl')
         objects = []
         with (open(f_name, "rb")) as full_results:
             while True:
@@ -658,13 +685,14 @@ class Logger:
         :param experiment_log_dir: full path except for the file name
         :param experiment_configuration: experiment configuration as given by ConfigurationManager
         """
-        
+        import json
         f_name = os.path.join(experiment_log_dir, Logger._configurations_f_name)
 
         temp_cp = experiment_configuration.setting.common_prior
         temp_ha = experiment_configuration.learning.hidden_activations
 
-        experiment_configuration.setting.common_prior = str(experiment_configuration.setting.common_prior)
+        experiment_configuration.setting.common_prior = \
+            str(experiment_configuration.setting.common_prior)
         experiment_configuration.learning.hidden_activations = str(
             experiment_configuration.learning.hidden_activations)
         with open(f_name, 'w+') as outfile:

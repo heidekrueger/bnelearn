@@ -73,12 +73,11 @@ class LocalGlobalExperiment(Experiment, ABC):
         else:
             self.n_models = self.n_players
             self._bidder2model: List[int] = list(range(self.n_players))
-
-        self.plot_bounds = {}
-        self.plot_bounds['plot_xmin'] = min(self.u_lo)
-        self.plot_bounds['plot_xmax'] = max(self.u_hi)                         
-        self.plot_bounds['plot_ymin'] = min(self.u_lo)
-        self.plot_bounds['plot_ymax'] = max(self.u_hi) * 1.05
+        
+        self.plot_xmin = min(self.u_lo)
+        self.plot_xmax = max(self.u_hi)                         
+        self.plot_ymin = min(self.u_lo)
+        self.plot_ymax = max(self.u_hi) * 1.05
 
         super().__init__(config=config)
                 
@@ -142,9 +141,9 @@ class LLGExperiment(LocalGlobalExperiment):
                          valuation_size=1, observation_size=1, action_size=1)
         
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=self.plot_bounds,  
-                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne,
+                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models,
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(),
                                 sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
     def _setup_sampler(self):
@@ -313,7 +312,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
                          valuation_size=3, observation_size=1, action_size=3)
 
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=self.plot_bounds,  
+            self.logger = Logger(config=self.config, known_bne=self.known_bne,
                                 evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
                                 model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
                                 sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid, valuation_size=self.valuation_size, 
@@ -507,9 +506,9 @@ class LLLLGGExperiment(LocalGlobalExperiment):
                          valuation_size=2, observation_size=2, action_size=2)
 
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=self.plot_bounds,  
-                                 _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne,
+                                 _model2bidder=self._model2bidder, n_models=self.n_models,
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(),
                                 sampler=self.sampler, plotter=self._plot, optimal_bid = lambda : None) 
         # Not sure passing a lambda returning None for optimal bid is fine, 
         # but I didn't think of anythink better since this class doesn't have an optimal bid function.

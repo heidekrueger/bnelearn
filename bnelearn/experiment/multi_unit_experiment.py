@@ -118,19 +118,18 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
         #else:
         #    self.pretrain_transform = self.default_pretrain_transform
         #self.input_length = self.config.setting.n_units
-        
-        plot_bounds = {}
-        plot_bounds['plot_xmin'] =  min(self.u_lo)
-        plot_bounds['plot_xmax'] =  max(self.u_hi)
-        plot_bounds['plot_ymin'] =  min(self.u_lo)
-        plot_bounds['plot_ymax'] =  max(self.u_hi)
+                
+        self.plot_xmin =  min(self.u_lo)
+        self.plot_xmax =  max(self.u_hi)
+        self.plot_ymin =  min(self.u_lo)
+        self.plot_ymax =  max(self.u_hi)
 
         super().__init__(config=config)
                 
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds,  
-                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne, 
+                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models,
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(),
                                 sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
@@ -276,18 +275,17 @@ class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
         # Plotting bounds
         _lo = self.config.setting.u_lo[0]
         _hi = self.config.setting.u_hi[0]
-        plot_bounds = {}
-        plot_bounds['plot_xmin'] = [self.efficiency_parameter * _lo, _lo]
-        plot_bounds['plot_xmax'] = [self.efficiency_parameter * _hi, _hi]
-        plot_bounds['plot_ymin'] = [0, 0]
-        plot_bounds['plot_ymax'] = [2 * _hi, 2 * _hi]
+        self.plot_xmin = [self.efficiency_parameter * _lo, _lo]
+        self.plot_xmax = [self.efficiency_parameter * _hi, _hi]
+        self.plot_ymin = [0, 0]
+        self.plot_ymax = [2 * _hi, 2 * _hi]
 
         super().__init__(config=config)
                 
         if self.logging.enable_logging:
-            self.logger = Logger(config=self.config, known_bne=self.known_bne, plot_bounds=plot_bounds, 
-                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models, 
-                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(), 
+            self.logger = Logger(config=self.config, known_bne=self.known_bne,
+                                evaluation_env=self.bne_env, _model2bidder=self._model2bidder, n_models=self.n_models,
+                                model_names=self._model_names, logdir_hierarchy=self._get_logdir_hierarchy(),
                                 sampler=self.sampler, plotter=self._plot, optimal_bid=self._optimal_bid)
 
         
