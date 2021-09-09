@@ -663,6 +663,10 @@ class Experiment(ABC):
         if self.logging.log_metrics['incentive_compatibility'] and (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['incentive_compatibility'] = \
                 self.env.get_incentive_compatibility(self.env)
+        
+        if epoch % self.logging.util_loss_frequency == 0:
+            strategy_metrics = self.env.get_strategy_metrics(self.logging.log_metrics)
+            # fill strategy_metrics into self._cur_epoch_log_params
 
         # plotting
         if epoch % self.logging.plot_frequency == 0:

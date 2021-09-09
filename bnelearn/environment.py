@@ -494,7 +494,7 @@ class AuctionEnvironment(Environment):
         return efficiency
 
     def get_budget_balance(self, redraw_valuations: bool=False,
-                           batch_size: int=2**10) -> [float, float]:
+                           batch_size: int=2**10) -> List[float, float]:
         """Calculate deviation from a budget balnced market.
 
         Definition: A market is budget balanced when payments from buyers and
@@ -643,3 +643,21 @@ class AuctionEnvironment(Environment):
             a.strategy = actual_strategies[i]
 
         return ex_ante_util_loss
+
+    def get_da_strategy_metrics(self, log_metrics: List[str], redraw_valuations: bool=False,
+                             batch_size: int=2**10, grid_size: int=2**10) -> Tuple[float]:
+        # These metrics are calculated specifically for Double Auctions
+        if not DoubleAuctionMechanism in inspect.getmro(type(self.mechanism)):
+            return None
+
+        batch_size = min(batch_size, self.batch_size)
+        if redraw_valuations:
+            self.draw_valuations()
+
+        # Calculate all combinations of bids
+        bid_profile = all_combinations(self._observations[:batch_size, ...])
+        allocations, payments = self.mechanism.play(bid_profile)
+
+        with torch.no_grad():  # don't need any gradient information here
+            pass
+        return -1
