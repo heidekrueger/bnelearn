@@ -650,7 +650,6 @@ class AuctionEnvironment(Environment):
         between different equilibria. The definitions of these metrics are from the paper by
         Leininger et al. 1989. See the doc-strings of the individual methods for more information.
         Args:
-            log_metrics (:Dict[str, bool]:) names and whether these metrics should be calculated and logged
             redraw_valuations (:bool:) whether or not to redraw the valuations
                 of the agents.
             batch_size (:int:) maximal batch size for calculation.
@@ -670,7 +669,7 @@ class AuctionEnvironment(Environment):
         if not DoubleAuctionMechanism in inspect.getmro(type(self.mechanism)):
             return tuple(8 * [0.0])
 
-        batch_size = min(batch_size, self.batch_size)  
+        batch_size = min(batch_size, self.batch_size)
         #TODO: I am not using batch_size atm! We should discuss whether this is necessary or only for debugging
         if redraw_valuations:
             self.draw_valuations()
@@ -705,10 +704,10 @@ class AuctionEnvironment(Environment):
             risk_neutral (:bool:): Whether we set the agents to be risk_neutral
 
         Returns:
-            expected_utility_buyers
-            expected_utility_sellers
-            gains_from_trade
-            efficiency_from_trade
+            expected_utility_buyers: mean ex_ante_utilities of buyers
+            expected_utility_sellers: mean ex_ante_utilities of sellers
+            gains_from_trade: sum of ex_ante_utilities  #TODO: Check the definition for more than one buyer and seller!
+            efficiency_from_trade: gains_from_trade / sum_of_ex_ante_utilities_with_truthful_strategy
         """
         exp_utilities = self._get_expected_utilities(
             allocations, payments, valuations, risk_neutral=risk_neutral)
@@ -738,7 +737,9 @@ class AuctionEnvironment(Environment):
     def _get_expected_utilities(self, allocations, payments, valuations, risk_neutral: bool = False) -> Tuple[float]:
         """Estimates the ex-ante utilities for the given instances via Monte-Carlo-Estimation.
         If risk_neutral is set to True, the risk-neutral utility functions are used. This
-        corresponds then to the expected_profits"""
+        corresponds then to the expected_profits.
+        ex_ante_utilities = int_(prior_buyer x prior_seller) ex_post_utility(strategies_buyer(val_buyer), strategies_seller(val_seller))
+        """
         if risk_neutral:  # Make agents risk neutral
             risk_parameters = [agent.risk for agent in self.agents]
             for agent in self.agents:
@@ -760,7 +761,8 @@ class AuctionEnvironment(Environment):
     def get_pareto_efficiency_of_current_strategy(self, redraw_valuations: bool=False) -> float:
         """ Calculates the Pareto-Efficiency for the current strategies.
         Gives the percentage of realized trade for the given strategic bids
-        compared to the amount of trade if both agents would report truthfully."""
+        compared to the amount of trade if both agents would report truthfully.
+        pareto_efficiency = (num_realized_trade_with_curr_strategy / (num_realized_trade_with_truthful_strategy)"""
         if redraw_valuations:
             self.draw_valuations()
         if DoubleAuctionMechanism in inspect.getmro(type(self.mechanism)):
