@@ -24,13 +24,15 @@ MAPPING_METRICS_TAGS = {
     'individual_rationality':  'market/individual_rationality',
     'incentive_compatibility': 'market/incentive_compatibility',
 
-    'expected_utilities':                   'da_strategy/expected_utilities',
+    'expected_utility_buyers':              'da_strategy/expected_utility_buyers',
+    'expected_utility_sellers':             'da_strategy/expected_utility_sellers',
     'gains_from_trade':                     'da_strategy/gains_from_trade',
     'efficiency_from_trade':                'da_strategy/efficiency_from_trade',
-    'pareto_efficiency_current_strategy':   'da_strategy/pareto_efficiency_current_strategy',
-    'expected_profits':                     'da_strategy/expected_profits',
+    'expected_profit_buyers':               'da_strategy/expected_profit_buyers',
+    'expected_profit_sellers':              'da_strategy/expected_profit_sellers',
     'profits_from_trade':                   'da_strategy/profits_from_trade',
     'normalized_profits_from_trade':        'da_strategy/normalized_profits_from_trade',
+    'pareto_efficiency_current_strategy':   'da_strategy/pareto_efficiency_current_strategy',
 
     'update_norm':             'learner_info/update_norm',
     'util_loss_ex_ante':       'eval/util_loss_ex_ante',

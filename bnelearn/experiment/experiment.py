@@ -664,9 +664,20 @@ class Experiment(ABC):
             self._cur_epoch_log_params['incentive_compatibility'] = \
                 self.env.get_incentive_compatibility(self.env)
         
-        if epoch % self.logging.util_loss_frequency == 0:
-            strategy_metrics = self.env.get_strategy_metrics(self.logging.log_metrics)
-            # fill strategy_metrics into self._cur_epoch_log_params
+        if self.logging.log_metrics['strategy_efficiency_metrics'] and (epoch % self.logging.util_loss_frequency == 0):
+            strategy_metrics = self.env.get_da_strategy_metrics()
+            self._cur_epoch_log_params['expected_utility_buyers'] = strategy_metrics[0]
+            self._cur_epoch_log_params['expected_utility_sellers'] = strategy_metrics[1]
+            self._cur_epoch_log_params['gains_from_trade'] = strategy_metrics[2]
+            self._cur_epoch_log_params['efficiency_from_trade'] = strategy_metrics[3]
+            self._cur_epoch_log_params['expected_profit_buyers'] = strategy_metrics[4]
+            self._cur_epoch_log_params['expected_profit_sellers'] = strategy_metrics[5]
+            self._cur_epoch_log_params['profits_from_trade'] = strategy_metrics[6]
+            self._cur_epoch_log_params['normalized_profits_from_trade'] = strategy_metrics[7]
+        
+        if self.logging.log_metrics['pareto_efficiency_current_strategy'] and (epoch % self.logging.util_loss_frequency == 0):
+            self._cur_epoch_log_params['pareto_efficiency_current_strategy'] = \
+                self.env.get_pareto_efficiency_of_current_strategy()
 
         # plotting
         if epoch % self.logging.plot_frequency == 0:

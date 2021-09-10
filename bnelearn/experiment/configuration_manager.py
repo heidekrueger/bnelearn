@@ -277,13 +277,9 @@ class ConfigurationManager:
                                     'individual_rationality': True,
                                     'incentive_compatibility': True,
                                     'budget_balance': True,
-                                    'expected_utilities': True,
-                                    'gains_from_trade': True,
-                                    'efficiency_from_trade': True,
-                                    'pareto_efficiency_current_strategy': True,
-                                    'expected_profits': True,
-                                    'profits_from_trade': True,
-                                    'normalized_profits_from_trade': True}
+                                    'strategy_efficiency_metrics': True,
+                                    'pareto_efficiency_current_strategy': True
+                                    }
 
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
@@ -301,9 +297,8 @@ class ConfigurationManager:
             self.logging.experiment_dir += ' ' + str(self.logging.experiment_name)
 
         valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue', 'individual_rationality',
-                             'incentive_compatibility', 'budget_balance', 'expected_utilities',
-                             'gains_from_trade', 'efficiency_from_trade', 'pareto_efficiency_current_strategy',
-                             'expected_profits', 'profits_from_trade', 'normalized_profits_from_trade']
+                             'incentive_compatibility', 'budget_balance', 'strategy_efficiency_metrics',
+                             'pareto_efficiency_current_strategy']
         if self.logging.log_metrics is not None:
             for metric in self.logging.log_metrics:
                 assert metric in valid_log_metrics, "Metric not known."
