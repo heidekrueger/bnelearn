@@ -646,23 +646,23 @@ class Experiment(ABC):
 
         if self.logging.log_metrics['efficiency'] and (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['efficiency'] = \
-                self.env.get_efficiency(self.env)
+                self.env.get_efficiency()
 
         if self.logging.log_metrics['revenue'] and (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['revenue'] = \
-                self.env.get_revenue(self.env)
+                self.env.get_revenue()
 
         if self.logging.log_metrics['budget_balance'] and (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['budget_deficit'], self._cur_epoch_log_params['budget_surplus'] = \
-                self.env.get_budget_balance(self.env)
+                self.env.get_budget_balance()
 
         if self.logging.log_metrics['individual_rationality'] and (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['individual_rationality'] = \
-                self.env.get_individual_rationality(self.env)
+                self.env.get_individual_rationality()
 
         if self.logging.log_metrics['incentive_compatibility'] and (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['incentive_compatibility'] = \
-                self.env.get_incentive_compatibility(self.env)
+                self.env.get_incentive_compatibility()
 
         # plotting
         if epoch % self.logging.plot_frequency == 0:
