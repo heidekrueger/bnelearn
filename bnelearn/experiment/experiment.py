@@ -206,7 +206,7 @@ class Experiment(ABC):
                 self.observation_size,
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
-                ensure_positive_output=self.positive_output_point.to('cpu'),  # models init. on cpu
+                ensure_positive_output=self.positive_output_point,
                 output_length=self.action_size
             ).to(self.hardware.device)
 
