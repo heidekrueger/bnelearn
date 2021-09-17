@@ -13,7 +13,7 @@ import inspect
 import torch
 
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
-from bnelearn.mechanism import MatrixGame, Mechanism, DoubleAuctionMechanism
+from bnelearn.mechanism import MatrixGame, Mechanism, DoubleAuctionMechanism, kDoubleAuction
 from bnelearn.strategy import Strategy, TruthfulStrategy
 from bnelearn.sampler import ValuationObservationSampler
 from bnelearn.util.metrics import ex_interim_utility, ex_interim_util_loss
@@ -380,7 +380,7 @@ class AuctionEnvironment(Environment):
         return cv, co
 
 
-    # Properties of the market under current strategies #######################
+    # Properties of the market ################################################
 
     def get_revenue(self, redraw_valuations: bool=False) -> float:
         """Returns the average seller revenue over a batch.
@@ -406,7 +406,7 @@ class AuctionEnvironment(Environment):
         return payments.sum(axis=1).float().mean()
 
     def get_efficiency(self, redraw_valuations: bool=False,
-                       batch_size: int=2**13) -> float:
+                       batch_size: int=2**8) -> float:
         """Average percentage that the actual welfare reaches of the maximal
         possible welfare over a batch.
 
@@ -426,34 +426,37 @@ class AuctionEnvironment(Environment):
 
         # Efficiency of two-sided markets (double-acutions)
         if DoubleAuctionMechanism in inspect.getmro(type(self.mechanism)):
-            if self.mechanism.n_buyers == 1 and self.mechanism.n_sellers == 1:
-                """Def 1 (M&S). A bilateral bargaining mechanism is ex post
-                efficient iff the buyer gets the object whenever her valuation
-                is higher, and the seller keeps the object whenever her
-                valuation is higher.
+            """Def 1 (M&S). A bilateral bargaining mechanism is ex post
+            efficient iff the buyer gets the object whenever her valuation
+            is higher, and the seller keeps the object whenever her
+            valuation is higher.
 
-                Def 2. A bilateral bargaining mechanism is ex post efficient
-                iff the probability of trade is 1 if the buyer reports a higher
-                value than the seller and 0 otherwise.
+            Def 2. A bilateral bargaining mechanism is ex post efficient
+            iff the probability of trade is 1 if the buyer reports a higher
+            value than the seller and 0 otherwise.
 
-                Note:
-                    Should be static and independent of strategies.
-                """
-                # let each valuation of one agent compete against all vluationns
-                # of the opponents
-                truthful_bid_profile = all_combinations(self._observations[:batch_size, ...])
-                allocations, _ = self.mechanism.play(truthful_bid_profile)
+            Note:
+                Should be static and independent of strategies.
+            """
+            # let each valuation of one agent compete against all vluationns
+            # of the opponents
+            truthful_bid_profile = all_combinations(self._observations[:batch_size, ...])
+            # (batch_size**n_agents, n_agents, 1)
 
-                allocated_to_highest_reported_value = \
-                    allocations[..., 0, 0] == \
-                        (truthful_bid_profile[..., 0, 0] > truthful_bid_profile[..., 1, 0])
-                # ``allocated to buyer'' == ``buyer reported higher value''
+            # TODO: Do we really need all combinations when we flatten them anyway?
+            #       (And don't take a mean over the current agent)
+            actual_allocations, _ = self.mechanism.play(truthful_bid_profile)
 
-                efficiency = allocated_to_highest_reported_value.float().mean()
+            # This mechanism's allocations can be used as baseline b/c they're efficient
+            efficient_allocations, _ = \
+                kDoubleAuction(self.mechanism.n_buyers, self.mechanism.n_sellers, 0.5) \
+                .play(truthful_bid_profile)
 
-            else:
-                raise NotImplementedError('Efficiency for double auctions ' + \
-                    'only implemented for the bilateral bargaining case.')
+            # ``allocated to buyer'' == ``buyer reported higher value''
+            allocated_to_highest_reported_value = \
+                (actual_allocations == efficient_allocations).all(dim=2).all(dim=1)
+
+            efficiency = allocated_to_highest_reported_value.float().mean()
 
         # Efficiency of single-sided markets
         else:
@@ -494,7 +497,7 @@ class AuctionEnvironment(Environment):
         return efficiency
 
     def get_budget_balance(self, redraw_valuations: bool=False,
-                           batch_size: int=2**10) -> List[float]:
+                           batch_size: int=2**8) -> List[float]:
         """Calculate deviation from a budget balnced market.
 
         Definition: A market is budget balanced when payments from buyers and
@@ -537,7 +540,7 @@ class AuctionEnvironment(Environment):
         return [(-budget.min()).relu(), budget.max().relu()]
 
     def get_individual_rationality(self, redraw_valuations: bool=False,
-                                   batch_size: int=2**10) -> List[float]:
+                                   batch_size: int=2**8) -> List[float]:
         """Calculate individual rationality.
 
         Definition: IR requires that each agent has non-negative expected
@@ -586,7 +589,7 @@ class AuctionEnvironment(Environment):
         return individual_rationality
 
     def get_incentive_compatibility(self, redraw_valuations: bool=False,
-                                    batch_size: int=2**10, grid_size: int=2**10) -> List[float]:
+                                    batch_size: int=2**8, grid_size: int=2**8) -> List[float]:
         r"""Measure if mechansim is incentive compatible.
 
         Definition of incentive compatiblity:
@@ -644,88 +647,100 @@ class AuctionEnvironment(Environment):
 
         return ex_ante_util_loss
 
-    def get_da_strategy_metrics(self, redraw_valuations: bool=False,
-                             batch_size: int=2**10) -> Tuple[float]:
-        """ Calculate metrics that evaluate the current strategies and ultimately enable a comparison
-        between different equilibria. The definitions of these metrics are from the paper by
-        Leininger et al. 1989. See the doc-strings of the individual methods for more information.
+
+    # Properties of the strategies in this market #############################
+
+    def get_da_strategy_metrics(self, redraw_valuations: bool=False) -> Tuple[float]:
+        """Calculate metrics that evaluate the current strategies and
+        ultimately enable a comparison between different equilibria. The
+        definitions of these metrics are from the paper by Leininger et al.
+        1989. See the doc-strings of the individual methods for more
+        information.
+
         Args:
             redraw_valuations (:bool:) whether or not to redraw the valuations
                 of the agents.
             batch_size (:int:) maximal batch size for calculation.
 
         Returns:
-            calculated_metrics(:Tuple[float]:) the tuple of all calculated metrics in the order:
+            calculated_metrics(:Tuple[float]:) the tuple of all calculated
+            metrics in the order:
                 1. expected_utility_buyers
                 2. expected_utility_sellers
                 3. gains_from_trade
                 4. efficiency_from_trade
+            When not risk-neutral, one can also measure:
                 5. expected_profit_buyers
                 6. expected_profit_sellers
                 7. profits_from_trade
                 8. normalized_profits_from_trade
         """
-        # These metrics are calculated specifically for Double Auctions
-        if not DoubleAuctionMechanism in inspect.getmro(type(self.mechanism)):
-            return tuple(8 * [0.0])
+        assert DoubleAuctionMechanism in inspect.getmro(type(self.mechanism)), \
+            'These metrics are calculated specifically for double auctions.'
 
-        batch_size = min(batch_size, self.batch_size)
-        #TODO: I am not using batch_size atm! We should discuss whether this is necessary or only for debugging
         if redraw_valuations:
             self.draw_valuations()
 
-        with torch.no_grad():  # don't need any gradient information here
-            bid_profile = self._get_bid_profile_by_current_strategy()
-            valuations = self._observations
+        bid_profile = self._get_bid_profile_by_current_strategies()
+        valuations = self._observations
 
-            allocations, payments = self.mechanism.play(bid_profile)
-            truthful_allocations, truthful_payments = self.mechanism.play(valuations)
+        actual_allocations, actual_payments = self.mechanism.play(bid_profile)
+        truthful_allocations, truthful_payments = self.mechanism.play(valuations)
 
-            expected_utility_metrics = self._get_strategy_utility_metrics(
-                valuations, allocations, payments, truthful_allocations, truthful_payments)
+        expected_utility_metrics = self._get_strategy_utility_metrics(
+            valuations, actual_allocations, actual_payments,
+            truthful_allocations, truthful_payments
+            )
 
-            if self._are_all_agents_risk_neutral():
-                expected_profits_metrics = expected_utility_metrics
-            else:
-                expected_profits_metrics = self._get_strategy_utility_metrics(
-                valuations, allocations, payments, truthful_allocations, truthful_payments, risk_neutral=True)
+        if self._all_agents_risk_neutral():  # -> profit = utility
+            expected_profits_metrics = expected_utility_metrics
+        else:
+            expected_profits_metrics = self._get_strategy_utility_metrics(
+                valuations, actual_allocations, actual_payments,
+                truthful_allocations, truthful_payments, force_risk_neutral=True
+                )
 
         return expected_utility_metrics + expected_profits_metrics
 
-    def _get_strategy_utility_metrics(self, valuations, allocations, payments, truthful_allocations, truthful_payments, risk_neutral: bool=False):
-        """ Calculates the strategy metrics for the utilities of the agents. With risk_neutral=True, 
-        this corresponds to the profits metrics otherwise this represents the utility metrics.
+    def _get_strategy_utility_metrics(self, valuations, allocations, payments,
+                                      truthful_allocations, truthful_payments,
+                                      force_risk_neutral: bool=False):
+        """Calculates the strategy metrics for the utilities of the agents.
+        With force_risk_neutral=True, this corresponds to the profits metrics
+        otherwise this represents the utility metrics.
+
         Args:
             valuations (Tensor of dim (*agent_batch_sizes x n_players x n_actions))
             allocations (Tensor of dim (*agent_batch_sizes x n_players x n_actions))
             payments (Tensor of dim (*agent_batch_sizes x n_players x n_actions))
             truthful_allocations (Tensor of dim (*agent_batch_sizes x n_players x n_actions))
             truthful_payments (Tensor of dim (*agent_batch_sizes x n_players x n_actions))
-            risk_neutral (:bool:): Whether we set the agents to be risk_neutral
+            force_risk_neutral (:bool:): Whether we set the agents to be risk_neutral
 
         Returns:
             expected_utility_buyers: mean ex_ante_utilities of buyers
             expected_utility_sellers: mean ex_ante_utilities of sellers
-            gains_from_trade: sum of ex_ante_utilities  #TODO: Check the definition for more than one buyer and seller!
+            # TODO: Check the definition for more than one buyer and seller!
+            gains_from_trade: sum of ex_ante_utilities of buyers and sellers
             efficiency_from_trade: gains_from_trade / sum_of_ex_ante_utilities_with_truthful_strategy
         """
-        exp_utilities = self._get_expected_utilities(
-            allocations, payments, valuations, risk_neutral=risk_neutral)
+        expected_utility_buyers, expected_utility_sellers = self._get_expected_utilities(
+            allocations, payments, valuations, force_risk_neutral=force_risk_neutral)
         exp_truthful_utilities = self._get_expected_utilities(
-            truthful_allocations, truthful_payments, valuations, risk_neutral=risk_neutral)
-        gains_from_trade = sum(exp_utilities)
+            truthful_allocations, truthful_payments, valuations, force_risk_neutral=force_risk_neutral)
+        gains_from_trade = expected_utility_buyers + expected_utility_sellers
         efficiency_from_trade = gains_from_trade / sum(exp_truthful_utilities)
         return (
-            exp_utilities[0],
-            exp_utilities[1],
+            expected_utility_buyers,
+            expected_utility_sellers,
             gains_from_trade,
             efficiency_from_trade
         )
 
-    def _are_all_agents_risk_neutral(self) -> bool:
-        return all([agent.risk == 1.0 for agent in self.agents])
+    def _all_agents_risk_neutral(self) -> bool:
+        return all(agent.risk == 1.0 for agent in self.agents)
 
-    def _get_bid_profile_by_current_strategy(self):
+    def _get_bid_profile_by_current_strategies(self):
         action_length = self.agents[0].bid_size
 
         bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
@@ -734,48 +749,61 @@ class AuctionEnvironment(Environment):
             bid_profile[:, pos, :] = bid
         return bid_profile
 
-    def _get_expected_utilities(self, allocations, payments, valuations, risk_neutral: bool = False) -> Tuple[float]:
+    def _get_expected_utilities(self, allocations, payments, valuations,
+                                force_risk_neutral: bool=False) -> Tuple[float]:
         """Estimates the ex-ante utilities for the given instances via Monte-Carlo-Estimation.
-        If risk_neutral is set to True, the risk-neutral utility functions are used. This
+        If force_risk_neutral is set to True, the risk-neutral utility functions are used. This
         corresponds then to the expected_profits.
-        ex_ante_utilities = int_(prior_buyer x prior_seller) ex_post_utility(strategies_buyer(val_buyer), strategies_seller(val_seller))
+
+        Returns:
+            ex_ante_utilities = int_(prior_buyer x prior_seller)
+                ex_post_utility(strategies_buyer(val_buyer), strategies_seller(val_seller))
         """
-        if risk_neutral:  # Make agents risk neutral
+        if force_risk_neutral:  # Make agents risk neutral
             risk_parameters = [agent.risk for agent in self.agents]
             for agent in self.agents:
                 agent.risk = 1.0
-        
+
         utilities = torch.zeros(payments.shape, device=self.mechanism.device)
         for k, agent in enumerate(self.agents):
             utilities[:, k] = agent.get_utility(
                 allocations[:, k,...], payments[:, k], valuations[:, k, ...]
                 )
-        
-        if risk_neutral:  # Restore risk levels
+
+        if force_risk_neutral:  # Restore risk levels
             for agent, stored_risk in zip(self.agents, risk_parameters):
                 agent.risk = stored_risk
+
         utility_buyers = utilities[:, :self.mechanism.n_buyers].mean()
         utility_seller = utilities[:, self.mechanism.n_buyers:].mean()
         return float(utility_buyers.detach().cpu()), float(utility_seller.detach().cpu())
 
     def get_pareto_efficiency_of_current_strategy(self, redraw_valuations: bool=False) -> float:
-        """ Calculates the Pareto-Efficiency for the current strategies.
+        """Calculates the Pareto-Efficiency for the current strategies.
         Gives the percentage of realized trade for the given strategic bids
         compared to the amount of trade if both agents would report truthfully.
-        pareto_efficiency = (num_realized_trade_with_curr_strategy / (num_realized_trade_with_truthful_strategy)"""
+
+        Returns:
+            pareto_efficiency = (num_realized_trade_with_curr_strategy /
+                (num_realized_trade_with_truthful_strategy).
+
+        Note:
+            Unlike the two-sided markets version of `self.get_efficiency`,
+            this method calculates efficiency based on the current strategy
+            profile.
+        """
         if redraw_valuations:
             self.draw_valuations()
         if DoubleAuctionMechanism in inspect.getmro(type(self.mechanism)):
-            if self.mechanism.n_buyers == 1 and self.mechanism.n_sellers == 1:
-                with torch.no_grad():
-                    bid_profile = self._get_bid_profile_by_current_strategy()
-                    truthful_bids = self._observations
-                    allocations, _ = self.mechanism.play(bid_profile)
-                    allocated_to_highest_reported_value = \
-                            allocations[..., 0, 0] == \
-                                (truthful_bids[..., 0, 0] > truthful_bids[..., 1, 0])
-                        # ``allocated to buyer'' == ``buyer reported higher value''
+            bid_profile = self._get_bid_profile_by_current_strategies()
+            actual_allocations, _ = self.mechanism.play(bid_profile)
 
-                return float(allocated_to_highest_reported_value.detach().cpu().float().mean())
-            raise NotImplementedError('Pareto-Efficiency for double auctions ' + \
-                'only implemented for the bilateral bargaining case.')
+            efficient_allocations, _ = \
+                kDoubleAuction(self.mechanism.n_buyers, self.mechanism.n_sellers, 0.5) \
+                .play(self._observations)
+
+            # ``allocated to buyer'' == ``buyer reported higher value''
+            allocated_to_highest_reported_value = \
+                (actual_allocations == efficient_allocations).all(dim=2).all(dim=1)
+
+            return float(allocated_to_highest_reported_value.float().mean().detach().cpu())

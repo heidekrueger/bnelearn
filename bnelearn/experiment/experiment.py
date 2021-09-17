@@ -657,13 +657,15 @@ class Experiment(ABC):
                 self.env.get_budget_balance()
 
         if self.logging.log_metrics['individual_rationality'] and (epoch % self.logging.util_loss_frequency) == 0:
-            self._cur_epoch_log_params['individual_rationality'] = \
-                self.env.get_individual_rationality()
+            individual_rationality_bidders = self.env.get_individual_rationality()
+            individual_rationality_models = [individual_rationality_bidders[b[0]] for b in self._model2bidder]
+            self._cur_epoch_log_params['individual_rationality'] = individual_rationality_models
 
         if self.logging.log_metrics['incentive_compatibility'] and (epoch % self.logging.util_loss_frequency) == 0:
-            self._cur_epoch_log_params['incentive_compatibility'] = \
-                self.env.get_incentive_compatibility()
-        
+            incentive_compatibility_bidders = self.env.get_incentive_compatibility()
+            incentive_compatibility_models = [incentive_compatibility_bidders[b[0]] for b in self._model2bidder]
+            self._cur_epoch_log_params['incentive_compatibility'] = incentive_compatibility_models
+
         if self.logging.log_metrics['strategy_efficiency_metrics'] and (epoch % self.logging.util_loss_frequency == 0):
             strategy_metrics = self.env.get_da_strategy_metrics()
             self._cur_epoch_log_params['expected_utility_buyers'] = strategy_metrics[0]
@@ -674,7 +676,7 @@ class Experiment(ABC):
             self._cur_epoch_log_params['expected_profit_sellers'] = strategy_metrics[5]
             self._cur_epoch_log_params['profits_from_trade'] = strategy_metrics[6]
             self._cur_epoch_log_params['normalized_profits_from_trade'] = strategy_metrics[7]
-        
+
         if self.logging.log_metrics['pareto_efficiency_current_strategy'] and (epoch % self.logging.util_loss_frequency == 0):
             self._cur_epoch_log_params['pareto_efficiency_current_strategy'] = \
                 self.env.get_pareto_efficiency_of_current_strategy()

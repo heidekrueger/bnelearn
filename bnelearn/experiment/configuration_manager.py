@@ -377,7 +377,10 @@ class ConfigurationManager:
         pass
 
     def _post_init_double_auction_single_item_uniform_symmetric(self):
-        pass
+        n_players = self.setting.n_sellers + self.setting.n_buyers
+        if n_players != self.setting.n_players:
+            warnings.warn('Changed `n_players` to match `n_sellers` and `n_buyers`.')
+            self.setting.n_players = n_players
 
     experiment_types = {
         'single_item_uniform_symmetric':
