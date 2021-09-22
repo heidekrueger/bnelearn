@@ -476,8 +476,7 @@ class Experiment(ABC):
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts: list = None,
-              colors: list = None, figure_name: str = 'bid_function',
-              plot_points=100):
+              figure_name: str = 'bid_function', plot_points=100):
         """
         This implements plotting simple 2D data.
 
@@ -511,8 +510,13 @@ class Experiment(ABC):
         if not isinstance(axs, np.ndarray):
             axs = [axs]  # one plot only
 
-        cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-        n_colors = int(np.ceil(len(fmts) / 2)) if self.config.logging.log_metrics['opt'] else len(fmts)
+        # Set the colors s.t. the models' actions and the (possibly multiple)
+        # BNEs can be differentated
+        available_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+        if not self.config.logging.log_metrics['opt']:
+            colors = available_colors
+        else:
+            colors = available_colors[:self.n_models * len(self._optimal_bid)]
 
         # actual plotting
         for plot_idx in range(n_bundles):
@@ -521,7 +525,7 @@ class Experiment(ABC):
                     x[:, agent_idx, plot_idx], y[:, agent_idx, plot_idx],
                     fmts[agent_idx % len(fmts)],
                     label=None if labels is None else labels[agent_idx % len(labels)],
-                    color=cycle[agent_idx % n_colors] if colors is None else cycle[colors[agent_idx]],
+                    color=colors[agent_idx % len(colors)],
                 )
 
             # formating
@@ -715,7 +719,7 @@ class Experiment(ABC):
                     o = torch.cat([o, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
                     labels += [
-                        f"BNE{'_' + str(env_idx + 1) if len(self.bne_env) > 1 else ''} {self._get_model_names()[j]}"
+                        f"BNE{str(env_idx + 1) if len(self.bne_env) > 1 else ''} {self._get_model_names()[j]}"
                         for j in range(len(self.models))]
                     fmts += ['--'] * len(self.models)
 
@@ -856,8 +860,8 @@ class Experiment(ABC):
             self._plot(plot_data=plot_data, writer=self.writer,
                        ylim=[0, self.sampler.support_bounds.max().item()],
                        figure_name='best_responses', y_label='best response',
-                       colors=list(range(len(self.models))), epoch=epoch,
-                       labels=labels, fmts=fmts, plot_points=self.plot_points)
+                       epoch=epoch, labels=labels, fmts=fmts,
+                       plot_points=self.plot_points)
 
         # calculate different losses
         ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_losses]
@@ -886,8 +890,7 @@ class Experiment(ABC):
             self._plot(plot_data=plot_data, writer=self.writer,
                        ylim=[0, max(self._max_util_loss).detach().item()],
                        figure_name='util_loss_landscape', y_label='ex-interim loss',
-                       colors=list(range(len(self.models))), epoch=epoch,
-                       labels=labels, fmts=fmts, plot_points=self.plot_points)
+                       epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 

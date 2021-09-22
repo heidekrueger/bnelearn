@@ -78,10 +78,12 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
         return f'risk_{risk}'
 
     def _get_model_names(self):
-        if self.model_sharing:
-            return ['buyers', 'sellers']
+        if self.model_sharing or self.n_players == 2:
+            return ['buyer'  + ('s' if self.n_buyers  > 1 else ''),
+                    'seller' + ('s' if self.n_sellers > 1 else '')]
         else:
-            return super()._get_model_names() #TODO: change model names when model sharing is False
+            return [f'buyer {i}'  for i in range(self.n_buyers) ] \
+                 + [f'seller {i}' for i in range(self.n_sellers)]
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0,
                          enable_action_caching=False) -> Bidder:

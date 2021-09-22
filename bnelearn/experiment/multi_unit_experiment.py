@@ -198,8 +198,8 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
         """
         super()._plot(plot_data=plot_data, writer=writer, epoch=epoch,
                       xlim=xlim, ylim=ylim, labels=labels, x_label=x_label,
-                      y_label=y_label, colors=colors, fmts=fmts,
-                      figure_name=figure_name, plot_points=plot_points)
+                      y_label=y_label, fmts=fmts, figure_name=figure_name,
+                      plot_points=plot_points)
 
         # 3D plot if available
         if self.n_units == 2 and not self.constant_marginal_values:
