@@ -157,6 +157,7 @@ class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExp
             print(('Utilities in BNE{} (sampled):' + '\t{:.5f}' * self.n_players + '.') \
                 .format(i + 1,*self.bne_utilities[i]))
 
+
 class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmetricPriorSingleItemExperiment):
     """Double Auction Uniform Symmetric Prior Experiment for unit demand: Each
     seller has one item and each buyer can buy max. one item.
@@ -201,6 +202,15 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
             return True
 
         return super()._check_and_set_known_bne()
+
+    def pretrain_transform(self, player_position: int) -> callable:
+        """Transformation during pretraining"""
+        if self.setting.pretrain_transform == 'transform-1':
+            return lambda v: bne_bilateral_bargaining_uniform_symmetric(
+                self.config)[0](v, player_position)
+        if self.setting.pretrain_transform == 'transform-2':
+            return lambda v: bne_bilateral_bargaining_uniform_symmetric(
+                self.config)[1](v, player_position)
 
     def _get_logdir_hierarchy(self):
 

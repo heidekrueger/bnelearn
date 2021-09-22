@@ -477,9 +477,8 @@ def bne_bilateral_bargaining_uniform_symmetric(config: ExperimentConfig) -> Call
 
     Source: Leinigner et al. (1988), section `3.3. Differentiable Equilibria'.
     """
-    reduction_factor = 10
+    reduction_factor: int = 1  # smaller samples of BNE with lower precision 
     g_05s = [0.25, 0.45]  # differnt BNEs
-    _symmetric_bnes = list()
 
     n_buyers = config.setting.n_buyers
     path = os.path.dirname(os.path.abspath(__file__)) \
