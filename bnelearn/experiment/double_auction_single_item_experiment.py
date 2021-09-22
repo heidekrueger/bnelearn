@@ -91,12 +91,7 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
     @staticmethod
     def get_risk_profile(risk) -> str:
         """Used for logging and checking existence of bne"""
-        if risk == 1.0:
-            return 'risk_neutral'
-        elif risk == 0.5:
-            return 'risk_averse'
-        else:
-            return 'other'
+        return f'risk_{risk}'
 
     def _get_model_names(self):
         if self.model_sharing:
@@ -210,7 +205,7 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
 
     def _check_and_set_known_bne(self):
 
-        if self.payment_rule == 'k_price':
+        if self.payment_rule == 'k_price' and self.risk == 1.0:
 
             def _optimal_bid(valuation, player_position):
                 if player_position > self.n_buyers - 1:
