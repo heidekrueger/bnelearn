@@ -418,6 +418,9 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
 
         self.bne_utilities = bne_utilities_sampled
 
+    def _get_model_names(self):
+        return ['weak bidder', 'strong bidder']
+
 
 class MineralRightsExperiment(SingleItemExperiment):
     """A Single Item Experiment that has the same valuation prior for all participating bidders.
