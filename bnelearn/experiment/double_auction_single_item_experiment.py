@@ -18,26 +18,10 @@ from bnelearn.sampler import (SymmetricIPVSampler, UniformSymmetricIPVSampler)
 from bnelearn.strategy import ClosureStrategy
 from bnelearn.mechanism import kDoubleAuction, VickreyDoubleAuction
 from bnelearn.strategy import ClosureStrategy
-
-
-###############################################################################
-#######   Known equilibrium bid functions                                ######
-###############################################################################
-# Define known BNE functions top level, so they may be pickled for parallelization
-# These are called millions of times, so each implementation should be
-# setting specific, i.e. there should be NO setting checks at runtime.
-
-
-def _optimal_bid_buyer_kdouble(valuation: torch.Tensor, k: float = 0,
-                               u_hi: int = 0, **kwargs) -> torch.Tensor:
-    return (valuation/(1+k)) + ((k*(1-k))/(2*(1+k)))*u_hi 
-
-def _optimal_bid_seller_kdouble(valuation: torch.Tensor, k: float = 0,
-                                u_hi: int = 0, **kwargs) -> torch.Tensor:
-    return (valuation/(2-k)) + ((1-k)/2)*u_hi 
-
-def _truthful_bid(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
-    return valuation
+from bnelearn.experiment.equilibria import (
+    truthful_bid,
+    bne_bilateral_bargaining_uniform_linear,
+    bne_bilateral_bargaining_uniform_symmetric)
 
 
 class DoubleAuctionSingleItemExperiment(Experiment, ABC):
@@ -108,7 +92,8 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
 
 
 class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExperiment):
-    """A Single Item Experiment that has the same valuation prior for all participating bidders.
+    """A Single Item Experiment that has the same valuation prior for all
+    participating bidders.
     """
 
     def __init__(self, config: ExperimentConfig):
@@ -133,7 +118,7 @@ class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExp
     def _check_and_set_known_bne(self):
 
         if self.payment_rule in ['second_price', 'vcg', 'vickrey_price']:
-            self._optimal_bid =  [_truthful_bid]
+            self._optimal_bid =  [truthful_bid]
             return True
 
         else:
@@ -172,7 +157,8 @@ class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExp
 
 class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmetricPriorSingleItemExperiment):
     """Double Auction Uniform Symmetric Prior Experiment for unit demand: Each
-    seller has one item and each buyer can buy max. one item."""
+    seller has one item and each buyer can buy max. one item.
+    """
     def __init__(self, config: ExperimentConfig):
         self.config = config
         self.n_buyers = self.config.setting.n_buyers
@@ -206,13 +192,10 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
     def _check_and_set_known_bne(self):
 
         if self.payment_rule == 'k_price' and self.risk == 1.0:
-
-            def _optimal_bid(valuation, player_position):
-                if player_position > self.n_buyers - 1:
-                    return _optimal_bid_seller_kdouble(valuation, self.k, self.u_hi)
-                else:
-                    return _optimal_bid_buyer_kdouble(valuation, self.k, self.u_hi)
-            self._optimal_bid = [_optimal_bid]  # list type as there are settings w multiple BNE
+            self._optimal_bid = [bne_bilateral_bargaining_uniform_linear(
+                self.config, self.u_lo, self.u_hi)]
+            if self.k == 0.5 and self.u_lo == 0 and self.u_hi == 1:
+                self._optimal_bid += bne_bilateral_bargaining_uniform_symmetric(self.config)
             return True
 
         return super()._check_and_set_known_bne()

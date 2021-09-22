@@ -6,11 +6,14 @@
     and factory methods that create and return the bid function as a callable object.
 """
 from typing import Callable, List, Union
+import os
 
 import torch
 import numpy as np
 from scipy import interpolate, optimize
+
 from bnelearn.util.integration import cumulatively_integrate
+from bnelearn.experiment.configurations import ExperimentConfig
 ###############################################################################
 #######   Known equilibrium bid functions                                ######
 ###############################################################################
@@ -443,4 +446,64 @@ def bne_splitaward_2x2_2_factory(experiment_config):
 
     return optimal_bid
 
+
+
 ###############################################################################
+### Double Auctions
+###############################################################################
+
+def bne_bilateral_bargaining_uniform_linear(config: ExperimentConfig,
+                                            u_lo: float, u_hi: float) -> Callable:
+    """BNE for bilateral bargaining with uniform priors."""
+
+    k = config.setting.k
+    n_buyers = config.setting.n_buyers
+
+    def bne_bid_buyer_kdouble(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
+        return (valuation/(1+k)) + ((k*(1-k))/(2*(1+k)))*u_hi
+    def bne_ask_seller_kdouble(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
+        return (valuation/(2-k)) + ((1-k)/2)*u_hi
+
+    def _linear_bne(valuation, player_position):
+        if player_position > n_buyers - 1:
+            return bne_ask_seller_kdouble(valuation)
+        else:
+            return bne_bid_buyer_kdouble(valuation)
+
+    return _linear_bne
+
+def bne_bilateral_bargaining_uniform_symmetric(config: ExperimentConfig) -> Callable:
+    """BNE for bilateral bargaining with [0, 1]-uniform priors.
+
+    Source: Leinigner et al. (1988), section `3.3. Differentiable Equilibria'.
+    """
+    reduction_factor = 10
+    g_05s = [0.25, 0.45]  # differnt BNEs
+    _symmetric_bnes = list()
+
+    n_buyers = config.setting.n_buyers
+    path = os.path.dirname(os.path.abspath(__file__)) \
+        + '/equilibria_data/bilateral_bargaining_symmetric_uniform_0.5-DA'
+
+    lin = torch.load(path + '/da_linspace.pt').cpu()[::reduction_factor]
+
+    def _bne(g_05: float):
+        sol = torch.load(path + f'/da_inverse_ask_{g_05}.pt').cpu()[::reduction_factor]
+
+        ask_seller = interpolate.interp1d(sol, lin, kind=1, fill_value='extrapolate')
+        bid_buyer = lambda v: 1 - ask_seller(1 - v)
+
+        def _symmetric_bne(valuation, player_position):
+            device, dtype = valuation.device, valuation.dtype
+            v = valuation.flatten().cpu().numpy()
+
+            if player_position > n_buyers - 1:  # is seller
+                action = ask_seller(v)
+            else:  # is buyer
+                action = bid_buyer(v)
+
+            return torch.tensor(action, device=device, dtype=dtype).view_as(valuation)
+
+        return _symmetric_bne
+
+    return [_bne(g_05) for g_05 in g_05s]
