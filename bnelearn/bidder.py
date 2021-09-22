@@ -258,7 +258,7 @@ class CombinatorialBidder(Bidder):
             self.output_length = self.bid_size
 
     def get_welfare(self, allocations, valuations: torch.Tensor=None) -> torch.Tensor:
-        assert allocations.dim() == 2  # batch_size x items
+        assert allocations.dim() >= 2  # *batch_sizes x items
         if valuations is None:
             valuations = self._cached_valuations
 
@@ -266,16 +266,15 @@ class CombinatorialBidder(Bidder):
         # 0: item A | 1: item B | 2: bundle {A, B}
         # `player_position` == index of valued item for this agent
         if self.player_position != 2:  # locals also value bundle
-            allocations = allocations[:, [self.player_position, 2]] \
-                .sum(axis=item_dimension) \
-                .view(-1, 1)
+            allocations_reduced_dim = allocations[..., [self.player_position, 2]] \
+                .sum(axis=item_dimension, keepdim=True)
         else:  # global only values bundle
-            allocations = torch.logical_or(
+            allocations_reduced_dim = torch.logical_or(
                 # won bundle of both
-                allocations[:, 2] == 1,
+                allocations[..., [2]] == 1,
                 # won both separately
-                allocations[:, [0, 1]].sum(axis=item_dimension) > 1
-            ).view(-1, 1)
+                allocations[..., [0, 1]].sum(axis=item_dimension, keepdim=True) > 1
+            )
 
-        welfare = (valuations * allocations).sum(dim=item_dimension)
+        welfare = (valuations * allocations_reduced_dim).sum(dim=item_dimension)
         return welfare

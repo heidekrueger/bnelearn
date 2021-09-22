@@ -106,7 +106,7 @@ if __name__ == '__main__':
     if True:
         log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
             'experiments', 'debug', 'exp-3_experiment')
-        pretrainings = []  # TODO
+        pretrainings = [None]  # TODO
         for pretraining in pretrainings:
             experiment_config, experiment_class = \
                 ConfigurationManager(

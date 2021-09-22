@@ -117,7 +117,7 @@ if __name__ == '__main__':
     #    n_runs=1, n_epochs=20000
     # ) \
     #     .set_logging(log_root_dir=log_root_dir) \
-    #     .get_config()
+    # #     .get_config()
     # experiment_config, experiment_class = \
     #     ConfigurationManager(
     #         experiment_type='single_item_uniform_symmetric',
@@ -165,11 +165,15 @@ if __name__ == '__main__':
     #         best_response=True,
     #         cache_eval_actions=True,
     #         log_root_dir=log_root_dir,
-    #     ) \
-    #     .set_hardware(
-    #         specific_gpu=7
-    #     ) \
-    #     .get_config()
+            best_response=True,
+            plot_frequency=25,
+            cache_eval_actions=True,
+            log_root_dir=log_root_dir,
+        ) \
+        .set_hardware(
+            specific_gpu=7
+        ) \
+        .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(
     #       experiment_type='splitaward',n_runs=1, n_epochs=200
@@ -189,7 +193,6 @@ if __name__ == '__main__':
     # experiment_config, experiment_class = ConfigurationManager(
     #     experiment_type='llg', n_runs=1, n_epochs=1000
     # ) \
-    #     .set_setting(gamma=0.5) \
     #     .set_logging(
     #        log_root_dir=log_root_dir,
     #        util_loss_batch_size=2 ** 10,
