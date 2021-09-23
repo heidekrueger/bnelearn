@@ -490,7 +490,7 @@ class ConfigurationManager:
     def set_learning(self, model_sharing: bool = 'None', learner_type: str = 'None',
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
-                     pretrain_iters: int = 'None',
+                     dropout: float = 'None', pretrain_iters: int = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
@@ -570,6 +570,7 @@ class ConfigurationManager:
             optimizer_type='adam',
             optimizer_hyperparams={'lr': 1e-3},
             hidden_nodes=[10, 10],
+            dropout=0.0,
             pretrain_iters=500,
             batch_size=2 ** 18,
             hidden_activations=[nn.SELU(), nn.SELU()])

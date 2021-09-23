@@ -8,6 +8,7 @@ This module implements players / bidders / agents in games.
 from abc import ABC, abstractmethod
 import warnings
 import torch
+import torch.nn as nn
 from bnelearn.strategy import (Strategy, MatrixGameStrategy,
                                FictitiousPlayStrategy, FictitiousNeuralPlayStrategy)
 
@@ -189,7 +190,7 @@ class Bidder(Player):
 
         return welfare
 
-    def get_action(self, observations = None):
+    def get_action(self, observations = None, mode='train'):
         """Calculate action from given observations, or retrieve from cache"""
 
         if self._enable_action_caching and not self._cached_observations_changed and \
@@ -214,7 +215,15 @@ class Bidder(Player):
             dim = self.strategy.input_length
             inputs = inputs[:,:dim]
 
-        actions = self.strategy.play(inputs)
+        if mode == 'train':
+            actions = self.strategy.play(inputs)
+        elif mode ==  'eval':
+            if isinstance(self.strategy, nn.Module):
+                self.strategy.eval()
+                actions = self.strategy.play(inputs)
+                self.strategy.train()
+        else:
+            raise ValueError('Unknown pytorch mode.')
 
         if self._enable_action_caching:
             self.cached_observations = observations

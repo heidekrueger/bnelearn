@@ -206,6 +206,10 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
     def pretrain_transform(self, player_position: int) -> callable:
         """Transformation during pretraining"""
         g_05 = self.setting.pretrain_transform
+
+        if g_05 is None:
+            return None
+
         return lambda v: bne_bilateral_bargaining_uniform_symmetric(
             self.config, [g_05])[0](v, player_position)
 

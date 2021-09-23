@@ -220,6 +220,7 @@ class Experiment(ABC):
                 self.observation_size,
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
+                dropout=self.learning.dropout,
                 ensure_positive_output=self.positive_output_point,
                 output_length=self.action_size
             ).to(self.hardware.device)
@@ -709,7 +710,7 @@ class Experiment(ABC):
                 [self.env._observations[:self.plot_points, b, ...] for b in unique_bidders],
                 dim=1
             )
-            b = torch.stack([self.env.agents[b[0]].get_action(o[:, i, ...])
+            b = torch.stack([self.env.agents[b[0]].get_action(o[:, i, ...], mode='eval')
                              for i, b in enumerate(self._model2bidder)], dim=1)
 
             labels = [f'NPGA {self._get_model_names()[i]}' for i in range(len(self.models))]
