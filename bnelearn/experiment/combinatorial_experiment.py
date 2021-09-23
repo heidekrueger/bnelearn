@@ -15,6 +15,8 @@ from functools import partial
 from typing import Iterable, List
 import math
 import warnings
+from scipy import optimize
+from tqdm import tqdm
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
@@ -22,14 +24,14 @@ import torch
 from bnelearn.mechanism import (
     LLGAuction, LLGFullAuction, LLLLGGAuction
 )
-from bnelearn.bidder import Bidder
+from bnelearn.bidder import Bidder, CombinatorialBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
-from .experiment import Experiment
+from bnelearn.experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
 
 import bnelearn.util.logging as logging_utils
-from bnelearn.sampler import LLGSampler, LLLLGGSampler
+from bnelearn.sampler import LLGSampler, LLGFullSampler, LLLLGGSampler
 
 # maps config correlation_types to LocalGlobalSampler correlation_method arguments
 CORRELATION_METHODS = {
@@ -197,9 +199,9 @@ class LLGExperiment(LocalGlobalExperiment):
                 bid_if_positive = 2. / (2. + self.gamma) * (
                     valuation - (3. - np.sqrt(9 - (1. - self.gamma) ** 2)) / (1. - self.gamma))
                 return torch.max(torch.zeros_like(valuation), bid_if_positive)
-            warnings.warn('optimal bid not implemented for this payment rule')
+            raise NotImplementedError('Optimal bid not implemented for this payment rule.')
         else:
-            warnings.warn('optimal bid not implemented for this correlation type')
+            raise NotImplementedError('Optimal bid not implemented for this correlation type.')
 
         self.known_bne = False
 
@@ -270,7 +272,6 @@ class LLGExperiment(LocalGlobalExperiment):
         return os.path.join(*name)
 
 
-
 class LLGFullExperiment(LocalGlobalExperiment):
     """A combinatorial experiment with 2 local and 1 global bidder and 2 items.
 
@@ -281,7 +282,6 @@ class LLGFullExperiment(LocalGlobalExperiment):
     experiment is therfore more general than the `LLGExperiment` and includes
     the specifc payment rule from Beck & Ott, where the 2nd local bidder is
     favored (pays VCG prices).
-
     """
     def __init__(self, config: ExperimentConfig):
         self.config = config
@@ -295,23 +295,38 @@ class LLGFullExperiment(LocalGlobalExperiment):
             # asymmetry of local bidders.
             raise NotImplementedError('Correlation not implemented.')
 
-        ## TODO Stefan:
-        ## what is the correct valuation size here? 1 or 3, how is this modeled?
-        super().__init__(config=config,
-                         n_players=3, n_local=2,
-                         valuation_size=3, observation_size=1, action_size=3)
+        super().__init__(config=config, n_players=3, n_local=2,
+                         valuation_size=1, observation_size=1, action_size=3)
 
     def _setup_mechanism(self):
         self.mechanism = LLGFullAuction(rule=self.payment_rule,
                                         cuda=self.hardware.device)
 
     def _setup_sampler(self):
-        raise NotImplementedError
+
+        default_batch_size = self.config.learning.batch_size
+        default_device = self.config.hardware.device
+
+        if not (self.config.setting.u_lo == [0, 0, 0] and
+                self.config.setting.u_hi == [1, 1, 2]):
+            raise NotImplementedError("LLG Sampler only implemented for default valuation bounds!")
+
+        method = CORRELATION_METHODS[self.config.setting.correlation_types]
+
+        self.sampler = LLGFullSampler(correlation=self.gamma,
+                                      correlation_method=method,
+                                      default_batch_size=default_batch_size,
+                                      default_device=default_device)
 
     def _check_and_set_known_bne(self):
-        return self.payment_rule in ['vcg', 'mrcs_favored']
+        if self.payment_rule == 'vcg':
+            return True
+        if self.payment_rule == 'mrcs_favored' \
+            and self.config.setting.correlation_types in ['independent', None]:
+            return True
+        return super()._check_and_set_known_bne()
 
-    def _optimal_bid(self, valuation, player_position):
+    def _optimal_bid(self, valuation, player_position):  # pylint: disable=method-hidden
         """Equilibrium bid functions.
 
         Payment rule `mrcs_favored` is from Beck & Ott (minimum revenue core
@@ -326,84 +341,76 @@ class LLGFullExperiment(LocalGlobalExperiment):
             if player_position == 1:
                 return torch.cat([
                     torch.zeros_like(valuation),  # item A
-                    valuation,  # item B
-                    valuation], axis=1)  # bundle {A, B}
+                    valuation,                    # item B
+                    valuation], axis=1)           # bundle {A, B}
             if player_position == 2:
                 return torch.cat([
-                    torch.zeros_like(valuation),  # TODO ?
+                    torch.zeros_like(valuation),
                     torch.zeros_like(valuation),
                     valuation], axis=1)
 
         ### Favored bidder 1:
-        if self.config.setting.correlation_types in ['independent'] and player_position == 0:
+        if self.config.setting.correlation_types in ['independent', None] and player_position == 0:
             if self.payment_rule == 'vcg':
                 return torch.cat([
                     valuation,
                     torch.zeros_like(valuation),
                     valuation], axis=1)
             if self.payment_rule == 'mrcs_favored':
-                # Beck & Ott provide no solution: Here we take real part of
-                # complex solution (sqrt of negative values), see
-                # https://www.wolframalpha.com/input/?i=0+%3D+12*v-+15*z+-+1+%2B+%289*z+-+1+-+3*v%29*sqrt%281+-+6*z%2B+6*v%29+solve+for+z
-                v = torch.as_tensor(valuation, device=valuation.device,
-                                    dtype=torch.cfloat)
-                sqrt = torch.sqrt(
-                    - 254016 * torch.pow(v, 5) - 45045 * torch.pow(v, 4) \
-                    + 47892 * torch.pow(v, 3) + 118676 * torch.pow(v, 2) \
-                    - 74560 * v + 11520
-                )
-                outer = torch.pow(
-                    + 23328 * torch.pow(v, 3) - 47871 * torch.pow(v, 2) \
-                    + 81 * np.sqrt(3) * sqrt + 6534 * v + 2884,
-                    1./3.
-                )
-                z = torch.real(outer / (81* 2**(2./3.)) \
-                    - (-1296* torch.pow(v, 2) - 2196 * v + 956) \
-                    / (162 * 2**(1./3.) * outer) + (1./81.) * (45 * v - 2))
+                # Beck & Ott provide incomplete/wrong solution
+                print('Calculating high-precision BNE...')
+                eps = 1e-16
 
-                b_A = torch.zeros_like(valuation)
-                mask = 2 - 2 * math.sqrt(6.) / 3. < valuation
+                v = valuation.cpu().numpy().astype('float64')
+                def root_func(z, v):
+                    """We're looking for roots of this function"""
+                    return 12*v - 15*z - 1 + (9*z - 1 - 3*v) * np.sqrt(1 - 6*z + 6*v)
+                def solve_for_z(v):
+                    """Brent-q for finding root"""
+                    f = lambda z: root_func(z, v=v)
+                    low = max((1 - np.sqrt(6*v - 2))/3., v - .5) + eps
+                    up = (1 + 6*v) / 6. - eps
+                    if np.sign(f(low)) == np.sign(f(up)):
+                        return 0
+                    z = optimize.brentq(f, a=low, b=up, xtol=1e-13, disp=False)
+                    return z
+
+                threshold = 2 - 2 * math.sqrt(6.) / 3.
+                z = np.zeros_like(v)
+                for i, vv in tqdm(enumerate(v), total=v.shape[0]):
+                    if threshold < vv:
+                        z[i] = solve_for_z(vv)
+                z = torch.as_tensor(
+                    z, device=valuation.device, dtype=valuation.dtype
+                )
+
+                v = torch.as_tensor(
+                    valuation, device=valuation.device, dtype=valuation.dtype
+                )
+                b_A = torch.zeros_like(v)
+                mask = threshold < v
                 b_A[mask] = z[mask] \
-                    - (2 - torch.sqrt(1 - 6 * z[mask] + 6 * valuation[mask])) \
+                    - (2 - torch.sqrt(1 - 6 * z[mask] + 6 * v[mask])) \
                     / 3.
-                b_AB = 0.5 * valuation.detach().clone()
+                b_AB = 0.5 * v.detach().clone()
                 b_AB[mask] = z[mask]
-                bids = torch.cat([b_A, torch.zeros_like(valuation), b_AB], axis=1)
+                bids = torch.cat([b_A, torch.zeros_like(v), b_AB], axis=1)
+                bids[bids < 0] = 0  # b_A is somewhat inprecise
                 return bids
 
-            warnings.warn('optimal bid not implemented for this payment rule')
+            raise NotImplementedError('Optimal bid not implemented for this payment rule.')
         else:
-            warnings.warn('optimal bid not implemented for this correlation type')
+            raise NotImplementedError('Optimal bid not implemented for this correlation type.')
 
-        self.known_bne = False
-        return None
-
-    ## TODO Issue #216: Relevant actions deprecated. The Sampler will be responsible for
-    ## drawing valid valuations and observations.
-    ## the Strategy will be responsible for mapping obs --> action (including truncating etc)
-    ## leaving the code here for reference until implemented:
-    # def relevant_actions(self):
-    #     if self.config.setting.correlation_types in ['independent'] and \
-    #         self.payment_rule in ['vcg', 'mrcs_favored']:
-    #         return torch.tensor(
-    #             [[1, 0, 0], [0, 1, 0], [0, 0, 1]], # TODO rather: [[1, 0, 1], [0, 1, 1], [0, 0, 1]]
-    #             device=self.config.hardware.device,
-    #             dtype=torch.bool
-    #         )
-    #     return super().relevant_actions()
-
-    def _evaluate_and_log_epoch(self, epoch: int) -> float:
-        # TODO keep track of time as in super()
-        for name, agent in zip(['local 1', 'local 2', 'global'], self.env.agents):
-            self.writer.add_histogram(
-                tag="allocations/" + name,
-                values=self.env.get_allocation(agent),
-                # TODO Stefan @ Nils: this said self.n_items before, I changed it to valuations, but not sure if it should be
-                # maybe observations or actions instead??
-                bins=2*self.valuation_size-1,
-                global_step=epoch
-            )
-        return super()._evaluate_and_log_epoch(epoch)
+    def pretrain_transform(self, player_position: int) -> callable:
+        """Transformation during pretraining: Bidders are single-minded in this
+        setting.
+        """
+        return lambda x: torch.tensor(
+            [[1, 0, 1], [0, 1, 1], [0, 0, 1]],
+            device=self.config.hardware.device,
+            dtype=torch.bool
+        )[player_position] * x
 
     def _setup_eval_environment(self):
         assert self.known_bne
@@ -446,19 +453,31 @@ class LLGFullExperiment(LocalGlobalExperiment):
             name += ['risk_{}'.format(self.risk)]
         return os.path.join(*name)
 
+    def _get_model_names(self):
+        return ['local 1', 'local 2', 'global']
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0,
+                         enable_action_caching=False):
+        return CombinatorialBidder(
+            strategy=strategy,
+            player_position=player_position,
+            batch_size=batch_size,
+            valuation_size=self.valuation_size,
+            observation_size=self.observation_size,
+            risk=self.risk,
+            enable_action_caching=enable_action_caching
+        )
+
     def _plot(self, **kwargs):  # pylint: disable=arguments-differ
         kwargs['x_label'] = ['item A', 'item B', 'bundle']
-        kwargs['labels'] = ['local 1', 'local 2', 'global']
+
+        if 'labels' not in kwargs.keys():
+            kwargs['labels'] = self._get_model_names()
 
         # handle dim-missmatch that agents only value 1 bundle but bid for 3
         plot_data = list(kwargs['plot_data'])
         if plot_data[0].shape != plot_data[1].shape:
-            # TODO Stefan @ Nils:
-            # This (see arrow) said n_items before, i changed it to observations, but
-            # i'm not sure if it should be actions instead?
-            #                                                 |
-            #                                                 V
-            plot_data[0] = plot_data[0].repeat(1, 1, self.observation_size)
+            plot_data[0] = plot_data[0].repeat(1, 1, self.action_size)
             kwargs['plot_data'] = plot_data
 
         super()._plot(**kwargs)

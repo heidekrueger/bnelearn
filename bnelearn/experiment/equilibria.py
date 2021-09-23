@@ -225,12 +225,12 @@ def bne_2p_affiliated_values(
     Reference: Krishna (2009), Example 6.2"""
     return (2/3) * valuation
 
-###########################################################################
+###############################################################################
 #### Combinatorial Auctions
-###########################################################################
+###############################################################################
 
-## NOTE: In LLG and LLLLGG, the equilibria are implemented directly within
-## the experiment classes.
+## NOTE: In LLG, LLGFull and LLLLGG, the equilibria are implemented directly
+## within the experiment classes.
 
 
 ###############################################################################
