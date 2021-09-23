@@ -205,12 +205,9 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
 
     def pretrain_transform(self, player_position: int) -> callable:
         """Transformation during pretraining"""
-        if self.setting.pretrain_transform == 'transform-1':
-            return lambda v: bne_bilateral_bargaining_uniform_symmetric(
-                self.config)[0](v, player_position)
-        if self.setting.pretrain_transform == 'transform-2':
-            return lambda v: bne_bilateral_bargaining_uniform_symmetric(
-                self.config)[1](v, player_position)
+        g_05 = self.setting.pretrain_transform
+        return lambda v: bne_bilateral_bargaining_uniform_symmetric(
+            self.config, [g_05])[0](v, player_position)
 
     def _get_logdir_hierarchy(self):
 

@@ -11,6 +11,7 @@ import os
 import torch
 import numpy as np
 from scipy import interpolate, optimize
+from tqdm import tqdm
 
 from bnelearn.util.integration import cumulatively_integrate
 from bnelearn.experiment.configurations import ExperimentConfig
@@ -472,23 +473,57 @@ def bne_bilateral_bargaining_uniform_linear(config: ExperimentConfig,
 
     return _linear_bne
 
-def bne_bilateral_bargaining_uniform_symmetric(config: ExperimentConfig) -> Callable:
+def _bilateral_bargaining_uniform_symmetric_helper(g_05: float):
+    """Helper function that approximates BNE or loads it from disk."""
+    path = os.path.dirname(os.path.abspath(__file__)) \
+        + '/equilibria_data/bilateral_bargaining_symmetric_uniform_0.5-DA'
+
+    # load from disk if available
+    if os.path.isfile(path + f'/da_inverse_ask_{g_05}.pt'):
+        inverse_ask = torch.load(path + f'/da_inverse_ask_{g_05}.pt').cpu()
+        lin, sol = inverse_ask[:, 0], inverse_ask[:, 1]
+
+    else:
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        batch_size: int = 2**18
+        mid = int(batch_size / 2)
+        lin = torch.linspace(0, 1, batch_size)
+
+        def derivate(x, y, yy):
+            """1st order derivative of inverse ask function g"""
+            return 0.5 * y / (1 - x - yy)
+
+        sol = torch.zeros_like(lin)
+        sol[mid] = g_05
+
+        # explict 1st order Euler for ODE with step-size 1/batch_size
+        for i in tqdm(range(1, mid)):
+            # going up
+            sol[mid + i] = sol[mid + i - 1] + (1./batch_size) \
+                * derivate(lin[mid + i], sol[mid + i - 1], sol[mid - i + 1])
+            # goining low
+            sol[mid - i] = sol[mid - i + 1] - (1./batch_size) \
+                * derivate(lin[mid - i], sol[mid - i + 1], sol[mid + i - 1])
+            if sol[mid + i] > lin[mid + i]:  # stop once moving out of bounds
+                sol[mid + i:] = lin[mid + i:]
+                torch.save(torch.cat([lin[:, None], sol[:, None]], axis=1),
+                           path + f'/da_inverse_ask_{g_05}.pt')
+                break
+
+    return lin, sol
+
+def bne_bilateral_bargaining_uniform_symmetric(config: ExperimentConfig,
+                                               g_05s: list[float] = [0.25, 0.45]) -> Callable:
     """BNE for bilateral bargaining with [0, 1]-uniform priors.
 
     Source: Leinigner et al. (1988), section `3.3. Differentiable Equilibria'.
     """
-    reduction_factor: int = 1  # smaller samples of BNE with lower precision 
-    g_05s = [0.25, 0.45]  # differnt BNEs
-
     n_buyers = config.setting.n_buyers
-    path = os.path.dirname(os.path.abspath(__file__)) \
-        + '/equilibria_data/bilateral_bargaining_symmetric_uniform_0.5-DA'
-
-    lin = torch.load(path + '/da_linspace.pt').cpu()[::reduction_factor]
 
     def _bne(g_05: float):
-        sol = torch.load(path + f'/da_inverse_ask_{g_05}.pt').cpu()[::reduction_factor]
-
+        lin, sol = _bilateral_bargaining_uniform_symmetric_helper(g_05)
         ask_seller = interpolate.interp1d(sol, lin, kind=1, fill_value='extrapolate')
         bid_buyer = lambda v: 1 - ask_seller(1 - v)
 

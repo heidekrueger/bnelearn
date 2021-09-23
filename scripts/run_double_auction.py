@@ -106,14 +106,13 @@ if __name__ == '__main__':
     if True:
         log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
             'experiments', 'debug', 'exp-3_experiment')
-        pretrainings = ['transform-1', 'transform-2']
+        pretrainings = [0.49, 0.45, 0.4]
         for pretraining in pretrainings:
             experiment_config, experiment_class = \
                 ConfigurationManager(
                     experiment_type='double_auction_single_item_uniform_symmetric',
                     n_runs=1,  # repeat exp. for 10 different random seeds
                     n_epochs=3000,
-                    seeds=[69]
                 ) \
                 .set_setting(
                     payment_rule='k_price',
@@ -128,7 +127,7 @@ if __name__ == '__main__':
                     # hidden_activations=[nn.SELU()]
                 ) \
                 .set_hardware(
-                    specific_gpu=6,
+                    specific_gpu=7,
                 ) \
                 .set_logging(
                     eval_batch_size=2**18,  # needed for exact utility-loss (epsilon_relative)

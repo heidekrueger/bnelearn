@@ -44,6 +44,9 @@ pylint.txt
 # ignore experiments subdirectory used for logging
 /experiments/*
 
+# ignore saved equilibria data for reloading
+/bnelearn/experiment/equilibria_data
+
 # gurobi log files
 /GurobiSol/*
 **/gurobi.log
