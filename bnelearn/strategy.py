@@ -354,6 +354,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization
         if ensure_positive_output is not None:
+            current_device = torch.nn.utils.parameters_to_vector(self.parameters()).device
+            ensure_positive_output = ensure_positive_output.to(current_device)
             if not torch.all(self.forward(ensure_positive_output).gt(0)):
                 self.reset(ensure_positive_output)
 

@@ -113,6 +113,14 @@ class ValuationObservationSampler(ABC):
 
         return grid
 
+    def generate_reduced_grid(self, player_position: int, minimum_number_of_points: int,
+                                dtype=torch.float, device = None) -> torch.Tensor:
+        """For some samplers, the action dimension is smaller and the grid can
+        be reduced to that lower dimension.
+        """
+        return self.generate_valuation_grid(player_position, minimum_number_of_points,
+                                            dtype, device)
+
 class PVSampler(ValuationObservationSampler, ABC):
     """A sampler for Private Value settings, i.e. when observations and
      valuations are identical.
