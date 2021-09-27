@@ -4,7 +4,9 @@ Runs predefined double auction experiments with individual parameters
 import os
 import sys
 from itertools import product
+import numpy as np
 import torch
+import torch.nn as nn
 
 # pylint: disable=wrong-import-position
 sys.path.append(os.path.realpath('.'))
@@ -24,8 +26,8 @@ if __name__ == '__main__':
             experiment_config, experiment_class = \
                 ConfigurationManager(
                     experiment_type='double_auction_single_item_uniform_symmetric',
-                    n_runs=10,  # repeat exp. for 10 different random seeds
-                    n_epochs=1000,
+                    n_runs=1,  # repeat exp. for 10 different random seeds
+                    n_epochs=2000,
                 ) \
                 .set_setting(
                     payment_rule=payment_rule,
@@ -34,24 +36,27 @@ if __name__ == '__main__':
                 .set_learning(
                     batch_size=2**18,  # default value -> may need to be decreased for larger markets
                     model_sharing=True,
+                    # hidden_nodes=[100],
+                    # hidden_activations=[nn.SELU()],
+                    # dropout=0.1,
                 ) \
                 .set_hardware(
                     specific_gpu=7,
                 ) \
                 .set_logging(
-                    eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
+                    eval_batch_size=2**18,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
 
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
-                    util_loss_batch_size=2**12,  # default value -> may needs to be decreased for larger markets
-                    util_loss_grid_size=2**10,  # default value -> may needs to be decreased for larger markets
-                    util_loss_frequency=200,  # don't want to calculate that often as it takes long
+                    util_loss_batch_size=2**11,  # default value -> may needs to be decreased for larger markets
+                    util_loss_grid_size=2**12,  # default value -> may needs to be decreased for larger markets
+                    util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
                     log_root_dir=log_root_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
-                    plot_frequency=1000,  # don't want to waste much disk space
+                    plot_frequency=500,  # don't want to waste much disk space
                 ) \
                 .get_config()
             experiment = experiment_class(experiment_config)
@@ -62,13 +67,13 @@ if __name__ == '__main__':
     if False:
         log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
             'experiments', 'debug', 'exp-2_experiment')
-        risks = [i/10. for i in range(1, 11, 3)]
+        risks = [i/10. for i in range(1, 11)]
         for risk in risks:
             experiment_config, experiment_class = \
                 ConfigurationManager(
                     experiment_type='double_auction_single_item_uniform_symmetric',
                     n_runs=10,  # repeat exp. for 10 different random seeds
-                    n_epochs=1000,
+                    n_epochs=2000,
                 ) \
                 .set_setting(
                     payment_rule='k_price',
@@ -87,15 +92,15 @@ if __name__ == '__main__':
                     cache_eval_actions=True,
 
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
-                    util_loss_batch_size=2**12,  # default value -> may needs to be decreased for larger markets
-                    util_loss_grid_size=2**10,  # default value -> may needs to be decreased for larger markets
-                    util_loss_frequency=1000,  # don't want to calculate that often as it takes long
+                    util_loss_batch_size=2**11,  # default value -> may needs to be decreased for larger markets
+                    util_loss_grid_size=2**12,  # default value -> may needs to be decreased for larger markets
+                    util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
                     log_root_dir=log_root_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
-                    plot_frequency=200,  # don't want to waste much disk space
+                    plot_frequency=500,  # don't want to waste much disk space
                 ) \
                 .get_config()
             experiment = experiment_class(experiment_config)
@@ -105,14 +110,15 @@ if __name__ == '__main__':
     ### EXP-3 different pretraining -------------------------------------------
     if True:
         log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-3_experiment')
-        pretrainings = [0.49, 0.45, 0.4]
+            'experiments', 'debug')
+        pretrainings = np.linspace(0.05, 0.45, 10)
         for pretraining in pretrainings:
             experiment_config, experiment_class = \
                 ConfigurationManager(
                     experiment_type='double_auction_single_item_uniform_symmetric',
                     n_runs=1,  # repeat exp. for 10 different random seeds
-                    n_epochs=3000,
+                    n_epochs=5000,
+                    seeds=[69]
                 ) \
                 .set_setting(
                     payment_rule='k_price',
@@ -127,22 +133,22 @@ if __name__ == '__main__':
                     # hidden_activations=[nn.SELU()]
                 ) \
                 .set_hardware(
-                    specific_gpu=7,
+                    specific_gpu=5,
                 ) \
                 .set_logging(
-                    eval_batch_size=2**18,  # needed for exact utility-loss (epsilon_relative)
+                    eval_batch_size=2**14,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
 
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
-                    util_loss_batch_size=2**12,  # default value -> may needs to be decreased for larger markets
-                    util_loss_grid_size=2**10,  # default value -> may needs to be decreased for larger markets
-                    util_loss_frequency=1000,  # don't want to calculate that often as it takes long
+                    util_loss_batch_size=2**11,  # default value -> may needs to be decreased for larger markets
+                    util_loss_grid_size=2**12,  # default value -> may needs to be decreased for larger markets
+                    util_loss_frequency=5000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
                     log_root_dir=log_root_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
-                    plot_frequency=200,  # don't want to waste much disk space
+                    plot_frequency=500,  # don't want to waste much disk space
                 ) \
                 .get_config()
             experiment = experiment_class(experiment_config)

@@ -416,7 +416,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
             raise ValueError('Desired pretraining output does not match NN output dimension.')
 
         optimizer = torch.optim.Adam(self.parameters())
-        for _ in tqdm(range(iters)):
+        for i in tqdm(range(iters)):
             self.zero_grad()
             diff = (self.forward(input_tensor) - desired_output)
             loss = (diff * diff).sum()

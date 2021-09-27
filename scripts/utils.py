@@ -22,6 +22,7 @@ def logs_to_df(
         precision: int = 4,
         with_stddev: bool = False,
         with_setting_parameters: bool = True,
+        save: bool = True,
     ):
     """Creates and returns a Pandas DataFrame from all logs in `path`.
 
@@ -171,13 +172,15 @@ def logs_to_df(
             aggregate_df['Regret'] = pd.to_numeric(reg)
 
     # write to file
-    aggregate_df.to_csv('experiments/summary.csv', index=False)
+    if save:
+        path = os.path.dirname(os.path.abspath(__file__)) + '/../experiments/summary.csv'
+        aggregate_df.to_csv(path, index=False)
 
     return aggregate_df
 
 
 def single_exp_logs_to_df(
-        exp_path: str or dict,
+        path: str or dict,
         metrics: list = ['eval_vs_bne/L_2', 'eval_vs_bne/epsilon_relative'],
         precision: int = 4,
         with_stddev: bool = True,
@@ -189,7 +192,7 @@ def single_exp_logs_to_df(
     This function is universially usable.
 
     Arguments:
-        exp_path: str to `full_results.csv`.
+        path: str to `full_results.csv`.
         metrics: list of which metrics we want to load in the df.
         precision: int of how many decimals we request.
         with_stddev: bool.
@@ -201,7 +204,7 @@ def single_exp_logs_to_df(
     """
     form = '{:.' + str(precision) + 'f}'
 
-    df = pd.read_csv(exp_path)
+    df = pd.read_csv(path)
     end_epoch = df.epoch.max()
     df = df[df.epoch == end_epoch]
 
@@ -214,7 +217,7 @@ def single_exp_logs_to_df(
     # multiple BNE
     new_metrics = metrics.copy()
     i = 1
-    while f'eval/L_2_bne{i}' in df['metric'].to_list():
+    while f'eval_vs_bne/L_2_bne{i}' in df['metric'].to_list():
         for m in metrics:
             new_metrics.append(m + f'_bne{i}')
         i += 1
@@ -239,7 +242,7 @@ def single_exp_logs_to_df(
 
     # bidder names
     if not bidder_names:
-        bidder_names = [f'bidder {i + 1}' for i in range(df.shape[0])]
+        bidder_names = df.index
     df.insert(0, 'bidder', bidder_names)
 
     aliasies = ALIASES.copy()
@@ -261,18 +264,38 @@ def csv_to_tex(
         metrics: list = ['eval/L_2', 'eval/epsilon_relative',
                          'eval/estimated_relative_ex_ante_util_loss'],
         precision: int = 3,
+        label: float = 'tab:full_results',
+        symmetric: bool = True
     ):
     """Creates a tex file with the csv at `path` as a LaTeX table."""
 
-    aggregate_df = logs_to_df(path=experiments, metrics=metrics,
-                              precision=precision, with_stddev=True,
-                              with_setting_parameters=False)
+    if symmetric:
+        aggregate_df = logs_to_df(path=experiments, metrics=metrics,
+                                  precision=precision, with_stddev=True,
+                                  with_setting_parameters=False, save=False)
+        column_format='l'+'r'*len(metrics)
+
+    else:
+        experiments_list = list(experiments.values())
+        experiments_names_list = list(experiments.keys())
+        aggregate_df = single_exp_logs_to_df(path=experiments_list[0], metrics=metrics,
+                                             precision=precision, with_stddev=True)
+        experiments_names = [experiments_names_list[0]] * aggregate_df.shape[0]
+        for k, v in zip(experiments_names_list[1:], experiments_list[1:]):
+            aggregate_single_df = single_exp_logs_to_df(path=v, metrics=metrics,
+                                                        precision=precision, with_stddev=True)
+            aggregate_df = pd.concat([aggregate_df, aggregate_single_df])
+            experiments_names += [k] * aggregate_single_df.shape[0]
+
+        # name of different experiments
+        aggregate_df.insert(0, 'auction', experiments_names)
+        column_format='ll'+'r'*len(metrics)
 
     # write to file
     aggregate_df.to_latex(name, #float_format="%.4f",
                           na_rep='--', escape=False, index=False,
-                          caption=caption, column_format='l'+'r'*len(metrics),
-                          label='tab:full_results')
+                          caption=caption, column_format=column_format,
+                          label=label)
 
 
 def df_to_tex(
@@ -395,74 +418,4 @@ def get_sub_path(path: str, levels: int=1):
 
 
 if __name__ == '__main__':
-
-    ### Create bid function plot ----------------------------------------------
-    # exps = {
-    #     '$\gamma = 0.1$': '/home/kohring/bnelearn/experiments/' + \
-    #         'interdependence/risk-vs-correlation/LLG/nearest_vcg/' + \
-    #             'Bernoulli_weights/gamma_0.1/risk_0.9/2020-10-26 Mon 13.58/00 09:43:03 0',
-    #     '$\gamma = 0.5$': '/home/kohring/bnelearn/experiments/' + \
-    #         'interdependence/risk-vs-correlation/LLG/nearest_vcg/' + \
-    #         'Bernoulli_weights/gamma_0.5/risk_0.9/2020-10-26 Mon 13.58/00 10:41:46 0',
-    #     '$\gamma = 0.9$': '/home/kohring/bnelearn/experiments/' + \
-    #         'interdependence/risk-vs-correlation/LLG/nearest_vcg/' + \
-    #         'Bernoulli_weights/gamma_0.9/risk_0.9/2020-10-26 Mon 13.58/00 11:40:35 0',
-    # }
-    # plot_bid_functions(exps)
-
-
-    ### EXP-1 BB 1/2-DA & VCG -------------------------------------------------
-    path = '/home/kohring/bnelearn/experiments/debug/exp-1_experiment'
-    path += '/double_auction/single_item/k_price/0.5/uniform/symmetric'
-    exps = dict()
-    for risk_str in next(os.walk(path))[1]:
-        sub_path = path + '/' + risk_str
-        risk_value = float(risk_str[5:])
-        sub_path = get_sub_path(sub_path, 2)
-        aggregate_log_path = sub_path + '/aggregate_log.csv'
-        full_results_path = sub_path + '/full_results.csv'
-        exps[risk_value] = aggregate_log_path
-        df = single_exp_logs_to_df(full_results_path, bidder_names=['buyer', 'seller'])
-        df_to_tex(df, name=f'{path}/table_{risk_value}.tex')
-
-    csv_to_tex(
-        experiments = exps,
-        name = f'{path}/kDA_risk_table.tex',
-        metrics = ['eval_vs_bne/L_2', 'eval_vs_bne/epsilon_relative', 'eval/util_loss_ex_interim',
-                  'eval/estimated_relative_ex_ante_util_loss'],
-        caption = 'Mean and standard deviation of experiments over ten runs' \
-            + ' each. For the LLG settings, a correlation of $\gamma = 0.5$' \
-            + ' under risk-neutral bidders was chosen.'
-    )
-
-
-
-    ### EXP-2 risk experiments ------------------------------------------------
-    path = '/home/kohring/bnelearn/experiments/debug/risk_experiment'
-    path += '/double_auction/single_item/k_price/0.5/uniform/symmetric'
-    exps = dict()
-    for risk_str in next(os.walk(path))[1]:
-        sub_path = path + '/' + risk_str
-        risk_value = float(risk_str[5:])
-        sub_path = get_sub_path(sub_path, 2)
-        aggregate_log_path = sub_path + '/aggregate_log.csv'
-        full_results_path = sub_path + '/full_results.csv'
-        exps[risk_value] = aggregate_log_path
-        df = single_exp_logs_to_df(full_results_path, bidder_names=['buyer', 'seller'])
-        df_to_tex(df, name=f'{path}/table_{risk_value}.tex')
-
-    csv_to_tex(
-        experiments = exps,
-        name = f'{path}/kDA_risk_table.tex',
-        metrics = ['eval_vs_bne/L_2', 'eval_vs_bne/epsilon_relative', 'eval/util_loss_ex_interim',
-                  'eval/estimated_relative_ex_ante_util_loss'],
-        caption = 'Mean and standard deviation of experiments over ten runs' \
-            + ' each. For the LLG settings, a correlation of $\gamma = 0.5$' \
-            + ' under risk-neutral bidders was chosen.'
-    )
-
-
-
-    ### Create CSV table of experiments ---------------------------------------
-    # path = '/home/kohring/bnelearn/experiments/interdependence/Risk-vs-correlation-with-rne'
-    # df = logs_to_df(path=path, precision=4)
+    pass
