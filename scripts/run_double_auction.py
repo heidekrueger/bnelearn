@@ -11,7 +11,7 @@ import torch.nn as nn
 # pylint: disable=wrong-import-position
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
-
+s
 from bnelearn.experiment.configuration_manager import ConfigurationManager  # pylint: disable=import-error
 
 
@@ -26,7 +26,7 @@ if __name__ == '__main__':
             experiment_config, experiment_class = \
                 ConfigurationManager(
                     experiment_type='double_auction_single_item_uniform_symmetric',
-                    n_runs=1,  # repeat exp. for 10 different random seeds
+                    n_runs=10,  # repeat exp. for different random seeds
                     n_epochs=2000,
                 ) \
                 .set_setting(
@@ -44,12 +44,12 @@ if __name__ == '__main__':
                     specific_gpu=7,
                 ) \
                 .set_logging(
-                    eval_batch_size=2**18,  # needed for exact utility-loss (epsilon_relative)
+                    eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
 
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
-                    util_loss_batch_size=2**11,  # default value -> may needs to be decreased for larger markets
-                    util_loss_grid_size=2**12,  # default value -> may needs to be decreased for larger markets
+                    util_loss_batch_size=2**13,  # default value -> may needs to be decreased for larger markets
+                    util_loss_grid_size=2**10,  # default value -> may needs to be decreased for larger markets
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
@@ -72,7 +72,7 @@ if __name__ == '__main__':
             experiment_config, experiment_class = \
                 ConfigurationManager(
                     experiment_type='double_auction_single_item_uniform_symmetric',
-                    n_runs=10,  # repeat exp. for 10 different random seeds
+                    n_runs=10,  # repeat exp. for different random seeds
                     n_epochs=2000,
                 ) \
                 .set_setting(
@@ -92,8 +92,8 @@ if __name__ == '__main__':
                     cache_eval_actions=True,
 
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
-                    util_loss_batch_size=2**11,  # default value -> may needs to be decreased for larger markets
-                    util_loss_grid_size=2**12,  # default value -> may needs to be decreased for larger markets
+                    util_loss_batch_size=2**13,  # default value -> may needs to be decreased for larger markets
+                    util_loss_grid_size=2**10,  # default value -> may needs to be decreased for larger markets
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
@@ -110,14 +110,14 @@ if __name__ == '__main__':
     ### EXP-3 different pretraining -------------------------------------------
     if True:
         log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug')
+            'experiments', 'debug', 'exp-3_experiment')
         pretrainings = np.linspace(0.05, 0.45, 10)
         for pretraining in pretrainings:
             experiment_config, experiment_class = \
                 ConfigurationManager(
                     experiment_type='double_auction_single_item_uniform_symmetric',
-                    n_runs=1,  # repeat exp. for 10 different random seeds
-                    n_epochs=5000,
+                    n_runs=1,  # repeat exp. for different random seeds
+                    n_epochs=2000,
                     seeds=[69]
                 ) \
                 .set_setting(
@@ -136,12 +136,12 @@ if __name__ == '__main__':
                     specific_gpu=5,
                 ) \
                 .set_logging(
-                    eval_batch_size=2**14,  # needed for exact utility-loss (epsilon_relative)
+                    eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
 
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
-                    util_loss_batch_size=2**11,  # default value -> may needs to be decreased for larger markets
-                    util_loss_grid_size=2**12,  # default value -> may needs to be decreased for larger markets
+                    util_loss_batch_size=2**13,  # default value -> may needs to be decreased for larger markets
+                    util_loss_grid_size=2**10,  # default value -> may needs to be decreased for larger markets
                     util_loss_frequency=5000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots

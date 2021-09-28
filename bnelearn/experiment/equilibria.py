@@ -522,12 +522,15 @@ def bne_bilateral_bargaining_uniform_symmetric(config: ExperimentConfig,
     """
     n_buyers = config.setting.n_buyers
 
-    def _bne(g_05: float):
+    def _bne(g_05: float) -> Callable:
         lin, sol = _bilateral_bargaining_uniform_symmetric_helper(g_05)
         ask_seller = interpolate.interp1d(sol, lin, kind=1, fill_value='extrapolate')
         bid_buyer = lambda v: 1 - ask_seller(1 - v)
 
-        def _symmetric_bne(valuation, player_position):
+        if g_05 == 3./8.:  # special case: linear BNE
+            return bne_bilateral_bargaining_uniform_linear(config, 0, 1)
+
+        def _symmetric_bne(valuation: torch.Tensor, player_position: int) -> torch.Tensor:
             device, dtype = valuation.device, valuation.dtype
             v = valuation.flatten().cpu().numpy()
 

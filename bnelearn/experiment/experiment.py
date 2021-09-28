@@ -476,7 +476,7 @@ class Experiment(ABC):
     # TODO Stefan: method only uses self in eval and for output point
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
-              x_label="valuation", y_label="bid", fmts: list = None,
+              x_label="valuation $v$", y_label="bid $b$", fmts: list = None,
               figure_name: str = 'bid_function', plot_points=100):
         """
         This implements plotting simple 2D data.
@@ -511,13 +511,14 @@ class Experiment(ABC):
         if not isinstance(axs, np.ndarray):
             axs = [axs]  # one plot only
 
-        # Set the colors s.t. the models' actions and the (possibly multiple)
+        # set the colors s.t. the models' actions and the (possibly multiple)
         # BNEs can be differentated
         available_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
         if not self.config.logging.log_metrics['opt']:
             colors = available_colors
         else:
-            colors = available_colors[:self.n_models * len(self._optimal_bid)]
+            colors = available_colors[:self.n_models] \
+                + available_colors[:self.n_models * len(self._optimal_bid)]
 
         # actual plotting
         for plot_idx in range(n_bundles):
@@ -538,7 +539,7 @@ class Experiment(ABC):
                 if n_players < 10 and labels is not None:
                     axs[plot_idx].legend(loc='upper left')
 
-            # Set axis limits based on function parameters ´xlim´, ´ylim´ if provided otherwise
+            # set axis limits based on function parameters ´xlim´, ´ylim´ if provided otherwise
             # based on ´self.plot_xmin´ etc. object attributes. In either case, these variables
             # can also be lists for sperate limits of individual plots.
             lims = (xlim, ylim)
