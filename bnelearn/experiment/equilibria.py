@@ -515,7 +515,7 @@ def _bilateral_bargaining_uniform_symmetric_helper(g_05: float):
     return lin, sol
 
 def bne_bilateral_bargaining_uniform_symmetric(config: ExperimentConfig,
-                                               g_05s: list[float] = [0.25, 0.45]) -> Callable:
+                                               g_05s: List[float] = [0.25, 0.45]) -> Callable:
     """BNE for bilateral bargaining with [0, 1]-uniform priors.
 
     Source: Leinigner et al. (1988), section `3.3. Differentiable Equilibria'.

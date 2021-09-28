@@ -198,7 +198,10 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
             self._optimal_bid = [bne_bilateral_bargaining_uniform_linear(
                 self.config, self.u_lo, self.u_hi)]
             if self.k == 0.5 and self.u_lo == 0 and self.u_hi == 1:
-                self._optimal_bid += bne_bilateral_bargaining_uniform_symmetric(self.config)
+                symmetric_bnes_to_plot = [0.25, 0.45]
+                if self.config.setting.pretrain_transform is not None:
+                    symmetric_bnes_to_plot += [self.config.setting.pretrain_transform]
+                self._optimal_bid += bne_bilateral_bargaining_uniform_symmetric(self.config, symmetric_bnes_to_plot)
             return True
 
         return super()._check_and_set_known_bne()
