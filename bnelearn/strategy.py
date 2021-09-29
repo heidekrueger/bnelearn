@@ -415,13 +415,15 @@ class NeuralNetStrategy(Strategy, nn.Module):
         elif desired_output.shape[-1] > self.output_length:
             raise ValueError('Desired pretraining output does not match NN output dimension.')
 
-        optimizer = torch.optim.Adam(self.parameters())
-        for i in tqdm(range(iters)):
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
+        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iters, eta_min=1e-5)
+        for _ in tqdm(range(iters)):
             self.zero_grad()
-            diff = (self.forward(input_tensor) - desired_output)
-            loss = (diff * diff).sum()
+            diff = (self.pretrain_forward(input_tensor) - desired_output)
+            loss = (diff * diff).mean()
             loss.backward()
             optimizer.step()
+            lr_scheduler.step()
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
@@ -431,6 +433,14 @@ class NeuralNetStrategy(Strategy, nn.Module):
     def forward(self, x):
         for layer in self.layers.values():
             x = layer(x)
+        return x
+
+    def pretrain_forward(self, x):
+        """This is the forward without the final layer (which is the relu activation).
+        This is used to avoid the dead-relu problem during pretraining."""
+        for k, layer in enumerate(self.layers.values()):
+            if k + 1 < len(self.layers.values()):
+                x = layer(x)
         return x
 
     def play(self, inputs):
