@@ -278,6 +278,12 @@ class BilateralBargainingRandomExperiment(DoubleAuctionUniformSymmetricPriorSing
                                 enable_action_caching=enable_action_caching,
                                 seller=seller)
 
+    def _check_and_set_known_bne(self):
+        if self.payment_rule == 'efficient_random':
+            self._optimal_bid = [truthful_bid]
+            return True
+        return super()._check_and_set_known_bne()
+
     def _get_logdir_hierarchy(self):
         name = ['bilateral_bargaining_random']
         return os.path.join(*name)
