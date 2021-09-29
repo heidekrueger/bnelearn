@@ -11,7 +11,6 @@ import torch.nn as nn
 # pylint: disable=wrong-import-position
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
-s
 from bnelearn.experiment.configuration_manager import ConfigurationManager  # pylint: disable=import-error
 
 
