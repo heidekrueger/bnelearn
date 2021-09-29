@@ -15,24 +15,10 @@ from bnelearn.sampler import (SymmetricIPVSampler, UniformSymmetricIPVSampler)
 from bnelearn.strategy import ClosureStrategy
 from bnelearn.mechanism import kDoubleAuction, VickreyDoubleAuction, RandomizedDoubleAuctionMechanism
 from bnelearn.strategy import ClosureStrategy
-
-
-###############################################################################
-#######   Known equilibrium bid functions                                ######
-###############################################################################
-# Define known BNE functions top level, so they may be pickled for parallelization
-# These are called millions of times, so each implementation should be
-# setting specific, i.e. there should be NO setting checks at runtime.
-
-
-def _optimal_bid_buyer_kdouble(valuation: torch.Tensor, k: float = 0, u_hi: int = 0, **kwargs) -> torch.Tensor:
-    return (valuation/(1+k)) + ((k*(1-k))/(2*(1+k)))*u_hi 
-
-def _optimal_bid_seller_kdouble(valuation: torch.Tensor, k: float = 0, u_hi: int = 0, **kwargs) -> torch.Tensor:
-    return (valuation/(2-k)) + ((1-k)/2)*u_hi 
-
-def _truthful_bid(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
-    return valuation
+from bnelearn.experiment.equilibria import (
+    truthful_bid,
+    bne_bilateral_bargaining_uniform_linear,
+    bne_bilateral_bargaining_uniform_symmetric)
 
 
 class DoubleAuctionSingleItemExperiment(Experiment, ABC):
@@ -42,10 +28,13 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
-        self.n_players = self.config.setting.n_players
         self.n_items = 1
+
         self.n_buyers = self.config.setting.n_buyers
         self.n_sellers = self.config.setting.n_sellers
+        self.n_players = self.n_buyers + self.n_sellers
+        assert self.n_players == self.config.setting.n_players
+
         self.k = self.config.setting.k
         self.observation_size = self.valuation_size = self.action_size = 1
 
@@ -65,7 +54,7 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
                                             + [1] * (self.n_sellers)
         else:
             self.n_models = self.n_buyers + self.n_sellers
-            self._bidder2model: List[int] = list(range(self.n_buyers + self.n_players))
+            self._bidder2model: List[int] = list(range(self.n_buyers + self.n_sellers))
 
         super().__init__(config=config)
 
@@ -75,23 +64,22 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
 
     def _setup_mechanism(self):
         if self.payment_rule == 'k_price':
-            self.mechanism = kDoubleAuction(cuda=self.hardware.cuda, k_value = self.k,
-                                            n_buyers=self.n_buyers, n_sellers=self.n_sellers)
+            self.mechanism = kDoubleAuction(
+                cuda=self.hardware.cuda, k_value = self.k,
+                n_buyers=self.n_buyers, n_sellers=self.n_sellers
+                )
         elif self.payment_rule == 'vcg':
-            self.mechanism = VickreyDoubleAuction(cuda=self.hardware.cuda, k = self.k,
-                                                  n_buyers=self.n_buyers, n_sellers=self.n_sellers)
+            self.mechanism = VickreyDoubleAuction(
+                cuda=self.hardware.cuda, n_buyers=self.n_buyers,
+                n_sellers=self.n_sellers
+                )
         else:
             raise ValueError('Invalid Mechanism type!')
 
     @staticmethod
     def get_risk_profile(risk) -> str:
         """Used for logging and checking existence of bne"""
-        if risk == 1.0:
-            return 'risk_neutral'
-        elif risk == 0.5:
-            return 'risk_averse'
-        else:
-            return 'other'
+        return f'risk_{risk}'
 
     def _get_model_names(self):
         if self.model_sharing or self.n_players == 2:
@@ -116,10 +104,13 @@ class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExp
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
-        self.n_players = self.config.setting.n_players
         self.n_items = 1
+
         self.n_buyers = self.config.setting.n_buyers
         self.n_sellers = self.config.setting.n_sellers
+        self.n_players = self.n_buyers + self.n_sellers
+        assert self.n_players == self.config.setting.n_players
+
         self.k = self.config.setting.k
 
         self.common_prior = self.config.setting.common_prior
@@ -130,69 +121,51 @@ class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExp
 
         super().__init__(config=config)
 
-    # def _optimal_bid(self, valuation, player_position):
-
-    #     if not isinstance(valuation, torch.Tensor):
-    #         valuation = torch.tensor(valuation)
-
-    #     if self.payment_rule == 'first_price':
-    #         if player_position > self.n_buyers - 1:
-    #             return _optimal_bid_seller_average(valuation)
-    #         else:
-    #             return _optimal_bid_buyer_average(valuation)
-
-    #     if self.payment_rule == 'k_price':
-    #         if player_position > self.n_buyers - 1:
-    #             return _optimal_bid_seller_kdouble(valuation, self.k)
-    #         else:
-    #             return _optimal_bid_buyer_kdouble(valuation, self.k)
-
-    #     elif self.payment_rule == 'second_price':
-    #         return _truthful_bid(valuation)
-
-    #     else:
-    #         warnings.warn('optimal bid not implemented for this type')
-    #         self.known_bne = False
-
     def _check_and_set_known_bne(self):
-        if self.payment_rule in ['k_price', 'vickrey_price']:
+
+        if self.payment_rule in ['second_price', 'vcg', 'vickrey_price']:
+            self._optimal_bid =  [truthful_bid]
             return True
+
         else:
-            # no bne found, defer to parent
-            return super()._check_and_set_known_bne()
+            warnings.warn('optimal bid not implemented for this type')
+            return False
 
     def _setup_eval_environment(self):
         """Determines whether a bne exists and sets up eval environment."""
         assert self.known_bne
         assert hasattr(self, '_optimal_bid')
 
-        bne_strategies = [
-            ClosureStrategy(partial(self._optimal_bid, player_position=i))
-            for i in range(self.n_players)]
+        bne_strategies = [None] * len(self._optimal_bid)
+        self.bne_env = [None] * len(self._optimal_bid)
+        self.bne_utilities = [None] * len(self._optimal_bid)
+        for i, bid_function in enumerate(self._optimal_bid):
+            bne_strategies[i] = [ClosureStrategy(partial(bid_function, player_position=j))
+                                 for j in range(self.n_players)]
 
-        self.bne_env = AuctionEnvironment(
-            self.mechanism,
-            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                          batch_size=self.config.logging.eval_batch_size,
-                                          enable_action_caching=self.logging.cache_eval_actions)
-                    for i in range(self.n_players)],
-            valuation_observation_sampler=self.sampler,
-            n_players=self.n_players,
-            batch_size=self.logging.eval_batch_size,
-            strategy_to_player_closure=self._strat_to_bidder
-        )
+            self.bne_env[i] = AuctionEnvironment(
+                mechanism=self.mechanism,
+                agents=[self._strat_to_bidder(bne_strategies[i][p], player_position=p,
+                                              batch_size=self.logging.eval_batch_size,
+                                              enable_action_caching=self.config.logging.cache_eval_actions)
+                        for p in range(self.n_players)],
+                valuation_observation_sampler=self.sampler,
+                n_players=self.n_players,
+                batch_size=self.logging.eval_batch_size,
+                strategy_to_player_closure=self._strat_to_bidder
+            )
 
-        self.bne_utilities = torch.tensor(
-            [self.bne_env.get_reward(a, redraw_valuations=True) for a in self.bne_env.agents])
+            self.bne_utilities[i] = torch.tensor(
+                [self.bne_env[i].get_reward(a, redraw_valuations=True) for a in self.bne_env[i].agents])
 
-        print(('Utilities in BNE (sampled):' + '\t{:.5f}' * self.n_players + '.').format(*self.bne_utilities))
+            print(('Utilities in BNE{} (sampled):' + '\t{:.5f}' * self.n_players + '.') \
+                .format(i + 1,*self.bne_utilities[i]))
 
 
 class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmetricPriorSingleItemExperiment):
-    """Double Auction Experiment specifically for uniform symmetric priors and
-    a single item.
+    """Double Auction Uniform Symmetric Prior Experiment for unit demand: Each
+    seller has one item and each buyer can buy max. one item.
     """
-
     def __init__(self, config: ExperimentConfig):
         self.config = config
         self.n_buyers = self.config.setting.n_buyers
@@ -224,23 +197,26 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
             self.config.learning.batch_size, self.config.hardware.device
         )
 
-    def _optimal_bid(self, valuation, player_position):
+    def _check_and_set_known_bne(self):
 
-        if not isinstance(valuation, torch.Tensor):
-            valuation = torch.tensor(valuation)
+        if self.payment_rule == 'k_price' and self.risk == 1.0:
+            self._optimal_bid = [bne_bilateral_bargaining_uniform_linear(
+                self.config, self.u_lo, self.u_hi)]
+            if self.k == 0.5 and self.u_lo == 0 and self.u_hi == 1:
+                self._optimal_bid += bne_bilateral_bargaining_uniform_symmetric(self.config)
+            return True
 
-        if self.payment_rule == 'k_price':
-            if player_position > self.n_buyers - 1:
-                return _optimal_bid_seller_kdouble(valuation, self.k, self.u_hi)
-            else:
-                return _optimal_bid_buyer_kdouble(valuation, self.k, self.u_hi)
+        return super()._check_and_set_known_bne()
 
-        elif self.payment_rule == 'vickrey_price':
-            return _truthful_bid(valuation)
+    def pretrain_transform(self, player_position: int) -> callable:
+        """Transformation during pretraining"""
+        g_05 = self.setting.pretrain_transform
 
-        else:
-            warnings.warn('optimal bid not implemented for this type')
-            self.known_bne = False
+        if g_05 is None:
+            return None
+
+        return lambda v: bne_bilateral_bargaining_uniform_symmetric(
+            self.config, [g_05])[0](v, player_position)
 
     def _get_logdir_hierarchy(self):
 

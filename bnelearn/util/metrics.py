@@ -1,46 +1,55 @@
 """This module implements metrics that may be interesting."""
 
-import traceback
-from math import ceil
 from typing import Tuple
 
 import torch
-from tqdm import tqdm
 
 from bnelearn.bidder import Bidder
-from bnelearn.environment import AuctionEnvironment
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import Strategy
-
-_CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
-ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even batch_size=1 leads to OOM!"
+from bnelearn.util.tensor_util import apply_with_dynamic_mini_batching
 
 ## defines a mapping of internal metrics and their desired tensorboard output tags
 MAPPING_METRICS_TAGS = {
-    'utilities':            'market/utilities',
-    'efficiency':           'market/efficiency',
-    'revenue':              'market/revenue',
-    'update_norm':          'learner_info/update_norm',
-    'util_loss_ex_ante':    'eval/util_loss_ex_ante',
-    'util_loss_ex_interim': 'eval/util_loss_ex_interim',
+    'utilities':               'market/utilities',
+    'efficiency':              'market/efficiency',
+    'revenue':                 'market/revenue',
+    'budget_deficit':          'market/budget_deficit',
+    'budget_surplus':          'market/budget_surplus',
+    'individual_rationality':  'market/individual_rationality',
+    'incentive_compatibility': 'market/incentive_compatibility',
+
+    'expected_utility_buyers':              'da_strategy/expected_utility_buyers',
+    'expected_utility_sellers':             'da_strategy/expected_utility_sellers',
+    'gains_from_trade':                     'da_strategy/gains_from_trade',
+    'efficiency_from_trade':                'da_strategy/efficiency_from_trade',
+    'expected_profit_buyers':               'da_strategy/expected_profit_buyers',
+    'expected_profit_sellers':              'da_strategy/expected_profit_sellers',
+    'profits_from_trade':                   'da_strategy/profits_from_trade',
+    'normalized_profits_from_trade':        'da_strategy/normalized_profits_from_trade',
+    'pareto_efficiency_current_strategy':   'da_strategy/pareto_efficiency_current_strategy',
+
+    'update_norm':             'learner_info/update_norm',
+    'util_loss_ex_ante':       'eval/util_loss_ex_ante',
+    'util_loss_ex_interim':    'eval/util_loss_ex_interim',
     'estimated_relative_ex_ante_util_loss': 'eval/estimated_relative_ex_ante_util_loss',
-    'utility_vs_bne':       'eval_vs_bne/utility_vs_bne',
-    'epsilon_relative':     'eval_vs_bne/epsilon_relative',
-    'epsilon_absolute':     'eval_vs_bne/epsilon_absolute',
-    'L_2':                  'eval_vs_bne/L_2',
-    'L_inf':                'eval_vs_bne/L_inf',
-    'overhead_hours':       'meta/overhead_hours',
+    'utility_vs_bne':          'eval_vs_bne/utility_vs_bne',
+    'epsilon_relative':        'eval_vs_bne/epsilon_relative',
+    'epsilon_absolute':        'eval_vs_bne/epsilon_absolute',
+    'L_2':                     'eval_vs_bne/L_2',
+    'L_inf':                   'eval_vs_bne/L_inf',
+    'overhead_hours':          'meta/overhead_hours',
 
     # won't actually be logged
-    'prev_params':          'learner_info/prev_params'
+    'prev_params':             'learner_info/prev_params'
 }
 
 # aliases of tf tags for plotting/publications
 #pylint: disable=anomalous-backslash-in-string
 ALIASES_LATEX = {
+    'market/utilities':            '$u$',
     'market/efficiency':           '$\mathcal{E}$',
     'market/revenue':              '$\mathcal{R}$',
-    'market/utilities':            '$u$',
 
     'eval/util_loss_ex_ante':    '$\hat \ell$',
     'eval/util_loss_ex_interim': '$\hat \epsilon$',
@@ -157,7 +166,7 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.Tensor, bid_prof
 
 
 def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid_profile: torch.Tensor, bidder: Bidder,
-                      grid: torch.Tensor, half_precision = False, player_position: int = None):
+                      grid: torch.Tensor, half_precision = False):
     r"""
     # TODO: do we really need this or can we delete it in general?
     # If we decide to keep it, check implementation in detail! (Removing many many todos in the body)
@@ -231,7 +240,7 @@ def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid
     return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
 
 
-def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
+def ex_interim_util_loss(env: "AuctionEnvironment", player_position: int,
                          agent_observations: torch.Tensor,
                          grid_size: int,
                          opponent_batch_size: int = None,
@@ -296,10 +305,13 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     )
     action_size = action_alternatives.shape[-1]
 
-    br_utility, br_indices =  \
-        _calculate_best_responses_with_dynamic_mini_batching(
-            env, player_position,
-            agent_observations, action_alternatives, opponent_batch_size)
+    get_br_utily_and_index = lambda obs: _get_best_responses_among_alternatives(
+        env, player_position, obs, action_alternatives, opponent_batch_size)
+    br_utility, br_indices = apply_with_dynamic_mini_batching(
+        function=get_br_utily_and_index,
+        args=agent_observations,
+        n_outputs=2, dtypes=[action_alternatives.dtype, torch.long])
+
 
     ##### calculate the loss and return best responses ###########
     utility_loss = (br_utility - utility_actual).relu_()
@@ -314,57 +326,8 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
 
     return (utility_loss, br_actions)
 
-def _calculate_best_responses_with_dynamic_mini_batching(
-        env, player_position, agent_observations, action_alternatives, opponent_batch_size):
-    """This function wraps _get_best_responses_among_alternatives with
-    error handling for Out-Of-Memory problems.
-
-    Starting with the full batch, this method will cut the mini_batch_size
-    in half until the operation suceeds (or a different non OOM error occurs.)
-    """
-    ## start with full batch
-    device = agent_observations.device
-    agent_batch_size = agent_observations.shape[0]
-
-    br_utility = torch.empty(agent_batch_size,
-                             dtype=action_alternatives.dtype, device=device)
-    br_indices = torch.empty(agent_batch_size, dtype = torch.long, device=device)
-
-    mini_batch_size = agent_batch_size
-    calculation_successful = False
-
-    while not calculation_successful:
-        try:
-            print(f"Trying util loss calculation with batch_size {mini_batch_size}...")
-            mini_observations = agent_observations.split(mini_batch_size)
-            for i, mini_observation in tqdm(enumerate(mini_observations),
-                                            total =ceil(len(mini_observations))):
-                # get the indices corresponding to this mini batch
-                indices= slice(i*mini_batch_size, (i+1)*mini_batch_size)
-
-                br_utility[indices], br_indices[indices] =  \
-                    _get_best_responses_among_alternatives(
-                        env, player_position,
-                        mini_observation, action_alternatives,
-                        opponent_batch_size)
-
-            calculation_successful = True
-            print("\t ... success!")
-        except RuntimeError as e:
-            if not str(e).startswith(_CUDA_OOM_ERR_MSG_START):
-                raise e
-            if mini_batch_size <= 1:
-                traceback.print_exc()
-                # pylint: disable = raise-missing-from
-                raise RuntimeError(ERR_MSG_OOM_SINGLE_BATCH) 
-
-            print("\t... failed (OOM). Decreasing mini batch size.")
-            mini_batch_size = int(mini_batch_size / 2)
-
-    return br_utility, br_indices
-
 def _get_best_responses_among_alternatives(
-        env: AuctionEnvironment, player_position: int,
+        env: "AuctionEnvironment", player_position: int,
         agent_observations: torch.Tensor, action_alternatives: torch.Tensor,
         opponent_batch_size: int) -> Tuple[torch.Tensor, torch.IntTensor]:
     """For a batch of observations for the given player, calculates the
@@ -400,7 +363,7 @@ def _get_best_responses_among_alternatives(
 
 
 def ex_interim_utility(
-        env: AuctionEnvironment, player_position: int,
+        env: "AuctionEnvironment", player_position: int,
         agent_observations: torch.Tensor, agent_actions: torch.Tensor,
         opponent_batch_size: int, device) -> torch.Tensor:
     """

@@ -213,18 +213,18 @@ class ConfigurationManager:
     #
     #     return self
 
-    # def _init_llg_full(self):
-    #     self.learning.model_sharing = False
-    #     self.setting.u_lo = [0, 0, 0]
-    #     self.setting.u_hi = [1, 1, 2]
-    #     self.setting.n_players = 3
-    #     self.setting.payment_rule = 'first_price'
-    #     self.setting.correlation_groups = [[0, 1], [2]]
-    #     self.setting.gamma = 0.0
-    #     self.logging.log_metrics = {'opt': True,
-    #                                 'util_loss': True,
-    #                                 'efficiency': False,
-    #                                 'revenue': False}
+    def _init_llg_full(self):
+        self.learning.model_sharing = False
+        self.setting.u_lo = [0, 0, 0]
+        self.setting.u_hi = [1, 1, 2]
+        self.setting.n_players = 3
+        self.setting.payment_rule = 'mrcs_favored'
+        self.setting.correlation_groups = [[0, 1], [2]]
+        self.setting.gamma = 0.0
+        self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
+                                    'efficiency': False,
+                                    'revenue': False}
 
     def _init_llllgg(self):
         self.logging.util_loss_batch_size = 2 ** 12
@@ -272,6 +272,15 @@ class ConfigurationManager:
         self.setting.n_buyers = 1
         self.setting.n_sellers = 1
         self.setting.k = 0.5
+        self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
+                                    'efficiency': True,
+                                    'individual_rationality': True,
+                                    'incentive_compatibility': True,
+                                    'budget_balance': True,
+                                    'strategy_efficiency_metrics': True,
+                                    'pareto_efficiency_current_strategy': True
+                                    }
 
     def _init_bilateral_bargaining_random(self):
         self.setting.payment_rule = 'efficient_random'
@@ -297,7 +306,9 @@ class ConfigurationManager:
         if self.logging.experiment_name:
             self.logging.experiment_dir += ' ' + str(self.logging.experiment_name)
 
-        valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue']
+        valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue', 'individual_rationality',
+                             'incentive_compatibility', 'budget_balance', 'strategy_efficiency_metrics',
+                             'pareto_efficiency_current_strategy']
         if self.logging.log_metrics is not None:
             for metric in self.logging.log_metrics:
                 assert metric in valid_log_metrics, "Metric not known."
@@ -366,6 +377,12 @@ class ConfigurationManager:
             self.setting.u_hi.insert(0, self.setting.u_hi[0])
         self.setting.u_hi[-1] = self.setting.n_players - 1
 
+    def _post_init_llg_full(self):
+        if self.learning.model_sharing:
+            warnings.warn("Model sharing not possible in this setting.")
+            self.learning.model_sharing = False
+        self._post_init_llg()
+
     def _post_init_llllgg(self):
         pass
 
@@ -376,7 +393,10 @@ class ConfigurationManager:
         pass
 
     def _post_init_double_auction_single_item_uniform_symmetric(self):
-        pass
+        n_players = self.setting.n_sellers + self.setting.n_buyers
+        if n_players != self.setting.n_players:
+            warnings.warn('Changed `n_players` to match `n_sellers` and `n_buyers`.')
+            self.setting.n_players = n_players
 
     def _post_init_bilateral_bargaining_random(self):
         pass
@@ -400,8 +420,8 @@ class ConfigurationManager:
            (AffiliatedObservationsExperiment, _init_affiliated_observations, _post_init_affiliated_observations),
         'llg':
             (LLGExperiment, _init_llg, _post_init_llg),
-        # 'llg_full':
-        #     (LLGFullExperiment, _init_llg_full, _post_init_llg),
+        'llg_full':
+            (LLGFullExperiment, _init_llg_full, _post_init_llg_full),
         'llllgg':
             (LLLLGGExperiment, _init_llllgg, _post_init_llllgg),
         'multiunit':
@@ -486,7 +506,7 @@ class ConfigurationManager:
     def set_learning(self, model_sharing: bool = 'None', learner_type: str = 'None',
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
-                     pretrain_iters: int = 'None',
+                     dropout: float = 'None', pretrain_iters: int = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
@@ -566,6 +586,7 @@ class ConfigurationManager:
             optimizer_type='adam',
             optimizer_hyperparams={'lr': 1e-3},
             hidden_nodes=[10, 10],
+            dropout=0.0,
             pretrain_iters=500,
             batch_size=2 ** 18,
             hidden_activations=[nn.SELU(), nn.SELU()])

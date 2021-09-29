@@ -96,7 +96,7 @@ class Experiment(ABC):
         self.models: Iterable[torch.nn.Module] = None
         self.bidders: Iterable[Bidder] = None
         self.env: Environment = None
-        self.learners: Iterable[Learner] = None
+        self.learners: Iterable[learners.Learner] = None
 
         # These are set on first _log_experiment
         self.v_opt: torch.Tensor = None
@@ -156,7 +156,7 @@ class Experiment(ABC):
         Defaults to agent{ids of agents that use the model} but may be overwritten by subclasses.
         """
         if self.n_models == 1:
-            return []
+            return ['bidder']
         return ['bidder' + str(bidders[0]) if len(bidders) == 1 else
                 'bidders' + ''.join([str(b) for b in bidders])
                 for bidders in self._model2bidder]
@@ -192,6 +192,20 @@ class Experiment(ABC):
             )
             for m_id, model in enumerate(self.models)]
 
+    def pretrain_transform(self, player_position: int) -> callable:
+        """Some experiments need specific pretraining transformations. In
+        most cases, pretraining to the truthful bid (i.e. the identity function)
+        is sufficient.
+
+        Args:
+            player_position (:int:) the player for which the transformation is
+                requested.
+
+        Returns
+            (:callable:) pretraining transformation
+        """
+        return lambda x: x
+
     def _setup_bidders(self):
         """
         1. Create and save the models and bidders
@@ -206,12 +220,15 @@ class Experiment(ABC):
                 self.observation_size,
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
-                ensure_positive_output=self.positive_output_point.to('cpu'),  # models init. on cpu
+                dropout=self.learning.dropout,
+                ensure_positive_output=self.positive_output_point,
                 output_length=self.action_size
             ).to(self.hardware.device)
 
         self.bidders = [
-            self._strat_to_bidder(strategy=self.models[m_id], batch_size=self.learning.batch_size, player_position=i)
+            self._strat_to_bidder(strategy=self.models[m_id],
+                                  batch_size=self.learning.batch_size,
+                                  player_position=i)
             for i, m_id in enumerate(self._bidder2model)]
 
         self.n_parameters = [sum([p.numel() for p in model.parameters()]) for model in
@@ -220,17 +237,13 @@ class Experiment(ABC):
         if self.learning.pretrain_iters > 0:
             print('Pretraining...')
 
-            if hasattr(self, 'pretrain_transform'):
-                pretrain_transform = self.pretrain_transform  # pylint: disable=no-member
-            else:
-                pretrain_transform = None
-
             _, obs = self.sampler.draw_profiles()
 
             for i, model in enumerate(self.models):
                 pos = self._model2bidder[i][0]
-                model.pretrain(obs[:, pos, :],
-                               self.learning.pretrain_iters, pretrain_transform)
+                model.pretrain(obs[:, pos, :], self.learning.pretrain_iters,
+                               # bidder specific pretraining (e.g. for LLGFull)
+                               self.pretrain_transform(self._model2bidder[i][0]))
 
     def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding
@@ -308,10 +321,11 @@ class Experiment(ABC):
             # dim: [points, models, valuation_size]
             # get one representative player for each model
             model_players = [m[0] for m in self._model2bidder]
+
             self.v_opt[bne_id] = torch.stack(
-                [self.sampler.generate_valuation_grid(i, self.plot_points)
-                 for i in model_players],
+                [self.sampler.generate_reduced_grid(i, self.plot_points) for i in model_players],
                 dim=1)
+
             self.b_opt[bne_id] = torch.stack(
                 [self._optimal_bid[bne_id](
                     self.v_opt[bne_id][:, model_id, :],
@@ -462,9 +476,8 @@ class Experiment(ABC):
     # TODO Stefan: method only uses self in eval and for output point
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
-              x_label="valuation", y_label="bid", fmts: list = None,
-              colors: list = None, figure_name: str = 'bid_function',
-              plot_points=100):
+              x_label="valuation $v$", y_label="bid $b$", fmts: list = None,
+              figure_name: str = 'bid_function', plot_points=100):
         """
         This implements plotting simple 2D data.
 
@@ -498,8 +511,14 @@ class Experiment(ABC):
         if not isinstance(axs, np.ndarray):
             axs = [axs]  # one plot only
 
-        cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-        n_colors = int(np.ceil(len(fmts) / 2)) if self.config.logging.log_metrics['opt'] else len(fmts)
+        # set the colors s.t. the models' actions and the (possibly multiple)
+        # BNEs can be differentated
+        available_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+        if not self.config.logging.log_metrics['opt']:
+            colors = available_colors
+        else:
+            colors = available_colors[:self.n_models] \
+                + available_colors[:self.n_models * len(self._optimal_bid)]
 
         # actual plotting
         for plot_idx in range(n_bundles):
@@ -508,7 +527,7 @@ class Experiment(ABC):
                     x[:, agent_idx, plot_idx], y[:, agent_idx, plot_idx],
                     fmts[agent_idx % len(fmts)],
                     label=None if labels is None else labels[agent_idx % len(labels)],
-                    color=cycle[agent_idx % n_colors] if colors is None else cycle[colors[agent_idx]],
+                    color=colors[agent_idx % len(colors)],
                 )
 
             # formating
@@ -520,7 +539,7 @@ class Experiment(ABC):
                 if n_players < 10 and labels is not None:
                     axs[plot_idx].legend(loc='upper left')
 
-            # Set axis limits based on function parameters ´xlim´, ´ylim´ if provided otherwise
+            # set axis limits based on function parameters ´xlim´, ´ylim´ if provided otherwise
             # based on ´self.plot_xmin´ etc. object attributes. In either case, these variables
             # can also be lists for sperate limits of individual plots.
             lims = (xlim, ylim)
@@ -646,11 +665,40 @@ class Experiment(ABC):
 
         if self.logging.log_metrics['efficiency'] and (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['efficiency'] = \
-                self.env.get_efficiency(self.env)
+                self.env.get_efficiency()
 
         if self.logging.log_metrics['revenue'] and (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['revenue'] = \
-                self.env.get_revenue(self.env)
+                self.env.get_revenue()
+
+        if self.logging.log_metrics['budget_balance'] and (epoch % self.logging.util_loss_frequency) == 0:
+            self._cur_epoch_log_params['budget_deficit'], self._cur_epoch_log_params['budget_surplus'] = \
+                self.env.get_budget_balance()
+
+        if self.logging.log_metrics['individual_rationality'] and (epoch % self.logging.util_loss_frequency) == 0:
+            individual_rationality_bidders = self.env.get_individual_rationality()
+            individual_rationality_models = [individual_rationality_bidders[b[0]] for b in self._model2bidder]
+            self._cur_epoch_log_params['individual_rationality'] = individual_rationality_models
+
+        if self.logging.log_metrics['incentive_compatibility'] and (epoch % self.logging.util_loss_frequency) == 0:
+            incentive_compatibility_bidders = self.env.get_incentive_compatibility()
+            incentive_compatibility_models = [incentive_compatibility_bidders[b[0]] for b in self._model2bidder]
+            self._cur_epoch_log_params['incentive_compatibility'] = incentive_compatibility_models
+
+        if self.logging.log_metrics['strategy_efficiency_metrics'] and (epoch % self.logging.util_loss_frequency == 0):
+            strategy_metrics = self.env.get_da_strategy_metrics()
+            self._cur_epoch_log_params['expected_utility_buyers'] = strategy_metrics[0]
+            self._cur_epoch_log_params['expected_utility_sellers'] = strategy_metrics[1]
+            self._cur_epoch_log_params['gains_from_trade'] = strategy_metrics[2]
+            self._cur_epoch_log_params['efficiency_from_trade'] = strategy_metrics[3]
+            self._cur_epoch_log_params['expected_profit_buyers'] = strategy_metrics[4]
+            self._cur_epoch_log_params['expected_profit_sellers'] = strategy_metrics[5]
+            self._cur_epoch_log_params['profits_from_trade'] = strategy_metrics[6]
+            self._cur_epoch_log_params['normalized_profits_from_trade'] = strategy_metrics[7]
+
+        if self.logging.log_metrics['pareto_efficiency_current_strategy'] and (epoch % self.logging.util_loss_frequency == 0):
+            self._cur_epoch_log_params['pareto_efficiency_current_strategy'] = \
+                self.env.get_pareto_efficiency_of_current_strategy()
 
         # plotting
         if epoch % self.logging.plot_frequency == 0:
@@ -663,17 +711,18 @@ class Experiment(ABC):
                 [self.env._observations[:self.plot_points, b, ...] for b in unique_bidders],
                 dim=1
             )
-            b = torch.stack([self.env.agents[b[0]].get_action(o[:, i, ...])
+            b = torch.stack([self.env.agents[b[0]].get_action(o[:, i, ...], mode='eval')
                              for i, b in enumerate(self._model2bidder)], dim=1)
 
-            labels = ['NPGA agent {}'.format(i) for i in range(len(self.models))]
+            labels = [f'NPGA {self._get_model_names()[i]}' for i in range(len(self.models))]
             fmts = ['o'] * len(self.models)
             if self.known_bne and self.logging.log_metrics['opt']:
                 for env_idx, _ in enumerate(self.bne_env):
                     o = torch.cat([o, self.v_opt[env_idx]], dim=1)
                     b = torch.cat([b, self.b_opt[env_idx]], dim=1)
-                    labels += [f"BNE{'_' + str(env_idx + 1) if len(self.bne_env) > 1 else ''} agent {j}"
-                               for j in range(len(self.models))]
+                    labels += [
+                        f"BNE{str(env_idx + 1) if len(self.bne_env) > 1 else ''} {self._get_model_names()[j]}"
+                        for j in range(len(self.models))]
                     fmts += ['--'] * len(self.models)
 
             self._plot(plot_data=(o, b), writer=self.writer, figure_name='bid_function',
@@ -808,13 +857,13 @@ class Experiment(ABC):
         if self.logging.best_response:
             plot_data = (observations[:, [b[0] for b in self._model2bidder], :],
                          torch.stack(best_responses, 1))
-            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
+            labels = [f'{self._get_model_names()[i]}' for i in range(len(self.models))]
             fmts = ['o'] * len(self.models)
             self._plot(plot_data=plot_data, writer=self.writer,
                        ylim=[0, self.sampler.support_bounds.max().item()],
                        figure_name='best_responses', y_label='best response',
-                       colors=list(range(len(self.models))), epoch=epoch,
-                       labels=labels, fmts=fmts, plot_points=self.plot_points)
+                       epoch=epoch, labels=labels, fmts=fmts,
+                       plot_points=self.plot_points)
 
         # calculate different losses
         ex_ante_util_loss = [util_loss_model.mean() for util_loss_model in util_losses]
@@ -838,13 +887,12 @@ class Experiment(ABC):
             util_losses = torch.stack(list(util_losses), dim=1).unsqueeze_(-1)
             observations = self.env._observations[:batch_size, :, :]
             plot_data = (observations[:, [b[0] for b in self._model2bidder], :], util_losses)
-            labels = ['NPGA_{}'.format(i) for i in range(len(self.models))]
+            labels = [f'{self._get_model_names()[i]}' for i in range(len(self.models))]
             fmts = ['o'] * len(self.models)
             self._plot(plot_data=plot_data, writer=self.writer,
                        ylim=[0, max(self._max_util_loss).detach().item()],
                        figure_name='util_loss_landscape', y_label='ex-interim loss',
-                       colors=list(range(len(self.models))), epoch=epoch,
-                       labels=labels, fmts=fmts, plot_points=self.plot_points)
+                       epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 

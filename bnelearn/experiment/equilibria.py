@@ -6,10 +6,15 @@
     and factory methods that create and return the bid function as a callable object.
 """
 from typing import Callable, List, Union
+import os
 
 import torch
 import numpy as np
-from scipy import interpolate, integrate, optimize
+from scipy import interpolate, optimize
+from tqdm import tqdm
+
+from bnelearn.util.integration import cumulatively_integrate
+from bnelearn.experiment.configurations import ExperimentConfig
 ###############################################################################
 #######   Known equilibrium bid functions                                ######
 ###############################################################################
@@ -30,23 +35,16 @@ def bne_fpsb_ipv_symmetric_generic_prior_risk_neutral(
 
     Reference: Krishna (2009), Chapter 2, Proof of Proposition 2.2.
     """
-    if not prior_cdf(torch.tensor(0.0)).device.type == 'cpu':
-        raise ValueError("prior_cdf is required to return CPU-tensors rather than gpu tensors, " + \
-            "otherwise we will encounter errors when using numerical integration via scipy together with " + \
-            "torch.multiprocessing. For now, please provide a cpu-version of the prior-cdf.")
     if not isinstance(valuation, torch.Tensor):
         # For float and numpy --> convert to tensor (relevant for plotting)
         valuation = torch.tensor(valuation, dtype=torch.float)
-    # For float / 0d tensors --> unsqueeze to allow list comprehension below
-    if valuation.dim() == 0:
-        valuation.unsqueeze_(0)
-    # F^(n-1)
-    cdf_powered = lambda v: torch.pow(prior_cdf(torch.tensor(v)), n_players - 1)
-    # do the calculations
-    numerator = torch.tensor(
-        [integrate.quad(cdf_powered, 0, v)[0] for v in valuation],
-        device=valuation.device
-    ).reshape(valuation.shape)
+
+    # shorthand notation for F^(n-1)
+    cdf_powered = lambda v: torch.pow(prior_cdf(v), n_players - 1)
+
+    # calculate numerator integrals
+    numerator = cumulatively_integrate(cdf_powered, upper_bounds = valuation)
+
     return valuation - numerator / cdf_powered(valuation)
 
 
@@ -231,12 +229,12 @@ def bne_2p_affiliated_values(
     Reference: Krishna (2009), Example 6.2"""
     return (2/3) * valuation
 
-###########################################################################
+###############################################################################
 #### Combinatorial Auctions
-###########################################################################
+###############################################################################
 
-## NOTE: In LLG and LLLLGG, the equilibria are implemented directly within
-## the experiment classes.
+## NOTE: In LLG, LLGFull and LLLLGG, the equilibria are implemented directly
+## within the experiment classes.
 
 
 ###############################################################################
@@ -264,9 +262,7 @@ def multiunit_bne_factory(setting, payment_rule) -> Callable or None:
                 print('BNE is only approximated roughly!')
                 return _bne_multiunit_discriminatory_2x2
             else:
-                # TODO get valuation_cdf from experiment_config
-                # return _optimal_bid_multidiscriminatory2x2CMV(valuation_cdf)
-                return None
+                return _bne_multiunit_discriminatory_2x2_cmv(setting.common_prior)
 
     if payment_rule == 'uniform':
         if setting.n_units == 2 and setting.n_players == 2:
@@ -299,55 +295,47 @@ def _bne_multiunit_discriminatory_2x2(valuation, player_position=None):
     opt_bid = opt_bid.sort(dim=1, descending=True)[0]
     return opt_bid
 
-def _bne_multiunit_discriminatory_2x2_cmv(valuation_cdf):
-    """ BNE strategy in the multi-unit discriminatory price auction 2 players and 2 units
-        with constant marginal valuations
+def _bne_multiunit_discriminatory_2x2_cmv(prior: torch.distributions.Distribution) -> Callable:
+    """BNE strategy in the multi-unit discriminatory price auction with two
+    players, two units, and with constant marginal valuations.
     """
-    n_players = 2
+    # Simplify computation for uniform prior case
+    if isinstance(prior, torch.distributions.uniform.Uniform):
+        if prior.low == 0 and prior.high == 1:
+            def _optimal_bid(valuation, player_position=None):
+                return valuation / 2.0
+            return _optimal_bid
 
-    if not valuation_cdf(torch.tensor(0.0)).device.type == 'cpu':
-        raise ValueError("valuation_cdf is required to return CPU-tensors rather than gpu tensors, " + \
-            "otherwise we will encounter errors when using numerical integration via scipy together with " + \
-            "torch.multiprocessing. For now, please provide a cpu-version of the prior-cdf.")
+    valuation_pdf = lambda x: torch.exp(prior.log_prob(x))
+    valuation_cdf = prior.cdf
 
-    if isinstance(valuation_cdf, torch.distributions.uniform.Uniform):
-        def _optimal_bid(valuation, player_position=None):
-            return valuation / 2
+    def _optimal_bid(valuation, player_position=None):
+        batch_size, n_items = valuation.shape
+        device = valuation.device
+        N = 64  # integration bounds
 
-    elif isinstance(valuation_cdf, torch.distributions.normal.Normal):
+        optimal_bid_tensor = torch.zeros_like(valuation)
+        for item in range(n_items):
+            domains_bounds = torch.cat(
+                [
+                    torch.zeros((batch_size+1, N), device=device),
+                    valuation[:, [item]]
+                ],
+                axis=1)
+            for n in range(1, N+1):
+                domains_bounds[:, n] = domains_bounds[:, 0] \
+                    + (n / (N + 1)) * (domains_bounds[:, -1] - domains_bounds[:, 0])
 
-        def muda_tb_cmv_bne(value_pdf: callable,
-                            value_cdf: callable = None,
-                            lower_bound: int = 0,
-                            epsabs=1e-3) -> Callable:
-            if value_cdf is None:
-                def _value_cdf(x):
-                    return integrate.quad(value_pdf, lower_bound, x, epsabs=epsabs)[0]
-                value_cdf = _value_cdf
+            # TODO: check bounds
+            inner_function = lambda t: valuation_pdf(t) / valuation_cdf(t)
+            inner_integral = torch.trapz(inner_function(domains_bounds), domains_bounds)
 
-            def inner(s, x):
-                return integrate.quad(lambda t: value_pdf(t) / value_cdf(t),
-                                      s, x, epsabs=epsabs)[0]
+            outer = torch.exp(-inner_integral)
+            outer_integral = torch.trapz(outer, domains_bounds)
 
-            def outer(x):
-                return integrate.quad(lambda s: np.exp(-inner(s, x)),
-                                      lower_bound, x, epsabs=epsabs)[0]
+            optimal_bid_tensor[:, item] = valuation[:, [item]] - outer_integral
 
-            def bidding(x):
-                if not hasattr(x, '__iter__'):
-                    return x - outer(x)
-                return np.array([xi - outer(xi) for xi in x])
-
-            return bidding
-
-        bidding = muda_tb_cmv_bne(lambda x: torch.exp(valuation_cdf.log_prob(x)).cpu().numpy(),
-                                  lambda x: valuation_cdf.cdf(x).cpu().numpy())
-
-        def _optimal_bid(valuation, player_position=None):
-            opt_bid = np.zeros_like(valuation.cpu().numpy())
-            for agent in range(n_players):
-                opt_bid[agent] = bidding(valuation[agent, :])
-            return torch.tensor(opt_bid)
+        return optimal_bid_tensor
 
     return _optimal_bid
 
@@ -377,22 +365,24 @@ def _bne_multiunit_uniform_3x2_limit2(valuation, player_position=None):
     opt_bid[:, 2] = 0
     return opt_bid
 
-def bne_splitaward_2x2_1(experiment_config, payoff_dominant: bool=True):
-    """BNE pooling equilibrium in the split-award auction with 2 players and 2
-    lots (as in Anton and Yao, 1992). Actually, this is a continuum of BNEs of
-    which this function returns the upper bound (payoff dominat BNE) and the
-    one at the lower bound.
+def bne_splitaward_2x2_1_factory(experiment_config, payoff_dominant: bool=True):
+    """Factory method returning the BNE pooling equilibrium in the split-award
+    auction with 2 players and 2 lots (as in Anton and Yao, 1992).
+    
+    Actually, this is a continuum of BNEs of which this function returns the
+    upper bound (payoff dominat BNE) and the one at the lower bound.
 
-        Returns callable.
+    Returns:
+        optimal_bid (callable): The equilibrium bid function.
     """
     efficiency_parameter = experiment_config.efficiency_parameter
     u_lo = experiment_config.u_lo[0]
     u_hi = experiment_config.u_hi[0]
 
-    # cut off bids at top
-    _CUT_OFF = 4 * u_hi
+    # clip bids at top
+    clip_cutoff = 4 * u_hi
 
-    def _optimal_bid(valuation, player_position=None):
+    def optimal_bid(valuation, player_position=None):
 
         device = valuation.device
         dist = torch.distributions.Uniform(torch.tensor(u_lo, device=device),
@@ -403,10 +393,10 @@ def bne_splitaward_2x2_1(experiment_config, payoff_dominant: bool=True):
         sigma_bounds[:, 1] = efficiency_parameter * u_hi
         sigma_bounds[:, 0] = (1 - efficiency_parameter) * u_lo
 
-        _p_sigma = (1 - efficiency_parameter) * u_lo  # highest possible p_sigma
+        p_sigma = (1 - efficiency_parameter) * u_lo  # highest possible p_sigma
 
         def G(theta):
-            return _p_sigma + (_p_sigma - u_hi * efficiency_parameter * value_cdf(theta)) \
+            return p_sigma + (p_sigma - u_hi * efficiency_parameter * value_cdf(theta)) \
                     / (1 - value_cdf(theta))
 
         wta_bounds = 2 * sigma_bounds
@@ -418,67 +408,139 @@ def bne_splitaward_2x2_1(experiment_config, payoff_dominant: bool=True):
             wta_bounds[:, action_idx].view(-1, 1)),
             axis=1
         )
-        bid[bid > _CUT_OFF] = _CUT_OFF
+        bid[bid > clip_cutoff] = clip_cutoff
         return bid
 
-    return _optimal_bid
+    return optimal_bid
 
-def bne_splitaward_2x2_2(experiment_config):
-    """BNE WTA equilibrium in the split-award auction with 2 players and
-        2 lots (as in Anton and Yao Proposition 4, 1992).
+def bne_splitaward_2x2_2_factory(experiment_config):
+    """Factory method returning the BNE WTA equilibrium in the split-award 
+    auction with 2 players and 2 lots (as in Anton and Yao Proposition 4, 1992).
 
-        Returns callable.
+    Returns:
+        optimal_bid (callable): The equilibrium bid function.
     """
-    print('Warning: BNE is approximated on CPU.')
-
     efficiency_parameter = experiment_config.efficiency_parameter
-    u_lo = experiment_config.u_lo[0]
-    u_hi = experiment_config.u_hi[0]
+    u_lo = experiment_config.u_lo
+    u_hi = experiment_config.u_hi
     n_players = experiment_config.n_players
 
-    def value_cdf(value):
-        value = np.array(value)
-        result = (value - u_lo) / (u_hi - u_lo)
-        return result.clip(0, 1)
+    def optimal_bid(valuation, player_position=None):
+        device = valuation.device
+        valuation_cdf = torch.distributions.Uniform(
+            torch.tensor(u_lo[0], device=device),
+            torch.tensor(u_hi[0], device=device)).cdf
 
-    # CONSTANTS
-    opt_bid_batch_size = 2**12
-    _EPS = 1e-4
+        integrand = lambda x: torch.pow(1 - valuation_cdf(x), n_players - 1)
+        integral = - cumulatively_integrate(integrand, 
+                                            upper_bounds = valuation[:, [1]],
+                                            lower_bound=u_hi[0] - 1e-4)
 
-    opt_bid = np.zeros((opt_bid_batch_size, 2))
+        opt_bid_100 = valuation[:, [1]] + integral \
+            / torch.pow(1 - valuation_cdf(valuation[:, [1]]), n_players - 1)
 
-    # do one-time approximation via integration
-    val_lin = np.linspace(u_lo, u_hi - _EPS, opt_bid_batch_size)
+        opt_bid = torch.cat(
+            [opt_bid_100 - efficiency_parameter * u_lo[0], opt_bid_100],
+            axis=1)
+        opt_bid[opt_bid < 0] = 0
+        return opt_bid
 
-    def integral(theta):
-        return np.array(
-            [integrate.quad(
-                lambda x: (1 - value_cdf(x))**(n_players - 1), v, u_hi,
-                epsabs=_EPS
-            )[0] for v in theta]
-        )
+    return optimal_bid
 
-    def opt_bid_100(theta):
-        return theta + (integral(theta) / ((1 - value_cdf(theta))**(n_players - 1)))
 
-    opt_bid[:, 1] = opt_bid_100(val_lin)
-    opt_bid[:, 0] = opt_bid[:, 1] - efficiency_parameter * u_lo  # or more
-
-    opt_bid_function = [
-        interpolate.interp1d(val_lin, opt_bid[:, 1], fill_value='extrapolate'),
-        interpolate.interp1d(val_lin, opt_bid[:, 0], fill_value='extrapolate')
-    ]
-
-    # use interpolation of opt_bid done on first batch
-    def _optimal_bid(valuation, player_position=None):
-        bid = torch.empty((valuation.shape[0], 2), device=valuation.device,
-                          dtype=valuation.dtype)
-        val = valuation[:, 1].cpu().numpy()
-        bid[:, 0] = torch.tensor(opt_bid_function[1](val), device=valuation.device)
-        bid[:, 1] = torch.tensor(opt_bid_function[0](val), device=valuation.device)
-        bid[bid < 0] = 0
-        return bid
-
-    return _optimal_bid
 
 ###############################################################################
+### Double Auctions
+###############################################################################
+
+def bne_bilateral_bargaining_uniform_linear(config: ExperimentConfig,
+                                            u_lo: float, u_hi: float) -> Callable:
+    """BNE for bilateral bargaining with uniform priors."""
+
+    k = config.setting.k
+    n_buyers = config.setting.n_buyers
+
+    def bne_bid_buyer_kdouble(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
+        return (valuation/(1+k)) + ((k*(1-k))/(2*(1+k)))*u_hi
+    def bne_ask_seller_kdouble(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
+        return (valuation/(2-k)) + ((1-k)/2)*u_hi
+
+    def _linear_bne(valuation, player_position):
+        if player_position > n_buyers - 1:
+            return bne_ask_seller_kdouble(valuation)
+        else:
+            return bne_bid_buyer_kdouble(valuation)
+
+    return _linear_bne
+
+def _bilateral_bargaining_uniform_symmetric_helper(g_05: float):
+    """Helper function that approximates BNE or loads it from disk."""
+    path = os.path.dirname(os.path.abspath(__file__)) \
+        + '/equilibria_data/bilateral_bargaining_symmetric_uniform_0.5-DA'
+
+    # load from disk if available
+    if os.path.isfile(path + f'/da_inverse_ask_{g_05}.pt'):
+        inverse_ask = torch.load(path + f'/da_inverse_ask_{g_05}.pt').cpu()
+        lin, sol = inverse_ask[:, 0], inverse_ask[:, 1]
+
+    else:
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        batch_size: int = 2**18
+        mid = int(batch_size / 2)
+        lin = torch.linspace(0, 1, batch_size)
+
+        def derivate(x, y, yy):
+            """1st order derivative of inverse ask function g"""
+            return 0.5 * y / (1 - x - yy)
+
+        sol = torch.zeros_like(lin)
+        sol[mid] = g_05
+
+        # explict 1st order Euler for ODE with step-size 1/batch_size
+        for i in tqdm(range(1, mid)):
+            # going up
+            sol[mid + i] = sol[mid + i - 1] + (1./batch_size) \
+                * derivate(lin[mid + i], sol[mid + i - 1], sol[mid - i + 1])
+            # goining low
+            sol[mid - i] = sol[mid - i + 1] - (1./batch_size) \
+                * derivate(lin[mid - i], sol[mid - i + 1], sol[mid + i - 1])
+            if sol[mid + i] > lin[mid + i]:  # stop once moving out of bounds
+                sol[mid + i:] = lin[mid + i:]
+                torch.save(torch.cat([lin[:, None], sol[:, None]], axis=1),
+                           path + f'/da_inverse_ask_{g_05}.pt')
+                break
+
+    return lin, sol
+
+def bne_bilateral_bargaining_uniform_symmetric(config: ExperimentConfig,
+                                               g_05s: list[float] = [0.25, 0.45]) -> Callable:
+    """BNE for bilateral bargaining with [0, 1]-uniform priors.
+
+    Source: Leinigner et al. (1988), section `3.3. Differentiable Equilibria'.
+    """
+    n_buyers = config.setting.n_buyers
+
+    def _bne(g_05: float) -> Callable:
+        lin, sol = _bilateral_bargaining_uniform_symmetric_helper(g_05)
+        ask_seller = interpolate.interp1d(sol, lin, kind=1, fill_value='extrapolate')
+        bid_buyer = lambda v: 1 - ask_seller(1 - v)
+
+        if g_05 == 3./8.:  # special case: linear BNE
+            return bne_bilateral_bargaining_uniform_linear(config, 0, 1)
+
+        def _symmetric_bne(valuation: torch.Tensor, player_position: int) -> torch.Tensor:
+            device, dtype = valuation.device, valuation.dtype
+            v = valuation.flatten().cpu().numpy()
+
+            if player_position > n_buyers - 1:  # is seller
+                action = ask_seller(v)
+            else:  # is buyer
+                action = bid_buyer(v)
+
+            return torch.tensor(action, device=device, dtype=dtype).view_as(valuation)
+
+        return _symmetric_bne
+
+    return [_bne(g_05) for g_05 in g_05s]

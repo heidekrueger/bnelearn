@@ -1,7 +1,7 @@
 """This module implements samplers for correlated private values settings."""
 
 from abc import ABC, abstractmethod
-from math import sqrt
+from math import sqrt, ceil
 import warnings
 from typing import List, Tuple
 import torch
@@ -345,6 +345,44 @@ class LLGSampler(LocalGlobalCompositePVSampler):
                          correlation_globals=0.0, correlation_method_globals=None,
                          default_batch_size=default_batch_size, default_device=default_device)
 
+class LLGFullSampler(LLGSampler):
+    """A sampler for the LLG full setting."""
+    def _generate_grid(self, player_position: int, minimum_number_of_points: int,
+                       reduced: bool, dtype=torch.float, device=None) -> torch.Tensor:
+        device = device or self.default_device
+
+        bounds = self.support_bounds[player_position]
+
+        # dimensionality
+        dims = 1 if reduced else 3
+
+        # use equal density in each dimension of the valuation, such that
+        # the total number of points is at least as high as the specified one
+        n_points_per_dim = ceil(minimum_number_of_points**(1/dims))
+
+        # create equidistant lines along the support in each dimension
+        lines = [torch.linspace(bounds[0][0], bounds[0][1], n_points_per_dim,
+                                device=device, dtype=dtype)
+                 for _ in range(dims)]
+        grid = torch.stack(torch.meshgrid(lines), dim=-1).view(-1, dims)
+
+        return grid
+
+    def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
+                                dtype=torch.float, device=None) -> torch.Tensor:
+        """Here, the grid needs to be three dimensional, as bidders can bid on
+        all three items, even though they're only interested in one.
+        """
+        return self._generate_grid(player_position, minimum_number_of_points, False,
+                                   dtype, device)
+
+    def generate_reduced_grid(self, player_position: int, minimum_number_of_points: int,
+                              dtype=torch.float, device=None) -> torch.Tensor:
+        """Valuations are actually three dimensional, but as two dims are allways
+        zero, it is sufficient to sample one dimensional data.
+        """
+        return self._generate_grid(player_position, minimum_number_of_points, True,
+                                   dtype, device)
 class LLLLGGSampler(LocalGlobalCompositePVSampler):
     """A sampler for the LLLLGG settings in Bosshard et al (2020).
 

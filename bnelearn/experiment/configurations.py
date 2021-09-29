@@ -78,6 +78,7 @@ class LearningConfig:
     optimizer_type: str
     optimizer_hyperparams: dict
     hidden_nodes: List[int]
+    dropout: float
     pretrain_iters: int
     batch_size: int
     hidden_activations: List[nn.Module] = None

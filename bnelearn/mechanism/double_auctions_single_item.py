@@ -90,7 +90,7 @@ class VickreyDoubleAuction(DeterministicDoubleAuctionMechanism):
                                          trade_price_init_buyers, trade_price_indx_sellers) * trade_buyers
         trade_price_sellers = torch.where((trade_indx > 0) & (trade_indx < (self.n_sellers - 1)),
                                           trade_price_init_sellers, trade_price_indx_buyers) * trade_sellers
-                                          
+
         return trade_price_buyers,trade_price_sellers
 
 # class McAfeeDoubleAuction(DoubleAuctionMechanism):

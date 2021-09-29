@@ -8,6 +8,7 @@ This module implements players / bidders / agents in games.
 from abc import ABC, abstractmethod
 import warnings
 import torch
+import torch.nn as nn
 from bnelearn.strategy import (Strategy, MatrixGameStrategy,
                                FictitiousPlayStrategy, FictitiousNeuralPlayStrategy)
 
@@ -189,7 +190,7 @@ class Bidder(Player):
 
         return welfare
 
-    def get_action(self, observations = None):
+    def get_action(self, observations = None, mode='train'):
         """Calculate action from given observations, or retrieve from cache"""
 
         if self._enable_action_caching and not self._cached_observations_changed and \
@@ -214,7 +215,15 @@ class Bidder(Player):
             dim = self.strategy.input_length
             inputs = inputs[:,:dim]
 
-        actions = self.strategy.play(inputs)
+        if mode == 'train':
+            actions = self.strategy.play(inputs)
+        elif mode ==  'eval':
+            if isinstance(self.strategy, nn.Module):
+                self.strategy.eval()
+                actions = self.strategy.play(inputs)
+                self.strategy.train()
+        else:
+            raise ValueError('Unknown pytorch mode.')
 
         if self._enable_action_caching:
             self.cached_observations = observations
@@ -258,7 +267,7 @@ class CombinatorialBidder(Bidder):
             self.output_length = self.bid_size
 
     def get_welfare(self, allocations, valuations: torch.Tensor=None) -> torch.Tensor:
-        assert allocations.dim() == 2  # batch_size x items
+        assert allocations.dim() >= 2  # *batch_sizes x items
         if valuations is None:
             valuations = self._cached_valuations
 
@@ -266,18 +275,17 @@ class CombinatorialBidder(Bidder):
         # 0: item A | 1: item B | 2: bundle {A, B}
         # `player_position` == index of valued item for this agent
         if self.player_position != 2:  # locals also value bundle
-            allocations = allocations[:, [self.player_position, 2]] \
-                .sum(axis=item_dimension) \
-                .view(-1, 1)
+            allocations_reduced_dim = allocations[..., [self.player_position, 2]] \
+                .sum(axis=item_dimension, keepdim=True)
         else:  # global only values bundle
-            allocations = torch.logical_or(
+            allocations_reduced_dim = torch.logical_or(
                 # won bundle of both
-                allocations[:, 2] == 1,
+                allocations[..., [2]] == 1,
                 # won both separately
-                allocations[:, [0, 1]].sum(axis=item_dimension) > 1
-            ).view(-1, 1)
+                allocations[..., [0, 1]].sum(axis=item_dimension, keepdim=True) > 1
+            )
 
-        welfare = (valuations * allocations).sum(dim=item_dimension)
+        welfare = (valuations * allocations_reduced_dim).sum(dim=item_dimension)
         return welfare
 
 

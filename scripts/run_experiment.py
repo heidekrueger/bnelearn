@@ -82,24 +82,24 @@ if __name__ == '__main__':
     #    n_runs=1, n_epochs=20000
     # ) \
     #     .set_logging(log_root_dir=log_root_dir) \
+    # #     .get_config()
+    # experiment_config, experiment_class = \
+    #     ConfigurationManager(
+    #         experiment_type='single_item_uniform_symmetric',
+    #         n_runs=1, n_epochs=500
+    #     ) \
+    #     .set_learning(
+    #         learner_type='PGLearner',
+    #         pretrain_iters=500
+    #     ) \
+    #     .set_logging(
+    #         eval_batch_size=2**18,
+    #         util_loss_batch_size=2**10,
+    #         util_loss_grid_size=2**10,
+    #         util_loss_frequency=50,
+    #         plot_frequency=10,
+    #         log_root_dir=log_root_dir) \
     #     .get_config()
-    experiment_config, experiment_class = \
-        ConfigurationManager(
-            experiment_type='single_item_uniform_symmetric',
-            n_runs=1, n_epochs=500
-        ) \
-        .set_learning(
-            learner_type='PGLearner',
-            pretrain_iters=500
-        ) \
-        .set_logging(
-            eval_batch_size=2**18,
-            util_loss_batch_size=2**10,
-            util_loss_grid_size=2**10,
-            util_loss_frequency=50,
-            plot_frequency=10,
-            log_root_dir=log_root_dir) \
-        .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=3) \
     #     .set_setting(gamma=0.5) \
@@ -111,30 +111,34 @@ if __name__ == '__main__':
     #     .get_config()
 
     # RuntimeError: Sizes of tensors must match
-    experiment_config, experiment_class = \
-        ConfigurationManager(
-            experiment_type='multiunit', n_runs=1, n_epochs=2000
-        ) \
-        .set_setting(
-            payment_rule='uniform',
-        ) \
-        .set_learning(
-            model_sharing=True,
-            pretrain_iters=100,
-        ) \
-        .set_logging(
-            eval_batch_size=2**18,
-            util_loss_batch_size=2**9,
-            util_loss_grid_size=2**10,
-            util_loss_frequency=50,
-            best_response=True,
-            cache_eval_actions=True,
-            log_root_dir=log_root_dir,
-        ) \
-        .set_hardware(
-            specific_gpu=7
-        ) \
-        .get_config()
+    # experiment_config, experiment_class = \
+    #     ConfigurationManager(
+    #         experiment_type='multiunit', n_runs=1, n_epochs=2000
+    #     ) \
+    #     .set_setting(
+    #         payment_rule='uniform',
+    #     ) \
+    #     .set_learning(
+    #         model_sharing=True,
+    #         pretrain_iters=100,
+    #     ) \
+    #     .set_logging(
+    #         eval_batch_size=2**18,
+    #         util_loss_batch_size=2**9,
+    #         util_loss_grid_size=2**10,
+    #         util_loss_frequency=50,
+    #         best_response=True,
+    #         cache_eval_actions=True,
+    #         log_root_dir=log_root_dir,
+    #     best_response=True,
+    #     plot_frequency=25,
+    #     cache_eval_actions=True,
+    #     log_root_dir=log_root_dir,
+    # ) \
+    # .set_hardware(
+    #     specific_gpu=7
+    # ) \
+    # .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(
     #       experiment_type='splitaward',n_runs=1, n_epochs=200
@@ -213,16 +217,18 @@ if __name__ == '__main__':
             # risk=1.0,
             # payment_rule='k_price',
             # k=0.5,
+            # n_buyers=2,
+            # n_sellers=1
         ) \
         .set_logging(
             eval_batch_size=2**22,
-            util_loss_batch_size=2**11,
-            util_loss_grid_size=2*11,
-            util_loss_frequency=100,
+            util_loss_batch_size=2**10,
+            util_loss_grid_size=2**8,
+            util_loss_frequency=50,
             plot_frequency=100,
             best_response=True,
             log_root_dir=log_root_dir,
-        )\
+        ) \
         .set_learning(
             # learner_type='PGLearner',
             pretrain_iters=5,
