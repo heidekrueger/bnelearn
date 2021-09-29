@@ -417,13 +417,11 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iters, eta_min=1e-5)
-        for i in tqdm(range(iters)):
+        for _ in tqdm(range(iters)):
             self.zero_grad()
             diff = (self.pretrain_forward(input_tensor) - desired_output)
             loss = (diff * diff).mean()
             loss.backward()
-            if i % 10 == 0:
-                print(loss.item())
             optimizer.step()
             lr_scheduler.step()
 
