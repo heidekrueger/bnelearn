@@ -654,51 +654,59 @@ class Experiment(ABC):
                 self._cur_epoch_log_params['L_2' + n] = L_2[i]
                 self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
 
-        if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
-            create_plot_output = epoch % self.logging.plot_frequency == 0
-            self._cur_epoch_log_params['util_loss_ex_ante'], \
-            self._cur_epoch_log_params['util_loss_ex_interim'], \
-            self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'] = \
-                self._calculate_metrics_util_loss(create_plot_output, epoch)
-            print("\tcurrent est. ex-interim loss:" + str(
-                [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
+        if (epoch > 0) and (epoch % self.logging.util_loss_frequency) == 0:
 
-        if self.logging.log_metrics['efficiency'] and (epoch % self.logging.util_loss_frequency) == 0:
-            self._cur_epoch_log_params['efficiency'] = \
-                self.env.get_efficiency()
+            if self.logging.log_metrics['util_loss']:
+                create_plot_output = epoch % self.logging.plot_frequency == 0
+                self._cur_epoch_log_params['util_loss_ex_ante'], \
+                self._cur_epoch_log_params['util_loss_ex_interim'], \
+                self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'] = \
+                    self._calculate_metrics_util_loss(create_plot_output, epoch)
+                print("\tcurrent est. ex-interim loss:" + str(
+                    [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
 
-        if self.logging.log_metrics['revenue'] and (epoch % self.logging.util_loss_frequency) == 0:
-            self._cur_epoch_log_params['revenue'] = \
-                self.env.get_revenue()
+        # logging of mechansim: independent from learned strategies!
+        if epoch == 0:
 
-        if self.logging.log_metrics['budget_balance'] and (epoch % self.logging.util_loss_frequency) == 0:
-            self._cur_epoch_log_params['budget_deficit'], self._cur_epoch_log_params['budget_surplus'] = \
-                self.env.get_budget_balance()
+            # TODO: next two metrics are not fixed for single-sided markets!
+            if self.logging.log_metrics['efficiency']:
+                self._cur_epoch_log_params['efficiency'] = \
+                    self.env.get_efficiency()
 
-        if self.logging.log_metrics['individual_rationality'] and (epoch % self.logging.util_loss_frequency) == 0:
-            individual_rationality_bidders = self.env.get_individual_rationality()
-            individual_rationality_models = [individual_rationality_bidders[b[0]] for b in self._model2bidder]
-            self._cur_epoch_log_params['individual_rationality'] = individual_rationality_models
+            if self.logging.log_metrics['revenue']:
+                self._cur_epoch_log_params['revenue'] = \
+                    self.env.get_revenue()
 
-        if self.logging.log_metrics['incentive_compatibility'] and (epoch % self.logging.util_loss_frequency) == 0:
-            incentive_compatibility_bidders = self.env.get_incentive_compatibility()
-            incentive_compatibility_models = [incentive_compatibility_bidders[b[0]] for b in self._model2bidder]
-            self._cur_epoch_log_params['incentive_compatibility'] = incentive_compatibility_models
+            if self.logging.log_metrics['budget_balance']:
+                self._cur_epoch_log_params['budget_deficit'], self._cur_epoch_log_params['budget_surplus'] = \
+                    self.env.get_budget_balance()
 
-        if self.logging.log_metrics['strategy_efficiency_metrics'] and (epoch % self.logging.util_loss_frequency == 0):
-            strategy_metrics = self.env.get_da_strategy_metrics()
-            self._cur_epoch_log_params['expected_utility_buyers'] = strategy_metrics[0]
-            self._cur_epoch_log_params['expected_utility_sellers'] = strategy_metrics[1]
-            self._cur_epoch_log_params['gains_from_trade'] = strategy_metrics[2]
-            self._cur_epoch_log_params['efficiency_from_trade'] = strategy_metrics[3]
-            self._cur_epoch_log_params['expected_profit_buyers'] = strategy_metrics[4]
-            self._cur_epoch_log_params['expected_profit_sellers'] = strategy_metrics[5]
-            self._cur_epoch_log_params['profits_from_trade'] = strategy_metrics[6]
-            self._cur_epoch_log_params['normalized_profits_from_trade'] = strategy_metrics[7]
+            if self.logging.log_metrics['individual_rationality']:
+                individual_rationality_bidders = self.env.get_individual_rationality()
+                individual_rationality_models = [individual_rationality_bidders[b[0]] for b in self._model2bidder]
+                self._cur_epoch_log_params['individual_rationality'] = individual_rationality_models
 
-        if self.logging.log_metrics['pareto_efficiency_current_strategy'] and (epoch % self.logging.util_loss_frequency == 0):
-            self._cur_epoch_log_params['pareto_efficiency_current_strategy'] = \
-                self.env.get_pareto_efficiency_of_current_strategy()
+            if self.logging.log_metrics['incentive_compatibility']:
+                incentive_compatibility_bidders = self.env.get_incentive_compatibility()
+                incentive_compatibility_models = [incentive_compatibility_bidders[b[0]] for b in self._model2bidder]
+                self._cur_epoch_log_params['incentive_compatibility'] = incentive_compatibility_models
+
+        if epoch % self.logging.util_loss_frequency == 0:
+
+            if self.logging.log_metrics['strategy_efficiency_metrics']:
+                strategy_metrics = self.env.get_da_strategy_metrics()
+                self._cur_epoch_log_params['expected_utility_buyers'] = strategy_metrics[0]
+                self._cur_epoch_log_params['expected_utility_sellers'] = strategy_metrics[1]
+                self._cur_epoch_log_params['gains_from_trade'] = strategy_metrics[2]
+                self._cur_epoch_log_params['efficiency_from_trade'] = strategy_metrics[3]
+                self._cur_epoch_log_params['expected_profit_buyers'] = strategy_metrics[4]
+                self._cur_epoch_log_params['expected_profit_sellers'] = strategy_metrics[5]
+                self._cur_epoch_log_params['profits_from_trade'] = strategy_metrics[6]
+                self._cur_epoch_log_params['normalized_profits_from_trade'] = strategy_metrics[7]
+
+            if self.logging.log_metrics['pareto_efficiency_current_strategy']:
+                self._cur_epoch_log_params['pareto_efficiency_current_strategy'] = \
+                    self.env.get_pareto_efficiency_of_current_strategy()
 
         # plotting
         if epoch % self.logging.plot_frequency == 0:
