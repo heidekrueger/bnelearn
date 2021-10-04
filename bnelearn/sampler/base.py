@@ -131,7 +131,7 @@ class ValuationObservationSampler(ABC):
         support_bounds = self.support_bounds
 
         # Grid bids should always start at zero if not specified otherwise
-        support_bounds[:, 0, 0] = 0
+        support_bounds[:, :, 0] = 0
 
         return self.generate_valuation_grid(player_position, minimum_number_of_points,
                                             dtype, device, support_bounds)
