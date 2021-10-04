@@ -355,7 +355,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         if self.risk == 1.0:
             if self.u_lo[0] != self.u_lo[1]:  # Agents do not share same u_lo
                 # Check for bounds match from Kaplan & Zamir [2015]
-                if self.setting.u_lo == [0, 6] and self.setting.u_hi == [5, 7]:
+                if self.setting.u_lo == [0, .6] and self.setting.u_hi == [.5, .7]:
                     self._optimal_bid = [
                         # BNE 1
                         bne1_kaplan_zhamir(u_lo=self.u_lo, u_hi=self.u_hi),

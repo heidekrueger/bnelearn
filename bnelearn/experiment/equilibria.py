@@ -103,8 +103,8 @@ def bne1_kaplan_zhamir(u_lo: List, u_hi: List):
     interpol_points = 2**11
 
     # 1. Solve implicit bid function
-    v1 = np.linspace(u_lo[0], u_hi[0], interpol_points)
-    v2 = np.linspace(u_lo[1], u_hi[1], interpol_points)
+    v1 = np.linspace(10*u_lo[0], 10*u_hi[0], interpol_points)
+    v2 = np.linspace(10*u_lo[1], 10*u_hi[1], interpol_points)
 
     def inverse_bid_player_1(bid):
         return 36 / ((2 * bid - 6) * (1 / 5) * np.exp(9 / 4 + 6 / (6 - 2 * bid)) + 24 - 4 * bid)
@@ -113,7 +113,7 @@ def bne1_kaplan_zhamir(u_lo: List, u_hi: List):
 
     u_lo_cut = 0
     for i in range(interpol_points):
-        if v1[i] > u_lo[1] / 2:
+        if v1[i] > 10*u_lo[1] / 2:
             u_lo_cut = i
             break
 
@@ -136,7 +136,7 @@ def bne1_kaplan_zhamir(u_lo: List, u_hi: List):
         if valuation.dim() == 0:
             valuation.unsqueeze_(0)
         bid = torch.tensor(
-            opt_bid_function[player_position](valuation.cpu().numpy()),
+            0.1*opt_bid_function[player_position](10*valuation.cpu().numpy()),
             device=valuation.device,
             dtype=valuation.dtype
         )
@@ -168,10 +168,10 @@ def bne2_kaplan_zhamir(
 
     if player_position == 0:
         bids = torch.zeros_like(valuation)
-        bids[valuation > 4] = valuation[valuation > 4] / 2 + 2
-        bids[valuation <= 4] = valuation[valuation <= 4] / 4 + 3
+        bids[valuation > .4] = valuation[valuation > .4] / 2 + .2
+        bids[valuation <= .4] = valuation[valuation <= .4] / 4 + .3
     else:
-        bids = valuation / 2 + 1
+        bids = valuation / 2 + .1
 
     return bids
 
@@ -198,9 +198,9 @@ def bne3_kaplan_zhamir(
         valuation.unsqueeze_(0)
 
     if player_position == 0:
-        bids = valuation / 5 + 4
+        bids = valuation / 5 + .4
     else:
-        bids = 5 * torch.ones_like(valuation)
+        bids = .5 * torch.ones_like(valuation)
 
     return bids
 
