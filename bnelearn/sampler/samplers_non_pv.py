@@ -137,11 +137,12 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
         return v
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
-                                dtype=torch.float, device = None) -> torch.Tensor:
+                                dtype=torch.float, device = None,
+                                support_bounds: torch.Tensor = None) -> torch.Tensor:
         """This setting needs larger bounds for the grid."""
         return 2 * super().generate_valuation_grid(player_position=player_position,
                                                    minimum_number_of_points=minimum_number_of_points,
-                                                   dtype=dtype, device=device)
+                                                   dtype=dtype, device=device, support_bounds=support_bounds)
 
 class AffiliatedValuationObservationSampler(ValuationObservationSampler):
     """The 'Affiliated Values Model' model. (Krishna 2009, Example 6.2).
@@ -191,7 +192,6 @@ class AffiliatedValuationObservationSampler(ValuationObservationSampler):
             support_bounds,
             default_batch_size=default_batch_size,
             default_device=default_device)
-
 
     def draw_profiles(self, batch_sizes: List[int] = None, device = None) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
