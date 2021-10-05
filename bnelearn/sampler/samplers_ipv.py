@@ -216,9 +216,10 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         return profile
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
-                                dtype=torch.float, device = None) -> torch.Tensor:
+                                dtype=torch.float, device = None,
+                                support_bounds: torch.Tensor = None) -> torch.Tensor:
         rectangular_grid = super().generate_valuation_grid(
-            player_position, minimum_number_of_points, dtype, device)
+            player_position, minimum_number_of_points, dtype, device, support_bounds)
 
         # transform to triangular grid (valuations are marginally descending)
         return rectangular_grid.sort(dim=1, descending=True)[0].unique(dim=0)
@@ -246,9 +247,14 @@ class SplitAwardtValuationObservationSampler(UniformSymmetricIPVSampler):
         return sample
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
-                                dtype=torch.float, device=None) -> torch.Tensor:
+                                dtype=torch.float, device=None,
+                                support_bounds: torch.Tensor = None) -> torch.Tensor:
         device = device or self.default_device
-        bounds = self.support_bounds[player_position]
+
+        if support_bounds is None:
+            support_bounds = self.support_bounds
+
+        bounds = support_bounds[player_position]
 
         # dimensionality
         dims = 2
