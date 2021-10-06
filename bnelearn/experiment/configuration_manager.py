@@ -25,7 +25,8 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
-                                                        AffiliatedObservationsExperiment
+                                                        AffiliatedObservationsExperiment,
+                                                        TwoPlayerAsymmetricBetaPriorSingleItemExperiment
                                                         )
 
 # TODO: server-specific constant hardcoded. We need a more dynamic way to do this.
@@ -156,6 +157,11 @@ class ConfigurationManager:
         self.learning.model_sharing = False
         self.setting.u_lo = [0, .6]
         self.setting.u_hi = [.5, .7]
+
+    def _init_single_item_asymmetric_beta(self):
+        self.learning.model_sharing = False
+        self.setting.u_lo = [0.8, 1.2]
+        self.setting.u_hi = [1.2, 0.8]
 
     def _init_mineral_rights(self):
         self.setting.n_players = 3
@@ -320,6 +326,9 @@ class ConfigurationManager:
     def _post_init_single_item_asymmetric_uniform_disjunct(self):
         pass
 
+    def _post_init_single_item_asymmetric_beta(self):
+        pass
+
     def _post_init_mineral_rights(self):
         pass
 
@@ -374,6 +383,9 @@ class ConfigurationManager:
         'single_item_asymmetric_uniform_disjunct':
             (TwoPlayerAsymmetricUniformPriorSingleItemExperiment, _init_single_item_asymmetric_uniform_disjunct,
              _post_init_single_item_asymmetric_uniform_disjunct),
+        'single_item_asymmetric_beta':
+            (TwoPlayerAsymmetricBetaPriorSingleItemExperiment, _init_single_item_asymmetric_beta,
+             _post_init_single_item_asymmetric_beta),
         'mineral_rights':
            (MineralRightsExperiment, _init_mineral_rights, _post_init_mineral_rights),
         'affiliated_observations':
@@ -706,5 +718,8 @@ class ConfigurationManager:
                 return torch.optim.Adam
             if optimizer in ('SGD', 'sgd', 'Sgd'):
                 return torch.optim.SGD
-            # add more optimizers as needed
-        raise ValueError('Optimizer type could not be inferred!')
+            try:
+                return eval('torch.optim.' + optimizer)
+            except AttributeError as e:
+                raise AttributeError(f'Optimizer type `{optimizer}` could not be inferred!') \
+                    from e

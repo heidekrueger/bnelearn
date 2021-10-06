@@ -66,11 +66,14 @@ class SymmetricIPVSampler(PVSampler):
         self.distribution = self.base_distribution.expand([n_players, valuation_size])
 
         # bounds: use real support, unless unbounded:
-        lower_bound = self.base_distribution.icdf(torch.tensor(0.)).relu()
-        upper_bound = self.base_distribution.icdf(torch.tensor(1.))
-        if upper_bound.isinf().item():
+        support = self.base_distribution.support
+        if isinstance(support, torch.distributions.constraints._Real):
+            lower_bound = torch.tensor(0)
             upper_bound = self.base_distribution.icdf(
                 torch.tensor(self.UPPER_BOUND_QUARTILE_IF_UNBOUNDED))
+        else:
+            lower_bound = torch.tensor(support.lower_bound).relu()
+            upper_bound = torch.tensor(support.upper_bound)
 
         assert upper_bound >= lower_bound
 
@@ -147,6 +150,23 @@ class GaussianSymmetricIPVSampler(SymmetricIPVSampler):
             .normal_(self.base_distribution.loc, self.base_distribution.scale) \
             .relu_()
 
+class BetaSymmetricIPVSampler(SymmetricIPVSampler):
+    """An IPV sampler with symmetric Beta priors."""
+    def __init__(self, alpha: float, beta: float,
+                 n_players: int, valuation_size: int,
+                 default_batch_size: int, default_device: Device = None):
+        distribution = torch.distributions.Beta(concentration1=alpha,
+                                                concentration0=beta)
+        super().__init__(distribution,
+                         n_players, valuation_size,
+                         default_batch_size, default_device)
+
+    def _sample(self, batch_sizes, device) -> torch.Tensor:
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
+        # create empty tensor, sample in-place, clip
+        size = [self.n_players, self.valuation_size]
+        return self.base_distribution.expand(size) \
+            .rsample([*batch_sizes]).to(device)
 
 class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
     """Sampler for Multi-Unit, private value settings.
