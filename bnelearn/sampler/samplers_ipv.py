@@ -68,9 +68,9 @@ class SymmetricIPVSampler(PVSampler):
         # bounds: use real support, unless unbounded:
         support = self.base_distribution.support
         if isinstance(support, torch.distributions.constraints._Real):
-            lower_bound = torch.tensor(0)
             upper_bound = self.base_distribution.icdf(
                 torch.tensor(self.UPPER_BOUND_QUARTILE_IF_UNBOUNDED))
+            lower_bound = torch.tensor(0, device=upper_bound.device)
         else:
             lower_bound = torch.tensor(support.lower_bound).relu()
             upper_bound = torch.tensor(support.upper_bound)
