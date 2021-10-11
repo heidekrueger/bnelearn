@@ -432,7 +432,9 @@ class Experiment(ABC):
                 np.random.seed(seed)
 
                 self._init_new_run()
-                self._plot_current_strategies(0)
+
+                if self.logging.enable_logging:
+                    self._plot_current_strategies(0)
 
                 for epoch in range(self.running.n_epochs + 1):
                     utilities = self._training_loop(epoch=epoch)
