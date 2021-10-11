@@ -304,7 +304,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
                  hidden_activations: Iterable[nn.Module],
                  ensure_positive_output: torch.Tensor or None = None,
                  output_length: int = 1, # currently last argument for backwards-compatibility
-                 dropout: float = 0.0
+                 dropout: float = 0.0,
+                 standardize: list[float] = None
                  ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
@@ -317,6 +318,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.hidden_nodes = copy(hidden_nodes)
         self.activations = copy(hidden_activations) # do not write to list outside!
         self.dropout = dropout
+        self.standardize = standardize
 
         self.layers = nn.ModuleDict()
 
@@ -431,17 +433,35 @@ class NeuralNetStrategy(Strategy, nn.Module):
                       self.activations[:-1], ensure_positive_output, self.output_length)
 
     def forward(self, x):
+        if self.standardize is not None:
+            arg = x.clone()
+            for i in range(self.input_length):
+                arg[..., i] = (x[..., i] - self.standardize[i, 0]) \
+                    / (self.standardize[i, 1] - self.standardize[i, 0])
+        else:
+            arg = x
+
         for layer in self.layers.values():
-            x = layer(x)
-        return x
+            arg = layer(arg)
+
+        return arg
 
     def pretrain_forward(self, x):
         """This is the forward without the final layer (which is the relu activation).
         This is used to avoid the dead-relu problem during pretraining."""
+        if self.standardize is not None:
+            arg = x.clone()
+            for i in range(self.input_length):
+                arg[..., i] = (x[..., i] - self.standardize[i, 0]) \
+                    / (self.standardize[i, 1] - self.standardize[i, 0])
+        else:
+            arg = x
+
         for k, layer in enumerate(self.layers.values()):
             if k + 1 < len(self.layers.values()):
-                x = layer(x)
-        return x
+                arg = layer(arg)
+
+        return arg
 
     def play(self, inputs):
         return self.forward(inputs)

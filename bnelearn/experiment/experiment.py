@@ -221,7 +221,8 @@ class Experiment(ABC):
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
                 ensure_positive_output=self.positive_output_point,
-                output_length=self.action_size
+                output_length=self.action_size,
+                standardize=self.sampler.support_bounds[i, :]
             ).to(self.hardware.device)
 
         self.bidders = [
@@ -431,6 +432,7 @@ class Experiment(ABC):
                 np.random.seed(seed)
 
                 self._init_new_run()
+                self._plot_current_strategies(0)
 
                 for epoch in range(self.running.n_epochs + 1):
                     utilities = self._training_loop(epoch=epoch)
@@ -572,6 +574,31 @@ class Experiment(ABC):
                                      save_svg=self.logging.save_figure_to_disk_svg)
         return fig
 
+    def _plot_current_strategies(self, epoch: int):
+        unique_bidders = [i[0] for i in self._model2bidder]
+        # TODO: possibly want to use old valuations, but currently it uses
+        #       those from the util_loss, not those that were used during self-play
+        o = torch.stack(
+            [self.env._observations[:self.plot_points, b, ...] for b in unique_bidders],
+            dim=1
+        )
+        b = torch.stack([self.env.agents[b[0]].get_action(o[:, i, ...])
+                            for i, b in enumerate(self._model2bidder)], dim=1)
+
+        labels = [f'NPGA {self._get_model_names()[i]}' for i in range(len(self.models))]
+        fmts = ['o'] * len(self.models)
+        if self.known_bne and self.logging.log_metrics['opt']:
+            for env_idx, _ in enumerate(self.bne_env):
+                o = torch.cat([o, self.v_opt[env_idx]], dim=1)
+                b = torch.cat([b, self.b_opt[env_idx]], dim=1)
+                labels += [
+                    f"BNE{str(env_idx + 1) if len(self.bne_env) > 1 else ''} {self._get_model_names()[j]}"
+                    for j in range(len(self.models))]
+                fmts += ['--'] * len(self.models)
+
+        self._plot(plot_data=(o, b), writer=self.writer, figure_name='bid_function',
+                   epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
+
     # TODO: stefan only uses self in output_dir, nowhere else --> can we move this to utils.plotting? etc?
     def _plot_3d(self, plot_data, writer, epoch, labels: list = None,
                  figure_name: str = 'bid_function'):
@@ -670,32 +697,9 @@ class Experiment(ABC):
                 self.env.get_revenue(self.env)
 
         # plotting
-        if epoch % self.logging.plot_frequency == 0:
+        if epoch % self.logging.plot_frequency == 0 and epoch > 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
-
-            unique_bidders = [i[0] for i in self._model2bidder]
-            # TODO: possibly want to use old valuations, but currently it uses
-            #       those from the util_loss, not those that were used during self-play
-            o = torch.stack(
-                [self.env._observations[:self.plot_points, b, ...] for b in unique_bidders],
-                dim=1
-            )
-            b = torch.stack([self.env.agents[b[0]].get_action(o[:, i, ...])
-                             for i, b in enumerate(self._model2bidder)], dim=1)
-
-            labels = [f'NPGA {self._get_model_names()[i]}' for i in range(len(self.models))]
-            fmts = ['o'] * len(self.models)
-            if self.known_bne and self.logging.log_metrics['opt']:
-                for env_idx, _ in enumerate(self.bne_env):
-                    o = torch.cat([o, self.v_opt[env_idx]], dim=1)
-                    b = torch.cat([b, self.b_opt[env_idx]], dim=1)
-                    labels += [
-                        f"BNE{str(env_idx + 1) if len(self.bne_env) > 1 else ''} {self._get_model_names()[j]}"
-                        for j in range(len(self.models))]
-                    fmts += ['--'] * len(self.models)
-
-            self._plot(plot_data=(o, b), writer=self.writer, figure_name='bid_function',
-                       epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
+            self._plot_current_strategies(epoch)
 
         self.overhead = self.overhead + timer() - start_time
         self._cur_epoch_log_params['overhead_hours'] = self.overhead / 3600

@@ -316,7 +316,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         self.u_lo: List[float] = [float(self.config.setting.u_lo[i]) for i in range(self.n_players)]
         self.u_hi: List[float] = [float(self.config.setting.u_hi[i]) for i in range(self.n_players)]
         assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
-        self.positive_output_point = torch.tensor([min(self.u_hi)] * n_items)
+        self.positive_output_point = torch.tensor([[min(self.u_hi)] * n_items])
 
         self.plot_xmin = min(self.u_lo)
         self.plot_xmax = max(self.u_hi)
@@ -345,6 +345,9 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         name = ['single_item', self.payment_rule, self.valuation_prior,
                 'asymmetric', self.risk_profile, str(self.n_players) + 'p']
         return os.path.join(*name)
+
+    # def pretrain_transform(self, player_position: int):
+    #     return lambda v: self._optimal_bid[1](v, player_position)
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, **strat_to_player_kwargs):
         return Bidder(strategy, player_position=player_position, batch_size=batch_size, **strat_to_player_kwargs)
