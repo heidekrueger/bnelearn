@@ -216,13 +216,15 @@ class Experiment(ABC):
         self.models = [None] * self.n_models
 
         for i in range(len(self.models)):
+            input_normalization_bounds = self.sampler.support_bounds[i, :] \
+                if self.learning.input_normalization else None
             self.models[i] = NeuralNetStrategy(
                 self.observation_size,
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
                 ensure_positive_output=self.positive_output_point,
                 output_length=self.action_size,
-                standardize=self.sampler.support_bounds[i, :]
+                input_normalization_bounds=input_normalization_bounds
             ).to(self.hardware.device)
 
         self.bidders = [

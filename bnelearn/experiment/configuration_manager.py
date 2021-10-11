@@ -472,7 +472,8 @@ class ConfigurationManager:
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
-                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
+                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
+                     input_normalization: bool = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.learning, arg):
@@ -553,7 +554,8 @@ class ConfigurationManager:
             hidden_nodes=[10, 10],
             pretrain_iters=500,
             batch_size=2 ** 18,
-            hidden_activations=[nn.SELU(), nn.SELU()])
+            hidden_activations=[nn.SELU(), nn.SELU()],
+            input_normalization=False)
         logging = LoggingConfig(
             enable_logging=True,
             log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),

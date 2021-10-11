@@ -74,8 +74,8 @@ class LearningConfig:
     hidden_nodes: List[int]
     pretrain_iters: int
     batch_size: int
+    input_normalization: bool
     hidden_activations: List[nn.Module] = None
-
 
 @dataclass
 class LoggingConfig:
