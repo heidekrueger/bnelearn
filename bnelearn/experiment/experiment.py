@@ -798,7 +798,7 @@ class Experiment(ABC):
         return L_2, L_inf
 
     def _calculate_metrics_util_loss(self, create_plot_output: bool, epoch: int = None,
-                                     batch_size=None, grid_size=None):
+                                     batch_size=None, grid_size=None, opponent_batch_size=None):
         """
         Compute mean util_loss of current policy and return ex interim util
         loss (ex ante util_loss is the average of that tensor).
@@ -826,7 +826,8 @@ class Experiment(ABC):
                     env=env,
                     player_position=player_positions[0],
                     agent_observations=observations[:, player_positions[0], :],
-                    grid_size=grid_size
+                    grid_size=grid_size,
+                    opponent_batch_size=opponent_batch_size
                 )
                 for player_positions in self._model2bidder
             ])
