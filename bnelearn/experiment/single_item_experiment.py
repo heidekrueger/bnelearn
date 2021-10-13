@@ -20,8 +20,8 @@ from bnelearn.experiment.equilibria import (
     bne_fpsb_ipv_symmetric_uniform_prior,
     bne_2p_affiliated_values,
     bne_3p_mineral_rights,
-    bne_fpsb_ipv_symmetric_generic_prior_risk_neutral, truthful_bid)
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
+    bne_fpsb_ipv_symmetric_generic_prior_risk_neutral, truthful_bid, bne_all_pay)
+from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, SingleItemAllPayAuction, SingleItemTullockContest
 from bnelearn.sampler import (AffiliatedValuationObservationSampler,
                               CompositeValuationObservationSampler,
                               MineralRightsValuationObservationSampler,
@@ -250,8 +250,7 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
             self._optimal_bid = truthful_bid
             return True
         elif self.payment_rule == "all_pay":
-            self._optimal_bid = partial(_optimal_bid_single_item_symmetric_all_pay_auction,
-                                        n=self.n_players, u_lo=self.u_lo, u_hi=self.u_hi)
+            self._optimal_bid = partial(bne_all_pay, n=self.n_players, u_lo=self.u_lo, u_hi=self.u_hi)
             return True
         else: # no bne found, defer to parent
             return super()._check_and_set_known_bne()

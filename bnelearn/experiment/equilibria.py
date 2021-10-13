@@ -204,6 +204,13 @@ def bne3_kaplan_zhamir(
 
     return bids
 
+def bne_all_pay(valuation: torch.Tensor, n: int, u_lo: int, u_hi: int, player_position: int = 0) -> torch.Tensor:
+    denom = n * (u_hi - u_lo) ** (n-1)
+    vals = valuation ** n
+    opt = (n-1)/denom * vals 
+    return opt
+
+
 ###############################################################################
 ######  Single-Item Non-IPV
 ###############################################################################

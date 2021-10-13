@@ -266,8 +266,8 @@ class ConfigurationManager:
         self.logging.log_componentwise_norm = True
 
     def _init_single_item_symmetric_uniform_all_pay(self):
-        self.setting.u_lo = 0
-        self.setting.u_hi = 1
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1]
         self.learning.model_sharing = True
         self.setting.payment_rule = 'all_pay'
 
@@ -467,9 +467,7 @@ class ConfigurationManager:
         'single_item_symmetric_tullock_contest':
         (SingleItemSymmetricContestExperiment, _init_single_item_symmetric_tullock, _post_init_single_item_symmetric_tullock),
         'multi_battle_symmetric_all_pay':
-        (MultiBattleContest, _init_multi_battle_symmetric_all_pay, _post_init_multi_battle_symmetric_all_pay),
-        'stochastic_blotto':
-        (MultiBattleContest, _init_stochastic_blotto, _post_init_stochastic_blotto)}
+        (MultiBattleContest, _init_multi_battle_symmetric_all_pay, _post_init_multi_battle_symmetric_all_pay)}
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type
