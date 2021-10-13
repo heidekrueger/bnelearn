@@ -846,8 +846,9 @@ class SingleItemSymmetricContestExperiment(UniformSymmetricPriorSingleItemExperi
         self.config.setting.common_prior = \
             torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
         
-        self.regret_coefficients = self.config.setting.regret
-        self.loss_coef = self.config.setting.loss
+        self.regret_coefficients = None if self.config.setting.regret == [0.0, 0.0] else self.config.setting.regret
+        self.loss_coef = None if self.config.setting.loss == [0.0, 0.0] else self.config.setting.loss
+        self.risk_function = self.config.setting.risk_function if self.config.setting.risk < 1.0 else None
 
         super().__init__(config)
 
@@ -868,19 +869,35 @@ class SingleItemSymmetricContestExperiment(UniformSymmetricPriorSingleItemExperi
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         loss = None
         regret = None
+        risk = None
         if self.loss_coef != None:
             loss = partial(self._loss,player_position=player_position)
         
-        if regret != None:
+        if self.regret_coefficients != None:
             regret = partial(self._regret, player_position=player_position)
 
-        if isinstance(self.risk, list):
-            risk = self.risk[player_position]
-        else:
-            risk = self.risk
+        # if isinstance(self.risk, list):
+        #     risk = self.risk[player_position]
+        # else:
+        #     risk = self.risk
+
+        if self.risk < 1.0:
+            risk = partial(self._risk)
 
         return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
                       risk=risk, regret=regret, loss=loss)
+
+    def _risk(self, payoff):
+
+        if self.risk_function == "CRRA":
+            payoff[payoff > 0] = (payoff[payoff > 0] ** (1 - self.risk)) / (1 - self.risk)
+            payoff[payoff < 0] = - (payoff.neg()[payoff < 0] ** (1 - self.risk)) / (1 - self.risk)
+            return payoff
+        elif self.risk_function == "CARA":
+            return -torch.exp(-self.risk * payoff/self.u_hi)
+        else:
+            return payoff.relu().pow_(self.risk).sub_(payoff.neg_().relu_().pow_(self.risk))
+
 
     def _regret(self, allocations, payments, valuations, winning_bid, player_position):
 
@@ -892,8 +909,8 @@ class SingleItemSymmetricContestExperiment(UniformSymmetricPriorSingleItemExperi
             regret_gamma = self.regret_coefficients[1]
 
         regret = torch.zeros_like(payments)
-        regret_mask = (allocations.squeeze()==0) & (winning_bid <= payments)
-        loser_regret_mask = (allocations.squeeze()==0) & (winning_bid > payments)
+        regret_mask = (allocations.squeeze()==0) & (winning_bid >= valuations.squeeze()) # All-Pay Loser Regret
+        loser_regret_mask = (allocations.squeeze()==0) & (winning_bid < valuations.squeeze()) # Loser Regret
         regret[regret_mask] = -regret_beta * payments[regret_mask]    
         regret[loser_regret_mask] = -regret_beta * payments[loser_regret_mask] - regret_gamma * (valuations.squeeze()[loser_regret_mask] - winning_bid[loser_regret_mask]) 
         return regret
@@ -913,9 +930,9 @@ class SingleItemSymmetricContestExperiment(UniformSymmetricPriorSingleItemExperi
         mask_good_win_dimension = (allocations.squeeze() == 1)
         mask_good_los_dimension = (allocations.squeeze() == 0)
         # win item 
-        payoff[mask_good_win_dimension] = payoff[mask_good_win_dimension] + loss_eta * (1 - reference_points[mask_good_win_dimension]) * valuations.squeeze()[mask_good_win_dimension]
+        payoff[mask_good_win_dimension] = payoff[mask_good_win_dimension] #+ loss_eta * valuations.squeeze()[mask_good_win_dimension] #* (1 - reference_points[mask_good_win_dimension])
         # loose item
-        payoff[mask_good_los_dimension] = payoff[mask_good_los_dimension] - loss_eta * loss_lambda * reference_points[mask_good_los_dimension] * valuations.squeeze()[mask_good_los_dimension]
+        payoff[mask_good_los_dimension] = payoff[mask_good_los_dimension] - loss_eta * loss_lambda * valuations.squeeze()[mask_good_los_dimension] #*  reference_points[mask_good_los_dimension]
         return payoff
 
     def _setup_eval_environment(self):

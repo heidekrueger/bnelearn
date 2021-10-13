@@ -4,6 +4,7 @@ import os
 import gpytorch
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 from pathlib import Path
 from math import ceil
@@ -11,6 +12,7 @@ from math import ceil
 
 from bnelearn.experiment.configuration_manager import ConfigurationManager
 from bnelearn.parameter_estimators.evaluation_module import Evaluation_Module
+from bnelearn.parameter_estimators.estimation_module import EquilibriumEstimator
 from bnelearn.strategy import NeuralNetStrategy
 
 class ExactGPModel(gpytorch.models.ExactGP):
@@ -34,7 +36,10 @@ class Bayesian_Optimizer:
                  param_bounds: float = [0, 1], 
                  n_players: int = 2, 
                  iterations: int = 15,
-                 maximization: bool = False):
+                 maximization: bool = False,
+                 estimation_module: EquilibriumEstimator = None,
+                 risk_function: str = "default",
+                 id: int = 0):
 
         self.initial_samples = initial_samples
         self.param_bounds = param_bounds
@@ -42,20 +47,26 @@ class Bayesian_Optimizer:
         self.gpu = gpu
         self.n_players = n_players
         self.evaluation_module = evaluation_module
+        self.id = id
 
         self.alpha = 1e-5
         self.n_restarts_optimizer = 10
         self.iterations = iterations
 
-        self.grid_size = 2**9 - 2*+5
+        self.grid_size = 2**9
 
         self.n_players = n_players
+        self.risk_function = risk_function
 
         self.maximization = maximization
+        self.estimation_module = estimation_module
 
         # Method parameter
         self.performances = torch.zeros(self.initial_samples + self.iterations)
-        self.params = torch.zeros((self.initial_samples + self.iterations, len(self.param_bounds)))
+        self.params = torch.zeros((self.initial_samples + self.iterations, len(self.param_bounds) + 1))
+
+        self.estimations = []
+
         self.xi = 0.01
 
     def _generate_parameter_grid(self):
@@ -71,12 +82,10 @@ class Bayesian_Optimizer:
         equi_distance = ceil(self.grid_size / dims)
 
         # default values
-        if weights[4] > 0:
-            defaults = [torch.ones(1), torch.zeros(1), torch.zeros(1), torch.ones(1), torch.zeros(1)] # Standardize loss-eta to 1
-        else:
-            defaults = [torch.ones(1), torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1)]
+        defaults = [torch.ones(1), torch.zeros(1), torch.zeros(1)] # Standardize loss-eta to 1
 
-        grid_lines = [torch.linspace(*self.param_bounds[k], equi_distance) if weights[i] > 0 else defaults[i] for i, k in enumerate(self.param_bounds)]
+        # add white noise (sigma^2 = 0.005)
+        grid_lines = [torch.linspace(*self.param_bounds[k], equi_distance) + torch.rand(equi_distance) * 0.005 if weights[i] > 0 else defaults[i] for i, k in enumerate(self.param_bounds)]
         grid = torch.stack(torch.meshgrid(grid_lines), dim=-1).reshape(equi_distance**dims, len(self.param_bounds)).cuda()
 
         return grid
@@ -89,6 +98,9 @@ class Bayesian_Optimizer:
 
         # Create Grid
         param_grid = self._generate_parameter_grid()
+
+        if model.train_inputs[0].shape[1] != param_grid.shape[1]:
+            print("y")
 
         # Get predictoins of surrogate model
         f_preds = model(param_grid)
@@ -141,42 +153,68 @@ class Bayesian_Optimizer:
 
         return model, likelihood
 
-    def _run_eval_experiment(self, risk, regret_beta, regret_gamma, loss_eta, loss_lambda, i):
+    def _run_eval_experiment(self, risk, regret_beta, regret_gamma, i):
 
-        experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_symmetric_uniform_all_pay', n_runs=1, n_epochs=3500) \
-                .set_setting(n_players=self.n_players, risk=risk, regret=[regret_beta, regret_gamma], loss=[loss_eta, loss_lambda]) \
-                .set_learning(pretrain_iters = 500, batch_size=2**15) \
-                .set_logging(log_root_dir=self.log_root_dir, eval_batch_size=2**15, util_loss_grid_size=2**10, util_loss_batch_size=2**12, 
-                             util_loss_frequency=100000, stopping_criterion_frequency=100000, save_models=True) \
-                .set_hardware(specific_gpu=self.gpu).get_config()
+        if self.estimation_module == None:
 
-        # Run experiment
-        experiment = experiment_class(experiment_config)
-        experiment.run()
-        torch.cuda.empty_cache()
+            experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_symmetric_uniform_all_pay', n_runs=1, n_epochs=4500) \
+                    .set_setting(n_players=self.n_players, risk=risk, regret=[regret_beta, regret_gamma], risk_function=self.risk_function) \
+                    .set_learning(pretrain_iters = 500, batch_size=2**15) \
+                    .set_logging(log_root_dir=self.log_root_dir, eval_batch_size=2**15, util_loss_grid_size=2**10, util_loss_batch_size=2**12, 
+                                util_loss_frequency=100000, stopping_criterion_frequency=100000, save_models=True) \
+                    .set_hardware(specific_gpu=self.gpu).get_config()
 
-        # Evaluate performance
-        ## Get and load model 
-        ## TODO: Generalize for asymmetric models & settings without model sharing
-        [*model_file] = Path(self.log_root_dir).rglob("*.pt")
-            
-        model = NeuralNetStrategy(input_length=1, hidden_nodes=experiment_config.learning.hidden_nodes,
-                                  hidden_activations=experiment_config.learning.hidden_activations)
+            # Run experiment
+            experiment = experiment_class(experiment_config)
+            experiment.run()
+            torch.cuda.empty_cache()
 
-        model.load_state_dict(torch.load([*model_file][0]))
-        model.eval()
+            plt.close("all")
 
-        it = i - self.initial_samples
+            print("DONE EXPERIMENT")
 
-        model_performance = self.evaluation_module.evaluate(model, it)
-        model_params = torch.tensor([risk, regret_beta, regret_gamma, loss_eta, loss_lambda])
+            del experiment
+
+            # Evaluate performance
+            ## Get and load model 
+            ## TODO: Generalize for asymmetric models & settings without model sharing
+            [*model_file] = Path(self.log_root_dir).rglob("*.pt")
+                
+            model = NeuralNetStrategy(input_length=1, hidden_nodes=experiment_config.learning.hidden_nodes,
+                                    hidden_activations=experiment_config.learning.hidden_activations)
+
+            model.load_state_dict(torch.load([*model_file][0]))
+            model.eval()
+
+            it = i - self.initial_samples
+
+            model_performance, estimations, values = self.evaluation_module.evaluate(model, it)
+
+            del model
+        
+        else:
+
+            estimated_equilibrium = self.estimation_module.get_equilibrium(risk, regret_beta, regret_gamma)
+
+            it = i - self.initial_samples
+
+            model_performance, estimations, values = self.evaluation_module.evaluate(estimated_equilibrium, it)
+
+
+
+        id = torch.ones_like(values) * i + self.id
+        est = torch.stack((values, estimations.detach(), id), dim=1)
+        self.estimations.append(est)
+
+        model_params = torch.tensor([risk, regret_beta, regret_gamma, i + self.id])
             
         # store performances and params
         self.performances[i] = model_performance
         self.params[i] = model_params
 
-        ## Delete model file
-        os.remove([*model_file][0])
+        if self.estimation_module == None:
+            ## Delete model file
+            os.remove([*model_file][0])
 
     def optimize(self):
 
@@ -188,24 +226,25 @@ class Bayesian_Optimizer:
             risk = random.uniform(*self.param_bounds["risk"])
             regret_beta = random.uniform(*self.param_bounds["regret_beta"])
             regret_gamma = random.uniform(*self.param_bounds["regret_gamma"])
-            loss_eta = random.uniform(*self.param_bounds["loss_eta"])
-            loss_lambda = random.uniform(*self.param_bounds["loss_lambda"])
 
-            self._run_eval_experiment(risk, regret_beta, regret_gamma, loss_eta, loss_lambda, i)
+            self._run_eval_experiment(risk, regret_beta, regret_gamma, i)
 
         ## Define and train surrogate model
-
         self.performances = self.performances.cuda()
         self.params = self.params.cuda()
 
-        self.best = torch.min(self.performances[self.performances > 0])
+        if self.maximization:
+            self.best = torch.max(self.performances[self.performances != 0])
+        else:
+            self.best = torch.min(self.performances[self.performances != 0])
 
         likelihood = gpytorch.likelihoods.GaussianLikelihood()
-        model = ExactGPModel(self.params[0:self.initial_samples, ], self.performances[0:self.initial_samples, ], likelihood)
+        # todo: warum werden hier vier parameter gesucht?
+        model = ExactGPModel(self.params[0:self.initial_samples, 0:3], self.performances[0:self.initial_samples, ], likelihood)
         model.cuda()
 
         # fit surrogate
-        model, likelihood = self._fit_gp(model, likelihood, 50, self.params[0:self.initial_samples, ], self.performances[0:self.initial_samples, ])
+        model, likelihood = self._fit_gp(model, likelihood, 50, self.params[0:self.initial_samples, 0:3], self.performances[0:self.initial_samples, ])
 
         for i in range(self.iterations):
             # Step 2: Query acquisition function to obtain a promising sample
@@ -213,19 +252,19 @@ class Bayesian_Optimizer:
 
             # Step 3: Evaluate performance of sample
             self._run_eval_experiment(*next_query.tolist(), self.initial_samples + i)
-            self.best = torch.min(self.performances[self.performances > 0])
+            self.best = torch.min(self.performances[self.performances != 0])
 
             ## Plot progress
 
             # Step 4: Re-optimize surrogate
-            model.set_train_data(self.params[0:self.initial_samples + i, ], self.performances[0:self.initial_samples + i, ], strict=False)
-            model, likelihood = self._fit_gp(model, likelihood, 50, self.params[0:self.initial_samples + i, ], self.performances[0:self.initial_samples + i, ])
+            model.set_train_data(self.params[0:self.initial_samples + i, 0:3], self.performances[0:self.initial_samples + i, ], strict=False)
+            model, likelihood = self._fit_gp(model, likelihood, 50, self.params[0:self.initial_samples + i, 0:3], self.performances[0:self.initial_samples + i, ])
 
         # Step 5: Return optimal parameters
         best = torch.argmin(self.performances)
         print(self.params[best])
 
-        return [self.performances.cpu().detach().numpy(), self.params.cpu().detach().numpy()]
+        return [self.performances.cpu().detach().numpy(), self.params.cpu().detach().numpy(), self.estimations]
 
 class MultiObjectiveBayesianOptimizer:
 

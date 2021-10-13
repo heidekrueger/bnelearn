@@ -342,6 +342,8 @@ class Experiment(ABC):
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
 
+        plt.close()
+
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
         tic = timer()
@@ -591,6 +593,9 @@ class Experiment(ABC):
                                      output_dir=self.run_log_dir,
                                      save_png=self.logging.save_figure_to_disk_png,
                                      save_svg=self.logging.save_figure_to_disk_svg)
+
+        plt.close()
+
         return fig
 
     # TODO: stefan only uses self in output_dir, nowhere else --> can we move this to utils.plotting? etc?
@@ -632,6 +637,8 @@ class Experiment(ABC):
                                      output_dir=self.run_log_dir,
                                      save_png=self.logging.save_figure_to_disk_png,
                                      save_svg=self.logging.save_figure_to_disk_svg)
+
+        plt.close()
         return fig
 
     def _evaluate_and_log_epoch(self, epoch: int) -> float:

@@ -240,7 +240,6 @@ class SingleItemAllPayAuction(Mechanism):
         *batch_dims, player_dim, item_dim = range(bids.dim())  # pylint: disable=unused-variable
         *batch_sizes, n_players, n_items = bids.shape
  
-
         # allocate return variables
         allocations = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
 
@@ -292,23 +291,31 @@ class SingleItemTullockContest(Mechanism):
 
         # name dimensions for readibility
         # pylint: disable=unused-variable
-        batch_dim, player_dim, item_dim = 0, 1, 2
-        batch_size, n_players, n_items = bids.shape
-
+        *batch_dims, player_dim, item_dim = range(bids.dim())  # pylint: disable=unused-variable
+        *batch_sizes, n_players, n_items = bids.shape
+ 
         # allocate return variables
-        payments = bids.reshape(batch_size, n_players) # pay as bid
-        allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
-        efforts = torch.zeros(batch_size, )
+        allocations = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
 
-        # Assign item to the bidder with the highest bid, in case of a tie assign it randomly to one of the winning bidderss
-        bids_flat = bids.reshape(batch_size, n_players*n_items)
-        devisor = bids.sum(dim=player_dim)
-        devisor[devisor==0] = 1
-        relative_bids = bids_flat/devisor   
-        relative_bids.floor_()
-        relative_bids[relative_bids==0] = 0.0000001
 
-        winning_bids = relative_bids.multinomial(num_samples=1).reshape(batch_size, 1, 1)
+        print("heya")
+        
+
+
+        # # allocate return variables
+        # payments = bids.reshape(batch_size, n_players) # pay as bid
+        # allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
+        # efforts = torch.zeros(batch_size, )
+
+        # # Assign item to the bidder with the highest bid, in case of a tie assign it randomly to one of the winning bidderss
+        # bids_flat = bids.reshape(batch_size, n_players*n_items)
+        # devisor = bids.sum(dim=player_dim)
+        # devisor[devisor==0] = 1
+        # relative_bids = bids_flat/devisor   
+        # relative_bids.floor_()
+        # relative_bids[relative_bids==0] = 0.0000001
+
+        # winning_bids = relative_bids.multinomial(num_samples=1).reshape(batch_size, 1, 1)
         
 
         # todo assign 1/n' if multiple bidders have same bid, where n' is the number of bidders with the max bid

@@ -267,7 +267,7 @@ class ConfigurationManager:
 
     def _init_single_item_symmetric_uniform_all_pay(self):
         self.setting.u_lo = 0
-        self.setting.u_hi = 100
+        self.setting.u_hi = 1
         self.learning.model_sharing = True
         self.setting.payment_rule = 'all_pay'
 
@@ -462,8 +462,8 @@ class ConfigurationManager:
         (SingleItemSymmetricContestExperiment, _init_single_item_symmetric_tullock, _post_init_single_item_symmetric_tullock),
         'multi_battle_symmetric_all_pay':
         (MultiBattleContest, _init_multi_battle_symmetric_all_pay, _post_init_multi_battle_symmetric_all_pay),
-        'symmetric_valuation_symmetric_budget_blotto':
-        (MultiBattleContest, _init_symmetric_valuation_symmetric_budget_blotto, _post_init_symmetric_valuation_symmetric_budget_blotto)}
+        'stochastic_blotto':
+        (MultiBattleContest, _init_stochastic_blotto, _post_init_stochastic_blotto)}
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type
@@ -487,7 +487,8 @@ class ConfigurationManager:
                     correlation_coefficients: List[float] = 'None', n_units: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None', regret: float = 'None', loss: float = 'None',):
+                    core_solver: str = 'None', regret: float = 'None', loss: float = 'None',
+                    risk_function: str = 'None'):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.

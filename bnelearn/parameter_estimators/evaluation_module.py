@@ -51,11 +51,11 @@ class CurveEvaluation(Evaluation_Module):
             # Estimate Tobit model
             if self.n_players == 4:
             ## Since there is no good python package for this purpose, use the estimation in R for the moment
-                self.model = lambda x : -3.423469 - 0.478134 * x + 0.013032 * (x ** 2) 
+                self.model = lambda x : -0.03422 - 0.47817 * x + 1.30317 * (x ** 2) 
             elif self.n_players == 2 and self.full_feedback:
-                self.model = lambda x : -9.2846898 + 0.4833027 * x + 0.0035520 * (x ** 2)
-            else :
-                self.model = lambda x : -12.925181 + 0.298045 * x + 0.005124 * (x ** 2)
+                self.model = lambda x : -0.09283 + 0.48325 * x + 0.35525 * (x ** 2)
+            else:
+                self.model = lambda x : -0.12925 + 0.29804 * x + 0.51243 * (x ** 2)
                 
 
     def evaluate(self, eq_model, iteration: int):
@@ -64,12 +64,11 @@ class CurveEvaluation(Evaluation_Module):
 
         v: The point at which the evaluation should be performed
         b_hat: The equilibrium estimation at this point
-
         returns the RMSE of the estimation and the model
 
         """
 
-        values = torch.tensor(np.arange(0, 100, 0.1), dtype = torch.float)
+        values = torch.tensor(np.arange(0, 1.001, 0.001), dtype = torch.float)
         values = values.reshape(len(values), 1)
 
         b_hat_eq = eq_model(values)
@@ -88,7 +87,9 @@ class CurveEvaluation(Evaluation_Module):
 
             self.writer.add_figure(f'{tb_group}/{figure_name}', fig, iteration)
 
-        return torch.sqrt(torch.mean((b_hat_eq - b_hat_reg) ** 2))
+            plt.close()
+
+        return torch.sqrt(torch.mean((b_hat_eq - b_hat_reg) ** 2)), b_hat_eq, values
         
 
 class StaticsEvaluation(Evaluation_Module):
@@ -106,6 +107,7 @@ class StaticsEvaluation(Evaluation_Module):
             values = values.reshape(len(values), 1)
 
             y_hat = eq_model(values)
+            y_hat_tensor = y_hat.clone()
             y_hat = y_hat.detach().numpy().squeeze()
 
             RSS = np.sum((self.file["bid"] - y_hat) ** 2)
@@ -123,5 +125,6 @@ class StaticsEvaluation(Evaluation_Module):
                 plt.legend(loc="upper left")
 
                 self.writer.add_figure(f'{tb_group}/{figure_name}', fig, iteration)
+                plt.close()
 
-            return pseudo_R2
+            return pseudo_R2, y_hat_tensor, values

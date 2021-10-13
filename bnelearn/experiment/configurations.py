@@ -67,6 +67,7 @@ class SettingConfig:
     budgets: List[float] = None 
     regret: float = None  
     loss: float = None
+    risk_function: callable = None
 
 
 @dataclass
