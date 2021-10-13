@@ -295,9 +295,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         env, player_position, obs, action_alternatives, opponent_batch_size)
     br_utility, br_indices = apply_with_dynamic_mini_batching(
         function=get_br_utily_and_index,
-        args=agent_observations,
-        n_outputs=2, dtypes=[action_alternatives.dtype, torch.long])
-
+        args=agent_observations)
 
     ##### calculate the loss and return best responses ###########
     utility_loss = (br_utility - utility_actual).relu_()

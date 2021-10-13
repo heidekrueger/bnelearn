@@ -41,9 +41,7 @@ def batched_index_select(input: torch.Tensor, dim: int,
 
 def apply_with_dynamic_mini_batching(
         function: callable,
-        args: torch.Tensor,
-        n_outputs: int=1,
-        dtypes: List[type]=[torch.float]
+        args: torch.Tensor
     ) -> List[torch.Tensor]:
     """Apply the function `function` batch wise to the tensor argument `args`
     with error handling for CUDA Out-Of-Memory problems. Starting with the full
@@ -57,16 +55,23 @@ def apply_with_dynamic_mini_batching(
     Args:
         function :callable: function to be evaluated.
         args :torch.Tensor: pytorch.tensor arguments passed to function.
-        n_outputs :int: the number of flat tensors to be returned.
-        dtypes: :List[type]: the dtypes of the outputs. Length must match length
-            of `n_outputs`.
 
     Returns:
         function evaluated at args.
     """
     batch_size = args.shape[0]
-    output = [torch.empty(batch_size, dtype=dtypes[i], device=args.device)
-              for i in range(n_outputs)]
+    output_sample = function(args[[0], ...])
+    n_outputs = len(output_sample)
+    output_dtypes = [o.dtype for o in output_sample]
+    output_shapes = [tuple(o.shape[1:]) for o in output_sample]
+    output = [
+        torch.empty(
+            (batch_size, *output_shapes[i]),
+            dtype=output_dtypes[i],
+            device=args.device
+        )
+            for i in range(n_outputs)
+    ]
 
     calculation_successful = False
     mini_batch_size = batch_size

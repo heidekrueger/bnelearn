@@ -125,7 +125,9 @@ class ESPGLearner(GradientBasedLearner):
                     inital_strength: float, inital penaltization factor of bid value
                     regularize_decay: float, decay rate by which the regularization factor
                         is mutliplied each iteration.
-
+                symmetric_sampling: bool
+                    whether or not we sample symmetric pairs of pertubted paramters, e.g.
+                    p + eps and p - eps.
         optimizer_type: Type[torch.optim.Optimizer]
             A class implementing torch's optimizer interface used for parameter update step.
         strat_to_player_kwargs: dict
@@ -178,6 +180,11 @@ class ESPGLearner(GradientBasedLearner):
             self.regularize = 0.0
             self.regularize_decay = 1.0
 
+        if 'symmetric_sampling' in hyperparams: 
+            self.symmetric_sampling = symmetric_sampling
+        else:
+            self.symmetric_sampling = False
+
     def _set_gradients(self):
         """Calculates ES-pseudogradients and applies them to the model parameter
            gradient data.
@@ -197,8 +204,19 @@ class ESPGLearner(GradientBasedLearner):
 
         ### 1. if required redraw valuations / perform random moves (determined by env)
         self.environment.prepare_iteration()
+
         ### 2. Create a population of perturbations of the original model
-        population = (self._perturb_model(self.model) for _ in range(self.population_size))
+        if not self.symmetric_sampling:
+            population = (self._perturb_model(self.model) for _ in range(self.population_size))
+        else:
+            mid = int(self.population_size / 2.)
+            population = [self._perturb_model(self.model) for _ in range(mid)]
+            sym_pop = [
+                self._perturb_model(self.model, -e)
+                for _, e in population
+            ]
+            population += sym_pop
+
         ### 3. let each candidate against the environment and get their utils ###
         # both of these as a row-matrix. i.e.
         # rewards: population_size x 1
@@ -256,7 +274,7 @@ class ESPGLearner(GradientBasedLearner):
             else:
                 p.grad = -d_p
 
-    def _perturb_model(self, model: torch.nn.Module) -> Tuple[torch.nn.Module, torch.Tensor]:
+    def _perturb_model(self, model: torch.nn.Module, noise: torch.Tensor = None) -> Tuple[torch.nn.Module, torch.Tensor]:
         """
         Returns a randomly perturbed copy of a model [torch.nn.Module],
         as well as the noise vector used to generate the perturbation.
@@ -264,7 +282,8 @@ class ESPGLearner(GradientBasedLearner):
         perturbed = deepcopy(model)
 
         params_flat = parameters_to_vector(model.parameters())
-        noise = torch.zeros_like(params_flat).normal_(mean=0.0, std=self.sigma)
+        if noise is None:
+            noise = torch.zeros_like(params_flat).normal_(mean=0.0, std=self.sigma)
         # copy perturbed params into copy
         vector_to_parameters(params_flat + noise, perturbed.parameters())
 
