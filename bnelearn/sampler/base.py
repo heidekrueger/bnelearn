@@ -11,7 +11,6 @@ from torch.cuda import _device_t as Device
 class ValuationObservationSampler(ABC):
     """Provides functionality to draw valuation and observation profiles."""
 
-
     def __init__(self, n_players, valuation_size, observation_size,
                  support_bounds,
                  default_batch_size = 1, default_device = None):
@@ -35,7 +34,8 @@ class ValuationObservationSampler(ABC):
         return batch_sizes
 
     @abstractmethod
-    def draw_profiles(self, batch_sizes: Union[int, List[int]] = None, device=None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def draw_profiles(self, batch_sizes: Union[int, List[int]] = None,
+                      device=None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws and returns a batch of valuation and observation profiles.
 
         Kwargs:
@@ -81,7 +81,8 @@ class ValuationObservationSampler(ABC):
         pass
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
-                                dtype=torch.float, device = None) -> torch.Tensor:
+                                dtype=torch.float, device = None,
+                                support_bounds: torch.Tensor = None) -> torch.Tensor:
         """Generates an evenly spaced grid of (approximately and at least)
         minimum_number_of_points valuations covering the support of the
         valuation space for the given player. These are meant as rational actions
@@ -89,14 +90,14 @@ class ValuationObservationSampler(ABC):
 
         The default reference implementation returns a rectangular grid on
         [0, upper_bound] x valuation_size.
-
-        TODO: There are settings (e.g. ReverseBidder), where it may be rational
-        to overbid, this still needs to be implemented.
         """
 
         device = device or self.default_device
 
-        bounds = self.support_bounds[player_position]
+        if support_bounds is None:
+            support_bounds = self.support_bounds
+
+        bounds = support_bounds[player_position]
 
         # dimensionality
         dims = self.valuation_size
@@ -112,6 +113,28 @@ class ValuationObservationSampler(ABC):
         grid = torch.stack(torch.meshgrid(lines), dim=-1).view(-1, dims)
 
         return grid
+
+    def generate_reduced_grid(self, player_position: int, minimum_number_of_points: int,
+                              dtype=torch.float, device = None) -> torch.Tensor:
+        """For some samplers, the action dimension is smaller and the grid can
+        be reduced to that lower dimension.
+        """
+        return self.generate_valuation_grid(player_position, minimum_number_of_points,
+                                            dtype, device)
+
+    def generate_action_grid(self, player_position: int, minimum_number_of_points: int,
+                             dtype=torch.float, device = None) -> torch.Tensor:
+        """As the grid is also used for finding best responses, some samplers
+        need extensive grids that sample a broader area. (E.g. when a bidder
+        with high valuations massively shads her bids.)
+        """
+        support_bounds = self.support_bounds
+
+        # Grid bids should always start at zero if not specified otherwise
+        support_bounds[:, :, 0] = 0
+
+        return self.generate_valuation_grid(player_position, minimum_number_of_points,
+                                            dtype, device, support_bounds)
 
 class PVSampler(ValuationObservationSampler, ABC):
     """A sampler for Private Value settings, i.e. when observations and
@@ -263,3 +286,15 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
                     self.group_samplers[g].draw_profiles([*outer_batches, inner_batch], device)
 
         return cv, co
+
+    def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
+                                dtype=torch.float, device = None,
+                                support_bounds: torch.Tensor = None) -> torch.Tensor:
+        """Possibly need to call specific grid sampling"""
+        for g in range(self.n_groups):  # iterate over groups
+            players = self.group_indices[g]  # player_positions within group
+            for i, pos in enumerate(players):  # need to keep track of list index: i != pos
+                if player_position == pos:
+                    return self.group_samplers[g].generate_valuation_grid(
+                        i, minimum_number_of_points, dtype, device, support_bounds
+                    )

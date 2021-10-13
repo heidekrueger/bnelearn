@@ -1,8 +1,10 @@
+"""Testing correctness of LLLLGG combinatorial auction implementations."""
 import pytest
 import torch
 from bnelearn.mechanism import LLLLGGAuction
+import warnings
 
-"""Testing correctness of LLLLGG combinatorial auction implementations."""
+
 bids_1 = torch.tensor([[
         #Bundle1, Bundle2
         [1,1], #L1
@@ -204,14 +206,16 @@ def test_LLLLGG(parallel, rule,bids,expected_allocation,expected_payments):
     """
     Testing batch_size > 1, VCG 0 prices, FP, global/local winning
     """
-    run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'gurobi')
-    #run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'cvxpy')
     run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'qpth')
     run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'mpc')
 
-    run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'gurobi')
-    #run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'cvxpy')
     run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'qpth')
     run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'mpc')
 
-
+@pytest.mark.parametrize("parallel, rule,bids,expected_allocation,expected_payments", testdata, ids=ids)
+def test_LLLLGG_gurobi(parallel, rule,bids,expected_allocation,expected_payments, check_gurobi):
+    """
+    Testing batch_size > 1, VCG 0 prices, FP, global/local winning
+    """
+    run_LLLLGG_test(parallel, rule, 'cpu', bids, expected_allocation, expected_payments, 'gurobi')
+    run_LLLLGG_test(parallel, rule, 'cuda', bids, expected_allocation, expected_payments, 'gurobi')

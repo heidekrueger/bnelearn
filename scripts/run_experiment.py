@@ -25,16 +25,51 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager  # py
 
 if __name__ == '__main__':
 
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     fire.Fire()
+    # path is user-specific
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
+
+    # Run exps that contain integration
+    experiment_types = ['splitaward']  # ['single_item_gaussian_symmetric', 'multiunit', 'splitaward']
+    for experiment_type in experiment_types:
+        experiment_config, experiment_class = \
+            ConfigurationManager(
+                experiment_type=experiment_type,
+                n_runs=1,
+                n_epochs=200
+                ) \
+            .set_setting(
+                payment_rule='first_price' if experiment_type == 'multiunit' else 'None',
+                constant_marginal_values=True,
+                # correlation_groups=[[0, 1, 2]],
+                # correlation_types='independent',
+                # gamma=0.0
+                ) \
+            .set_logging(
+                eval_batch_size=2**9,
+                util_loss_batch_size=2**9,
+                util_loss_grid_size=2**10,
+                util_loss_frequency=50,
+                best_response=True,
+                cache_eval_actions=True,
+                log_root_dir=log_root_dir,
+                ) \
+            .set_learning(
+                # model_sharing=False
+                ) \
+            .set_hardware(
+                specific_gpu=4,
+                max_cpu_threads=1,
+            ) \
+            .get_config()
+        experiment = experiment_class(experiment_config)
+        experiment.run()
+        torch.cuda.empty_cache()
 
     # Run from a file
     # experiment_config = logging.get_experiment_config_from_configurations_log()
     # experiment_class = ConfigurationManager \
     #    .get_class_by_experiment_type(experiment_config.experiment_class)
 
-    # path is user-specific
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
 
     ### ALL PAY EXPERIMENTS ###
 
@@ -122,12 +157,23 @@ if __name__ == '__main__':
     #    n_runs=1, n_epochs=20000
     # ) \
     #     .set_logging(log_root_dir=log_root_dir) \
-    #     .get_config()
-    # experiment_config, experiment_class = ConfigurationManager(
-    #       experiment_type='single_item_asymmetric_uniform_disjunct',
-    #       n_runs=1, n_epochs=200
-    # ) \
-    #     .set_logging(log_root_dir=log_root_dir) \
+    # #     .get_config()
+    # experiment_config, experiment_class = \
+    #     ConfigurationManager(
+    #         experiment_type='single_item_uniform_symmetric',
+    #         n_runs=1, n_epochs=500
+    #     ) \
+    #     .set_learning(
+    #         learner_type='PGLearner',
+    #         pretrain_iters=500
+    #     ) \
+    #     .set_logging(
+    #         eval_batch_size=2**18,
+    #         util_loss_batch_size=2**10,
+    #         util_loss_grid_size=2**10,
+    #         util_loss_frequency=50,
+    #         plot_frequency=10,
+    #         log_root_dir=log_root_dir) \
     #     .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=3) \
@@ -140,9 +186,36 @@ if __name__ == '__main__':
     #     .get_config()
 
     # RuntimeError: Sizes of tensors must match
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit',n_runs=1, n_epochs=200) \
-    #     .set_logging(log_root_dir=log_root_dir) \
-    #     .get_config()
+
+    experiment_config, experiment_class = \
+        ConfigurationManager(
+            experiment_type='llg_full',
+            n_runs=1, n_epochs=500,
+            seeds=[69]
+        ) \
+        .set_setting(
+            payment_rule='mrcs_favored',
+        ) \
+        .set_learning(
+            batch_size=2**15,
+            model_sharing=True,
+            pretrain_iters=500,
+        ) \
+        .set_logging(
+            eval_batch_size=2**10,
+            util_loss_batch_size=2**8,
+            util_loss_grid_size=2**10,
+            util_loss_frequency=50,
+            best_response=True,
+            plot_frequency=25,
+            cache_eval_actions=True,
+            log_root_dir=log_root_dir,
+        ) \
+        .set_hardware(
+            specific_gpu=7
+        ) \
+        .get_config()
+
     # experiment_config, experiment_class = ConfigurationManager(
     #       experiment_type='splitaward',n_runs=1, n_epochs=200
     # ) \
@@ -155,6 +228,7 @@ if __name__ == '__main__':
     #                  save_tb_events_to_csv_detailed=True) \
     #     .set_setting().set_learning().set_hardware() \
     #     .get_config()
+
 
     ### COMBINATRORIAL EXPERIMENTS ###
     # experiment_config, experiment_class = ConfigurationManager(
@@ -177,8 +251,7 @@ if __name__ == '__main__':
     #         util_loss_batch_size=2**10,
     #         util_loss_grid_size=2**10,
     #         util_loss_frequency=1000,
-    #         plot_frequency=10,
-    #         stopping_criterion_frequency=100000) \
+    #         plot_frequency=10) \
     #     .set_hardware(specific_gpu=3) \
     #     .get_config()
     # experiment_config, experiment_class = ConfigurationManager(
@@ -209,6 +282,6 @@ if __name__ == '__main__':
     #     .set_hardware(specific_gpu=1) \
     #     .get_config()
 
-    experiment = experiment_class(experiment_config)
-    experiment.run()
-    torch.cuda.empty_cache()
+    # experiment = experiment_class(experiment_config)
+    # experiment.run()
+    # torch.cuda.empty_cache()

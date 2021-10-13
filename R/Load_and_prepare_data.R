@@ -1,4 +1,3 @@
-#TODO: Implement option that for eval the epoch is chosen in each run in which a stop_crit is given.
 rm(list = ls())
 ### Load Packages
 library(tidyverse)
@@ -25,9 +24,6 @@ tb_full_raw$tag <- gsub(tb_full_raw$tag, pattern="/", replace = "_")
 ### Settings
 known_bne = T
 multiple_bne = F
-stop_criterium_1 = 0.0005
-stop_criterium_2 = 0.0001
-stop_criterium_interval = 100
 results_epoch = 5000
 type_names = "."#c("locals", "globals")#"."#c("bidder0","bidder1")#."#c("locals", "global") #"."
 #nearest_zero = c(0.13399262726306915, 0.46403446793556213) 

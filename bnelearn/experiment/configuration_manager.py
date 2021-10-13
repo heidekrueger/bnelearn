@@ -142,8 +142,8 @@ class ConfigurationManager:
 
     def _init_single_item_uniform_symmetric(self):
         self.learning.model_sharing = True
-        self.setting.u_lo = 0
-        self.setting.u_hi = 1
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1]
 
     def _init_single_item_gaussian_symmetric(self):
         self.learning.model_sharing = True
@@ -165,8 +165,8 @@ class ConfigurationManager:
         self.setting.correlation_groups = [[0, 1, 2]]
         self.setting.correlation_types = 'corr_type'
         self.setting.correlation_coefficients = [1.0]
-        self.setting.u_lo = 0
-        self.setting.u_hi = 1
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1]
         self.setting.payment_rule = 'second_price'
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
@@ -178,8 +178,8 @@ class ConfigurationManager:
         self.setting.correlation_groups = [[0, 1]]
         self.setting.correlation_types = 'corr_type'
         self.setting.correlation_coefficients = [1.0]
-        self.setting.u_lo = 0
-        self.setting.u_hi = 1
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1]
         self.setting.payment_rule = 'first_price'
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
@@ -220,7 +220,7 @@ class ConfigurationManager:
         self.setting.u_lo = [0, 0, 0]
         self.setting.u_hi = [1, 1, 2]
         self.setting.n_players = 3
-        self.setting.payment_rule = 'first_price'
+        self.setting.payment_rule = 'mrcs_favored'
         self.setting.correlation_groups = [[0, 1], [2]]
         self.setting.gamma = 0.0
         self.logging.log_metrics = {'opt': True,
@@ -391,6 +391,12 @@ class ConfigurationManager:
             self.setting.u_hi.insert(0, self.setting.u_hi[0])
         self.setting.u_hi[-1] = self.setting.n_players - 1
 
+    def _post_init_llg_full(self):
+        if self.learning.model_sharing:
+            warnings.warn("Model sharing not possible in this setting.")
+            self.learning.model_sharing = False
+        self._post_init_llg()
+
     def _post_init_llllgg(self):
         pass
 
@@ -441,7 +447,7 @@ class ConfigurationManager:
         'llg':
             (LLGExperiment, _init_llg, _post_init_llg),
         'llg_full':
-            (LLGFullExperiment, _init_llg_full, _post_init_llg),
+            (LLGFullExperiment, _init_llg_full, _post_init_llg_full),
         'llllgg':
             (LLLLGGExperiment, _init_llllgg, _post_init_llllgg),
         'multiunit':
@@ -475,7 +481,8 @@ class ConfigurationManager:
         self.running.seeds = seeds
         # Defaults specific to an experiment type
         if self.experiment_type not in ConfigurationManager.experiment_types:
-            raise Exception('The experiment type does not exist')
+            raise Exception('The experiment type does not exist. Available ' + \
+                f'experiments are {ConfigurationManager.experiment_types.keys()}.')
         else:
             ConfigurationManager.experiment_types[self.experiment_type][1](self)
 
@@ -531,8 +538,8 @@ class ConfigurationManager:
         return self
 
     # pylint: disable=too-many-arguments, unused-argument
-    def set_learning(self, model_sharing: bool = 'None', learner_hyperparams: dict = 'None',
-                     optimizer_type: str = 'None',
+    def set_learning(self, model_sharing: bool = 'None', learner_type: str = 'None',
+                     learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
@@ -550,9 +557,7 @@ class ConfigurationManager:
                     save_tb_events_to_csv_aggregate: bool = 'None', save_tb_events_to_csv_detailed: bool = 'None',
                     save_tb_events_to_binary_detailed: bool = 'None', save_models: bool = 'None',
                     save_figure_to_disk_png: bool = 'None', save_figure_to_disk_svg: bool = 'None',
-                    save_figure_data_to_disk: bool = 'None', stopping_criterion_rel_util_loss_diff: float = 'None',
-                    stopping_criterion_frequency: int = 'None', stopping_criterion_duration: int = 'None',
-                    stopping_criterion_batch_size: int = 'None', stopping_criterion_grid_size: int = 'None',
+                    save_figure_data_to_disk: bool = 'None',
                     cache_eval_actions: bool = 'None', export_step_wise_linear_bid_function_size: bool = 'None',
                     experiment_dir: str = 'None', experiment_name: str = 'None'):
         """Sets only the parameters of logging which were passed, returns self"""
@@ -609,6 +614,7 @@ class ConfigurationManager:
             risk=1.0)
         learning = LearningConfig(
             model_sharing=True,
+            learner_type='ESPGLearner',
             learner_hyperparams={'population_size': 64,
                                  'sigma': 1.,
                                  'scale_sigma_by_model_size': True},
@@ -639,8 +645,7 @@ class ConfigurationManager:
             util_loss_frequency=100,
             best_response=False,
             eval_batch_size=2 ** 22,
-            cache_eval_actions=True,
-            stopping_criterion_rel_util_loss_diff=0.001)
+            cache_eval_actions=True)
         hardware = HardwareConfig(
             specific_gpu=0,
             cuda=True,
@@ -761,8 +766,8 @@ class ConfigurationManager:
 
             dist_str = str(experiment_config.setting.common_prior).split('(')[0]
             if dist_str == 'Uniform':
-                experiment_config.setting.common_prior = DISTRIBUTIONS[dist_str](experiment_config.setting.u_lo,
-                                                                                 experiment_config.setting.u_hi)
+                experiment_config.setting.common_prior = DISTRIBUTIONS[dist_str](experiment_config.setting.u_lo[0],
+                                                                                 experiment_config.setting.u_hi[0])
             elif dist_str == 'Normal':
                 experiment_config.setting.common_prior = DISTRIBUTIONS[dist_str](
                     experiment_config.setting.valuation_mean,

@@ -112,17 +112,20 @@ ids_lg, *testdata_lg = zip(*[
                                         correlation_types='Bernoulli_weights', gamma=1.0)
                            .get_config(),
         True],
-
-
     [
-        '6-LLLLGG-fp-no_model_sharing',
+        '6-LLG-full',
+        *ConfigurationManager(experiment_type='llg_full', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
+                           .get_config(),
+        True],
+    [
+        '7-LLLLGG-fp-no_model_sharing',
         *ConfigurationManager(experiment_type='llllgg', n_runs=N_RUNS, n_epochs=N_EPOCHS) \
                            .set_learning(model_sharing=False)
                            .get_config(),
         False
     ],
     [
-        '7-LLLLGG-vcg',
+        '8-LLLLGG-vcg',
         *ConfigurationManager(experiment_type='llllgg', n_runs=N_RUNS, n_epochs=N_EPOCHS_LLLLGG) \
                            .set_setting(payment_rule='vcg')
                            .get_config(),
@@ -186,14 +189,16 @@ def run_auction_test(config, exp_class, known_bne):
     config.learning.batch_size = 2 ** 2
     config.logging.eval_batch_size = 2 ** 2
     # Create and run the experiment
-    config.hardware.specific_gpu = 0
+    config.hardware.specific_gpu = 0  # TODO: check cuda availability first
 
     experiment = exp_class(config)
 
     assert experiment.known_bne == known_bne, \
         "known_bne setting is not as expected!"
+
     success = experiment.run()
     assert success, "One or more errors were caught during the experiment runs! (See test logs.)"
+
 
 
 @pytest.mark.parametrize("config, exp_class, known_bne", zip(*testdata_si), ids=ids_si)
@@ -206,7 +211,6 @@ def test_local_global_auctions(config, exp_class, known_bne):
     run_auction_test(config, exp_class, known_bne)
 
 
-@pytest.mark.xfail(reason="MultiUnit not yet implemented.")
 @pytest.mark.parametrize("config, exp_class, known_bne", zip(*testdata_mu), ids=ids_mu)
 def test_multi_unit_auctions(config, exp_class, known_bne):
     run_auction_test(config, exp_class, known_bne)

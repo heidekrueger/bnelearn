@@ -3,6 +3,7 @@ import pytest
 import torch
 from bnelearn.mechanism import LLGAuction, LLGFullAuction
 
+
 bids = torch.tensor([
     [1., 1., 2.1], # global bidder wins
     [8., 6., 10.], # see Ausubel and Baranov 2019 Fig 2
@@ -175,14 +176,13 @@ llgfull_payments_mrcs_favored = torch.tensor(
      [0.0, 0.0, 0.0],
      [0.0, 0.0, 1.2],
      [0.0, 0.0, 2.0],
-     [1.0, 0.0, 1.0]],
+     [1.5, 0.0, 1.5]]
 )
 
 def test_LLG_full():
     """LLG setting with complete combinatrial (3d) bids."""
-    # TODO Nils: Warning - pricing rule seems to be not deterministic!
-    #            Watch e.g. last instance of `llgfull_payments_mrcs_favored`
-    device = 'cuda'
+    cuda = torch.cuda.is_available()
+    device = 'cuda' if cuda else 'cpu'
 
     # VCG
     vcg_mechanism = LLGFullAuction(rule='vcg', cuda=device)
