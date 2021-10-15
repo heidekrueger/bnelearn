@@ -55,7 +55,7 @@ class _MultiUnitSetupEvalMixin(ABC):
                 mechanism=self.mechanism,
                 agents=[
                     self._strat_to_bidder(bne_strategy, self.logging.eval_batch_size, j,
-                                        enable_action_caching=self.config.logging.cache_eval_actions)
+                                          enable_action_caching=self.config.logging.cache_eval_actions)
                     for j, bne_strategy in enumerate(bne_strategies)
                 ],
                 valuation_observation_sampler=self.sampler,
@@ -74,7 +74,6 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
     """
     Experiment class for the standard multi-unit auctions.
     """
-
     def __init__(self, config: ExperimentConfig):
         self.config = config
 

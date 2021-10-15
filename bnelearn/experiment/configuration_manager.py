@@ -18,8 +18,10 @@ from bnelearn.experiment.configurations import (SettingConfig,
 
 from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
                                                           LLGFullExperiment,
-                                                          LLLLGGExperiment)
-from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
+                                                          LLLLGGExperiment,
+                                                          CAItemBiddingExperiment)
+from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment,
+                                                       SplitAwardExperiment)
 
 from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSingleItemExperiment,
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
@@ -268,6 +270,19 @@ class ConfigurationManager:
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
 
+    def _init_caib(self):
+        self.setting.n_players = 2
+        self.setting.n_items = 2
+        self.setting.payment_rule = 'vcg'
+        self.setting.exp_type = 'XOS'
+        self.setting.u_lo = [0] * self.setting.n_players
+        self.setting.u_hi = [1] * self.setting.n_players
+        self.setting.risk = 1.0
+        self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
+                                    'efficiency': True,
+                                    'PoA': True}
+
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
         # Learning
@@ -283,7 +298,7 @@ class ConfigurationManager:
         if self.logging.experiment_name:
             self.logging.experiment_dir += ' ' + str(self.logging.experiment_name)
 
-        valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue']
+        valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue', 'PoA']
         if self.logging.log_metrics is not None:
             for metric in self.logging.log_metrics:
                 assert metric in valid_log_metrics, "Metric not known."
@@ -370,6 +385,9 @@ class ConfigurationManager:
     def _post_init_splitaward(self):
         pass
 
+    def _post_init_caib(self):
+        pass
+
     experiment_types = {
         'single_item_uniform_symmetric':
             (UniformSymmetricPriorSingleItemExperiment, _init_single_item_uniform_symmetric,
@@ -399,7 +417,9 @@ class ConfigurationManager:
         'multiunit':
            (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
-           (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)
+            (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
+        'caib':
+            (CAItemBiddingExperiment, _init_caib, _post_init_caib)
         }
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
@@ -419,13 +439,15 @@ class ConfigurationManager:
 
     # pylint: disable=too-many-arguments, unused-argument
     def set_setting(self, n_players: int = 'None', payment_rule: str = 'None', risk: float = 'None',
-                    common_prior: torch.distributions.Distribution = 'None', valuation_mean: float = 'None',
-                    valuation_std: float = 'None', u_lo: list = 'None', u_hi: list = 'None', gamma: float = 'None',
+                    n_items: int = 'None', common_prior: torch.distributions.Distribution = 'None',
+                    valuation_mean: float = 'None', valuation_std: float = 'None', u_lo: list = 'None',
+                    u_hi: list = 'None', gamma: float = 'None',
                     correlation_types: str = 'None', correlation_groups: List[List[int]] = 'None',
                     correlation_coefficients: List[float] = 'None', n_units: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None', regret: float = 'None',):
+                    core_solver: str = 'None', regret: float = 'None', exp_type: str = 'None',
+                    exp_params: dict = 'None'):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
@@ -473,7 +495,7 @@ class ConfigurationManager:
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
-                     input_normalization: bool = 'None'):
+                     input_normalization: bool = 'None', redraw_every_iteration: bool = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.learning, arg):
@@ -540,9 +562,11 @@ class ConfigurationManager:
          of the ExperimentConfig"""
         running = RunningConfig(n_runs=0, n_epochs=0)
         setting = SettingConfig(
+            n_items=1,
             n_players=2,
             payment_rule='first_price',
-            risk=1.0)
+            risk=1.0,
+            exp_params={})
         learning = LearningConfig(
             model_sharing=True,
             learner_type='ESPGLearner',
@@ -555,7 +579,8 @@ class ConfigurationManager:
             pretrain_iters=500,
             batch_size=2 ** 18,
             hidden_activations=[nn.SELU(), nn.SELU()],
-            input_normalization=False)
+            input_normalization=False,
+            redraw_every_iteration=False)
         logging = LoggingConfig(
             enable_logging=True,
             log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),

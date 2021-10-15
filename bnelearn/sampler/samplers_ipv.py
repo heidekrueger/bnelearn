@@ -1,12 +1,14 @@
 """This module implements samplers for independent-private value auction settings."""
 
 from typing import List, Tuple
-from math import ceil
+from math import ceil, log
+from functools import reduce
 
 import torch
 from torch.cuda import _device_t as Device
 from torch.distributions import Distribution
 from .base import PVSampler
+from bnelearn.util.tensor_util import item2bundle
 
 class FixedManualIPVSampler(PVSampler):
     """For testing purposes:
@@ -288,3 +290,146 @@ class SplitAwardtValuationObservationSampler(UniformSymmetricIPVSampler):
             .view(-1, dims)
 
         return grid
+
+
+class CombinatorialItemSampler(MultiUnitValuationObservationSampler):
+    """Combinatorial Auction with Item Bidding Sampler. Supports uniform
+    distributions only.
+    """
+    def __init__(self, n_players: int, n_items: int, valuation_type: str='XOS',
+                 valuation_dict: dict={}, **kwargs):
+        u_lo = 0
+        u_hi = 1
+        self.n_bundles = (2 ** n_items) - 1
+
+        self.valuation_type = valuation_type
+        self.transformation = item2bundle(n_items)
+
+        if valuation_type == 'XOS':
+            if 'n_collections' in valuation_dict.keys():
+                self.n_collections = valuation_dict['n_collections']
+            else:
+                self.n_collections = 1  # fall back to additive valuations
+
+            if 'one_player_with_unit_demand' in valuation_dict.keys():
+                self.unit_demand = valuation_dict['one_player_with_unit_demand']
+            else:
+                self.unit_demand = False
+
+        elif valuation_type == 'submodular':
+            if 'submodular_factor' not in valuation_dict.keys():
+                valuation_dict['submodular_factor'] = .5  # TODO: default value?
+            self.submodular_factor = valuation_dict['submodular_factor']
+
+        super().__init__(n_players=n_players, n_items=self.n_bundles,
+                         u_lo=u_lo, u_hi=u_hi, **kwargs)
+
+    def _sample(self, batch_sizes, device) -> torch.Tensor:
+        """Sample a new batch of valuations from the bidder's prior."""
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
+
+        # TODO: Quick-fix of flatteing all batch dims for now
+        batch_size = reduce(lambda x, y: x*y, batch_sizes)
+
+        n_bundles = self.n_bundles
+        n_items = int(log(n_bundles + 1, 2))
+        transformation = self.transformation.to(device)
+
+        sample = torch.empty([batch_size, self.n_players, n_bundles], device=device)
+
+        for player_position in range(self.n_players):
+        
+            if self.valuation_type == 'XOS':
+                """XOS valuations: There are `n_collections` additive valuation
+                functions (e.g. bundle valuations are the sum of all individual
+                items). And the final bundle valuation is then the max over all
+                collections.
+                """
+            
+                collection_valuations = torch.empty([batch_size, self.n_collections, n_bundles],
+                                                    device=device)
+
+                # uniform samples
+                if isinstance(self.base_distribution, torch.distributions.uniform.Uniform):
+                    collection_valuations.uniform_(self.base_distribution.low, self.base_distribution.high)
+                    collection_valuations[..., :, n_items:] = 0
+                else:
+                    raise NotImplementedError('Unknown valuation distribution.')
+
+                if self.unit_demand and player_position == 0:
+                    # repeat each item valuation
+                    vals = collection_valuations[:, :, :n_items] \
+                        .repeat_interleave(n_bundles, 2) \
+                        .view(batch_size, n_items, n_bundles)
+                    # select the most valuable item in each bundle
+                    sample[..., player_position, :] = \
+                        torch.einsum('bij,ij->bij', vals, transformation[:n_items, :]) \
+                            .max(dim=1)[0]
+
+                else:
+                    sample[..., player_position, :] = \
+                        torch.matmul(collection_valuations, transformation) \
+                            .max(dim=1)[0]
+
+            elif self.valuation_type == 'submodular':
+                inf = 1e16
+                valuations = torch.empty([batch_size, n_items], device=device) \
+                    .uniform_(self.base_distribution.low, self.base_distribution.high) \
+                    .repeat_interleave(n_bundles) \
+                    .view(batch_size, n_items, n_bundles)
+
+                valuations *= transformation[:n_items, :]
+
+                valuations[valuations == 0] = inf  # have to ignore 0s as not part of bundle
+                _, idx = valuations.min(dim=1)
+                valuations[valuations == inf] = 0
+                all_lowest_values = torch.arange(n_items, device=device) \
+                    .reshape(1, n_items, 1) == idx.unsqueeze(1)
+                single_items = transformation.sum(dim=0) != 1
+                lowest_values_in_bundles = torch.logical_and(all_lowest_values, single_items)
+                valuations[lowest_values_in_bundles] *= self.submodular_factor
+
+                sample[..., player_position, :] = valuations.sum(dim=1)
+
+        return sample.view(*batch_sizes, self.n_players, n_bundles)
+
+    def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
+                                dtype=torch.float, device = None,
+                                support_bounds: torch.Tensor = None) -> torch.Tensor:
+        """Generates an evenly spaced grid of (approximately and at least)
+        minimum_number_of_points valuations covering the support of the
+        valuation space for the given player. These are meant as rational actions
+        for the player to evaluate, e.g. in the util_loss estimator.
+
+        The default reference implementation returns a rectangular grid on
+        [0, upper_bound] x valuation_size.
+        """
+        bundle_grid = super().generate_valuation_grid(
+            player_position=player_position, minimum_number_of_points=minimum_number_of_points,
+            dtype=dtype, device=device, support_bounds=support_bounds)
+
+        return bundle_grid[:, :int(log(self.n_bundles + 1, 2))]
+    
+    def generate_action_grid(self, player_position: int, minimum_number_of_points: int,
+                             dtype=torch.float, device = None) -> torch.Tensor:
+        
+        device = device or self.default_device
+        n_items = int(log(self.n_bundles + 1, 2))
+
+        bounds = self.support_bounds[player_position, :n_items]
+
+        n_points_per_dim = ceil(minimum_number_of_points**(1/n_items))
+
+        # create equidistant lines along the support in each dimension
+        lines = [torch.linspace(bounds[d][0], bounds[d][1], n_points_per_dim,
+                                device=device, dtype=dtype)
+                 for d in range(n_items)]
+        grid = torch.stack(torch.meshgrid(lines), dim=-1).view(-1, n_items)
+
+        return grid
+
+    def generate_reduced_grid(self, player_position: int, minimum_number_of_points: int,
+                              dtype=torch.float, device = None) -> torch.Tensor:
+        return super().generate_valuation_grid(
+            player_position=player_position, minimum_number_of_points=minimum_number_of_points,
+            dtype=dtype, device=device)

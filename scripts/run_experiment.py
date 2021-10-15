@@ -66,13 +66,22 @@ if __name__ == '__main__':
 
     # Run from a file
     # experiment_config = logging.get_experiment_config_from_configurations_log()
-    # experiment_class = ConfigurationManager \
-    #    .get_class_by_experiment_type(experiment_config.experiment_class)
+    # experiment_class = ConfigurationManager.get_class_by_experiment_type(experiment_config.experiment_class)
 
+    # Well, path is user-specific
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
+    #                                                            n_epochs=200) \
+    #     .set_setting(risk=1.1)\
+    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
+    #     .set_learning(pretrain_iters=5) \
+    #     .set_logging(eval_batch_size=2**4).get_config()
 
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
+    #                                                            n_runs=1, n_epochs=5)\
+    #     .set_logging(log_root_dir=log_root_dir).get_config()
 
-    ### SINGLE ITEM EXPERIMENTS ###
-
+    # All three next experiments get AssertionError: scalar should be 0D
     # experiment_config, experiment_class = \
     #     ConfigurationManager(
     #         experiment_type='single_item_gaussian_symmetric',
@@ -237,6 +246,16 @@ if __name__ == '__main__':
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .set_hardware(specific_gpu=1) \
     #     .get_config()
+    experiment_config, experiment_class = ConfigurationManager(
+        'caib', n_runs=10, n_epochs=2000
+    ) \
+        .set_setting(
+            n_players=2,
+            n_items=3,
+            exp_params={'n_collections': 1, 'one_player_w_unit_demand': True},
+            #exp_params={'submodular_factor': .9},\
+        ) \
+        .get_config()
 
     experiment = experiment_class(experiment_config)
     experiment.run()

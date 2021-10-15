@@ -30,6 +30,7 @@ class RunningConfig:
 @dataclass
 class SettingConfig:
     n_players: int
+    n_items: int
     payment_rule: str
     risk: float
 
@@ -63,6 +64,10 @@ class SettingConfig:
     core_solver: str = None
     # parallel: int = 1 in hardware config now
 
+    # CA with Item-Bidding
+    exp_type: str = None
+    exp_params: dict = None
+
 
 @dataclass
 class LearningConfig:
@@ -75,6 +80,7 @@ class LearningConfig:
     pretrain_iters: int
     batch_size: int
     input_normalization: bool
+    redraw_every_iteration: bool
     hidden_activations: List[nn.Module] = None
 
 @dataclass

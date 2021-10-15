@@ -15,6 +15,7 @@ MAPPING_METRICS_TAGS = {
     'utilities':            'market/utilities',
     'efficiency':           'market/efficiency',
     'revenue':              'market/revenue',
+    'PoA':                  'market/PoA',
     'update_norm':          'learner_info/update_norm',
     'util_loss_ex_ante':    'eval/util_loss_ex_ante',
     'util_loss_ex_interim': 'eval/util_loss_ex_interim',

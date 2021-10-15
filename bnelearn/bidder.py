@@ -8,9 +8,10 @@ This module implements players / bidders / agents in games.
 from abc import ABC, abstractmethod
 import warnings
 import torch
+from math import log
 from bnelearn.strategy import (Strategy, MatrixGameStrategy,
                                FictitiousPlayStrategy, FictitiousNeuralPlayStrategy)
-
+from bnelearn.util.tensor_util import item2bundle
 
 class Player(ABC):
     """
@@ -34,6 +35,7 @@ class Player(ABC):
     def get_utility(self, *args, **kwargs):
         """Calculates player's utility based on outcome of a game."""
 
+
 class MatrixGamePlayer(Player):
     """ A player playing a matrix game"""
     def __init__(self, strategy, player_position=None, batch_size=1, cuda=True):
@@ -54,6 +56,7 @@ class MatrixGamePlayer(Player):
             return self.strategy.play(self.player_position)
 
         raise ValueError("Invalid Strategy Type for Matrix game: {}".format(type(self.strategy)))
+
 
 class Bidder(Player):
     """A player in an auction game. Has a distribution over valuations/types
@@ -250,6 +253,11 @@ class CombinatorialBidder(Bidder):
             self.input_length = self.valuation_size
             self.output_length = self.bid_size
 
+    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
+        """For reverse bidders, returns are inverted.
+        """
+        return - super().get_counterfactual_utility(allocations, payments, counterfactual_valuations)
+
     def get_welfare(self, allocations, valuations: torch.Tensor=None) -> torch.Tensor:
         assert allocations.dim() >= 2  # *batch_sizes x items
         if valuations is None:
@@ -270,4 +278,72 @@ class CombinatorialBidder(Bidder):
             )
 
         welfare = (valuations * allocations_reduced_dim).sum(dim=item_dimension)
+        return welfare
+
+
+class CombinatorialItemBidder(Bidder):
+    """Bidder that has complex preferences but participates in simultaneous
+    auctions.
+
+    valuations have shape (batch_size, n_items), where it's meant as `n_bundles`
+    bids have shape (batch_size, n_bids)
+
+    """
+    def __init__(self, valuation_type: str, valuation_dict: dict, **kwargs):
+        self.n_items = n_items = int(log(kwargs['valuation_size'] + 1, 2))
+        self.n_bundles =  (2 ** self.n_items) - 1
+
+        self.valuation_type = valuation_type
+        self.transformation = item2bundle(n_items)
+
+        if valuation_type == 'XOS':
+            self.n_collections  = valuation_dict['n_collections']
+            if 'one_player_w_unit_demand' in valuation_dict.keys():
+                unit_demand = valuation_dict['one_player_w_unit_demand']
+            else:
+                unit_demand = False
+            self.unit_demand = unit_demand and kwargs['player_position'] == 0
+        elif valuation_type == 'submodular':
+            self.submodular_factor = valuation_dict['submodular_factor']
+
+        super().__init__(bid_size=n_items, **kwargs)
+
+    def get_welfare(self, allocations, valuations: torch.Tensor=None) -> torch.Tensor:
+        """
+        For a batch of allocations and payments return the player's welfare.
+        If valuations are not specified, welfare is calculated for `self.valuations`.
+
+        Can handle multiple batch dimensions, e.g. for valuations a shape of
+        (..., batch_size, n_items). These batch dimensions are kept in returned
+        welfare.
+        """
+
+        # assert allocations.dim() == 2 # batch_size x items
+        if valuations is None:
+            valuations = self._cached_valuations
+
+        # Check if allocation is only based on single-item subset of all bundles
+        if allocations.shape[-1] < valuations.shape[-1]:
+            """Here we transform the allocation of (perhaps multiple) items to
+            a bundle allocation that has a larger dimension and contains
+            at most one `1` per batch.
+            """
+
+            # Reduce allocated items to their index
+            bundle_index = torch.arange(self.n_items, dtype=torch.float,
+                                        device=allocations.device)
+            i = torch.einsum('...i,i->...i', allocations.to(dtype=torch.float),
+                             torch.pow(2, bundle_index)) \
+                .to(dtype=torch.int).sum(dim=-1, keepdim=True)
+
+            shape = list(allocations.shape)
+            shape[-1] = self.n_bundles + 1
+
+            # Map items to bundles
+            allocations = torch.zeros(shape, device=allocations.device)
+            allocations.scatter_(-1, i, 1)
+            allocations = allocations[..., 1:]  # cut off when allocated empty bundle
+
+        item_dimension = valuations.dim() - 1
+        welfare = (valuations * allocations).sum(dim=item_dimension)
         return welfare

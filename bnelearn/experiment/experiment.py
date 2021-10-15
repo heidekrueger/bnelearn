@@ -142,6 +142,8 @@ class Experiment(ABC):
         else:
             self.logging.log_metrics['opt'] = False
 
+        self.using_bid_language = False
+
     @abstractmethod
     def _setup_mechanism(self):
         pass
@@ -265,7 +267,8 @@ class Experiment(ABC):
                                       valuation_observation_sampler=self.sampler,
                                       batch_size=self.learning.batch_size,
                                       n_players=self.n_players,
-                                      strategy_to_player_closure=self._strat_to_bidder)
+                                      strategy_to_player_closure=self._strat_to_bidder,
+                                      redraw_every_iteration=self.learning.redraw_every_iteration)
 
     def _init_new_run(self):
         """Setup everything that is specific to an individual run, including everything nondeterministic"""
@@ -474,6 +477,7 @@ class Experiment(ABC):
         return not encountered_errors
 
 
+
     ########################################################################################################
     ####################################### Moved logging to here ##########################################
     ########################################################################################################
@@ -482,7 +486,8 @@ class Experiment(ABC):
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts: list = None,
-              figure_name: str = 'bid_function', plot_points=100):
+              figure_name: str = 'bid_function', plot_points=100,
+              subplot_order: list = None):
         """
         This implements plotting simple 2D data.
 
@@ -497,6 +502,7 @@ class Experiment(ABC):
             fmts: list of str for matplotlib markers and lines
             figure_name: str, for seperate plot saving of e.g. bids and util_loss,
             plot_point: int of number of ploting points for each strategy in each subplot
+            subplot_order: [nrows, ncols], list of two int, for ordering of subplots.
         """
 
         if fmts is None:
@@ -510,11 +516,21 @@ class Experiment(ABC):
         x = x[:n_batch, :, :]
         y = y[:n_batch, :, :]
 
+        if subplot_order is None:
+            subplot_order = [1, n_bundles]
+            ax_idx = list(range(n_bundles))
+        else:
+            ax_idx = list(zip(
+                sorted(list(range(subplot_order[0])) * subplot_order[1]),
+                list(range(subplot_order[1])) * subplot_order[0]
+            ))
+
         # create the plot
-        fig, axs = plt.subplots(nrows=1, ncols=n_bundles, sharey=True)
+        fig, axs = plt.subplots(nrows=subplot_order[0], ncols=subplot_order[1],
+                                sharex=subplot_order[0] > 1, sharey=True)
         plt.cla()
         if not isinstance(axs, np.ndarray):
-            axs = [axs]  # one plot only
+            axs = [axs] # one plot only
 
         # Set the colors s.t. the models' actions and the (possibly multiple)
         # BNEs can be differentated
@@ -527,7 +543,7 @@ class Experiment(ABC):
         # actual plotting
         for plot_idx in range(n_bundles):
             for agent_idx in range(n_players):
-                axs[plot_idx].plot(
+                axs[ax_idx[plot_idx]].plot(
                     x[:, agent_idx, plot_idx], y[:, agent_idx, plot_idx],
                     fmts[agent_idx % len(fmts)],
                     label=None if labels is None else labels[agent_idx % len(labels)],
@@ -535,21 +551,25 @@ class Experiment(ABC):
                 )
 
             # formating
-            axs[plot_idx].set_xlabel(
-                x_label if not isinstance(x_label, list) else x_label[plot_idx]
-            )
-            if plot_idx == 0:
-                axs[plot_idx].set_ylabel(y_label)
+            if subplot_order[0] == 1 or ax_idx[plot_idx][0] == subplot_order[0] - 1:
+                add = ' {' + format(ax_idx[plot_idx][1] + 1, '0{}b'.format(subplot_order[0])) + '}' \
+                    if subplot_order[0] > 1 else ''
+                if subplot_order[0] > 1:
+                    axs[ax_idx[plot_idx]].tick_params(axis='x', labelrotation=90)
+                axs[ax_idx[plot_idx]].set_xlabel(x_label + add)
+            if plot_idx == 0 or (isinstance(ax_idx[plot_idx], tuple) and ax_idx[plot_idx][1] == 0):
+                add = ' ' + str(ax_idx[plot_idx][0]) if subplot_order[0] > 1 else ''
+                axs[ax_idx[plot_idx]].set_ylabel(y_label + add)
                 if n_players < 10 and labels is not None:
-                    axs[plot_idx].legend(loc='upper left')
+                    axs[ax_idx[plot_idx]].legend(loc='upper left')
 
             # Set axis limits based on function parameters ´xlim´, ´ylim´ if provided otherwise
             # based on ´self.plot_xmin´ etc. object attributes. In either case, these variables
             # can also be lists for sperate limits of individual plots.
             lims = (xlim, ylim)
-            set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
+            set_lims = (axs[ax_idx[plot_idx]].set_xlim, axs[ax_idx[plot_idx]].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
-
+            # pylint: disable=eval-used
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
                 a, b = None, None
                 if lim is not None:  # use parameters ´xlim´ etc.
@@ -567,7 +587,7 @@ class Experiment(ABC):
                 if a is not None:
                     set_lim(a, b)  # call matplotlib function
 
-            axs[plot_idx].locator_params(axis='x', nbins=5)
+            axs[ax_idx[plot_idx]].locator_params(axis='x', nbins=5)
         title = plt.title if n_bundles == 1 else plt.suptitle
         title('iteration {}'.format(epoch))
 
@@ -689,8 +709,12 @@ class Experiment(ABC):
             self._cur_epoch_log_params['util_loss_ex_interim'], \
             self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'] = \
                 self._calculate_metrics_util_loss(create_plot_output, epoch)
+
             print("\tcurrent est. ex-interim loss:" + str(
                 [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
+
+        if self.logging.log_metrics['PoA']:
+            self._cur_epoch_log_params['PoA'] = self._calculate_metrics_PoA()
 
         if self.logging.log_metrics['efficiency'] and (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['efficiency'] = \
@@ -873,6 +897,23 @@ class Experiment(ABC):
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
+
+    def _calculate_metrics_PoA(self):
+        """
+        Calculate ratio of achived welfare to maximal welfare by brute force.
+        Can be seen as a ound for the (Bayesian) Price of Anarchy.
+        """
+
+        # calculate actual allocations
+        env = self.env
+        bid_profile = torch.zeros(env.batch_size, env.n_players, env.agents[0].bid_size,
+                                  device=self.env.mechanism.device)
+        for pos, bid in self.env._generate_agent_actions():
+            bid_profile[:, pos, :] = bid
+        allocations, _ = self.env.mechanism.play(bid_profile)
+
+        # compare to welfare maximum
+        return self.env.get_PoA(allocations)
 
     def _log_experiment_params(self, global_step=None):
         """Logging of paramters after learning finished.
