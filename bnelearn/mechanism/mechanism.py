@@ -5,6 +5,7 @@ This module implements games such as matrix games and auctions.
 """
 
 from abc import ABC, abstractmethod
+from typing import Tuple
 
 # pylint: disable=E1102
 import torch
@@ -33,10 +34,10 @@ class Mechanism(Game, ABC):
     items as well as payments for each of the players.
     """
 
-    def play(self, action_profile):
+    def play(self, action_profile) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.run(bids=action_profile)
 
     @abstractmethod
-    def run(self, bids):
+    def run(self, bids) -> Tuple[torch.Tensor, torch.Tensor]:
         """Alias for play for auction mechanisms"""
         raise NotImplementedError()
