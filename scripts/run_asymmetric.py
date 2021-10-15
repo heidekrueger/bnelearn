@@ -137,11 +137,6 @@ if __name__ == '__main__':
     #         .set_learning(
     #             pretrain_iters=50,
     #             batch_size=2**8,
-    #             learner_hyperparams={
-    #                 'population_size': 16,
-    #                 'sigma': 1.,
-    #                 'scale_sigma_by_model_size': True
-    #                 },
     #             ) \
     #         .set_logging(
     #             log_root_dir=log_root_dir,
@@ -161,21 +156,43 @@ if __name__ == '__main__':
 
 
     # Combinatoriral auction with item bidding ################################
-    # experiment_config, experiment_class = \
-    #     ConfigurationManager(
-    #         'caib', n_runs=10,
-    #         n_epochs=2000
-    #         ) \
-    #     .set_setting(
-    #         n_players=2,
-    #         n_items=3,
-    #         exp_params={
-    #             'n_collections': 1,
-    # #           'one_player_w_unit_demand': True
-    #              },
-    # #       exp_params={'submodular_factor': .9},\
-    #         ) \
-    #     .get_config()
-    # experiment = experiment_class(experiment_config)
-    # experiment.run()
-    # torch.cuda.empty_cache()
+    log_root_dir = os.path.join(
+        os.path.expanduser('~'), 'bnelearn', 'experiments', 'asymmmetric', 'caib'
+        )
+
+    n_collections = [3, 2, 1]
+    n_items = [3, 2, 1]
+    n_players = [3, 2, 1]
+
+    for n_collection in n_collections:
+        for n_item in n_items:
+            for n_player in n_players:
+                experiment_config, experiment_class = \
+                    ConfigurationManager(
+                        experiment_type='caib', n_runs=5,
+                        n_epochs=4000
+                        ) \
+                    .set_setting(
+                        n_players=n_player,
+                        n_items=n_item,
+                        exp_params={
+                            'n_collections': n_collection,
+                            # 'one_player_w_unit_demand': True
+                            },
+                        # exp_params={'submodular_factor': .9},\
+                        ) \
+                    .set_logging(
+                        log_root_dir=log_root_dir,
+                        util_loss_batch_size=2**12,
+                        util_loss_grid_size=2**10,
+                        util_loss_frequency=2000,
+                        best_response=True,
+                        plot_frequency=1000
+                        ) \
+                    .set_hardware(
+                        specific_gpu=7
+                        ) \
+                    .get_config()
+                experiment = experiment_class(experiment_config)
+                experiment.run()
+                torch.cuda.empty_cache()
