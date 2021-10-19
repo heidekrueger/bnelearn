@@ -661,6 +661,11 @@ class Experiment(ABC):
             print("\tcurrent est. ex-interim loss:" + str(
                 [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
 
+        if self.logging.log_metrics['epsilon'] and (epoch % self.logging.util_loss_frequency) == 0:
+            self._cur_epoch_log_params['epsilon'] = metrics.verify_epsilon_bne(
+                exp=self, grid_size=self.logging.util_loss_grid_size,
+                opponent_batch_size=min(self.logging.util_loss_batch_size, self.learning.batch_size))
+
         if self.logging.log_metrics['efficiency'] and (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['efficiency'] = \
                 self.env.get_efficiency(self.env)

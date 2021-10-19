@@ -1,7 +1,7 @@
 """This module implements metrics that may be interesting."""
 
 from typing import Tuple
-
+from tqdm import tqdm
 import torch
 
 from bnelearn.bidder import Bidder
@@ -16,6 +16,7 @@ MAPPING_METRICS_TAGS = {
     'efficiency':           'market/efficiency',
     'revenue':              'market/revenue',
     'update_norm':          'learner_info/update_norm',
+    'epsilon':              'eval/epsilon',
     'util_loss_ex_ante':    'eval/util_loss_ex_ante',
     'util_loss_ex_interim': 'eval/util_loss_ex_interim',
     'estimated_relative_ex_ante_util_loss': 'eval/estimated_relative_ex_ante_util_loss',
@@ -230,7 +231,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                          agent_observations: torch.Tensor,
                          grid_size: int,
                          opponent_batch_size: int = None,
-                         grid_best_response: bool = False):
+                         grid_best_response: bool = False, mute: bool = False):
     #pylint: disable = anomalous-backslash-in-string
     """Estimates a bidder's utility loss in the current state of the
     environment, i.e. the     potential benefit of deviating from the current
@@ -254,6 +255,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         grid_best_response: bool, whether or not the BRs live on the grid or
             possibly come from the actual actions (in case no better response
             was found on grid).
+        mute: bool, mute stdout.
 
     Returns:
         utility_loss (torch.Tensor, shape: [batch_size]):  the computed
@@ -296,7 +298,8 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     br_utility, br_indices = apply_with_dynamic_mini_batching(
         function=get_br_utily_and_index,
         args=agent_observations,
-        n_outputs=2, dtypes=[action_alternatives.dtype, torch.long])
+        n_outputs=2, dtypes=[action_alternatives.dtype, torch.long],
+        mute=mute)
 
 
     ##### calculate the loss and return best responses ###########
@@ -419,3 +422,48 @@ def ex_interim_utility(
     # expectation over opponent batches
     utility = torch.mean(utility, axis=-1) #dim: agent_batch_size
     return utility
+
+def verify_epsilon_bne(exp: 'Experiment', grid_size: int,
+                       opponent_batch_size: int) -> torch.Tensor:
+    """Calculate the epsilon for which we can guarantee an epsilon-BNE under
+    the assumptions of Bosshard et al. 2017.
+    """
+    env = exp.env
+    device = env.mechanism.device
+    dtype = env._observations.dtype
+    highest_epsilon = 0.0
+    old_utility = None
+
+    # maximum over all bidders
+    for player_positions in exp._model2bidder:
+
+        player_position = player_positions[0]
+
+        grid = env.sampler.generate_action_grid(
+            player_position=player_position, minimum_number_of_points=grid_size,
+            dtype=dtype, device=device
+            )
+
+        for j in tqdm(range(grid_size)):
+
+            point = grid[[j], :]
+
+            # TODO: To be replaced by bound of Prop. 1!
+            epsilon = ex_interim_util_loss(
+                env, player_position, point, grid_size, opponent_batch_size,
+                mute=True
+                )[0].item()
+            highest_epsilon = max(highest_epsilon, epsilon)
+
+            utility = ex_interim_utility(
+                env, player_position, point,
+                env.agents[player_position].get_action(point),
+                opponent_batch_size, device
+                ).item()            
+
+            if j != 0:
+                highest_epsilon = max(highest_epsilon, utility - old_utility + epsilon)
+
+            old_utility = utility
+
+    return highest_epsilon

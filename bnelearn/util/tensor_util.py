@@ -43,7 +43,8 @@ def apply_with_dynamic_mini_batching(
         function: callable,
         args: torch.Tensor,
         n_outputs: int=1,
-        dtypes: List[type]=[torch.float]
+        dtypes: List[type]=[torch.float],
+        mute: bool=False
     ) -> List[torch.Tensor]:
     """Apply the function `function` batch wise to the tensor argument `args`
     with error handling for CUDA Out-Of-Memory problems. Starting with the full
@@ -60,6 +61,7 @@ def apply_with_dynamic_mini_batching(
         n_outputs :int: the number of flat tensors to be returned.
         dtypes: :List[type]: the dtypes of the outputs. Length must match length
             of `n_outputs`.
+        mute: bool, mute stdout.
 
     Returns:
         function evaluated at args.
@@ -73,13 +75,15 @@ def apply_with_dynamic_mini_batching(
 
     while not calculation_successful:
         try:
-            print(f"Trying {function} calculation with batch_size {mini_batch_size}...")
+            if not mute:
+                print(f"Trying {function} calculation with batch_size {mini_batch_size}...")
 
             # Split up arguments into smaller chunks of batch size `mini_batch_size`
             mini_args = args.split(mini_batch_size)
 
             # Iterate over chunks
-            for i, mini_arg in tqdm(enumerate(mini_args), total=ceil(len(mini_args))):
+            custom_range = enumerate(mini_args) if mute else tqdm(enumerate(mini_args), total=ceil(len(mini_args)))
+            for i, mini_arg in custom_range:
 
                 # Get the indices corresponding to this mini batch
                 indices = slice(i*mini_batch_size, (i+1)*mini_batch_size)
@@ -89,7 +93,8 @@ def apply_with_dynamic_mini_batching(
                     output[out_dim][indices] = mini_output[out_dim]
 
             calculation_successful = True
-            print("\t ... success!")
+            if not mute:
+                print("\t ... success!")
 
         except RuntimeError as e:
             if not str(e).startswith(_CUDA_OOM_ERR_MSG_START):
@@ -99,7 +104,8 @@ def apply_with_dynamic_mini_batching(
                 # pylint: disable = raise-missing-from
                 raise RuntimeError(ERR_MSG_OOM_SINGLE_BATCH)
 
-            print("\t... failed (OOM). Decreasing mini batch size.")
+            if not mute:
+                print("\t... failed (OOM). Decreasing mini batch size.")
             mini_batch_size = int(mini_batch_size / 2)
 
     return output
