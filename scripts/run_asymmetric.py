@@ -162,8 +162,9 @@ if __name__ == '__main__':
 
     n_collections = [3, 2, 1]
     n_items = [3, 2, 1]
-    n_players = [3, 2, 1]
+    n_players = [3, 2]
 
+    # TODO Nils: debug sampler for one_player_with_unit_demand
     for n_collection in n_collections:
         for n_item in n_items:
             for n_player in n_players:
@@ -177,17 +178,17 @@ if __name__ == '__main__':
                         n_items=n_item,
                         exp_params={
                             'n_collections': n_collection,
-                            # 'one_player_w_unit_demand': True
+                            'one_player_with_unit_demand': True
                             },
                         # exp_params={'submodular_factor': .9},\
                         ) \
                     .set_logging(
                         log_root_dir=log_root_dir,
-                        util_loss_batch_size=2**12,
+                        util_loss_batch_size=2**10,
                         util_loss_grid_size=2**10,
-                        util_loss_frequency=2000,
+                        util_loss_frequency=20,
                         best_response=True,
-                        plot_frequency=1000
+                        plot_frequency=100
                         ) \
                     .set_hardware(
                         specific_gpu=7

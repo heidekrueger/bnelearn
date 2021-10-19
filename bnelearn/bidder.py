@@ -297,9 +297,9 @@ class CombinatorialItemBidder(Bidder):
         self.transformation = item2bundle(n_items)
 
         if valuation_type == 'XOS':
-            self.n_collections  = valuation_dict['n_collections']
-            if 'one_player_w_unit_demand' in valuation_dict.keys():
-                unit_demand = valuation_dict['one_player_w_unit_demand']
+            self.n_collections = valuation_dict['n_collections']
+            if 'one_player_with_unit_demand' in valuation_dict.keys():
+                unit_demand = valuation_dict['one_player_with_unit_demand']
             else:
                 unit_demand = False
             self.unit_demand = unit_demand and kwargs['player_position'] == 0

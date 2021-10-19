@@ -554,6 +554,7 @@ class CAItemBiddingExperiment(Experiment):
     """
     def __init__(self, config: ExperimentConfig):
 
+        self.config = config
         self.n_players = config.setting.n_players
 
         self.n_items = self.action_size = config.setting.n_items

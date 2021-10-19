@@ -516,7 +516,7 @@ class Experiment(ABC):
         x = x[:n_batch, :, :]
         y = y[:n_batch, :, :]
 
-        if subplot_order is None:
+        if subplot_order in (None, [1, 1]):  # not provided or only single plot
             subplot_order = [1, n_bundles]
             ax_idx = list(range(n_bundles))
         else:

@@ -352,7 +352,7 @@ class CombinatorialItemSampler(MultiUnitValuationObservationSampler):
                 # uniform samples
                 if isinstance(self.base_distribution, torch.distributions.uniform.Uniform):
                     collection_valuations.uniform_(self.base_distribution.low, self.base_distribution.high)
-                    collection_valuations[..., :, n_items:] = 0
+                    collection_valuations[:, :, n_items:] = 0
                 else:
                     raise NotImplementedError('Unknown valuation distribution.')
 
@@ -362,12 +362,12 @@ class CombinatorialItemSampler(MultiUnitValuationObservationSampler):
                         .repeat_interleave(n_bundles, 2) \
                         .view(batch_size, n_items, n_bundles)
                     # select the most valuable item in each bundle
-                    sample[..., player_position, :] = \
+                    sample[:, player_position, :] = \
                         torch.einsum('bij,ij->bij', vals, transformation[:n_items, :]) \
                             .max(dim=1)[0]
 
                 else:
-                    sample[..., player_position, :] = \
+                    sample[:, player_position, :] = \
                         torch.matmul(collection_valuations, transformation) \
                             .max(dim=1)[0]
 
