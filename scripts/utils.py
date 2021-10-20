@@ -3,6 +3,8 @@ import os, sys
 import torch
 import pandas as pd
 import matplotlib.pyplot as plt
+from typing import Dict, List, Any
+import glob
 
 
 sys.path.append(os.path.realpath('.'))
@@ -10,8 +12,6 @@ sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
 from bnelearn.strategy import NeuralNetStrategy
 from bnelearn.util.metrics import ALIASES_LATEX as ALIASES
-
-
 
 
 def logs_to_df(
@@ -202,8 +202,6 @@ def single_exp_logs_to_df(
             columns correspond to the logged metrics (from the last iter).
 
     """
-    form = '{:.' + str(precision) + 'f}'
-
     df = pd.read_csv(path)
     end_epoch = df.epoch.max()
     df = df[df.epoch == end_epoch]
@@ -225,6 +223,8 @@ def single_exp_logs_to_df(
         metrics = new_metrics
 
     df = df.loc[df['metric'].isin(metrics)]
+
+    form = '{:.' + str(precision) + 'f}'
 
     def map_mean_std(row):
         result = str(form.format(round(row['mean'], precision)))
@@ -303,12 +303,14 @@ def df_to_tex(
         name: str = 'table.tex',
         label: str = 'tab:full_reults',
         caption: str = '',
+        print_index: bool = False,
+        print_index_names: bool = False
     ):
     """Creates a tex file with the csv at `path` as a LaTeX table."""
     def bold(x):
         return r'\textbf{' + x + '}'
     df.to_latex(name, na_rep='--', escape=False,
-                index=False, index_names=False, caption=caption, column_format='l'+'r'*(len(df.columns)-1),
+                index=print_index, index_names=print_index_names, caption=caption, column_format='l'+'r'*(len(df.columns)-1),
                 label=label, formatters={'bidder': bold})
 
 
@@ -417,5 +419,123 @@ def get_sub_path(path: str, levels: int=1):
     return sub_path
 
 
+def return_list_of_files_from_folder(folder_path: str, pattern: str) -> List[str]:
+    return glob.glob(folder_path + "/*" + pattern + "*")
+
+
+def get_data_frames_from_multiple_experiments(path_experiments: str,
+                                              csv_name: str='full_results.csv') -> Dict[str, pd.DataFrame]:
+    """Returns the csv data as data frame for each experiment in the given path. It is assumed that one has
+    path_experiments -> exp1, exp2, ..., where each contains a csv with the given name.
+
+    Args:
+        path_experiments (str): [description]
+        csv_name (str, optional): Name of the csv file that should be returned. Defaults to 'full_results.csv',
+        another standard is 'aggregate_log.csv'
+
+    Returns:
+        Dict[str, pd.DataFrame]: Contains the dataframes, where the key is the folder name for each experiment.
+    """
+    experiment_folder_list = return_list_of_files_from_folder(path_experiments, '')
+    data_frames_dict = {}
+    for experiment_path in experiment_folder_list:
+        experiment_name = os.path.basename(experiment_path)
+        data_frames_dict[experiment_name] = pd.read_csv(experiment_path + '/' + csv_name)
+    return data_frames_dict
+
+
+def concatenate_dfs_from_dict(dict_of_dfs: Dict[str, pd.DataFrame], key_type: str = 'experiment') -> pd.DataFrame:
+    """Concatenates the given dataframes in a dict into a single dataframe. The key in the dictionary is added to
+    each data frame as the column specified by the key_type argument.
+
+    Args:
+        dict_of_dfs (Dict[str, pd.DataFrame]): A dictionary of dataframes. Each one having the same columns
+        key_type (str, optional): column name that is used for the key. Defaults to 'experiment'.
+
+    Returns:
+        pd.DataFrame: Concatenated dataframe
+    """
+    df_list = []
+    for key, df in dict_of_dfs.items():
+        df[key_type] = key
+        df_list.append(df)
+    return pd.concat(df_list)
+
+
+def filter_full_results_df(full_results_df: pd.DataFrame, row_values_to_filter: Dict[str, List[Any]]=None, columns_to_drop: List[str]=['wall_time', 'run']) -> pd.DataFrame:
+    """Drops specified columns and filters for columns to be specific values of the given dataframe. It is assumed to be the
+    full_results.csv as df.
+
+    Args:
+        full_results_df (pd.DataFrame): dataframe of full_results.csv
+        row_values_to_filter (Dict[str, List[Any]], optional): The key specifies the column name, the value is a list of 
+            values to filter for. Defaults to None.
+        columns_to_drop (List[str], optional): Keeps all columns except those that are given here. Defaults to ['wall_time', 'run'].
+
+    Returns:
+        pd.DataFrame: The filtered df
+    """
+    existing_cols_to_drop = [col_name for col_name in list(full_results_df) if col_name in columns_to_drop]
+    filtered_df = full_results_df.drop(existing_cols_to_drop, axis=1)
+    if row_values_to_filter is not None:
+        filterting_query = create_df_filtering_query_from_dict(row_values_to_filter)
+        filtered_df = filtered_df.query(filterting_query)
+    return filtered_df
+
+
+def create_df_filtering_query_from_dict(row_values_to_filter: Dict[str, List[Any]]) -> str:
+    """Creates a string that can be used in the pd.DataFrame.query() method.
+
+    Args:
+        row_values_to_filter (Dict[str, List[Any]]): We assume a form of key1 in value1 & key2 in value2 & ...
+
+    Returns:
+        str: query string in the correct syntax
+    """
+    query_string_list = []
+    for key, value in row_values_to_filter.items():
+        query_string_list.append(key + ' in ' + str(value))
+    return ' & '.join(query_string_list)
+
+
+def combine_mean_stddv_into_single_column(df: pd.DataFrame, precision: int=4, delete_mean_std_cols: bool=True) -> pd.DataFrame:
+    form = '{:.' + str(precision) + 'f}'
+    df_copy = df.copy()
+    
+    def map_mean_std(row):
+        result = str(form.format(round(row['mean'], precision)))
+        result += ' (' + str(form.format(round(row['std'], precision))) \
+            + ')'
+        if result == 'nan (nan)':
+            result = '--'
+        return result
+    df_copy['value'] = df_copy.apply(map_mean_std, axis=1)
+    if delete_mean_std_cols:
+        del df_copy['mean'], df_copy['std']
+    return df_copy
+
+
+def df_unstack_values_by_tag_and_index(df: pd.DataFrame, col_to_index: str='bidder', col_to_unstack: str='metric') -> pd.DataFrame:
+    """Reorder df such that col_to_index is in the index and the unique values of col_to_unstack become the columns.
+
+    Args:
+        df (pd.DataFrame): needs to contain col_to_index, col_to_unstack and exactly one additional column
+        col_to_index (str, optional): The column that becomes an index. Defaults to 'bidder'.
+        col_to_unstack (str, optional): The column which values become the new columns. Defaults to 'metric', also often used is 'tag'.
+
+    Returns:
+        pd.DataFrame: Transformed df
+    """
+    df_copy = df.copy()
+    df_copy.set_index([col_to_index, col_to_unstack], inplace=True)
+    df_copy = df_copy.unstack(level=col_to_unstack)
+    df_copy.columns = [y for (x, y) in df_copy.columns]
+    return df_copy
+
+
 if __name__ == '__main__':
-    pass
+    path_experiments = '/home/pieroth/bnelearn/experiments/debug/exp-3_experiment_10_seeds/double_auction/single_item/k_price/0.5/uniform/symmetric/risk_1.0/1b1s/'
+    df_dict = get_data_frames_from_multiple_experiments(path_experiments)
+    concatenated_df = concatenate_dfs_from_dict(df_dict)
+    filtered_concatenated_df = filter_full_results_df(concatenated_df)
+    print('test')
