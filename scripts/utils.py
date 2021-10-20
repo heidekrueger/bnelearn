@@ -309,8 +309,11 @@ def df_to_tex(
     """Creates a tex file with the csv at `path` as a LaTeX table."""
     def bold(x):
         return r'\textbf{' + x + '}'
+    column_format = 'l'+'r'*(len(df.columns)-1)
+    if print_index or print_index_names:
+        column_format += 'r'
     df.to_latex(name, na_rep='--', escape=False,
-                index=print_index, index_names=print_index_names, caption=caption, column_format='l'+'r'*(len(df.columns)-1),
+                index=print_index, index_names=print_index_names, caption=caption, column_format=column_format,
                 label=label, formatters={'bidder': bold})
 
 
