@@ -1,7 +1,7 @@
 """This module implements metrics that may be interesting."""
 
 from typing import Tuple
-
+from tqdm import tqdm
 import torch
 
 from bnelearn.bidder import Bidder
@@ -17,6 +17,8 @@ MAPPING_METRICS_TAGS = {
     'revenue':              'market/revenue',
     'PoA':                  'market/PoA',
     'update_norm':          'learner_info/update_norm',
+    'gradient_norm':        'learner_info/gradient_norm',
+    'epsilon':              'eval/epsilon',
     'util_loss_ex_ante':    'eval/util_loss_ex_ante',
     'util_loss_ex_interim': 'eval/util_loss_ex_interim',
     'estimated_relative_ex_ante_util_loss': 'eval/estimated_relative_ex_ante_util_loss',
@@ -231,7 +233,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                          agent_observations: torch.Tensor,
                          grid_size: int,
                          opponent_batch_size: int = None,
-                         grid_best_response: bool = False):
+                         grid_best_response: bool = False, mute: bool = False):
     #pylint: disable = anomalous-backslash-in-string
     """Estimates a bidder's utility loss in the current state of the
     environment, i.e. the     potential benefit of deviating from the current
@@ -255,6 +257,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         grid_best_response: bool, whether or not the BRs live on the grid or
             possibly come from the actual actions (in case no better response
             was found on grid).
+        mute: bool, mute stdout.
 
     Returns:
         utility_loss (torch.Tensor, shape: [batch_size]):  the computed
@@ -296,7 +299,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         env, player_position, obs, action_alternatives, opponent_batch_size)
     br_utility, br_indices = apply_with_dynamic_mini_batching(
         function=get_br_utily_and_index,
-        args=agent_observations)
+        args=agent_observations, mute=mute)
 
     ##### calculate the loss and return best responses ###########
     utility_loss = (br_utility - utility_actual).relu_()
@@ -418,3 +421,103 @@ def ex_interim_utility(
     # expectation over opponent batches
     utility = torch.mean(utility, axis=-1) #dim: agent_batch_size
     return utility
+
+def verify_epsilon_bne(exp: 'Experiment', grid_size: int,
+                       opponent_batch_size: int) -> torch.Tensor:
+    """Calculate the epsilon for which we can guarantee an epsilon-BNE under
+    the assumptions of Bosshard et al. 2017.
+    """
+    env = exp.env
+    device = env.mechanism.device
+    dtype = env._observations.dtype
+    highest_epsilon = 0.0
+
+    # maximum over all bidders
+    for player_positions in exp._model2bidder:
+        player_position = player_positions[0]
+        agent: Bidder = env.agents[player_position]
+
+        grid = env.sampler.generate_action_grid(
+            player_position=player_position, minimum_number_of_points=grid_size,
+            dtype=dtype, device=device
+            )
+
+        # maximum over observation/valuation grid
+        for cell_index in tqdm(range(grid_size - 1)):
+            point_low = grid[[cell_index], :]
+            point_high = grid[[cell_index + 1], :]
+
+            # TODO: more then two bounds for higher dims
+            # maximum over all corners of this cell of the grid
+
+            util_actual = ex_interim_utility(
+                env=env, player_position=player_position, agent_observations=point_high,
+                agent_actions=agent.get_action(point_high),
+                opponent_batch_size=opponent_batch_size, device=device
+                )
+            util_max = ex_interim_utility_bound(
+                env=env, player_position=player_position,
+                agent_valuation=point_high, grid_size=grid_size,
+                opponent_batch_size=opponent_batch_size
+                )
+            util_loss = util_max - util_actual
+
+            utility_low = ex_interim_utility(
+                env, player_position, point_low,
+                agent.get_action(point_low),
+                opponent_batch_size, device
+                ).item()
+
+            utility_high = ex_interim_utility(
+                env, player_position, point_high,
+                agent.get_action(point_high),
+                opponent_batch_size, device
+                ).item()
+
+            highest_epsilon = max(highest_epsilon, util_loss + utility_high - utility_low)
+
+    return highest_epsilon
+
+def ex_interim_utility_bound(env: AuctionEnvironment, player_position: int,
+                             agent_valuation: torch.Tensor, grid_size: int,
+                             opponent_batch_size: int) -> torch.Tensor:
+    """Calulate an upper bound for the utility and a specific action.
+    According to Bosshard et al. (2020), under some assuumptions (see Prop. 1),
+    the expected utility can be bounded based on estimates.
+    """
+    device = env.mechanism.device
+    agent: Bidder = env.agents[player_position]
+    assert agent_valuation.shape[0] == 1, 'Can only check one valuation at a time'
+    valuation_size = agent_valuation.shape[-1]
+
+    grid = env.sampler.generate_action_grid(
+        player_position=player_position, minimum_number_of_points=grid_size,
+        device=device
+        )
+
+    # TODO: opponents' vals should be conditioned on own
+    bid_profile = torch.empty(opponent_batch_size, grid_size, len(env.agents), agent.bid_size,
+                              dtype=agent_valuation.dtype, device=device)
+    for opponent in env.agents:
+        if opponent.player_position != player_position:
+            bid_profile[:, :, opponent.player_position, :] = \
+                opponent.get_action(
+                    env._observations[:opponent_batch_size, opponent.player_position, :]
+                    ) \
+                    .view(opponent_batch_size, 1, valuation_size) \
+                    .repeat(1, grid_size, 1)
+             # repeat opponents' actions to compete against all grid-actions of agent
+
+    bid_profile[:, :, player_position, :] = grid \
+        .view(1, grid_size, agent.bid_size) \
+        .repeat(opponent_batch_size, 1, 1)
+    allocations, payments = env.mechanism.play(bid_profile)
+
+    # welfare for each grid action, each averaged over all opponents' actions
+    welfare = (agent_valuation.item() * allocations[:, :, player_position, :]) \
+        .mean(axis=0)
+
+    # payments for each grid action averaged over opponents
+    payments = payments[:, :, [player_position]].mean(axis=0)
+
+    return torch.max(welfare[1:] - payments[:-1])

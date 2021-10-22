@@ -175,6 +175,7 @@ class ConfigurationManager:
         self.setting.payment_rule = 'second_price'
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
+                                    'epsilon': True,
                                     'efficiency': True,
                                     'revenue': True}
 
@@ -188,6 +189,7 @@ class ConfigurationManager:
         self.setting.payment_rule = 'first_price'
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
+                                    'epsilon': True,
                                     'efficiency': True,
                                     'revenue': True}
 
@@ -203,7 +205,8 @@ class ConfigurationManager:
         self.logging.log_metrics = {'opt': True,
                                     'efficiency': True,
                                     'revenue': True,
-                                    'util_loss': True}
+                                    'util_loss': True,
+                                    'epsilon': True}
 
     #     self.setting.correlation_types = 'independent'
     #
@@ -230,6 +233,7 @@ class ConfigurationManager:
         self.setting.gamma = 0.0
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
+                                    'epsilon': True,
                                     'efficiency': False,
                                     'revenue': False}
 
@@ -243,7 +247,8 @@ class ConfigurationManager:
         self.setting.n_players = 6
         self.logging.util_loss_frequency = 1000  # Or 100?
         self.logging.log_metrics = {'opt': False,
-                                    'util_loss': True}
+                                    'util_loss': True,
+                                    'epsilon': True}
 
     def _init_multiunit(self):
         self.setting.payment_rule = 'vcg'
@@ -258,6 +263,7 @@ class ConfigurationManager:
         self.logging.plot_points = 1000
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
+                                    'epsilon': True,
                                     'efficiency': True,
                                     'revenue': True}
 
@@ -280,6 +286,7 @@ class ConfigurationManager:
         self.setting.risk = 1.0
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
+                                    'epsilon': True,
                                     'efficiency': True,
                                     'PoA': True}
 
@@ -288,6 +295,7 @@ class ConfigurationManager:
         # Learning
         assert len(self.learning.hidden_activations) == len(self.learning.hidden_nodes)
         self.learning.optimizer = ConfigurationManager._set_optimizer(self.learning.optimizer_type)
+        self.learning.scheduler = ConfigurationManager._set_scheduler(self.learning.scheduler_type)
 
         # Logging
         # Rationale behind timestamp format: should be ordered chronologically but include weekday.
@@ -298,7 +306,7 @@ class ConfigurationManager:
         if self.logging.experiment_name:
             self.logging.experiment_dir += ' ' + str(self.logging.experiment_name)
 
-        valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue', 'PoA']
+        valid_log_metrics = ['opt', 'util_loss', 'epsilon', 'efficiency', 'revenue', 'PoA']
         if self.logging.log_metrics is not None:
             for metric in self.logging.log_metrics:
                 assert metric in valid_log_metrics, "Metric not known."
@@ -492,7 +500,8 @@ class ConfigurationManager:
     # pylint: disable=too-many-arguments, unused-argument
     def set_learning(self, model_sharing: bool = 'None', learner_type: str = 'None',
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
-                     optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
+                     optimizer_hyperparams: dict = 'None', scheduler_type: str = 'None',
+                     scheduler_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
                      input_normalization: bool = 'None', redraw_every_iteration: bool = 'None'):
@@ -575,6 +584,8 @@ class ConfigurationManager:
                                  'scale_sigma_by_model_size': True},
             optimizer_type='adam',
             optimizer_hyperparams={'lr': 1e-3},
+            scheduler_type=None,
+            scheduler_hyperparams={},
             hidden_nodes=[10, 10],
             pretrain_iters=500,
             batch_size=2 ** 18,
@@ -588,7 +599,8 @@ class ConfigurationManager:
             plot_points=100,
             plot_show_inline=True,
             log_metrics={'opt': True,
-                         'util_loss': True},
+                         'util_loss': True,
+                         'epsilon': True},
             log_componentwise_norm=False,
             save_tb_events_to_csv_aggregate=True,
             save_tb_events_to_csv_detailed=False,
@@ -749,4 +761,16 @@ class ConfigurationManager:
                 return eval('torch.optim.' + optimizer)
             except AttributeError as e:
                 raise AttributeError(f'Optimizer type `{optimizer}` could not be inferred!') \
+                    from e
+
+    @staticmethod
+    def _set_scheduler(scheduler: str) -> object:
+        """Set learning rate scheduler."""
+        if scheduler is None:
+            return None
+        if isinstance(scheduler, str):
+            try:
+                return eval('torch.optim.lr_scheduler.' + scheduler)
+            except AttributeError as e:
+                raise AttributeError(f'Learning rate scheduler type `{scheduler}` could not be inferred!') \
                     from e

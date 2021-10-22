@@ -354,6 +354,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
             if not torch.all(self.forward(ensure_positive_output).gt(0)):
                 self.reset(ensure_positive_output)
 
+        self.n_parameters = sum([p.numel() for p in self.parameters()])
+
     @classmethod
     def load(cls, path: str, device='cpu'):
         """
@@ -464,7 +466,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         for layer in self.layers.values():
             arg = layer(arg)
 
-        return arg
+        return arg  # .clip_(torch.zeros_like(x), x)
 
     def pretrain_forward(self, x):
         """This is the forward without the final layer (which is the relu activation).
@@ -485,6 +487,17 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
     def play(self, inputs):
         return self.forward(inputs)
+
+    def get_gradient_norm(self):
+        """Get the norm of the gradient"""
+        
+        grad_norm = 0
+
+        for p in self.parameters():
+            if p is not None:
+                grad_norm += p.grad.pow(2).sum()
+
+        return grad_norm*(1./self.n_parameters)**(1/2)
 
 class TruthfulStrategy(Strategy, nn.Module):
     """A strategy that plays truthful valuations."""

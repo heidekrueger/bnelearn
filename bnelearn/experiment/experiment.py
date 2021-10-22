@@ -190,6 +190,8 @@ class Experiment(ABC):
                 hyperparams=self.learning.learner_hyperparams,
                 optimizer_type=self.learning.optimizer,
                 optimizer_hyperparams=self.learning.optimizer_hyperparams,
+                scheduler_type=self.learning.scheduler,
+                scheduler_hyperparams=self.learning.scheduler_hyperparams,
                 strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
             )
             for m_id, model in enumerate(self.models)]
@@ -687,6 +689,8 @@ class Experiment(ABC):
         self._cur_epoch_log_params['update_norm'] = [
             (new_params[i] - self._cur_epoch_log_params['prev_params'][i]).norm(float('inf'))
             for i in range(self.n_models)]
+        self._cur_epoch_log_params['gradient_norm'] = [
+            model.get_gradient_norm() for model in self.models]
         del self._cur_epoch_log_params['prev_params']
 
         # logging metrics
@@ -715,6 +719,11 @@ class Experiment(ABC):
 
         if self.logging.log_metrics['PoA']:
             self._cur_epoch_log_params['PoA'] = self._calculate_metrics_PoA()
+
+        if self.logging.log_metrics['epsilon'] and (epoch % self.logging.util_loss_frequency) == 0:
+            self._cur_epoch_log_params['epsilon'] = metrics.verify_epsilon_bne(
+                exp=self, grid_size=self.logging.util_loss_grid_size,
+                opponent_batch_size=min(self.logging.util_loss_batch_size, self.learning.batch_size))
 
         if self.logging.log_metrics['efficiency'] and (epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['efficiency'] = \
@@ -802,7 +811,7 @@ class Experiment(ABC):
             L_2[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
                     strategy=model,
-                    actions=m2a(i).get_action(),
+                    actions=m2a(i).get_action(m2o(i)),
                     valuations=m2o(i),
                     p=2,
                     componentwise=self.logging.log_componentwise_norm
@@ -812,7 +821,7 @@ class Experiment(ABC):
             L_inf[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
                     strategy=model,
-                    actions=m2a(i).get_action(),
+                    actions=m2a(i).get_action(m2o(i)),
                     valuations=m2o(i),
                     p=float('inf'),
                     componentwise=self.logging.log_componentwise_norm
