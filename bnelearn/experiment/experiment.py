@@ -636,6 +636,8 @@ class Experiment(ABC):
         self._cur_epoch_log_params['update_norm'] = [
             (new_params[i] - self._cur_epoch_log_params['prev_params'][i]).norm(float('inf'))
             for i in range(self.n_models)]
+        self._cur_epoch_log_params['gradient_norm'] = [
+            model.get_gradient_norm() for model in self.models]
         del self._cur_epoch_log_params['prev_params']
 
         # logging metrics

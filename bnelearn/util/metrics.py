@@ -16,6 +16,7 @@ MAPPING_METRICS_TAGS = {
     'efficiency':           'market/efficiency',
     'revenue':              'market/revenue',
     'update_norm':          'learner_info/update_norm',
+    'gradient_norm':        'learner_info/gradient_norm',
     'epsilon':              'eval/epsilon',
     'util_loss_ex_ante':    'eval/util_loss_ex_ante',
     'util_loss_ex_interim': 'eval/util_loss_ex_interim',

@@ -350,6 +350,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
             if not torch.all(self.forward(ensure_positive_output).gt(0)):
                 self.reset(ensure_positive_output)
 
+        self.n_parameters = sum([p.numel() for p in self.parameters()])
+
     @classmethod
     def load(cls, path: str, device='cpu'):
         """
@@ -435,6 +437,17 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
     def play(self, inputs):
         return self.forward(inputs)
+
+    def get_gradient_norm(self):
+        """Get the norm of the gradient"""
+        
+        grad_norm = 0
+
+        for p in self.parameters():
+            if p is not None:
+                grad_norm += p.grad.pow(2).sum()
+
+        return grad_norm.sqrt()
 
 class TruthfulStrategy(Strategy, nn.Module):
     """A strategy that plays truthful valuations."""
