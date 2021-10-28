@@ -26,7 +26,8 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         MineralRightsExperiment,
                                                         AffiliatedObservationsExperiment)
                 
-from bnelearn.experiment.double_auction_single_item_experiment import DoubleAuctionUniformSymmetricPriorSingleItemExperiment
+from bnelearn.experiment.double_auction_single_item_experiment import (DoubleAuctionUniformSymmetricPriorSingleItemExperiment,
+                                                                       DoubleAuctionGaussianSymmetricPriorSingleItemExperiment)
 
 
 # the lists that are defaults will never be mutated, so we're ok with using them here.
@@ -205,6 +206,15 @@ class ConfigurationManager:
         self.setting.n_buyers = 1
         self.setting.n_sellers = 1
         self.setting.k = 0.5
+    
+    def _init_double_auction_single_item_gaussian_symmetric(self):
+        self.learning.model_sharing = True
+        self.setting.valuation_mean = 15
+        self.setting.valuation_std = 5
+        self.setting.n_players = 2
+        self.setting.n_buyers = 1
+        self.setting.n_sellers = 1
+        self.setting.k = 0.5
 
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
@@ -235,10 +245,10 @@ class ConfigurationManager:
                 self.logging.save_tb_events_to_csv_aggregate = False
                 self.logging.save_tb_events_to_csv_detailed = False
                 self.logging.save_tb_events_to_binary_detailed = False
-            self.logging.save_models = False
-            self.logging.save_figure_to_disk_png = False
-            self.logging.save_figure_to_disk_svg = False
-            self.logging.save_figure_data_to_disk = False
+            self.logging.save_models = True
+            self.logging.save_figure_to_disk_png = True
+            self.logging.save_figure_to_disk_svg = True
+            self.logging.save_figure_data_to_disk = True
 
         # Hardware
         if self.hardware.cuda and not torch.cuda.is_available():
@@ -300,6 +310,9 @@ class ConfigurationManager:
     def _post_init_double_auction_single_item_uniform_symmetric(self):
         pass
 
+    def _post_init_double_auction_single_item_gaussian_symmetric(self):
+        pass
+
     experiment_types = {
         'single_item_uniform_symmetric':
             (UniformSymmetricPriorSingleItemExperiment, _init_single_item_uniform_symmetric,
@@ -329,7 +342,10 @@ class ConfigurationManager:
             (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
         'double_auction_single_item_uniform_symmetric':
             (DoubleAuctionUniformSymmetricPriorSingleItemExperiment, _init_double_auction_single_item_uniform_symmetric,
-            _post_init_double_auction_single_item_uniform_symmetric)}
+            _post_init_double_auction_single_item_uniform_symmetric),
+        'double_auction_single_item_gaussian_symmetric':
+            (DoubleAuctionGaussianSymmetricPriorSingleItemExperiment, _init_double_auction_single_item_gaussian_symmetric,
+            _post_init_double_auction_single_item_gaussian_symmetric)}
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type

@@ -34,29 +34,30 @@ if __name__ == '__main__':
     model_sharings = [True, False]
     n_buyers = range(1, 3)
     n_sellers = range(1, 3)
-    ks = [0.0, 0.5, 1.0]
+    #ks = [0.0, 0.5, 1.0]
     # ...
 
-    for (model_sharing, n_buyer, n_seller, k) in product(model_sharings, n_buyers, n_sellers, ks):
+    for (model_sharing, n_buyers, n_sellers) in product(model_sharings, n_buyers, n_sellers):
 
         experiment_config, experiment_class = \
             ConfigurationManager(
-                experiment_type='double_auction_single_item_uniform_symmetric',
+                experiment_type='double_auction_single_item_gaussian_symmetric',
                 n_runs=10,  # repeat exp. for 10 different random seeds
                 n_epochs=2000,
             ) \
             .set_setting(
-                payment_rule='k_price',
-                k=k,
+                payment_rule='mcafee_price',
+                #k=k,
                 # TODO
-                # n_buyer=n_buyer,
-                # n_seller=n_seller,
-                # risk=1.0  # 1.0 is default (risk-neutral)
+                n_buyers=n_buyers,
+                n_sellers=n_sellers,
+                n_players=n_buyers+n_sellers,
+                risk=1.0  # 1.0 is default (risk-neutral)
             ) \
             .set_learning(
                 batch_size=2**18,  # default value -> may needs to be decreased for larger markets
                 model_sharing=model_sharing,
-                # pretrain_iters=500,
+                pretrain_iters=1000,
                 learner_hyperparams={
                     'population_size': 64,
                     'sigma': 1.,
@@ -64,7 +65,7 @@ if __name__ == '__main__':
                 }
             ) \
             .set_hardware(
-                specific_gpu=7,
+                specific_gpu=3,
             ) \
             .set_logging(
                 eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)

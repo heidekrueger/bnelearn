@@ -144,13 +144,13 @@ if __name__ == '__main__':
 
 
     ### DOUBLE AUCTION EXPERIMENTS ###
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='double_auction_single_item_uniform_symmetric', n_runs=1,
-                                                               n_epochs=2000) \
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='double_auction_single_item_gaussian_symmetric', n_runs=1,
+                                                               n_epochs=3000) \
          .set_setting(risk=1.0)\
-         .set_setting(payment_rule='k_price')\
-         .set_setting(k=0.5)\
+         .set_setting(payment_rule='mcafee_price')\
+         .set_setting(k=0)\
          .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
-         .set_learning(pretrain_iters=5,
+         .set_learning(pretrain_iters=1000,
                        learner_hyperparams={'population_size': 64,
                                             'sigma': 1.,
                                             'scale_sigma_by_model_size': True}) \
