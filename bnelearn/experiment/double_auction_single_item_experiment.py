@@ -14,7 +14,7 @@ from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
-from bnelearn.sampler import (SymmetricIPVSampler, UniformSymmetricIPVSampler)
+from bnelearn.sampler import (SymmetricIPVSampler, UniformSymmetricIPVSampler, GaussianSymmetricIPVSampler)
 from bnelearn.strategy import ClosureStrategy
 from bnelearn.mechanism import kDoubleAuction, VickreyDoubleAuction
 from bnelearn.strategy import ClosureStrategy
@@ -156,6 +156,22 @@ class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExp
 
             print(('Utilities in BNE{} (sampled):' + '\t{:.5f}' * self.n_players + '.') \
                 .format(i + 1,*self.bne_utilities[i]))
+    
+    def _setup_sampler(self):
+        self.sampler = SymmetricIPVSampler(
+            self.common_prior, self.n_players, self.valuation_size,
+            self.config.learning.batch_size, self.config.hardware.device
+        )
+    
+    def _get_logdir_hierarchy(self):
+
+        if self.payment_rule == 'k_price':
+            name = ['double_auction','single_item', self.payment_rule, str(self.k), self.valuation_prior,
+                    'symmetric', self.risk_profile, str(self.n_buyers) + 'b' + str(self.n_sellers) + 's']
+        else:
+            name = ['double_auction','single_item', self.payment_rule, self.valuation_prior,
+                    'symmetric', self.risk_profile, str(self.n_buyers) + 'b' + str(self.n_sellers) + 's']
+        return os.path.join(*name)
 
 
 class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmetricPriorSingleItemExperiment):
@@ -186,12 +202,6 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
 
         super().__init__(config=config)
 
-    def _setup_sampler(self):
-        self.sampler = SymmetricIPVSampler(
-            self.common_prior, self.n_players, self.valuation_size,
-            self.config.learning.batch_size, self.config.hardware.device
-        )
-
     def _check_and_set_known_bne(self):
 
         if self.payment_rule == 'k_price' and self.risk == 1.0:
@@ -216,12 +226,40 @@ class DoubleAuctionUniformSymmetricPriorSingleItemExperiment(DoubleAuctionSymmet
         return lambda v: bne_bilateral_bargaining_uniform_symmetric(
             self.config, [g_05])[0](v, player_position)
 
-    def _get_logdir_hierarchy(self):
 
-        if self.payment_rule == 'k_price':
-            name = ['double_auction','single_item', self.payment_rule, str(self.k), self.valuation_prior,
-                    'symmetric', self.risk_profile, str(self.n_buyers) + 'b' + str(self.n_sellers) + 's']
-        else:
-            name = ['double_auction','single_item', self.payment_rule, self.valuation_prior,
-                    'symmetric', self.risk_profile, str(self.n_buyers) + 'b' + str(self.n_sellers) + 's']
-        return os.path.join(*name)
+class DoubleAuctionGaussianSymmetricPriorSingleItemExperiment(DoubleAuctionSymmetricPriorSingleItemExperiment):
+    """Double Auction Uniform Symmetric Prior Experiment for unit demand: Each
+    seller has one item and each buyer can buy max. one item.
+    """
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+        self.n_buyers = self.config.setting.n_buyers
+        self.n_sellers = self.config.setting.n_sellers
+        self.k = self.config.setting.k
+
+        self.config = config
+        assert self.config.setting.valuation_mean is not None, """Valuation mean and/or std not specified! """
+        assert self.config.setting.valuation_std is not None, """Valuation mean and/or std not specified! """
+        self.valuation_prior = 'normal'
+        self.valuation_mean = torch.tensor(
+            self.config.setting.valuation_mean, dtype=torch.float32,
+            device=self.config.hardware.device)
+        self.valuation_std = torch.tensor(
+            self.config.setting.valuation_std, dtype=torch.float32,
+            device=self.config.hardware.device)
+        self.config.setting.common_prior = \
+            torch.distributions.normal.Normal(loc=self.valuation_mean, scale=self.valuation_std)
+
+        self.plot_xmin = int(max(0, self.valuation_mean - 3 * self.valuation_std))
+        self.plot_xmax = int(self.valuation_mean + 3 * self.valuation_std)
+        self.plot_ymin = 0
+        self.plot_ymax = 20 if self.config.setting.payment_rule == 'first_price' else self.plot_xmax
+
+        super().__init__(config=config)
+
+    def _setup_sampler(self):
+        self.sampler = GaussianSymmetricIPVSampler(
+            self.config.setting.valuation_mean, self.config.setting.valuation_std,
+            self.n_players, self.valuation_size,
+            self.config.learning.batch_size, self.config.hardware.device
+        )
