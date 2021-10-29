@@ -26,7 +26,8 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
                                                         AffiliatedObservationsExperiment)
-from bnelearn.experiment.double_auction_single_item_experiment import DoubleAuctionUniformSymmetricPriorSingleItemExperiment
+from bnelearn.experiment.double_auction_single_item_experiment import (DoubleAuctionUniformSymmetricPriorSingleItemExperiment,
+                                                                       DoubleAuctionGaussianSymmetricPriorSingleItemExperiment)
 
 # TODO: server-specific constant hardcoded. We need a more dynamic way to do this.
 # See gitlab issue #218
@@ -262,6 +263,25 @@ class ConfigurationManager:
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
 
+    def _init_double_auction_single_item_gaussian_symmetric(self):
+        self.setting.payment_rule = 'k_price'
+        self.learning.model_sharing = True
+        self.setting.valuation_mean = 15
+        self.setting.valuation_std = 5
+        self.setting.n_players = 2
+        self.setting.n_buyers = 1
+        self.setting.n_sellers = 1
+        self.setting.k = 0.5
+        self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
+                                    'efficiency': True,
+                                    'individual_rationality': True,
+                                    'incentive_compatibility': True,
+                                    'budget_balance': True,
+                                    'strategy_efficiency_metrics': True,
+                                    'pareto_efficiency_current_strategy': True
+                                    }
+    
     def _init_double_auction_single_item_uniform_symmetric(self):
         self.setting.payment_rule = 'k_price'
         self.learning.model_sharing = True
@@ -382,6 +402,12 @@ class ConfigurationManager:
     def _post_init_splitaward(self):
         pass
 
+    def _post_init_double_auction_single_item_gaussian_symmetric(self):
+        n_players = self.setting.n_sellers + self.setting.n_buyers
+        if n_players != self.setting.n_players:
+            warnings.warn('Changed `n_players` to match `n_sellers` and `n_buyers`.')
+            self.setting.n_players = n_players
+
     def _post_init_double_auction_single_item_uniform_symmetric(self):
         n_players = self.setting.n_sellers + self.setting.n_buyers
         if n_players != self.setting.n_players:
@@ -415,6 +441,9 @@ class ConfigurationManager:
            (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
             (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
+        'double_auction_single_item_gaussian_symmetric':
+            (DoubleAuctionGaussianSymmetricPriorSingleItemExperiment, _init_double_auction_single_item_gaussian_symmetric,
+            _post_init_double_auction_single_item_gaussian_symmetric),
         'double_auction_single_item_uniform_symmetric':
             (DoubleAuctionUniformSymmetricPriorSingleItemExperiment, _init_double_auction_single_item_uniform_symmetric,
             _post_init_double_auction_single_item_uniform_symmetric)
