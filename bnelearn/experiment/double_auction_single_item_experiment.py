@@ -15,7 +15,7 @@ from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 
-from bnelearn.mechanism import kDoubleAuction, VickreyDoubleAuction, McAfeeDoubleAuction, SBBDoubleAuction
+from bnelearn.mechanism import kDoubleAuction, VCGDoubleAuction, McAfeeDoubleAuction, SBBDoubleAuction
 from bnelearn.strategy import ClosureStrategy
 
 
@@ -79,8 +79,8 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
         if self.payment_rule == 'k_price':
             self.mechanism = kDoubleAuction(cuda=self.hardware.cuda, k = self.k,
                                             n_buyers=self.n_buyers, n_sellers=self.n_sellers)
-        elif self.payment_rule == 'vickrey_price':
-            self.mechanism = VickreyDoubleAuction(cuda=self.hardware.cuda, k = self.k,
+        elif self.payment_rule == 'vcg_price':
+            self.mechanism = VCGDoubleAuction(cuda=self.hardware.cuda, k = self.k,
                                                   n_buyers=self.n_buyers, n_sellers=self.n_sellers)
         elif self.payment_rule == 'mcafee_price':
             self.mechanism = McAfeeDoubleAuction(cuda=self.hardware.cuda, k = self.k,
@@ -103,10 +103,14 @@ class DoubleAuctionSingleItemExperiment(Experiment, ABC):
     
     def _get_model_names(self):
         if self.model_sharing:
-            return ['buyers', 'sellers']
+            buyer_name = ['buyer'] if self.n_buyers == 1 else ['buyers']
+            seller_name = ['seller'] if self.n_sellers == 1 else ['sellers']
+            return (buyer_name + seller_name)
         else:
-            return super()._get_model_names() #TODO: change model names when model sharing is False
-    
+            buyer_name = ['buyer'] if self.n_buyers == 1 else ['buyer {}'.format(i+1) for i in range(self.n_buyers)]
+            seller_name = ['seller'] if self.n_sellers == 1 else ['seller {}'.format(i+1) for i in range(self.n_sellers)]
+            return (buyer_name + seller_name)  
+
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, cache_actions=False):
 
         seller = player_position > self.n_buyers - 1
@@ -139,7 +143,7 @@ class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExp
 
     def _check_and_set_known_bne(self):
         if self.payment_rule in \
-            ['k_price', 'vickrey_price', 'mcafee_price', 'sbb_price']:
+            ['k_price', 'vcg_price', 'mcafee_price', 'sbb_price']:
             return True
         else:
             # no bne found, defer to parent
@@ -188,7 +192,7 @@ class DoubleAuctionSymmetricPriorSingleItemExperiment(DoubleAuctionSingleItemExp
             else:
                 return _optimal_bid_buyer_kdouble(valuation, self.k, self.u_hi)
         
-        elif self.payment_rule == 'vickrey_price':
+        elif self.payment_rule == 'vcg_price':
             return _truthful_bid(valuation)
         
         elif self.payment_rule == 'mcafee_price':

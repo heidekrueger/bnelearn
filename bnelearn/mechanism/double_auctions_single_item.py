@@ -91,7 +91,7 @@ class kDoubleAuction(DoubleAuctionMechanism):
 
 
 
-class VickreyDoubleAuction(DoubleAuctionMechanism):
+class VCGDoubleAuction(DoubleAuctionMechanism):
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
@@ -224,11 +224,6 @@ class McAfeeDoubleAuction(DoubleAuctionMechanism):
         check_trade_price_init = (torch.ge(trade_price_init, trade_price_indx_sellers) & 
                              torch.le(trade_price_init, trade_price_indx_buyers)).type(torch.float)
         
-        #if (self.n_buyers == self.n_sellers == 1):
-        #    check_trade_price = torch.zeros(batch_size, 1, n_items, device=self.device)
-        #else:
-        #    check_trade_price = check_trade_price_init
-        
         check_trade_price = torch.where(((trade_indx == (self.n_buyers - 1)) | (trade_indx == (self.n_sellers - 1))), 
                                         torch.tensor(0., device=self.device), check_trade_price_init) 
         
@@ -260,13 +255,6 @@ class McAfeeDoubleAuction(DoubleAuctionMechanism):
         allocations = torch.cat((allocations_buyers, allocations_sellers), dim=player_dim)
         payments = torch.cat((payments_per_item_buyers, payments_per_item_sellers), 
                             dim=player_dim).sum(dim=item_dim)
-        
-        #print("bb", bids_buyers)
-        #print("bs", bids_sellers)
-        #print("ab", allocations_buyers)
-        #print("as", allocations_sellers)
-        #print("pb", payments_per_item_buyers)
-        #print("ps", payments_per_item_sellers)
       
         return (allocations, payments)
 
@@ -308,19 +296,12 @@ class SBBDoubleAuction(DoubleAuctionMechanism):
         trade_indx[trade_indx > 0] -= 1 
         trade_indx[min_trade_val == 1] = min_player_dim - 1
 
-        #trade_indx_inc_buyers = trade_indx.clone().detach()
-        #trade_indx_inc_buyers[trade_indx_inc_buyers < (self.n_buyers - 1)] += 1
-
         trade_indx_inc_sellers = trade_indx.clone().detach()
         trade_indx_inc_sellers[trade_indx_inc_sellers < (self.n_sellers - 1)] += 1
 
         trade_price_indx_buyers = torch.gather(bids_sorted_init_buyers, dim=player_dim, index=trade_indx)
-        #trade_price_indx_sellers = torch.gather(bids_sorted_init_sellers, dim=player_dim, index=trade_indx)
-
-        #trade_price_indx_inc_buyers = torch.gather(bids_sorted_init_buyers, dim=player_dim, index=trade_indx_inc_buyers)
+       
         trade_price_indx_inc_sellers = torch.gather(bids_sorted_init_sellers, dim=player_dim, index=trade_indx_inc_sellers)
-
-        #trade_price_init = torch.min(trade_price_indx_buyers, trade_price_indx_inc_sellers)
 
         check_trade_price_init = torch.le(trade_price_indx_inc_sellers, trade_price_indx_buyers).type(torch.float)
         
@@ -362,15 +343,5 @@ class SBBDoubleAuction(DoubleAuctionMechanism):
         allocations = torch.cat((allocations_buyers, allocations_sellers), dim=player_dim)
         payments = torch.cat((payments_per_item_buyers, payments_per_item_sellers), 
                             dim=player_dim).sum(dim=item_dim)
-        
-        print("bb", bids_buyers)
-        print("bs", bids_sellers)
-        print("trade", trade)
-        print("tbi", trade_buyers_init)
-        print("tsi", trade_sellers_init)
-        print("ab", allocations_buyers)
-        print("as", allocations_sellers)
-        print("pb", payments_per_item_buyers)
-        print("ps", payments_per_item_sellers)
       
         return (allocations, payments)
