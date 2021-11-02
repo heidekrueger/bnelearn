@@ -345,7 +345,6 @@ class CombinatorialItemSampler(MultiUnitValuationObservationSampler):
                 items). And the final bundle valuation is then the max over all
                 collections.
                 """
-            
                 collection_valuations = torch.empty([batch_size, self.n_collections, n_bundles],
                                                     device=device)
 
@@ -372,6 +371,15 @@ class CombinatorialItemSampler(MultiUnitValuationObservationSampler):
                             .max(dim=1)[0]
 
             elif self.valuation_type == 'submodular':
+                """Submodularity is a form of diminishing returns: the more
+                stuff on already has got, the less additional value one gets
+                from new stuff.
+                
+                Idea: U[0, 1] valuations for single item bundles. For all other
+                bundles, the lowest valued item is only adding a fraction
+                (hyper-param) of its value to the final bundle value. Problem:
+                Not representative for all submodular functions.
+                """
                 inf = 1e16
                 valuations = torch.empty([batch_size, n_items], device=device) \
                     .uniform_(self.base_distribution.low, self.base_distribution.high) \
@@ -381,15 +389,15 @@ class CombinatorialItemSampler(MultiUnitValuationObservationSampler):
                 valuations *= transformation[:n_items, :]
 
                 valuations[valuations == 0] = inf  # have to ignore 0s as not part of bundle
-                _, idx = valuations.min(dim=1)
+                _, idx = valuations.min(dim=1, keepdim=True)
                 valuations[valuations == inf] = 0
                 all_lowest_values = torch.arange(n_items, device=device) \
-                    .reshape(1, n_items, 1) == idx.unsqueeze(1)
-                single_items = transformation.sum(dim=0) != 1
+                    .reshape(1, n_items, 1) == idx
+                single_items = transformation.sum(dim=0) == 1
                 lowest_values_in_bundles = torch.logical_and(all_lowest_values, single_items)
                 valuations[lowest_values_in_bundles] *= self.submodular_factor
 
-                sample[..., player_position, :] = valuations.sum(dim=1)
+                sample[:, player_position, :] = valuations.sum(dim=1)
 
         return sample.view(*batch_sizes, self.n_players, n_bundles)
 

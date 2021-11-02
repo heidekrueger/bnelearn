@@ -152,8 +152,8 @@ class ConfigurationManager:
 
     def _init_single_item_asymmetric_uniform_overlapping(self):
         self.learning.model_sharing = False
-        self.setting.u_lo = [.5, .5]
-        self.setting.u_hi = [1.5, 2.5]
+        self.setting.u_lo = [0.0, 0.0]
+        self.setting.u_hi = [0.5, 1.0]
 
     def _init_single_item_asymmetric_uniform_disjunct(self):
         self.learning.model_sharing = False
@@ -504,7 +504,7 @@ class ConfigurationManager:
                      scheduler_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
-                     input_normalization: bool = 'None', redraw_every_iteration: bool = 'None'):
+                     redraw_every_iteration: bool = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.learning, arg):
@@ -590,7 +590,6 @@ class ConfigurationManager:
             pretrain_iters=500,
             batch_size=2 ** 18,
             hidden_activations=[nn.SELU(), nn.SELU()],
-            input_normalization=False,
             redraw_every_iteration=False)
         logging = LoggingConfig(
             enable_logging=True,

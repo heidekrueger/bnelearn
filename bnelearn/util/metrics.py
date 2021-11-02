@@ -437,7 +437,7 @@ def verify_epsilon_bne(exp: 'Experiment', grid_size: int,
         player_position = player_positions[0]
         agent: Bidder = env.agents[player_position]
 
-        grid = env.sampler.generate_action_grid(
+        grid = env.sampler.generate_reduced_grid(
             player_position=player_position, minimum_number_of_points=grid_size,
             dtype=dtype, device=device
             )
@@ -488,15 +488,18 @@ def ex_interim_utility_bound(env: AuctionEnvironment, player_position: int,
     device = env.mechanism.device
     agent: Bidder = env.agents[player_position]
     assert agent_valuation.shape[0] == 1, 'Can only check one valuation at a time'
+
     valuation_size = agent_valuation.shape[-1]
+    bid_size = agent.bid_size
 
     grid = env.sampler.generate_action_grid(
         player_position=player_position, minimum_number_of_points=grid_size,
         device=device
         )
+    grid_size = grid.shape[0]  # grid might have different sample size for higher dims
 
     # TODO: opponents' vals should be conditioned on own
-    bid_profile = torch.empty(opponent_batch_size, grid_size, len(env.agents), agent.bid_size,
+    bid_profile = torch.empty(opponent_batch_size, grid_size, len(env.agents), bid_size,
                               dtype=agent_valuation.dtype, device=device)
     for opponent in env.agents:
         if opponent.player_position != player_position:
@@ -504,17 +507,23 @@ def ex_interim_utility_bound(env: AuctionEnvironment, player_position: int,
                 opponent.get_action(
                     env._observations[:opponent_batch_size, opponent.player_position, :]
                     ) \
-                    .view(opponent_batch_size, 1, valuation_size) \
+                    .view(opponent_batch_size, 1, bid_size) \
                     .repeat(1, grid_size, 1)
              # repeat opponents' actions to compete against all grid-actions of agent
 
     bid_profile[:, :, player_position, :] = grid \
-        .view(1, grid_size, agent.bid_size) \
+        .view(1, grid_size, bid_size) \
         .repeat(opponent_batch_size, 1, 1)
     allocations, payments = env.mechanism.play(bid_profile)
 
     # welfare for each grid action, each averaged over all opponents' actions
-    welfare = (agent_valuation.item() * allocations[:, :, player_position, :]) \
+    welfare = agent \
+        .get_welfare(
+            allocations[:, :, player_position, :],
+            agent_valuation \
+                .view(1, 1, valuation_size) \
+                .repeat(opponent_batch_size, grid_size, 1)
+            ) \
         .mean(axis=0)
 
     # payments for each grid action averaged over opponents

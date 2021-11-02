@@ -5,7 +5,7 @@ Implementations of strategies for playing in Auctions and Matrix Games.
 import math
 from abc import ABC, abstractmethod
 from copy import copy
-from typing import Callable, Iterable
+from typing import Callable, Iterable, List
 import os
 import sys
 import warnings
@@ -297,17 +297,13 @@ class NeuralNetStrategy(Strategy, nn.Module):
         dropout (optional): float
             If not 0, applies AlphaDropout (https://pytorch.org/docs/stable/nn.html#torch.nn.AlphaDropout)
             to `dropout` share of nodes in each hidden layer during training.
-        input_normalization_bounds (optional): list
-            Specifies if the input to the NN should be scaled to the interval [0, 1].
-
     """
     def __init__(self, input_length: int,
                  hidden_nodes: Iterable[int],
                  hidden_activations: Iterable[nn.Module],
                  ensure_positive_output: torch.Tensor or None = None,
                  output_length: int = 1, # currently last argument for backwards-compatibility
-                 dropout: float = 0.0,
-                 input_normalization_bounds: list[float] = None
+                 dropout: float = 0.0
                  ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
@@ -320,7 +316,6 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.hidden_nodes = copy(hidden_nodes)
         self.activations = copy(hidden_activations) # do not write to list outside!
         self.dropout = dropout
-        self.input_normalization_bounds = input_normalization_bounds
 
         self.layers = nn.ModuleDict()
 
@@ -361,31 +356,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         """
         Initializes a saved NeuralNetStrategy from ´path´.
         """
-
         model_dict = torch.load(path, map_location=device)
-
-        # TODO: Dangerous hack for reloading a startegy from disk/pickle
-        params = {}
-        params["hidden_nodes"] = []
-        params["hidden_activations"] = []
-        length = len(list(model_dict.values()))
-        layer_idx = 0
-        value_key_zip = zip(
-            list(model_dict.values()),
-            list(model_dict._metadata.keys())[2:] # pylint: disable=protected-access
-        )
-        for tensor, layer_activation in value_key_zip:
-            if layer_idx == 0:
-                params["input_length"] = tensor.shape[1]
-            elif layer_idx == length - 1:
-                params["output_length"] = tensor.shape[0]
-            elif layer_idx % 2 == 1:
-                params["hidden_nodes"].append(tensor.shape[0])
-                params["hidden_activations"].append(
-                    # TODO Nils: change once models are saved correctly
-                    # eval('nn.' + layer_activation[7:-2]))
-                    nn.SELU())
-            layer_idx += 1
 
         # standard initialization
         strategy = cls(
@@ -455,35 +426,19 @@ class NeuralNetStrategy(Strategy, nn.Module):
                       self.activations[:-1], ensure_positive_output, self.output_length)
 
     def forward(self, x):
-        if self.input_normalization_bounds is not None:
-            arg = x.clone()
-            for i in range(self.input_length):
-                arg[..., i] = (x[..., i] - self.input_normalization_bounds[i, 0]) \
-                    / (self.input_normalization_bounds[i, 1] - self.input_normalization_bounds[i, 0])
-        else:
-            arg = x
-
         for layer in self.layers.values():
-            arg = layer(arg)
+            x = layer(x)
 
-        return arg  # .clip_(torch.zeros_like(x), x)
+        return x  # .clip_(torch.zeros_like(x), x)
 
     def pretrain_forward(self, x):
         """This is the forward without the final layer (which is the relu activation).
         This is used to avoid the dead-relu problem during pretraining."""
-        if self.input_normalization_bounds is not None:
-            arg = x.clone()
-            for i in range(self.input_length):
-                arg[..., i] = (x[..., i] - self.input_normalization_bounds[i, 0]) \
-                    / (self.input_normalization_bounds[i, 1] - self.input_normalization_bounds[i, 0])
-        else:
-            arg = x
-
         for k, layer in enumerate(self.layers.values()):
             if k + 1 < len(self.layers.values()):
-                arg = layer(arg)
+                x = layer(x)
 
-        return arg
+        return x
 
     def play(self, inputs):
         return self.forward(inputs)

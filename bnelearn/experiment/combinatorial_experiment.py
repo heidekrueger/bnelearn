@@ -466,6 +466,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
             batch_size=batch_size,
             valuation_size=self.valuation_size,
             observation_size=self.observation_size,
+            bid_size=3,
             risk=self.risk,
             enable_action_caching=enable_action_caching
         )

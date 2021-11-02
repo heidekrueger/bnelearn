@@ -348,10 +348,13 @@ class LLGSampler(LocalGlobalCompositePVSampler):
 class LLGFullSampler(LLGSampler):
     """A sampler for the LLG full setting."""
     def _generate_grid(self, player_position: int, minimum_number_of_points: int,
-                       reduced: bool, dtype=torch.float, device=None) -> torch.Tensor:
+                       reduced: bool, dtype=torch.float, device=None,
+                       support_bounds: torch.Tensor=None) -> torch.Tensor:
         device = device or self.default_device
 
-        bounds = self.support_bounds[player_position]
+        if support_bounds is None:
+            support_bounds = self.support_bounds
+        bounds = support_bounds[player_position]
 
         # dimensionality
         dims = 1 if reduced else 3
@@ -369,12 +372,12 @@ class LLGFullSampler(LLGSampler):
         return grid
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
-                                dtype=torch.float, device=None) -> torch.Tensor:
+                                dtype=torch.float, device=None, support_bounds=None) -> torch.Tensor:
         """Here, the grid needs to be three dimensional, as bidders can bid on
         all three items, even though they're only interested in one.
         """
         return self._generate_grid(player_position, minimum_number_of_points, False,
-                                   dtype, device)
+                                   dtype, device, support_bounds)
 
     def generate_reduced_grid(self, player_position: int, minimum_number_of_points: int,
                               dtype=torch.float, device=None) -> torch.Tensor:
@@ -383,6 +386,7 @@ class LLGFullSampler(LLGSampler):
         """
         return self._generate_grid(player_position, minimum_number_of_points, True,
                                    dtype, device)
+
 class LLLLGGSampler(LocalGlobalCompositePVSampler):
     """A sampler for the LLLLGG settings in Bosshard et al (2020).
 

@@ -220,15 +220,12 @@ class Experiment(ABC):
         self.models = [None] * self.n_models
 
         for i in range(len(self.models)):
-            input_normalization_bounds = self.sampler.support_bounds[i, :] \
-                if self.learning.input_normalization else None
             self.models[i] = NeuralNetStrategy(
                 self.observation_size,
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
                 ensure_positive_output=self.positive_output_point,
                 output_length=self.action_size,
-                input_normalization_bounds=input_normalization_bounds
             ).to(self.hardware.device)
 
         self.bidders = [
@@ -558,7 +555,10 @@ class Experiment(ABC):
                     if subplot_order[0] > 1 else ''
                 if subplot_order[0] > 1:
                     axs[ax_idx[plot_idx]].tick_params(axis='x', labelrotation=90)
-                axs[ax_idx[plot_idx]].set_xlabel(x_label + add)
+                axs[ax_idx[plot_idx]].set_xlabel(
+                    x_label + add if not isinstance(x_label, list) else x_label[plot_idx])
+                # axs[plot_idx].set_xlabel(
+                #     x_label + add if not isinstance(x_label, list) else x_label[plot_idx])
             if plot_idx == 0 or (isinstance(ax_idx[plot_idx], tuple) and ax_idx[plot_idx][1] == 0):
                 add = ' ' + str(ax_idx[plot_idx][0]) if subplot_order[0] > 1 else ''
                 axs[ax_idx[plot_idx]].set_ylabel(y_label + add)

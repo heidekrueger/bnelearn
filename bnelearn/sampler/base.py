@@ -96,7 +96,6 @@ class ValuationObservationSampler(ABC):
 
         if support_bounds is None:
             support_bounds = self.support_bounds
-
         bounds = support_bounds[player_position]
 
         # dimensionality
@@ -133,8 +132,8 @@ class ValuationObservationSampler(ABC):
         # Grid bids should always start at zero if not specified otherwise
         support_bounds[:, :, 0] = 0
 
-        return self.generate_valuation_grid(player_position, minimum_number_of_points,
-                                            dtype, device, support_bounds)
+        return self.generate_valuation_grid(player_position=player_position, minimum_number_of_points=minimum_number_of_points,
+                                            dtype=dtype, device=device, support_bounds=support_bounds)
 
 class PVSampler(ValuationObservationSampler, ABC):
     """A sampler for Private Value settings, i.e. when observations and
