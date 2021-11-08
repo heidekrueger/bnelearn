@@ -15,6 +15,10 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager  # py
 
 if __name__ == '__main__':
 
+    n_runs = 10
+    n_epochs = 2000
+    population_size = 64
+
     # Path is user-specific
     log_root_dir = os.path.join(
         os.path.expanduser('~'), 'bnelearn', 'experiments', 'pso-final')
@@ -30,7 +34,7 @@ if __name__ == '__main__':
             'learner_type': 'ESPGLearner',
             'pretrain_iters': 500,
             'learner_hyperparams': {
-                'population_size': 64,
+                'population_size': population_size,
                 'sigma': 1.,
                 'scale_sigma_by_model_size': True
             },
@@ -39,7 +43,7 @@ if __name__ == '__main__':
             'learner_type': 'PSOLearner',
             'pretrain_iters': 0,
             'learner_hyperparams': {
-                'swarm_size': 64,
+                'swarm_size': population_size,
                 'topology': 'von_neumann',
                 # 'upper_bounds': 1,
                 # 'lower_bounds': -1,
@@ -58,8 +62,8 @@ if __name__ == '__main__':
             experiment_config, experiment_class = \
                 ConfigurationManager(
                     experiment_type=experiment_type,
-                    n_runs=10,
-                    n_epochs=2000,
+                    n_runs=n_runs,
+                    n_epochs=n_epochs,
                 ) \
                 .set_setting(
                 ) \
@@ -71,23 +75,23 @@ if __name__ == '__main__':
                     learner_hyperparams=learner['learner_hyperparams'],
                 ) \
                 .set_hardware(
-                    specific_gpu=1,
+                    specific_gpu=7,
                 ) \
                 .set_logging(
                     eval_batch_size=2**17,
                     cache_eval_actions=True,
                     util_loss_batch_size=2**11,
                     util_loss_grid_size=2**10,
-                    util_loss_frequency=2000,
+                    util_loss_frequency=n_epochs,
                     best_response=True,
                     log_root_dir=log_root_dir_test,
                     save_tb_events_to_csv_detailed=True,
-                    stopping_criterion_frequency=1e8,
                     save_models=True,
-                    plot_frequency=2000,
+                    plot_frequency=n_epochs,
                 ) \
                 .get_config()
             experiment = experiment_class(experiment_config)
             experiment.run()
 
             torch.cuda.empty_cache()
+ 

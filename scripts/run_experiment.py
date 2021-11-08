@@ -24,91 +24,218 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager  # py
 
 if __name__ == '__main__':
 
-    # running_configuration, logging_configuration, experiment_configuration, experiment_class = \
-    #     fire.Fire()
+    # path is user-specific
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
 
-    # Path is user-specific
-    log_root_dir = os.path.join(
-        os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
-
-    experiment_types = [
-        # 'single_item_uniform_symmetric'
-        # 'single_item_asymmetric_beta'
-        # 'single_item_asymmetric_uniform_overlapping',
-        # 'single_item_asymmetric_uniform_disjunct',
-        # 'splitaward',
-        # 'llg_full',
-        'llllgg',
-    ]
-    payment_rules = [
-        # 'first_price',
-        # 'nearest_vcg',
-    ]
-    u_los = [[0.8, 1.2]]
-    u_his = [[1.2, 0.8]]
-
+    # Run exps that contain integration
+    experiment_types = ['splitaward']  # ['single_item_gaussian_symmetric', 'multiunit', 'splitaward']
     for experiment_type in experiment_types:
-        for u_lo, u_hi in zip(u_los, u_his):
-        # for payment_rule in payment_rules:
-            # Set up experiment
-                experiment_config, experiment_class = \
-                    ConfigurationManager(
-                        experiment_type=experiment_type,
-                        n_runs=1,
-                        n_epochs=10000,
-                    ) \
-                    .set_setting(
-                        # payment_rule=payment_rule,
-                        # core_solver='mpc',
-                        # u_lo=u_lo,
-                        # u_hi=u_hi,
-                    ) \
-                    .set_learning(
-                        model_sharing=False,
-                        batch_size=2**12,
-                        # optimizer_type='RMSprop',
-                        # learner_type='PSOLearner',
-                        # pretrain_iters=0,
-                        # learner_hyperparams={
-                        #     'swarm_size': 64,
-                        #     'topology': 'von_neumann',
-                        #     'upper_bounds': 1,
-                        #     'lower_bounds': -1,
-                        #     'reevaluation_frequency': 10,
-                        #     'inertia_weight': .5,
-                        #     # 'cognition': .8,
-                        #     # 'social': .8,
-                        #     # 'pretrain_deviation': .2,
-                        # }
-                        # hidden_nodes=[128, 128],
-                        # learner_hyperparams={
-                        #     'population_size': 64,
-                        #     'sigma': 1.,
-                        #     'scale_sigma_by_model_size': True,
-                        #     # 'regularize': {
-                        #     #     'inital_strength': inital_strength,
-                        #     #     'regularize_decay': regularize_decay,
-                        #     # },
-                        # }
-                    ) \
-                    .set_hardware(
-                        specific_gpu=4,
-                    ) \
-                    .set_logging(
-                        eval_batch_size=2**12,
-                        cache_eval_actions=True,
-                        util_loss_batch_size=2**2,
-                        util_loss_grid_size=2**2,
-                        util_loss_frequency=100,
-                        best_response=True,
-                        log_root_dir=log_root_dir,
-                        save_tb_events_to_csv_detailed=True,
-                        stopping_criterion_frequency=1e8,
-                        save_models=True,
-                        plot_frequency=200,
-                    ) \
-                    .get_config()
-                experiment = experiment_class(experiment_config)
-                experiment.run()
+        experiment_config, experiment_class = \
+            ConfigurationManager(
+                experiment_type=experiment_type,
+                n_runs=1,
+                n_epochs=200
+                ) \
+            .set_setting(
+                payment_rule='first_price' if experiment_type == 'multiunit' else 'None',
+                constant_marginal_values=True,
+                # correlation_groups=[[0, 1, 2]],
+                # correlation_types='independent',
+                # gamma=0.0
+                ) \
+            .set_logging(
+                eval_batch_size=2**9,
+                util_loss_batch_size=2**9,
+                util_loss_grid_size=2**10,
+                util_loss_frequency=50,
+                best_response=True,
+                cache_eval_actions=True,
+                log_root_dir=log_root_dir,
+                ) \
+            .set_learning(
+                # model_sharing=False
+                ) \
+            .set_hardware(
+                specific_gpu=4,
+                max_cpu_threads=1,
+            ) \
+            .get_config()
+        experiment = experiment_class(experiment_config)
+        experiment.run()
+        torch.cuda.empty_cache()
 
-                torch.cuda.empty_cache()
+    # Run from a file
+    # experiment_config = logging.get_experiment_config_from_configurations_log()
+    # experiment_class = ConfigurationManager \
+    #    .get_class_by_experiment_type(experiment_config.experiment_class)
+
+
+
+    ### SINGLE ITEM EXPERIMENTS ###
+
+    # experiment_config, experiment_class = \
+    #     ConfigurationManager(
+    #         experiment_type='single_item_gaussian_symmetric',
+    #         n_runs=1,
+    #         n_epochs=200
+    #         ) \
+    #     .set_setting(
+    #         # correlation_groups=[[0, 1, 2]],
+    #         # correlation_types='independent',
+    #         # gamma=0.0
+    #         ) \
+    #     .set_logging(
+    #         eval_batch_size=2**18,
+    #         util_loss_batch_size=2**10,
+    #         util_loss_grid_size=2**10,
+    #         util_loss_frequency=10,
+    #         cache_eval_actions=True,
+    #         log_root_dir=log_root_dir,
+    #         save_tb_events_to_csv_detailed=True
+    #         ) \
+    #     .set_learning(
+    #         model_sharing=False
+    #         ) \
+    #     .set_hardware(
+    #         specific_gpu=7
+    #     ) \
+    #     .get_config()
+
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
+    #                                                            n_runs=2, n_epochs=200)\
+    #     .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True).get_config()
+
+    #All three next experiments get AssertionError: scalar should be 0D
+    # experiment_config, experiment_class = ConfigurationManager(
+    #    experiment_type='single_item_asymmetric_uniform_overlapping',
+    #    n_runs=1, n_epochs=20000
+    # ) \
+    #     .set_logging(log_root_dir=log_root_dir) \
+    # #     .get_config()
+    # experiment_config, experiment_class = \
+    #     ConfigurationManager(
+    #         experiment_type='single_item_uniform_symmetric',
+    #         n_runs=1, n_epochs=500
+    #     ) \
+    #     .set_learning(
+    #         learner_type='PGLearner',
+    #         pretrain_iters=500
+    #     ) \
+    #     .set_logging(
+    #         eval_batch_size=2**18,
+    #         util_loss_batch_size=2**10,
+    #         util_loss_grid_size=2**10,
+    #         util_loss_frequency=50,
+    #         plot_frequency=10,
+    #         log_root_dir=log_root_dir) \
+    #     .get_config()
+
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llg', n_runs=1, n_epochs=3) \
+    #     .set_setting(gamma=0.5) \
+    #     .set_logging(log_root_dir=log_root_dir,  util_loss_batch_size=2 ** 7, util_loss_grid_size=2 ** 6,
+    #                  util_loss_frequency=1).get_config()
+
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllgg', n_runs=1, n_epochs=200) \
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .get_config()
+
+    # RuntimeError: Sizes of tensors must match
+
+    experiment_config, experiment_class = \
+        ConfigurationManager(
+            experiment_type='llg_full',
+            n_runs=1, n_epochs=500,
+            seeds=[69]
+        ) \
+        .set_setting(
+            payment_rule='mrcs_favored',
+        ) \
+        .set_learning(
+            batch_size=2**15,
+            model_sharing=True,
+            pretrain_iters=500,
+        ) \
+        .set_logging(
+            eval_batch_size=2**10,
+            util_loss_batch_size=2**8,
+            util_loss_grid_size=2**10,
+            util_loss_frequency=50,
+            best_response=True,
+            plot_frequency=25,
+            cache_eval_actions=True,
+            log_root_dir=log_root_dir,
+        ) \
+        .set_hardware(
+            specific_gpu=7
+        ) \
+        .get_config()
+
+    # experiment_config, experiment_class = ConfigurationManager(
+    #       experiment_type='splitaward',n_runs=1, n_epochs=200
+    # ) \
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(
+    #    experiment_type='multiunit', n_runs=1, n_epochs=2
+    # ) \
+    #     .set_logging(log_root_dir=log_root_dir,
+    #                  save_tb_events_to_csv_detailed=True) \
+    #     .set_setting().set_learning().set_hardware() \
+    #     .get_config()
+
+
+    ### COMBINATRORIAL EXPERIMENTS ###
+    # experiment_config, experiment_class = ConfigurationManager(
+    #     experiment_type='llg', n_runs=1, n_epochs=1000
+    # ) \
+    #     .set_setting(gamma=0.5) \
+    #     .set_logging(
+    #        log_root_dir=log_root_dir,
+    #        util_loss_batch_size=2 ** 10,
+    #        util_loss_grid_size=2 ** 8,
+    #        util_loss_frequency=20) \
+    #     .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(
+    #     experiment_type='llg_full', n_runs=1, n_epochs=10000) \
+    #     .set_setting(payment_rule='mrcs_favored') \
+    #     .set_learning(batch_size=2**18) \
+    #     .set_logging(
+    #         eval_batch_size=2**18,
+    #         log_root_dir=log_root_dir,
+    #         util_loss_batch_size=2**10,
+    #         util_loss_grid_size=2**10,
+    #         util_loss_frequency=1000,
+    #         plot_frequency=10) \
+    #     .set_hardware(specific_gpu=3) \
+    #     .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(
+    #    experiment_type='llllgg', n_runs=1, n_epochs=200
+    # ) \
+    #     .set_learning(batch_size=2**7) \
+    #     .set_setting(core_solver='mpc', payment_rule='nearest_vcg') \
+    #     .set_logging(log_root_dir=log_root_dir, log_metrics={'util_loss': True},
+    #                  util_loss_frequency=5, plot_frequency=5) \
+    #     .get_config()
+
+
+    ### INTERDEPENDENT EXPERIMENTS ###
+    # experiment_config, experiment_class = ConfigurationManager(
+    #     experiment_type='mineral_rights', n_runs=1, n_epochs=1000
+    # ) \
+    #     .set_learning(pretrain_iters=3) \
+    #     .set_logging(
+    #         log_root_dir=log_root_dir,
+    #         util_loss_frequency=10) \
+    #     .set_hardware(specific_gpu=7) \
+    #     .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(
+    #     experiment_type='affiliated_observations', n_runs=1, n_epochs=100
+    # ) \
+    #     .set_learning(pretrain_iters=1) \
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .set_hardware(specific_gpu=1) \
+    #     .get_config()
+
+    # experiment = experiment_class(experiment_config)
+    # experiment.run()
+    # torch.cuda.empty_cache()

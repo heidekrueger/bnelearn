@@ -2,33 +2,17 @@
 import os, sys
 import torch
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
+
 
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
 from bnelearn.strategy import NeuralNetStrategy
-from bnelearn.experiment.configuration_manager import ConfigurationManager
-from bnelearn.util import logging
+from bnelearn.util.metrics import ALIASES_LATEX as ALIASES
 
 
-#pylint: disable=anomalous-backslash-in-string
-ALIASES = {
-    'eval/L_2':                  '$L_2$',
-    'eval/L_inf':                '$L_\infty$',
-    'eval/epsilon_absolute':     '$\epsilon_\text{abs}$',
-    'eval/epsilon_relative':     '$\mathcal{L}$',
-    'eval/overhead_hours':       '$T$',
-    'eval/update_norm':          '$|\Delta \theta|$',
-    'eval/utilities':            '$u$',
-    'eval/utility_vs_bne':       '$\hat u(\beta_i, \beta^*_{-i})$',
-    'eval/util_loss_ex_ante':    '$\hat \ell$',
-    'eval/util_loss_ex_interim': '$\hat \epsilon$',
-    'eval/estimated_relative_ex_ante_util_loss': '$\hat{\mathcal{L}}$',
-    'eval/efficiency':           '$\mathcal{E}$',
-    'eval/revenue':              '$\mathcal{R}$'
-}
+
 
 def multiple_exps_logs_to_df(
         path: str or dict,
