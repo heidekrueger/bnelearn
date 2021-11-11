@@ -11,14 +11,15 @@ from torch.cuda import _device_t as Device
 class ValuationObservationSampler(ABC):
     """Provides functionality to draw valuation and observation profiles."""
 
-    def __init__(self, n_players, valuation_size, observation_size,
-                 support_bounds,
-                 default_batch_size = 1, default_device = None):
+    def __init__(self, n_players, valuation_size, observation_size, support_bounds,
+                 default_batch_size = 1, default_device = None,
+                 sampling_method = None):
         self.n_players: int = n_players # The number of players in the valuation profile
         self.valuation_size: int = valuation_size # The dimensionality / length of a single valuation vector
         self.observation_size: int = observation_size # The dimensionality / length of a single observation vector
         self.default_batch_size: int = default_batch_size # a default batch size
         self.default_device: Device = (default_device or 'cuda') if torch.cuda.is_available() else 'cpu'
+        self.sampling_method = sampling_method
 
         assert support_bounds.size() == torch.Size([n_players, valuation_size, 2]), \
             "invalid support bounds."
@@ -78,7 +79,6 @@ class ValuationObservationSampler(ABC):
                 observations[:,conditioned_observation,:] will be equal to
                 `conditioned_observation` repeated `batch_size` times
         """
-        pass
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
                                 dtype=torch.float, device = None,
@@ -142,9 +142,10 @@ class PVSampler(ValuationObservationSampler, ABC):
     """
 
     def __init__(self, n_players: int, valuation_size: int, support_bounds,
-                 default_batch_size: int = 1, default_device: Device = None):
+                 default_batch_size: int = 1, default_device: Device = None,
+                 sampling_method = None):
         super().__init__(n_players, valuation_size, valuation_size, support_bounds,
-                         default_batch_size, default_device)
+                         default_batch_size, default_device, sampling_method)
 
     @abstractmethod
     def _sample(self, batch_sizes: Union[int, List[int]], device: Device) -> torch.Tensor:
@@ -170,7 +171,7 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
 
     def __init__(self, n_players: int, valuation_size: int, observation_size: int,
                  subgroup_samplers: List[ValuationObservationSampler],
-                 default_batch_size = 1, default_device = None):
+                 default_batch_size = 1, default_device = None, sampling_method = None):
 
         self.n_groups = len(subgroup_samplers)
         self.group_sizes = [sampler.n_players for sampler in subgroup_samplers]
@@ -188,9 +189,15 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
 
         ## concatenate bounds in player dimension
         support_bounds = torch.vstack([s.support_bounds for s in self.group_samplers])
+        
+        ## set sampling method description if not given
+        ## NOTE: The actual behavior is defined by the subgroup_samplers,
+        ## the value here is purely for descriptive purposes and no validity check is performed
+        if sampling_method is None:
+            sampling_method = "unknown/composite"
 
         super().__init__(n_players, valuation_size, observation_size, support_bounds,
-                         default_batch_size, default_device)
+                         default_batch_size, default_device, sampling_method)
 
     def draw_profiles(self, batch_sizes: int or List[int] = None, device=None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws and returns a batch of valuation and observation profiles.
