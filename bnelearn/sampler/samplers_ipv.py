@@ -8,6 +8,14 @@ from torch.cuda import _device_t as Device
 from torch.distributions import Distribution
 from .base import PVSampler
 
+from bnelearn.util.distribution_util import draw_sobol
+
+ERR_MSG_INVALID_SAMPLING_METHOD_PSEUDO_SOBOL = \
+    "Invalid sampling method! supported: 'pseudorandom', 'deterministic_Sobol"
+ERR_MSG_SOBOL_ONLY_FOR_DEFAULTS = \
+    "Efficient Sobol sampling is only supported for the Sampler's " + \
+    "default device and batch size."
+
 class FixedManualIPVSampler(PVSampler):
     """For testing purposes:
     A sampler that returns a fixed tensor as valuations/observations.
@@ -25,10 +33,11 @@ class FixedManualIPVSampler(PVSampler):
         support_hi = valuation_tensor.max(dim=0).values
 
         support_bounds = torch.stack([support_low, support_hi], dim=-1)
+        sampling_method = "manual / fixed"
 
 
-        super.__init__(n_players, valuation_size, support_bounds,
-                       batch_size, device)
+        super().__init__(n_players, valuation_size, support_bounds,
+                       batch_size, device, sampling_method)
 
         self.draw_conditional_profiles = SymmetricIPVSampler.draw_conditional_profiles
 
@@ -44,14 +53,14 @@ class SymmetricIPVSampler(PVSampler):
     This base class works with all torch.distributions but requires sampling on
     cpu then moving to the device. When using cuda, use the faster,
     distribution-specific subclasses instead where provided.
-
     """
 
     UPPER_BOUND_QUARTILE_IF_UNBOUNDED = .999
 
     def __init__(self, distribution: Distribution,
                  n_players: int, valuation_size: int = 1,
-                 default_batch_size: int = 1, default_device: Device = None
+                 default_batch_size: int = 1, default_device: Device = None,
+                 sampling_method = "pseudorandom"
                 ):
         """
         Args:
@@ -77,15 +86,37 @@ class SymmetricIPVSampler(PVSampler):
         # repeat support bounds across all players and valuation dimensions
         support_bounds = torch.stack([lower_bound, upper_bound]).repeat([n_players, valuation_size, 1])
 
+        if sampling_method == "pseudorandom":
+            self._sample = self._sample_pseudorandom
+        elif sampling_method == "deterministic_Sobol":
+            """Deterministic Sobol --> Sample once in the beginning, then
+            keep returning the same sample when called again."""
+            self._sample = self._sample_sobol_deterministic
+            self._deterministic_sample = draw_sobol(self.distribution, 
+                                                    self.default_batch_size,
+                                                    self.default_device)
+        else:
+            raise ValueError(ERR_MSG_INVALID_SAMPLING_METHOD_PSEUDO_SOBOL)
+
+
         super().__init__(n_players, valuation_size, support_bounds, default_batch_size, #pylint: disable=arguments-out-of-order
                          default_device)
 
-    def _sample(self, batch_sizes: int or List[int], device: Device) -> torch.Tensor:
+    def _sample_pseudorandom(self, batch_sizes: int or List[int], device: Device) -> torch.Tensor:
         """Draws a batch of observation/valuation profiles (equivalent in PV)"""
         batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
         device = device or self.default_device
 
         return self.distribution.sample(batch_sizes).to(device)
+
+    def _sample_sobol_deterministic(self, batch_sizes: int or List[int], device: Device) -> torch.Tensor:
+        """Draws a batch of observation/valuation profiles (equivalent in PV) via
+        low-discrepancy Sobol sequence sampling."""
+        if batch_sizes != self.default_batch_size or \
+            device != self.default_device:
+            raise NotImplementedError(ERR_MSG_SOBOL_ONLY_FOR_DEFAULTS)
+        return self._deterministic_sample
+
 
     def draw_conditional_profiles(self,
                                   conditioned_player: int,
@@ -114,13 +145,14 @@ class UniformSymmetricIPVSampler(SymmetricIPVSampler):
     """An IPV sampler with symmetric Uniform priors."""
     def __init__(self, lo, hi,
                  n_players, valuation_size,
-                 default_batch_size, default_device: Device = None):
+                 default_batch_size, default_device: Device = None,
+                 sampling_method = "pseudorandom"):
         distribution = torch.distributions.uniform.Uniform(low=lo, high=hi)
         super().__init__(distribution,
                          n_players, valuation_size,
-                         default_batch_size, default_device)
+                         default_batch_size, default_device, sampling_method)
 
-    def _sample(self, batch_sizes, device) -> torch.Tensor:
+    def _sample_pseudorandom(self, batch_sizes, device) -> torch.Tensor:
         batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
 
         # create an empty tensor on the output device, then sample in-place
@@ -133,13 +165,14 @@ class GaussianSymmetricIPVSampler(SymmetricIPVSampler):
     """An IPV sampler with symmetric Gaussian priors."""
     def __init__(self, mean, stddev,
                  n_players, valuation_size,
-                 default_batch_size, default_device: Device = None):
+                 default_batch_size, default_device: Device = None,
+                 sampling_method = "pseudorandom"):
         distribution = torch.distributions.normal.Normal(loc=mean, scale=stddev)
         super().__init__(distribution,
                          n_players, valuation_size,
-                         default_batch_size, default_device)
+                         default_batch_size, default_device, sampling_method)
 
-    def _sample(self, batch_sizes, device) -> torch.Tensor:
+    def _sample_pseudorandom(self, batch_sizes, device) -> torch.Tensor:
         batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
         # create empty tensor, sample in-place, clip
         return torch.empty([*batch_sizes, self.n_players, self.valuation_size],
