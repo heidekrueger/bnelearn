@@ -1143,26 +1143,31 @@ class LLLLGGAuction(Mechanism):
 
         Args:
             bids: torch.Tensor
-                of bids with dimensions (batch_size, n_players, 2) [0,Inf]
+                of bids with dimensions (*batch_sizes, n_players, 2) [0,Inf]
             bundles: torch.Tensor
-                of bundles with dimensions (batch_size, 2, n_items), {0,1}
+                of bundles with dimensions (*batch_sizes, 2, n_items), {0,1}
 
         Returns:
             allocation: torch.Tensor, dim (batch_size, n_bidders, 2)
             payments: torch.Tensor, dim (batch_size, n_bidders)
         """
 
-        allocation, welfare = self._solve_allocation_problem(bids)
+        *batch_sizes, _, _ = bids.shape
+        flat_bids = bids.view(reduce(mul, batch_sizes), self.n_bidders, 2)
+
+        allocation, welfare = self._solve_allocation_problem(flat_bids)
         if self.rule == 'vcg':
-            payments = self._calculate_payments_vcg(bids, allocation, welfare)
+            payments = self._calculate_payments_vcg(flat_bids, allocation, welfare)
         elif self.rule == 'first_price':
-            payments = self._calculate_payments_first_price(bids, allocation)
+            payments = self._calculate_payments_first_price(flat_bids, allocation)
         elif self.rule == 'nearest_vcg':
-            payments = self._calculate_payments_nearest_vcg_core(bids, allocation, welfare)
+            payments = self._calculate_payments_nearest_vcg_core(flat_bids, allocation, welfare)
         else:
             raise ValueError('Invalid Pricing rule!')
-        # transform allocation
+
+        # transform output
         allocation = allocation.view(bids.shape)
+        payments = payments.view(*batch_sizes, self.n_bidders)
 
         return allocation.to(self.device), payments.to(self.device)
 
