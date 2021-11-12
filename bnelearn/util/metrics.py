@@ -3,6 +3,7 @@
 from typing import Tuple
 from tqdm import tqdm
 import torch
+import matplotlib.pyplot as plt
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
@@ -388,7 +389,7 @@ def ex_interim_utility(
     # co has dimension (*agent_batches , opponent_batch, n_players, observation_size)
     # each agent_observations is repeated opponent_batch_size times
     cv, co = env.draw_conditionals(
-        player_position, agent_observations, opponent_batch_size
+        player_position, agent_observations, opponent_batch_size, device
         )
 
     action_profile_actual = torch.zeros(
@@ -428,8 +429,9 @@ def verify_epsilon_bne(exp: 'Experiment', grid_size: int,
     the assumptions of Bosshard et al. 2017.
     """
     env = exp.env
-    device = env.mechanism.device
+    device = env._observations.device
     dtype = env._observations.dtype
+    valuation_size = env._observations.shape[-1]
     highest_epsilon = 0.0
 
     # maximum over all bidders
@@ -437,52 +439,77 @@ def verify_epsilon_bne(exp: 'Experiment', grid_size: int,
         player_position = player_positions[0]
         agent: Bidder = env.agents[player_position]
 
-        grid = env.sampler.generate_reduced_grid(
-            player_position=player_position, minimum_number_of_points=grid_size,
-            dtype=dtype, device=device
-            )
+        # cell partiton of valutations where the strategies shall be evaluated
+        grid_cell_lower_corners, grid_cell_upper_corners = env.sampler \
+            .generate_grid_cell_bounds(
+                player_position=player_position, minimum_number_of_points=grid_size,
+                dtype=dtype, device=device
+                )
+        n_cells = grid_cell_lower_corners.shape[0]
+
+        epsilons = torch.zeros(n_cells, dtype=dtype, device=device)
 
         # maximum over observation/valuation grid
-        for cell_index in tqdm(range(grid_size - 1)):
-            point_low = grid[[cell_index], :]
-            point_high = grid[[cell_index + 1], :]
-
-            # TODO: more then two bounds for higher dims
-            # maximum over all corners of this cell of the grid
+        # (this should also include the boundaries, s.t. all parts of the step-
+        # wise function are covered)
+        i = 0
+        for point_low, point_high in tqdm(zip(grid_cell_lower_corners, grid_cell_upper_corners), total=n_cells):
+            point_low = point_low.view(-1, valuation_size)
+            point_high = point_high.view(-1, valuation_size)
 
             util_actual = ex_interim_utility(
-                env=env, player_position=player_position, agent_observations=point_high,
+                env=env, player_position=player_position,
+                agent_observations=point_high,
                 agent_actions=agent.get_action(point_high),
                 opponent_batch_size=opponent_batch_size, device=device
                 )
-            util_max = ex_interim_utility_bound(
+            util_upper_bound = ex_interim_utility_bound(
                 env=env, player_position=player_position,
                 agent_valuation=point_high, grid_size=grid_size,
                 opponent_batch_size=opponent_batch_size
                 )
-            util_loss = util_max - util_actual
+            util_loss_bound = util_upper_bound - util_actual
 
-            utility_low = ex_interim_utility(
+            utility_cell_low = ex_interim_utility(
                 env, player_position, point_low,
                 agent.get_action(point_low),
                 opponent_batch_size, device
                 ).item()
 
-            utility_high = ex_interim_utility(
+            utility_cell_high = ex_interim_utility(
                 env, player_position, point_high,
                 agent.get_action(point_high),
                 opponent_batch_size, device
                 ).item()
 
-            highest_epsilon = max(highest_epsilon, util_loss + utility_high - utility_low)
+            epsilons[i] = util_loss_bound + utility_cell_high - utility_cell_low
+            i += 1
+
+        highest_epsilon = epsilons.max()
+
+        # plotting
+        n_items = grid_cell_lower_corners.shape[1]
+
+        # keep track of upper bound for plotting
+        if not hasattr(exp, '_max_epsilon'):
+            exp._max_epsilon = float(highest_epsilon)
+
+        if n_items == 1:
+            plot_data = (grid_cell_lower_corners, epsilons)
+            exp._plot(plot_data, exp.writer, x_label="valuation", y_label="utility loss bound",
+                      ylim=[0, exp._max_epsilon], figure_name='utility loss bound', plot_points=100)
+        if n_items == 2:
+            plot_data = (grid_cell_lower_corners[:, :].view(-1, 1, 2), epsilons.view(-1, 1, 1))
+            exp._plot_3d(plot_data=plot_data, writer=exp.writer, zlim=[0, exp._max_epsilon],
+                         figure_name='utility loss bound', labels=["utility loss bound"])
 
     return highest_epsilon
 
 def ex_interim_utility_bound(env: AuctionEnvironment, player_position: int,
                              agent_valuation: torch.Tensor, grid_size: int,
                              opponent_batch_size: int) -> torch.Tensor:
-    """Calulate an upper bound for the utility and a specific action.
-    According to Bosshard et al. (2020), under some assuumptions (see Prop. 1),
+    """Calulate an upper bound for the utility and specific actions.
+    According to Bosshard et al. (2020), under some assumptions (see Prop. 1),
     the expected utility can be bounded based on estimates.
     """
     device = env.mechanism.device
@@ -498,14 +525,15 @@ def ex_interim_utility_bound(env: AuctionEnvironment, player_position: int,
         )
     grid_size = grid.shape[0]  # grid might have different sample size for higher dims
 
-    # TODO: opponents' vals should be conditioned on own
     bid_profile = torch.empty(opponent_batch_size, grid_size, len(env.agents), bid_size,
                               dtype=agent_valuation.dtype, device=device)
     for opponent in env.agents:
         if opponent.player_position != player_position:
             bid_profile[:, :, opponent.player_position, :] = \
                 opponent.get_action(
-                    env._observations[:opponent_batch_size, opponent.player_position, :]
+                    env.sampler.draw_conditional_profiles(
+                        player_position, agent_valuation, opponent_batch_size, device
+                        )[0][:, :, opponent.player_position, :]
                     ) \
                     .view(opponent_batch_size, 1, bid_size) \
                     .repeat(1, grid_size, 1)
@@ -524,9 +552,12 @@ def ex_interim_utility_bound(env: AuctionEnvironment, player_position: int,
                 .view(1, 1, valuation_size) \
                 .repeat(opponent_batch_size, grid_size, 1)
             ) \
+        .view(opponent_batch_size, grid_size) \
         .mean(axis=0)
 
     # payments for each grid action averaged over opponents
-    payments = payments[:, :, [player_position]].mean(axis=0)
+    payments = payments[:, :, [player_position]] \
+        .view(opponent_batch_size, grid_size) \
+        .mean(axis=0)
 
     return torch.max(welfare[1:] - payments[:-1])

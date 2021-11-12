@@ -253,7 +253,7 @@ def multiunit_bne_factory(setting, payment_rule) -> Callable or None:
         return None
 
     if payment_rule in ('first_price', 'discriminatory'):
-        if setting.n_units == 2 and setting.n_players == 2:
+        if setting.n_items == 2 and setting.n_players == 2:
             if not setting.constant_marginal_values:
                 print('BNE is only approximated roughly!')
                 return _bne_multiunit_discriminatory_2x2
@@ -261,9 +261,9 @@ def multiunit_bne_factory(setting, payment_rule) -> Callable or None:
                 return _bne_multiunit_discriminatory_2x2_cmv(setting.common_prior)
 
     if payment_rule == 'uniform':
-        if setting.n_units == 2 and setting.n_players == 2:
+        if setting.n_items == 2 and setting.n_players == 2:
             return _bne_multiunit_uniform_2x2()
-        if (setting.n_units == 3 and setting.n_players == 2
+        if (setting.n_items == 3 and setting.n_players == 2
                 and setting.item_interest_limit == 2):
             return _bne_multiunit_uniform_3x2_limit2
 

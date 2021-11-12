@@ -170,7 +170,7 @@ if __name__ == '__main__':
     #                             .set_setting(
     #                                 payment_rule=payment_rule,
     #                                 n_players=n_players,
-    #                                 n_units=n_units,
+    #                                 n_items=n_items,
     #                                 risk=risk,
     #                                 gamma=gamma,
     #                                 correlation_types='additive'

@@ -246,6 +246,26 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         # transform to triangular grid (valuations are marginally descending)
         return rectangular_grid.sort(dim=1, descending=True)[0].unique(dim=0)
 
+    def generate_grid_cell_bounds(self, player_position: int, minimum_number_of_points: int,
+                                  dtype=torch.float, device = None,
+                                  support_bounds: torch.Tensor = None) -> torch.Tensor:
+        """For the epsilon estimate, we need to evaluate the strategies at the
+        boundaries of the grid cells.
+        """
+
+        # 1. get rectangular grid cells
+        rectangular_grid_cell_lower_corners, rectangular_grid_cell_upper_corners = \
+            super().generate_grid_cell_bounds(
+                player_position, minimum_number_of_points, torch.float, None, None)
+
+        # cut off
+        grid_cell_lower_corners = rectangular_grid_cell_lower_corners \
+            .sort(dim=1, descending=True)[0].unique(dim=0)
+        grid_cell_upper_corners = rectangular_grid_cell_upper_corners \
+            .sort(dim=1, descending=True)[0].unique(dim=0)
+
+        return grid_cell_lower_corners.flatten(0, -2), grid_cell_upper_corners.flatten(0, -2)
+
 
 class SplitAwardtValuationObservationSampler(UniformSymmetricIPVSampler):
     """Sampler for Split-Award, private value settings. Here bidders have two

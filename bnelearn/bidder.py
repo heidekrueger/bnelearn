@@ -208,7 +208,7 @@ class Bidder(Player):
         if hasattr(self.strategy, 'input_length') and self.strategy.input_length != self.observation_size:
             warnings.warn("Strategy expects shorter input_length than n_items. Truncating observations...")
             dim = self.strategy.input_length
-            inputs = inputs[:,:dim]
+            inputs = inputs[..., :dim]
 
         actions = self.strategy.play(inputs)
 

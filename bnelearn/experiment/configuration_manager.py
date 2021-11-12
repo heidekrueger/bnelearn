@@ -252,7 +252,7 @@ class ConfigurationManager:
 
     def _init_multiunit(self):
         self.setting.payment_rule = 'vcg'
-        self.setting.n_units = 2
+        self.setting.n_items = 2
         self.learning.model_sharing = True
         self.setting.u_lo = [0]
         self.setting.u_hi = [1]
@@ -268,7 +268,7 @@ class ConfigurationManager:
                                     'revenue': True}
 
     def _init_splitaward(self):
-        self.setting.n_units = 2
+        self.setting.n_items = 2
         self.learning.model_sharing = True
         self.setting.u_lo = [1]
         self.setting.u_hi = [1.4]
@@ -451,7 +451,7 @@ class ConfigurationManager:
                     valuation_mean: float = 'None', valuation_std: float = 'None', u_lo: list = 'None',
                     u_hi: list = 'None', gamma: float = 'None',
                     correlation_types: str = 'None', correlation_groups: List[List[int]] = 'None',
-                    correlation_coefficients: List[float] = 'None', n_units: int = 'None',
+                    correlation_coefficients: List[float] = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
                     core_solver: str = 'None', regret: float = 'None', exp_type: str = 'None',
@@ -479,7 +479,6 @@ class ConfigurationManager:
                 should be part of exactly one sublist. (Relevant settings: LLG)
             correlation_coefficients: List of correlation coefficients for each
                 group specified with ``correlation_groups``.
-            n_units: TODO: @Nils?
             pretrain_transform: A function used to explicitly give the desired behavior in pretraining for
                 given neural net inputs. Defaults to identity, i.e. truthful bidding.
             constant_marginal_values: TODO @Nils

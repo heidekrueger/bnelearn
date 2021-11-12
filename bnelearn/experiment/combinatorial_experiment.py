@@ -279,7 +279,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
 
     Essentially, this is a general CA with 3 bidders and 2 items.
 
-    Each bidders bids on all bundles. Local bidder 1 has only a value for the
+    Each bidder bids on all bundles. Local bidder 1 has only a value for the
     first item, the second only for the second and global only on both. This
     experiment is therfore more general than the `LLGExperiment` and includes
     the specifc payment rule from Beck & Ott, where the 2nd local bidder is
@@ -540,11 +540,9 @@ class LLLLGGExperiment(LocalGlobalExperiment):
         name = ['LLLLGG', self.payment_rule, str(self.n_players) + 'p']
         return os.path.join(*name)
 
-    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
-              fmts=['o'], **kwargs):
-        super()._plot(plot_data=plot_data, writer=writer, epoch=epoch,
-                      fmts=fmts, **kwargs)
-        super()._plot_3d(plot_data=plot_data, writer=writer, epoch=epoch,
+    def _plot(self, plot_data, writer: SummaryWriter or None, fmts=['o'], **kwargs):
+        super()._plot(plot_data=plot_data, writer=writer, fmts=fmts, **kwargs)
+        super()._plot_3d(plot_data=plot_data, writer=writer,
                          figure_name=kwargs['figure_name'])
 
 
@@ -691,7 +689,7 @@ class CAItemBiddingExperiment(Experiment):
 
         return os.path.join(*name)
 
-    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
+    def _plot(self, plot_data, writer: SummaryWriter or None,
               xlim: list=None, ylim: list=None, labels: list=None,
               x_label="valuation", y_label="item bid", fmts=['o'],
               figure_name: str='bid_function', plot_points=300,
@@ -708,13 +706,13 @@ class CAItemBiddingExperiment(Experiment):
             plot_data[0] = plot_data[0][..., self.single_item_bundles()]
             subplot_order = None
 
-        super()._plot(plot_data=plot_data, writer=writer, epoch=epoch,
-                      xlim=xlim, ylim=ylim, labels=labels, x_label=x_label,
-                      y_label=y_label, fmts=fmts, figure_name=figure_name,
-                      plot_points=plot_points, subplot_order=subplot_order)
+        super()._plot(plot_data=plot_data, writer=writer, xlim=xlim, ylim=ylim,
+                      labels=labels, x_label=x_label, y_label=y_label, fmts=fmts,
+                      figure_name=figure_name, plot_points=plot_points,
+                      subplot_order=subplot_order)
 
         if self.n_bundles == 2:
-            super()._plot_3d(plot_data, writer, epoch, figure_name)
+            super()._plot_3d(plot_data, writer, figure_name)
 
     def pretrain_transform(self, player_position: int) -> callable:
         """Transformation during pretraining: Truthful bidding for this specific

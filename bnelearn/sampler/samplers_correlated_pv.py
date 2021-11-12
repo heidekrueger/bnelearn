@@ -350,24 +350,48 @@ class LLGFullSampler(LLGSampler):
     def _generate_grid(self, player_position: int, minimum_number_of_points: int,
                        reduced: bool, dtype=torch.float, device=None,
                        support_bounds: torch.Tensor=None) -> torch.Tensor:
+        """Here, the grid could be three dimensional, as bidders can bid on all
+        three items, even though they're only interested in one.
+        """
         device = device or self.default_device
-
+        
         if support_bounds is None:
-            support_bounds = self.support_bounds
-        bounds = support_bounds[player_position]
+            bounds = self.support_bounds[player_position]
+        else:
+            bounds = support_bounds[player_position]
+            
+        # only a 1D grid for this single-minded bidder
+        if reduced:
+            grid = torch.linspace(
+                bounds[0][0], bounds[0][1], minimum_number_of_points,
+                device=device, dtype=dtype
+                ).view(-1, 1)
 
-        # dimensionality
-        dims = 1 if reduced else 3
+        else:
+            dims = 3
 
-        # use equal density in each dimension of the valuation, such that
-        # the total number of points is at least as high as the specified one
-        n_points_per_dim = ceil(minimum_number_of_points**(1/dims))
+            # sample from actual 3D single-minded prior (e.g. all but one dim
+            # are zero)
+            if support_bounds is None:
+                grid = torch.zeros((minimum_number_of_points, dims),
+                                   device=device, dtype=dtype)
+                grid[:, player_position] = torch.linspace(
+                    bounds[0][0], bounds[0][1], minimum_number_of_points,
+                    device=device, dtype=dtype
+                    )
 
-        # create equidistant lines along the support in each dimension
-        lines = [torch.linspace(bounds[0][0], bounds[0][1], n_points_per_dim,
-                                device=device, dtype=dtype)
-                 for _ in range(dims)]
-        grid = torch.stack(torch.meshgrid(lines), dim=-1).view(-1, dims)
+            # sample 3D but on other bounds
+            else:
+
+                # use equal density in each dimension of the valuation, such that
+                # the total number of points is at least as high as the specified one
+                n_points_per_dim = ceil(minimum_number_of_points**(1/dims))
+
+                # create equidistant lines along the support in each dimension
+                lines = [torch.linspace(bounds[0][0], bounds[0][1], n_points_per_dim,
+                                        device=device, dtype=dtype)
+                        for i in range(dims)]
+                grid = torch.stack(torch.meshgrid(lines), dim=-1).view(-1, dims)
 
         return grid
 

@@ -60,6 +60,7 @@ class Experiment(ABC):
     mechanism: Mechanism
     positive_output_point: torch.Tensor  # shape must be valid model input
     input_length: int
+    epoch: int
 
     ## Fields required for plotting
     plot_xmin: float
@@ -373,7 +374,7 @@ class Experiment(ABC):
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
 
-    def _training_loop(self, epoch):
+    def _training_loop(self):
         """Actual training in each iteration."""
         tic = timer()
         # save current params to calculate update norm
@@ -392,11 +393,11 @@ class Experiment(ABC):
                 'utilities': utilities.detach(),
                 'prev_params': prev_params
             }
-            elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
-            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),
+            elapsed_overhead = self._evaluate_and_log_epoch()
+            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(self.epoch, timer() - tic, elapsed_overhead),
                   end="\r")
         else:
-            print('epoch {}:\telapsed {:.2f}s'.format(epoch, timer() - tic),
+            print('epoch {}:\telapsed {:.2f}s'.format(self.epoch, timer() - tic),
                   end="\r")
         return utilities
 
@@ -420,7 +421,7 @@ class Experiment(ABC):
 
         for run_id, seed in enumerate(self.running.seeds):
             print(f'\nRunning experiment {run_id} (using seed {seed})')
-            epoch = None
+            self.epoch = 0
             try:
                 t = time.strftime('%T ')
                 if platform == 'win32':
@@ -438,10 +439,12 @@ class Experiment(ABC):
                 self._init_new_run()
 
                 if self.logging.enable_logging:
-                    self._plot_current_strategies(0)
+                    self._plot_current_strategies()
 
-                for epoch in range(self.running.n_epochs + 1):
-                    utilities = self._training_loop(epoch=epoch)
+                self.epoch = 0
+                for _ in range(self.running.n_epochs + 1):
+                    utilities = self._training_loop()
+                    self.epoch += 1
 
                 if self.logging.enable_logging and (
                         self.logging.export_step_wise_linear_bid_function_size is not None):
@@ -456,7 +459,7 @@ class Experiment(ABC):
                 warnings.warn(f"WARNING: Run {run_id} failed with {type(e)}! Traceback:\n{tb}")
 
             finally:
-                self._exit_run(global_step=epoch)
+                self._exit_run()
 
         # Once all runs are done, convert tb event files to csv
         if self.logging.enable_logging and (
@@ -482,7 +485,7 @@ class Experiment(ABC):
     ########################################################################################################
 
     # TODO Stefan: method only uses self in eval and for output point
-    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
+    def _plot(self, plot_data, writer: SummaryWriter or None,
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts: list = None,
               figure_name: str = 'bid_function', plot_points=100,
@@ -494,7 +497,6 @@ class Experiment(ABC):
             plot_data: tuple of two pytorch tensors first beeing for x axis, second for y.
                 Both of dimensions (batch_size, n_models, n_bundles)
             writer: could be replaced by self.writer
-            epoch: int, epoch or iteration number
             xlim: list of floats, x axis limits for all n_bundles dimensions
             ylim: list of floats, y axis limits for all n_bundles dimensions
             labels: list of str lables for legend
@@ -591,16 +593,16 @@ class Experiment(ABC):
 
             axs[ax_idx[plot_idx]].locator_params(axis='x', nbins=5)
         title = plt.title if n_bundles == 1 else plt.suptitle
-        title('iteration {}'.format(epoch))
+        title('iteration {}'.format(self.epoch))
 
-        logging_utils.process_figure(fig, epoch=epoch, figure_name=figure_name, tb_group='eval',
+        logging_utils.process_figure(fig, epoch=self.epoch, figure_name=figure_name, tb_group='eval',
                                      tb_writer=writer, display=self.logging.plot_show_inline,
                                      output_dir=self.run_log_dir,
                                      save_png=self.logging.save_figure_to_disk_png,
                                      save_svg=self.logging.save_figure_to_disk_svg)
         return fig
 
-    def _plot_current_strategies(self, epoch: int):
+    def _plot_current_strategies(self):
         unique_bidders = [i[0] for i in self._model2bidder]
         # TODO: possibly want to use old valuations, but currently it uses
         #       those from the util_loss, not those that were used during self-play
@@ -623,10 +625,10 @@ class Experiment(ABC):
                 fmts += ['--'] * len(self.models)
 
         self._plot(plot_data=(o, b), writer=self.writer, figure_name='bid_function',
-                   epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
+                   labels=labels, fmts=fmts, plot_points=self.plot_points)
 
     # TODO: stefan only uses self in output_dir, nowhere else --> can we move this to utils.plotting? etc?
-    def _plot_3d(self, plot_data, writer, epoch, labels: list = None,
+    def _plot_3d(self, plot_data, writer, labels: list = None, zlim: list = None,
                  figure_name: str = 'bid_function'):
         """
         Creating 3d plots. Provide grid if no plot_data is provided
@@ -658,14 +660,18 @@ class Experiment(ABC):
                     linewidth=0.2,
                     antialiased=True
                 )
+                ax.set_xlabel('valuation 1')
+                ax.set_ylabel('valuation 2')
+                if zlim is not None:
+                    ax.set_zlim(zlim)
                 ax.zaxis.set_major_locator(LinearLocator(10))
                 ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
                 ax.set_title(f'{label}, bundle {plot}')
                 ax.view_init(20, -135)
-        fig.suptitle(f'iteration {epoch}', size=16)
+        fig.suptitle(f'iteration {self.epoch}', size=16)
         fig.tight_layout()
 
-        logging_utils.process_figure(fig, epoch=epoch, figure_name=figure_name + '_3d',
+        logging_utils.process_figure(fig, epoch=self.epoch, figure_name=figure_name + '_3d',
                                      tb_group='eval', tb_writer=writer,
                                      display=self.logging.plot_show_inline,
                                      output_dir=self.run_log_dir,
@@ -673,7 +679,7 @@ class Experiment(ABC):
                                      save_svg=self.logging.save_figure_to_disk_svg)
         return fig
 
-    def _evaluate_and_log_epoch(self, epoch: int) -> float:
+    def _evaluate_and_log_epoch(self) -> float:
         """
         Checks which metrics have to be logged and performs logging and plotting.
         Returns:
@@ -707,12 +713,12 @@ class Experiment(ABC):
                 self._cur_epoch_log_params['L_2' + n] = L_2[i]
                 self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
 
-        if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
+        if self.logging.log_metrics['util_loss'] and (self.epoch % self.logging.util_loss_frequency) == 0:
             create_plot_output = epoch % self.logging.plot_frequency == 0
             self._cur_epoch_log_params['util_loss_ex_ante'], \
             self._cur_epoch_log_params['util_loss_ex_interim'], \
             self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'] = \
-                self._calculate_metrics_util_loss(create_plot_output, epoch)
+                self._calculate_metrics_util_loss(create_plot_output)
 
             print("\tcurrent est. ex-interim loss:" + str(
                 [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
@@ -720,29 +726,30 @@ class Experiment(ABC):
         if self.logging.log_metrics['PoA']:
             self._cur_epoch_log_params['PoA'] = self._calculate_metrics_PoA()
 
-        if self.logging.log_metrics['epsilon'] and (epoch % self.logging.util_loss_frequency) == 0:
-            self._cur_epoch_log_params['epsilon'] = metrics.verify_epsilon_bne(
-                exp=self, grid_size=self.logging.util_loss_grid_size,
-                opponent_batch_size=min(self.logging.util_loss_batch_size, self.learning.batch_size))
+        if self.logging.log_metrics['epsilon'] and (self.epoch % self.logging.util_loss_frequency) == 0:
+            with torch.no_grad():
+                self._cur_epoch_log_params['epsilon'] = metrics.verify_epsilon_bne(
+                    exp=self, grid_size=self.logging.util_loss_grid_size,
+                    opponent_batch_size=min(self.logging.util_loss_batch_size, self.learning.batch_size))
 
-        if self.logging.log_metrics['efficiency'] and (epoch % self.logging.util_loss_frequency) == 0:
+        if self.logging.log_metrics['efficiency'] and (self.epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['efficiency'] = \
                 self.env.get_efficiency(self.env)
 
-        if self.logging.log_metrics['revenue'] and (epoch % self.logging.util_loss_frequency) == 0:
+        if self.logging.log_metrics['revenue'] and (self.epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['revenue'] = \
                 self.env.get_revenue(self.env)
 
         # plotting
-        if epoch % self.logging.plot_frequency == 0 and epoch > 0:
+        if self.epoch % self.logging.plot_frequency == 0 and self.epoch > 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
-            self._plot_current_strategies(epoch)
+            self._plot_current_strategies()
 
         self.overhead = self.overhead + timer() - start_time
         self._cur_epoch_log_params['overhead_hours'] = self.overhead / 3600
         if self.writer:
             self.writer.add_metrics_dict(
-                self._cur_epoch_log_params, self._model_names, epoch,
+                self._cur_epoch_log_params, self._model_names, self.epoch,
                 group_prefix=None, metric_tag_mapping = metrics.MAPPING_METRICS_TAGS)
         return timer() - start_time
 
@@ -852,7 +859,7 @@ class Experiment(ABC):
             "Util_loss for larger than actual batch size not implemented."
 
         with torch.no_grad():  # don't need any gradient information here
-            # TODO: currently we don't know where exactly a mmory leak is
+            # TODO: currently we don't know where exactly a memory leak is
             observations = self.env._observations[:batch_size, :, :]
             util_losses, best_responses = zip(*[
                 metrics.ex_interim_util_loss(
@@ -873,7 +880,7 @@ class Experiment(ABC):
             self._plot(plot_data=plot_data, writer=self.writer,
                        ylim=[0, self.sampler.support_bounds.max().item()],
                        figure_name='best_responses', y_label='best response',
-                       epoch=epoch, labels=labels, fmts=fmts,
+                       labels=labels, fmts=fmts,
                        plot_points=self.plot_points)
 
         # calculate different losses
@@ -903,7 +910,7 @@ class Experiment(ABC):
             self._plot(plot_data=plot_data, writer=self.writer,
                        ylim=[0, max(self._max_util_loss).detach().item()],
                        figure_name='util_loss_landscape', y_label='ex-interim loss',
-                       epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
+                       labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 

@@ -132,8 +132,45 @@ class ValuationObservationSampler(ABC):
         # Grid bids should always start at zero if not specified otherwise
         support_bounds[:, :, 0] = 0
 
-        return self.generate_valuation_grid(player_position=player_position, minimum_number_of_points=minimum_number_of_points,
-                                            dtype=dtype, device=device, support_bounds=support_bounds)
+        return self.generate_valuation_grid(
+            player_position=player_position, minimum_number_of_points=minimum_number_of_points,
+            dtype=dtype, device=device, support_bounds=support_bounds)
+
+    def generate_grid_cell_bounds(self, player_position: int, minimum_number_of_points: int,
+                                  dtype=torch.float, device = None,
+                                  support_bounds: torch.Tensor = None) -> torch.Tensor:
+        """For the epsilon estimate, we need to evaluate the strategies at the
+        boundaries of the grid cells.
+        """
+        device = device or self.default_device
+
+        if support_bounds is None:
+            support_bounds = self.support_bounds
+        bounds = support_bounds[player_position]
+
+        # dimensionality
+        dims = self.valuation_size
+
+        # use equal density in each dimension of the valuation, such that
+        # the total number of points is at least as high as the specified one
+        n_points_per_dim = ceil(minimum_number_of_points**(1/dims))
+
+        # create equidistant lines along the support in each dimension
+        lines = [torch.linspace(bounds[d][0], bounds[d][1], n_points_per_dim,
+                                device=device, dtype=dtype)
+                 for d in range(dims)]
+        corners = torch.stack(torch.meshgrid(lines), dim=-1)
+
+        # TODO: speedup -> for more than 2 dims, we can reduce the number of
+        # corners to 2 for these rectangular grids
+
+        # TODO: only tested for 1 and 2 dims
+        grid_cell_lower_corners = grid_cell_upper_corners = corners
+        for d in range(dims):
+            grid_cell_lower_corners = grid_cell_lower_corners.narrow(d, 0, n_points_per_dim-1)
+            grid_cell_upper_corners = grid_cell_upper_corners.narrow(d, 1, n_points_per_dim-1)
+
+        return grid_cell_lower_corners.flatten(0, -2), grid_cell_upper_corners.flatten(0, -2)
 
 class PVSampler(ValuationObservationSampler, ABC):
     """A sampler for Private Value settings, i.e. when observations and
