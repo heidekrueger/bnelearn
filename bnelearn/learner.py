@@ -33,8 +33,8 @@ class GradientBasedLearner(Learner):
     def __init__(self,
                  model: torch.nn.Module, environment: Environment,
                  optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 scheduler_type: Type[torch.optim.lr_scheduler._LRScheduler], scheduler_hyperparams: dict,
-                 strat_to_player_kwargs: dict = None):
+                 scheduler_type: Type[torch.optim.lr_scheduler._LRScheduler] = None,
+                 scheduler_hyperparams: dict = None, strat_to_player_kwargs: dict = None):
         self.model = model
         self.params = model.parameters
         self.n_parameters = sum([p.numel() for p in self.params()])
@@ -149,8 +149,8 @@ class ESPGLearner(GradientBasedLearner):
     def __init__(self,
                  model: torch.nn.Module, environment: Environment, hyperparams: dict,
                  optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 scheduler_type: Type[torch.optim.lr_scheduler._LRScheduler], scheduler_hyperparams: dict,
-                 strat_to_player_kwargs: dict = None):
+                 scheduler_type: Type[torch.optim.lr_scheduler._LRScheduler] = None,
+                 scheduler_hyperparams: dict = None, strat_to_player_kwargs: dict = None):
         # Create and validate optimizer
         super().__init__(model, environment,
                          optimizer_type, optimizer_hyperparams,

@@ -519,12 +519,12 @@ class Experiment(ABC):
 
         if subplot_order in (None, [1, 1]):  # not provided or only single plot
             subplot_order = [1, n_bundles]
-            ax_idx = list(range(n_bundles))
+            ax_idx = list(range(n_bundles))  # list index for plots
         else:
             ax_idx = list(zip(
                 sorted(list(range(subplot_order[0])) * subplot_order[1]),
                 list(range(subplot_order[1])) * subplot_order[0]
-            ))
+            ))  # tuple index for cols x rows of plots
 
         # create the plot
         fig, axs = plt.subplots(nrows=subplot_order[0], ncols=subplot_order[1],

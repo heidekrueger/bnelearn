@@ -485,23 +485,29 @@ def verify_epsilon_bne(exp: 'Experiment', grid_size: int,
             epsilons[i] = util_loss_bound + utility_cell_high - utility_cell_low
             i += 1
 
-        highest_epsilon = epsilons.max()
+        highest_epsilon = max(highest_epsilon, epsilons.max())
 
         # plotting
+        # TODO: WIP should be collected to plot all bidders' eps in one plot
         n_items = grid_cell_lower_corners.shape[1]
 
         # keep track of upper bound for plotting
         if not hasattr(exp, '_max_epsilon'):
             exp._max_epsilon = float(highest_epsilon)
+        else:
+            exp._max_epsilon = max(exp._max_epsilon, float(highest_epsilon))
 
         if n_items == 1:
-            plot_data = (grid_cell_lower_corners, epsilons)
-            exp._plot(plot_data, exp.writer, x_label="valuation", y_label="utility loss bound",
-                      ylim=[0, exp._max_epsilon], figure_name='utility loss bound', plot_points=100)
+            plot_data = (grid_cell_lower_corners.view(-1, 1, 1), epsilons.view(-1, 1, 1))
+            exp._plot(plot_data=plot_data, writer=exp.writer, x_label="valuation",
+                      y_label="utility loss bound", ylim=[0, exp._max_epsilon],
+                      figure_name=f'utility loss bound bidder {player_position}',
+                      plot_points=n_cells)
         if n_items == 2:
             plot_data = (grid_cell_lower_corners[:, :].view(-1, 1, 2), epsilons.view(-1, 1, 1))
             exp._plot_3d(plot_data=plot_data, writer=exp.writer, zlim=[0, exp._max_epsilon],
-                         figure_name='utility loss bound', labels=["utility loss bound"])
+                         figure_name=f'utility loss bound bidder {player_position}',
+                         labels=["utility loss bound"])
 
     return highest_epsilon
 
