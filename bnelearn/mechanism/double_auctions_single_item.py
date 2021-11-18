@@ -69,6 +69,8 @@ class VickreyDoubleAuction(DeterministicDoubleAuctionMechanism):
         return trade_buyers,trade_sellers
     
     def _determine_individual_trade_prices(self, trade_buyers, trade_sellers, params_dict, sorted_bids_and_indices_dict):
+        bids_sorted_buyers = sorted_bids_and_indices_dict['bids_sorted_buyers']
+        bids_sorted_sellers = sorted_bids_and_indices_dict['bids_sorted_buyers']
         trade_indx = self._determine_break_even_trading_index(params_dict["player_dim"], sorted_bids_and_indices_dict["trading_indices"])
         trade_indx_inc_buyers = trade_indx.clone().detach()
         trade_indx_inc_buyers[trade_indx_inc_buyers < (self.n_buyers - 1)] += 1
@@ -85,10 +87,15 @@ class VickreyDoubleAuction(DeterministicDoubleAuctionMechanism):
         trade_price_init_buyers = torch.max(trade_price_indx_sellers, trade_price_indx_inc_buyers)
         trade_price_init_sellers = torch.min(trade_price_indx_buyers, trade_price_indx_inc_sellers)
 
-        trade_price_buyers = torch.where((trade_indx > 0) & (trade_indx < (self.n_buyers - 1)),
+        trade_price_buyers = torch.where((trade_indx < (self.n_buyers - 1)), 
+                                         trade_price_init_buyers, trade_price_indx_sellers) * trade_buyers
+        trade_price_sellers = torch.where((trade_indx < (self.n_sellers - 1)), 
+                                          trade_price_init_sellers, trade_price_indx_buyers) * trade_sellers
+
+        """trade_price_buyers = torch.where((trade_indx > 0) & (trade_indx < (self.n_buyers - 1)),
                                          trade_price_init_buyers, trade_price_indx_sellers) * trade_buyers
         trade_price_sellers = torch.where((trade_indx > 0) & (trade_indx < (self.n_sellers - 1)),
-                                          trade_price_init_sellers, trade_price_indx_buyers) * trade_sellers
+                                          trade_price_init_sellers, trade_price_indx_buyers) * trade_sellers"""
 
         return trade_price_buyers,trade_price_sellers
 
