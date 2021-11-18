@@ -314,3 +314,19 @@ def test_three_buyers_two_sellers_kDoubleAuction():
         ])
 
     run_k_double_auction_test(bids=bids_3b2s, expected_allocation=expected_allocation_3b2s, k_0_exp_p=k_0_expected_payments, k_05_exp_p=k_05_expected_payments, k_1_exp_p=k_1_expected_payments, n_buyers=3, n_sellers=2)
+
+
+def test_three_buyers_two_sellers_vickreyAuction():
+    """Vickrey Double Auction should run on CPU and GPU and return expected results."""
+
+    expected_payments = torch.tensor([
+        [0.7, .7, .0, .8, .8],
+        [0., 6., 6., 7., 7.],
+        [0., .0, .0, .0, .0],
+        [0., 4., .0, .0, 5.],
+        [0., .0, 4., .0, 5.],
+        [0., 3., .0, .0, 7.],
+        ])
+
+    run_DoubleAuction_mechanism_test(rule='vickrey_price', device='cpu', expected_payments=expected_payments, bids=bids_3b2s, expected_allocation=expected_allocation_3b2s, n_buyers=3, n_sellers=2)
+    run_DoubleAuction_mechanism_test(rule='vickrey_price', device='cuda', expected_payments=expected_payments, bids=bids_3b2s, expected_allocation=expected_allocation_3b2s, n_buyers=3, n_sellers=2)
