@@ -3,6 +3,7 @@ import torch
 from bnelearn.mechanism.double_auctions_single_item import kDoubleAuction, VickreyDoubleAuction
 
 
+# ###### Bilateral Bargaining Test Scenario ######## #
 bids = torch.tensor([
     [1., 0.5], # buyer bids more than ask price
     [7., 3.], # same
@@ -17,6 +18,22 @@ expected_allocation = torch.tensor([
         [ [0], [0] ]
     ], dtype=torch.float)
 
+"""
+# ###### 1 Buyer, 2 Sellers Tests Scenario ######## #
+bids_1b2s = torch.tensor([
+    [1., .5, .3], # buyer bids more than both sellers
+    [7., 3., 5.], # same
+    [4., 6., 7.],  # buyer bids less than ask price
+    [5., 7., 3.] # Buyer bids more than one seller
+    ]).unsqueeze(-1)
+
+expected_allocation_1b2s = torch.tensor([
+        [ [1], [0, 1] ],
+        [ [1], [1, 0] ],
+        [ [0], [0, 0] ],
+        [ [1], [0, 1] ]
+    ], dtype=torch.float)"""
+
 def get_da_mechanism(rule: str, n_buyers, n_sellers, k, cuda):
     if rule == 'k_price':
         return kDoubleAuction(n_buyers=n_buyers, n_sellers=n_sellers, k_value=k, cuda=cuda)
@@ -26,11 +43,9 @@ def get_da_mechanism(rule: str, n_buyers, n_sellers, k, cuda):
         raise ValueError('No valid double auction mechanism type chosen!')
 
 
-def run_BilateralBargaining_mechanism_test(rule: str, device, expected_payments, k: float=0.5):
+def run_DoubleAuction_mechanism_test(rule: str, device, expected_payments, k: float=0.5, n_buyers: int=1, n_sellers: int=1):
     """Run correctness test for the kDoubleAuction in the bilarteral bargaining case"""
     cuda = device == 'cuda' and torch.cuda.is_available()
-    n_buyers = 1
-    n_sellers = 1
 
     if device == 'cuda' and not cuda:
         pytest.skip("This test needs CUDA, but it's not available.")
@@ -80,14 +95,14 @@ def test_BilateralBargaining_kDoubleAuction():
         [0. , 0.]
         ])
 
-    run_BilateralBargaining_mechanism_test(rule='k_price', k=0., device='cpu', expected_payments=k_0_expected_payments)
-    run_BilateralBargaining_mechanism_test(rule='k_price', k=0., device='cuda', expected_payments=k_0_expected_payments)
+    run_DoubleAuction_mechanism_test(rule='k_price', k=0., device='cpu', expected_payments=k_0_expected_payments)
+    run_DoubleAuction_mechanism_test(rule='k_price', k=0., device='cuda', expected_payments=k_0_expected_payments)
 
-    run_BilateralBargaining_mechanism_test(rule='k_price', k=0.5, device='cpu', expected_payments=k_05_expected_payments)
-    run_BilateralBargaining_mechanism_test(rule='k_price', k=0.5, device='cuda', expected_payments=k_05_expected_payments)
+    run_DoubleAuction_mechanism_test(rule='k_price', k=0.5, device='cpu', expected_payments=k_05_expected_payments)
+    run_DoubleAuction_mechanism_test(rule='k_price', k=0.5, device='cuda', expected_payments=k_05_expected_payments)
 
-    run_BilateralBargaining_mechanism_test(rule='k_price', k=1., device='cpu', expected_payments=k_1_expected_payments)
-    run_BilateralBargaining_mechanism_test(rule='k_price', k=1., device='cuda', expected_payments=k_1_expected_payments)
+    run_DoubleAuction_mechanism_test(rule='k_price', k=1., device='cpu', expected_payments=k_1_expected_payments)
+    run_DoubleAuction_mechanism_test(rule='k_price', k=1., device='cuda', expected_payments=k_1_expected_payments)
 
 def test_BilateralBargaining_vickreyAuction():
     """Vickrey Double Auction should run on CPU and GPU and return expected results."""
@@ -99,5 +114,5 @@ def test_BilateralBargaining_vickreyAuction():
         [0. , 0.]
         ])
 
-    run_BilateralBargaining_mechanism_test(rule='vickrey_price', device='cpu', expected_payments=expected_payments)
-    run_BilateralBargaining_mechanism_test(rule='vickrey_price', device='cuda', expected_payments=expected_payments)
+    run_DoubleAuction_mechanism_test(rule='vickrey_price', device='cpu', expected_payments=expected_payments)
+    run_DoubleAuction_mechanism_test(rule='vickrey_price', device='cuda', expected_payments=expected_payments)
