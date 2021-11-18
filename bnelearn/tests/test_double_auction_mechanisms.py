@@ -119,7 +119,7 @@ def test_BilateralBargaining_vickreyAuction():
     run_DoubleAuction_mechanism_test(rule='vickrey_price', device='cuda', expected_payments=expected_payments, bids=bids_1b1s, expected_allocation=expected_allocation_1b1s)
 
 
-"""def test_one_buyer_two_sellers_kDoubleAuction():
+def test_one_buyer_two_sellers_kDoubleAuction():
 
     k_0_expected_payments = torch.tensor([
         [.3 , .0, .3],
@@ -142,11 +142,11 @@ def test_BilateralBargaining_vickreyAuction():
         [5. , 0., 5.]
         ])
 
-    run_DoubleAuction_mechanism_test(rule='k_price', k=0., device='cpu', expected_payments=k_0_expected_payments, n_buyers=1, n_sellers=2)
-    run_DoubleAuction_mechanism_test(rule='k_price', k=0., device='cuda', expected_payments=k_0_expected_payments, n_buyers=1, n_sellers=2)
+    run_DoubleAuction_mechanism_test(rule='k_price', k=0., device='cpu', expected_payments=k_0_expected_payments, n_buyers=1, n_sellers=2, bids=bids_1b2s, expected_allocation=expected_allocation_1b2s)
+    run_DoubleAuction_mechanism_test(rule='k_price', k=0., device='cuda', expected_payments=k_0_expected_payments, n_buyers=1, n_sellers=2, bids=bids_1b2s, expected_allocation=expected_allocation_1b2s)
 
-    run_DoubleAuction_mechanism_test(rule='k_price', k=0.5, device='cpu', expected_payments=k_05_expected_payments, n_buyers=1, n_sellers=2)
-    run_DoubleAuction_mechanism_test(rule='k_price', k=0.5, device='cuda', expected_payments=k_05_expected_payments, n_buyers=1, n_sellers=2)
+    run_DoubleAuction_mechanism_test(rule='k_price', k=0.5, device='cpu', expected_payments=k_05_expected_payments, n_buyers=1, n_sellers=2, bids=bids_1b2s, expected_allocation=expected_allocation_1b2s)
+    run_DoubleAuction_mechanism_test(rule='k_price', k=0.5, device='cuda', expected_payments=k_05_expected_payments, n_buyers=1, n_sellers=2, bids=bids_1b2s, expected_allocation=expected_allocation_1b2s)
 
-    run_DoubleAuction_mechanism_test(rule='k_price', k=1., device='cpu', expected_payments=k_1_expected_payments, n_buyers=1, n_sellers=2)
-    run_DoubleAuction_mechanism_test(rule='k_price', k=1., device='cuda', expected_payments=k_1_expected_payments, n_buyers=1, n_sellers=2)"""
+    run_DoubleAuction_mechanism_test(rule='k_price', k=1., device='cpu', expected_payments=k_1_expected_payments, n_buyers=1, n_sellers=2, bids=bids_1b2s, expected_allocation=expected_allocation_1b2s)
+    run_DoubleAuction_mechanism_test(rule='k_price', k=1., device='cuda', expected_payments=k_1_expected_payments, n_buyers=1, n_sellers=2, bids=bids_1b2s, expected_allocation=expected_allocation_1b2s)
