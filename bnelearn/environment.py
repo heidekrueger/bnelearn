@@ -403,7 +403,7 @@ class AuctionEnvironment(Environment):
             bid_profile[:, pos, :] = bid
         _, payments = self.mechanism.play(bid_profile)
 
-        return payments.sum(axis=1).float().mean()
+        return payments.sum(axis=1).float().mean().item()
 
     def get_efficiency(self, redraw_valuations: bool=False,
                        batch_size: int=2**8) -> float:
@@ -494,7 +494,7 @@ class AuctionEnvironment(Environment):
             efficiency[maximum_welfare == 0] = 1  # full eff. when no welfare gain was possible
             efficiency = efficiency.mean()
 
-        return efficiency
+        return efficiency.item()
 
     def get_budget_balance(self, redraw_valuations: bool=False,
                            batch_size: int=2**8) -> List[float]:
@@ -537,7 +537,7 @@ class AuctionEnvironment(Environment):
         payments_sellers = payments[..., self.mechanism.n_buyers:].sum(axis=-1)
         budget = (payments_buyers - payments_sellers)
 
-        return [(-budget.min()).relu(), budget.max().relu()]
+        return [(-budget.min()).relu().item(), budget.max().relu().item()]
 
     def get_individual_rationality(self, redraw_valuations: bool=False,
                                    batch_size: int=2**8) -> List[float]:
