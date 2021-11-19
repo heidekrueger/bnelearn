@@ -23,7 +23,7 @@ def test_revenue():
     experiment = experiment_class(experiment_config)
     revenue = experiment.bne_env.get_revenue()
     # Average revenue should be 1/3 in this BNE
-    assert abs(revenue.item() - 1/3.) < 1e-3
+    assert abs(revenue - 1/3.) < 1e-3
 
 
 # Format: id, experiment_type, setting_params, true_efficiency
@@ -54,7 +54,7 @@ def run_efficiency_test(experiment_type = str, setting_params = dict, true_effic
     experiment = experiment_class(experiment_config)
 
     efficiency = experiment.bne_env.get_efficiency()
-    assert abs(efficiency.item() - true_efficiency) < 1e-2
+    assert abs(efficiency - true_efficiency) < 1e-2
 
 @pytest.mark.parametrize("experiment_type, setting_params, true_efficiency", zip(*test_data), ids=test_ids)
 def test_efficiency(experiment_type, setting_params, true_efficiency):
