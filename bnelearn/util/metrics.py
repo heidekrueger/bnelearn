@@ -298,7 +298,7 @@ def ex_interim_util_loss(env: "AuctionEnvironment", player_position: int,
         opponent_batch_size, device)
 
     ####### get best responses over grid of alternative actions #######
-    action_alternatives = env.sampler.generate_valuation_grid(
+    action_alternatives = env.sampler.generate_action_grid(
         player_position,
         minimum_number_of_points=grid_size,
         dtype=agent_action_actual.dtype, device=agent_action_actual.device

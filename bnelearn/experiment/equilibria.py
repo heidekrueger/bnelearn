@@ -301,43 +301,11 @@ def _bne_multiunit_discriminatory_2x2_cmv(prior: torch.distributions.Distributio
     """
     # Simplify computation for uniform prior case
     if isinstance(prior, torch.distributions.uniform.Uniform):
-        if prior.low == 0 and prior.high == 1:
-            def _optimal_bid(valuation, player_position=None):
-                return valuation / 2.0
-            return _optimal_bid
+        def _optimal_bid(valuation, player_position=None):
+            return (valuation - prior.low) / 2.0 + prior.low
+        return _optimal_bid
 
-    valuation_pdf = lambda x: torch.exp(prior.log_prob(x))
-    valuation_cdf = prior.cdf
-
-    def _optimal_bid(valuation, player_position=None):
-        batch_size, n_items = valuation.shape
-        device = valuation.device
-        N = 64  # integration bounds
-
-        optimal_bid_tensor = torch.zeros_like(valuation)
-        for item in range(n_items):
-            domains_bounds = torch.cat(
-                [
-                    torch.zeros((batch_size+1, N), device=device),
-                    valuation[:, [item]]
-                ],
-                axis=1)
-            for n in range(1, N+1):
-                domains_bounds[:, n] = domains_bounds[:, 0] \
-                    + (n / (N + 1)) * (domains_bounds[:, -1] - domains_bounds[:, 0])
-
-            # TODO: check bounds
-            inner_function = lambda t: valuation_pdf(t) / valuation_cdf(t)
-            inner_integral = torch.trapz(inner_function(domains_bounds), domains_bounds)
-
-            outer = torch.exp(-inner_integral)
-            outer_integral = torch.trapz(outer, domains_bounds)
-
-            optimal_bid_tensor[:, item] = valuation[:, [item]] - outer_integral
-
-        return optimal_bid_tensor
-
-    return _optimal_bid
+    raise NotImplementedError("BNE not implemented for this prior.")
 
 def _bne_multiunit_uniform_2x2():
     """ Returns two BNE strategies List[callable] in the multi-unit uniform price auction
