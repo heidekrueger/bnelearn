@@ -23,7 +23,7 @@ from bnelearn.mechanism import (FPSBSplitAwardAuction,
                                 MultiUnitVickreyAuction)
 from bnelearn.sampler import (MultiUnitValuationObservationSampler,
                               CompositeValuationObservationSampler,
-                              SplitAwardtValuationObservationSampler)
+                              SplitAwardValuationObservationSampler)
 from bnelearn.strategy import ClosureStrategy
 
 
@@ -255,7 +255,7 @@ class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
         self.common_prior = self.config.setting.common_prior
 
         self.positive_output_point = torch.tensor(
-            [1.2, self.efficiency_parameter * 1.2], dtype=torch.float)
+            [self.efficiency_parameter * 1.2, 1.2], dtype=torch.float)
 
         # Plotting bounds
         _lo = self.config.setting.u_lo[0]
@@ -279,7 +279,7 @@ class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
             raise NotImplementedError('Correlation not implemented.')
 
         # Setup sampler
-        self.sampler = SplitAwardtValuationObservationSampler(
+        self.sampler = SplitAwardValuationObservationSampler(
             lo=self.u_lo, hi=self.u_hi, efficiency_parameter=self.efficiency_parameter,
             valuation_size=self.valuation_size,
             default_batch_size=self.config.learning.batch_size,

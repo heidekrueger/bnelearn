@@ -349,7 +349,7 @@ class LLGFullSampler(LLGSampler):
     """A sampler for the LLG full setting."""
     def _generate_grid(self, player_position: int, minimum_number_of_points: int,
                        reduced: bool, dtype=torch.float, device=None,
-                       support_bounds: torch.Tensor=None) -> torch.Tensor:
+                       support_bounds: torch.Tensor=None, return_mesh: bool=False) -> torch.Tensor:
         """Here, the grid could be three dimensional, as bidders can bid on all
         three items, even though they're only interested in one.
         """
@@ -367,10 +367,13 @@ class LLGFullSampler(LLGSampler):
                 device=device, dtype=dtype
                 ).view(-1, 1)
 
+            if return_mesh:
+                grid = [grid.view(-1)]  # grid is already 1D
+
         else:
             dims = 3
 
-            # sample from actual 3D single-minded prior (e.g. all but one dim
+            # create grid for actual 3D single-minded prior (e.g. all but one dim
             # are zero)
             if support_bounds is None:
                 grid = torch.zeros((minimum_number_of_points, dims),
@@ -379,6 +382,9 @@ class LLGFullSampler(LLGSampler):
                     bounds[0][0], bounds[0][1], minimum_number_of_points,
                     device=device, dtype=dtype
                     )
+
+                if return_mesh:
+                    grid = [grid.view(-1)]  # grid is already 1D
 
             # sample 3D but on other bounds
             else:
@@ -393,23 +399,38 @@ class LLGFullSampler(LLGSampler):
                         for i in range(dims)]
                 grid = torch.stack(torch.meshgrid(lines), dim=-1).view(-1, dims)
 
+                if return_mesh:
+                    raise NotImplementedError()
+
         return grid
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
+                                dtype=torch.float, device=None, support_bounds=None,
+                                return_mesh: bool=False) -> torch.Tensor:
+        """Here, the grid can be one dimensional, as bidders are single-minded.
+        Also has mesh funtionallity for creation of grid cells."""
+        return self._generate_grid(player_position, minimum_number_of_points, True,
+                                   dtype, device, support_bounds, return_mesh)
+
+    def generate_reduced_grid(self, player_position: int, minimum_number_of_points: int,
                                 dtype=torch.float, device=None, support_bounds=None) -> torch.Tensor:
-        """Here, the grid needs to be three dimensional, as bidders can bid on
-        all three items, even though they're only interested in one.
+        """Here, the grid can be one dimensional, as bidders are single-minded."""
+        return self._generate_grid(player_position, minimum_number_of_points, True,
+                                   dtype, device, support_bounds)
+
+    def generate_action_grid(self, player_position: int, minimum_number_of_points: int,
+                                dtype=torch.float, device=None, support_bounds=None) -> torch.Tensor:
+        """Here, the grid needs to be three dimensional and the support bounds
+        need to be wider.
         """
+        support_bounds = self.support_bounds.clone()
+
+        # Grid bids should always start at zero if not specified otherwise
+        support_bounds[:, :, 0] = 0
+
         return self._generate_grid(player_position, minimum_number_of_points, False,
                                    dtype, device, support_bounds)
 
-    def generate_reduced_grid(self, player_position: int, minimum_number_of_points: int,
-                              dtype=torch.float, device=None) -> torch.Tensor:
-        """Valuations are actually three dimensional, but as two dims are allways
-        zero, it is sufficient to sample one dimensional data.
-        """
-        return self._generate_grid(player_position, minimum_number_of_points, True,
-                                   dtype, device)
 
 class LLLLGGSampler(LocalGlobalCompositePVSampler):
     """A sampler for the LLLLGG settings in Bosshard et al (2020).

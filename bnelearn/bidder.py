@@ -231,7 +231,6 @@ class ReverseBidder(Bidder):
         self.efficiency_parameter = efficiency_parameter
         super().__init__(**kwargs)
 
-
     def get_utility(self, allocations, payments, valuations = None):
         """For reverse bidders, returns are inverted.
         """

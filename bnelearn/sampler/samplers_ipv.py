@@ -239,35 +239,21 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
                                 dtype=torch.float, device = None,
-                                support_bounds: torch.Tensor = None) -> torch.Tensor:
+                                support_bounds: torch.Tensor = None, return_mesh: bool=False) -> torch.Tensor:
+        if return_mesh:
+            raise NotImplementedError('Cell partition not implmented for multi-unit auctions (b/c not rectangular).')
+        
         rectangular_grid = super().generate_valuation_grid(
             player_position, minimum_number_of_points, dtype, device, support_bounds)
 
         # transform to triangular grid (valuations are marginally descending)
         return rectangular_grid.sort(dim=1, descending=True)[0].unique(dim=0)
 
-    def generate_grid_cell_bounds(self, player_position: int, minimum_number_of_points: int,
-                                  dtype=torch.float, device = None,
-                                  support_bounds: torch.Tensor = None) -> torch.Tensor:
-        """For the epsilon estimate, we need to evaluate the strategies at the
-        boundaries of the grid cells.
-        """
+    def generate_cell_partition(self, player_position: int, grid_size: int,
+                                dtype=torch.float, device=None):
+        raise NotImplementedError('Cell partition not implmented for multi-unit auctions (b/c not rectangular).')
 
-        # 1. get rectangular grid cells
-        rectangular_grid_cell_lower_corners, rectangular_grid_cell_upper_corners = \
-            super().generate_grid_cell_bounds(
-                player_position, minimum_number_of_points, torch.float, None, None)
-
-        # cut off
-        grid_cell_lower_corners = rectangular_grid_cell_lower_corners \
-            .sort(dim=1, descending=True)[0].unique(dim=0)
-        grid_cell_upper_corners = rectangular_grid_cell_upper_corners \
-            .sort(dim=1, descending=True)[0].unique(dim=0)
-
-        return grid_cell_lower_corners.flatten(0, -2), grid_cell_upper_corners.flatten(0, -2)
-
-
-class SplitAwardtValuationObservationSampler(UniformSymmetricIPVSampler):
+class SplitAwardValuationObservationSampler(UniformSymmetricIPVSampler):
     """Sampler for Split-Award, private value settings. Here bidders have two
     valuations of which one is a linear combination of the other.
     """
@@ -289,8 +275,8 @@ class SplitAwardtValuationObservationSampler(UniformSymmetricIPVSampler):
         return sample
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
-                                dtype=torch.float, device=None,
-                                support_bounds: torch.Tensor = None) -> torch.Tensor:
+                                dtype=torch.float, device=None, support_bounds: torch.Tensor = None,
+                                return_mesh: bool=False) -> torch.Tensor:
         device = device or self.default_device
 
         if support_bounds is None:
@@ -309,7 +295,26 @@ class SplitAwardtValuationObservationSampler(UniformSymmetricIPVSampler):
         grid = torch.stack((self.efficiency_parameter * line, line), dim=-1) \
             .view(-1, dims)
 
+        if return_mesh:
+            grid = [self.efficiency_parameter * line, line]
+
         return grid
+
+    def generate_action_grid(self, player_position: int, minimum_number_of_points: int,
+                             dtype=torch.float, device = None) -> torch.Tensor:
+        """From zero to some maximal value. Here, unlike in the other methods,
+        the two outputs must not be linearly dependent.
+        """
+        support_bounds = self.support_bounds.clone()
+
+        # Grid bids should always start at zero if not specified otherwise
+        support_bounds[:, :, 0] = 0
+        support_bounds[:, :, 1] *= 2
+
+        return UniformSymmetricIPVSampler.generate_valuation_grid(
+            self, player_position=player_position,
+            minimum_number_of_points=minimum_number_of_points,
+            dtype=dtype, device=device, support_bounds=support_bounds)
 
 
 class CombinatorialItemSampler(MultiUnitValuationObservationSampler):
@@ -423,7 +428,7 @@ class CombinatorialItemSampler(MultiUnitValuationObservationSampler):
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
                                 dtype=torch.float, device = None,
-                                support_bounds: torch.Tensor = None) -> torch.Tensor:
+                                support_bounds: torch.Tensor = None, return_mesh: bool=False) -> torch.Tensor:
         """Generates an evenly spaced grid of (approximately and at least)
         minimum_number_of_points valuations covering the support of the
         valuation space for the given player. These are meant as rational actions
@@ -434,7 +439,7 @@ class CombinatorialItemSampler(MultiUnitValuationObservationSampler):
         """
         bundle_grid = super().generate_valuation_grid(
             player_position=player_position, minimum_number_of_points=minimum_number_of_points,
-            dtype=dtype, device=device, support_bounds=support_bounds)
+            dtype=dtype, device=device, support_bounds=support_bounds, return_mesh=return_mesh)
 
         return bundle_grid[:, :int(log(self.n_bundles + 1, 2))]
     

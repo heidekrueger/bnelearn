@@ -4,6 +4,8 @@
 from abc import ABC, abstractmethod
 from math import ceil
 from typing import List, Tuple, Union
+from itertools import product
+from operator import add
 import torch
 from torch.cuda import _device_t as Device
 
@@ -82,7 +84,7 @@ class ValuationObservationSampler(ABC):
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
                                 dtype=torch.float, device = None,
-                                support_bounds: torch.Tensor = None) -> torch.Tensor:
+                                support_bounds: torch.Tensor = None, return_mesh: bool=False) -> torch.Tensor:
         """Generates an evenly spaced grid of (approximately and at least)
         minimum_number_of_points valuations covering the support of the
         valuation space for the given player. These are meant as rational actions
@@ -109,7 +111,13 @@ class ValuationObservationSampler(ABC):
         lines = [torch.linspace(bounds[d][0], bounds[d][1], n_points_per_dim,
                                 device=device, dtype=dtype)
                  for d in range(dims)]
-        grid = torch.stack(torch.meshgrid(lines), dim=-1).view(-1, dims)
+
+        mesh = torch.meshgrid(lines)
+
+        if return_mesh:
+            grid = mesh
+        else:
+            grid = torch.stack(mesh, dim=-1).view(-1, dims)
 
         return grid
 
@@ -127,7 +135,7 @@ class ValuationObservationSampler(ABC):
         need extensive grids that sample a broader area. (E.g. when a bidder
         with high valuations massively shads her bids.)
         """
-        support_bounds = self.support_bounds
+        support_bounds = self.support_bounds.clone()
 
         # Grid bids should always start at zero if not specified otherwise
         support_bounds[:, :, 0] = 0
@@ -136,41 +144,37 @@ class ValuationObservationSampler(ABC):
             player_position=player_position, minimum_number_of_points=minimum_number_of_points,
             dtype=dtype, device=device, support_bounds=support_bounds)
 
-    def generate_grid_cell_bounds(self, player_position: int, minimum_number_of_points: int,
-                                  dtype=torch.float, device = None,
-                                  support_bounds: torch.Tensor = None) -> torch.Tensor:
-        """For the epsilon estimate, we need to evaluate the strategies at the
-        boundaries of the grid cells.
+    def generate_cell_partition(self, player_position: int, grid_size: int,
+                                dtype=torch.float, device=None):
+        """Generate a rectangular grid partition of the valuation/observation
+        prior and return cells with their vertices.
         """
-        device = device or self.default_device
+        grid = self.generate_valuation_grid(
+            player_position=player_position, minimum_number_of_points=grid_size,
+            dtype=dtype, device=device, return_mesh=True,
+            )
+        grid_shape = grid[0].shape
+        valuation_size = len(grid)  # Note: sometimes this mismatches when we can reduce the prior's dim
 
-        if support_bounds is None:
-            support_bounds = self.support_bounds
-        bounds = support_bounds[player_position]
+        def index2vertex(vertex_index):
+            """Get the grid point to the corresponding index."""
+            return torch.stack(
+                [g[tuple(vertex_index)] for g in grid]
+                ).view(1, valuation_size)
 
-        # dimensionality
-        dims = self.valuation_size
+        # loop over all lower verices of all cells
+        for lower_vertex_index in product(*[list(range(j - 1)) for j in grid_shape]):
+            # these are the indecies: one for each of the grid dimensions
 
-        # use equal density in each dimension of the valuation, such that
-        # the total number of points is at least as high as the specified one
-        n_points_per_dim = ceil(minimum_number_of_points**(1/dims))
+            # collecting all `upper' verticies adjacent to `lower_vertex`
+            vertices_indices = list()
+            for k in list(product(*([0, 1] for _ in range(valuation_size)))):
+                vertex_index = list(map(add, lower_vertex_index, k))
+                # if all(i < j for i, j in zip(vertex_index, list(grid_shape))):
+                vertices_indices.append(vertex_index)
 
-        # create equidistant lines along the support in each dimension
-        lines = [torch.linspace(bounds[d][0], bounds[d][1], n_points_per_dim,
-                                device=device, dtype=dtype)
-                 for d in range(dims)]
-        corners = torch.stack(torch.meshgrid(lines), dim=-1)
+            yield [index2vertex(vertex_index) for vertex_index in vertices_indices]
 
-        # TODO: speedup -> for more than 2 dims, we can reduce the number of
-        # corners to 2 for these rectangular grids
-
-        # TODO: only tested for 1 and 2 dims
-        grid_cell_lower_corners = grid_cell_upper_corners = corners
-        for d in range(dims):
-            grid_cell_lower_corners = grid_cell_lower_corners.narrow(d, 0, n_points_per_dim-1)
-            grid_cell_upper_corners = grid_cell_upper_corners.narrow(d, 1, n_points_per_dim-1)
-
-        return grid_cell_lower_corners.flatten(0, -2), grid_cell_upper_corners.flatten(0, -2)
 
 class PVSampler(ValuationObservationSampler, ABC):
     """A sampler for Private Value settings, i.e. when observations and
@@ -325,12 +329,12 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
                                 dtype=torch.float, device = None,
-                                support_bounds: torch.Tensor = None) -> torch.Tensor:
+                                support_bounds: torch.Tensor = None, return_mesh: bool=False) -> torch.Tensor:
         """Possibly need to call specific grid sampling"""
         for g in range(self.n_groups):  # iterate over groups
             players = self.group_indices[g]  # player_positions within group
             for i, pos in enumerate(players):  # need to keep track of list index: i != pos
                 if player_position == pos:
                     return self.group_samplers[g].generate_valuation_grid(
-                        i, minimum_number_of_points, dtype, device, support_bounds
+                        i, minimum_number_of_points, dtype, device, support_bounds, return_mesh
                     )

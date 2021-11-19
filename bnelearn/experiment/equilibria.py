@@ -348,6 +348,9 @@ def bne_splitaward_2x2_1_factory(experiment_config, payoff_dominant: bool=True):
 
     def optimal_bid(valuation, player_position=None):
 
+        if valuation.shape[-1] == 1:
+            valuation = torch.cat((efficiency_parameter*valuation, valuation), axis=1)
+
         device = valuation.device
         dist = torch.distributions.Uniform(torch.tensor(u_lo, device=device),
                                             torch.tensor(u_hi, device=device))
@@ -390,6 +393,10 @@ def bne_splitaward_2x2_2_factory(experiment_config):
     n_players = experiment_config.n_players
 
     def optimal_bid(valuation, player_position=None):
+
+        if valuation.shape[-1] == 1:
+            valuation = torch.cat((efficiency_parameter*valuation, valuation), axis=1)
+
         device = valuation.device
         valuation_cdf = torch.distributions.Uniform(
             torch.tensor(u_lo[0], device=device),

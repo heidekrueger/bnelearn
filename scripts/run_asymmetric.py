@@ -28,14 +28,14 @@ if __name__ == '__main__':
 
     # Path is user-specific
     log_root_dir = os.path.join(
-        os.path.expanduser('~'), 'bnelearn', 'experiments', 'asymmmetric-final-results-new-eps'
+        os.path.expanduser('~'), 'bnelearn', 'experiments', 'asymmmetric-final-results'
         )
 
     # Common parameters #######################################################
-    n_epochs = 1
-    n_runs = 1
+    n_epochs = 2000
+    n_runs = 10
     sigma = .1
-    specific_gpu = 0
+    specific_gpu = 7
 
     # Single-item asymmetric experiments ######################################
     experiment_types = [
@@ -61,13 +61,13 @@ if __name__ == '__main__':
                 util_loss_batch_size=2**12,
                 util_loss_grid_size=2**12,
                 util_loss_frequency=n_epochs,
-                plot_frequency=400,
+                plot_frequency=500,
                 log_root_dir=log_root_dir,
                 best_response=True,
                 cache_eval_actions=True,
                 log_metrics = {
                     'opt': True,
-                    # 'util_loss': True,
+                    'util_loss': True,
                     'epsilon': True,
                     },
                 save_models=True
@@ -76,9 +76,9 @@ if __name__ == '__main__':
                 specific_gpu=specific_gpu,
             ) \
             .get_config()
-    experiment = experiment_class(experiment_config)
-    experiment.run()
-    torch.cuda.empty_cache()
+        experiment = experiment_class(experiment_config)
+        experiment.run()
+        torch.cuda.empty_cache()
 
 
     # Asymmetric LLG experiment ###############################################
@@ -100,8 +100,8 @@ if __name__ == '__main__':
             ) \
         .set_logging(
             eval_batch_size=2**17,
-            util_loss_batch_size=2**12,
-            util_loss_grid_size=2**12,
+            util_loss_batch_size=2**11,
+            util_loss_grid_size=2**11,
             util_loss_frequency=n_epochs,
             best_response=True,
             plot_frequency=500,
@@ -110,7 +110,7 @@ if __name__ == '__main__':
             save_models=True,
             log_metrics = {
                 'opt': True,
-                # 'util_loss': True,
+                'util_loss': True,
                 'epsilon': True,
                 },
             ) \
@@ -128,8 +128,6 @@ if __name__ == '__main__':
             experiment_type='splitaward',
             n_runs=n_runs, n_epochs=n_epochs
                 ) \
-            .set_setting(
-                ) \
             .set_learning(
                 learner_hyperparams={
                     'population_size': 64,
@@ -138,7 +136,6 @@ if __name__ == '__main__':
                     },
                 ) \
             .set_logging(
-                eval_batch_size=2**22,
                 util_loss_batch_size=2**12,
                 util_loss_grid_size=2**12,
                 util_loss_frequency=n_epochs,
@@ -148,7 +145,7 @@ if __name__ == '__main__':
                 log_root_dir=log_root_dir,
                 log_metrics = {
                     'opt': True,
-                    # 'util_loss': True,
+                    'util_loss': True,
                     'epsilon': True,
                     },
                 ) \
@@ -172,7 +169,6 @@ if __name__ == '__main__':
                 payment_rule='nearest_vcg'
                 ) \
             .set_learning(
-                pretrain_iters=500,
                 batch_size=2**8,
                 learner_hyperparams={
                     'population_size': 64,
@@ -181,6 +177,7 @@ if __name__ == '__main__':
                     },
                 ) \
             .set_logging(
+                eval_batch_size=2**8,
                 log_root_dir=log_root_dir,
                 util_loss_batch_size=2**4,
                 util_loss_grid_size=2**6,
@@ -188,7 +185,7 @@ if __name__ == '__main__':
                 plot_frequency=500,
                 cache_eval_actions=True,
                 log_metrics = {
-                    # 'util_loss': True,
+                    'util_loss': True,
                     'epsilon': True,
                     },
                 ) \

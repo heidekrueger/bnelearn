@@ -348,7 +348,7 @@ def _get_best_responses_among_alternatives(
     # for each agent_observation, find the best response
     # each have shape: [agent_batch_size]
     br_utility, br_indices = grid_utilities.max(dim=0)
-    return br_utility,br_indices
+    return br_utility, br_indices
 
 
 def ex_interim_utility(
@@ -439,131 +439,104 @@ def verify_epsilon_bne(exp: 'Experiment', grid_size: int,
         player_position = player_positions[0]
         agent: Bidder = env.agents[player_position]
 
-        # cell partiton of valutations where the strategies shall be evaluated
-        grid_cell_lower_corners, grid_cell_upper_corners = env.sampler \
-            .generate_grid_cell_bounds(
-                player_position=player_position, minimum_number_of_points=grid_size,
-                dtype=dtype, device=device
-                )
-        n_cells = grid_cell_lower_corners.shape[0]
-
-        epsilons = torch.zeros(n_cells, dtype=dtype, device=device)
-
         # maximum over observation/valuation grid
         # (this should also include the boundaries, s.t. all parts of the step-
         # wise function are covered)
-        i = 0
-        for point_low, point_high in tqdm(zip(grid_cell_lower_corners, grid_cell_upper_corners), total=n_cells):
-            point_low = point_low.view(-1, valuation_size)
-            point_high = point_high.view(-1, valuation_size)
+        for vertices in tqdm(
+            exp.sampler.generate_cell_partition(player_position, grid_size, device=device),
+            total=grid_size
+            ):
 
-            util_actual = ex_interim_utility(
-                env=env, player_position=player_position,
-                agent_observations=point_high,
-                agent_actions=agent.get_action(point_high),
-                opponent_batch_size=opponent_batch_size, device=device
+            action_alternatives = env.sampler.generate_action_grid(
+                player_position, minimum_number_of_points=grid_size,
+                dtype=dtype, device=device
                 )
-            util_upper_bound = ex_interim_utility_bound(
-                env=env, player_position=player_position,
-                agent_valuation=point_high, grid_size=grid_size,
-                opponent_batch_size=opponent_batch_size
-                )
-            util_loss_bound = util_upper_bound - util_actual
+            util_best_response_cell = -float('inf')
+            for valuation_vertex in vertices:
 
-            utility_cell_low = ex_interim_utility(
-                env, player_position, point_low,
-                agent.get_action(point_low),
-                opponent_batch_size, device
-                ).item()
+                # caluclate BR utiltiy at all vertices and take the maximum
+                util_best_response_vertex = _get_best_responses_among_alternatives(
+                    env, player_position, valuation_vertex, action_alternatives,
+                    opponent_batch_size
+                    )[0]
+                util_best_response_cell = max(util_best_response_cell, util_best_response_vertex)
 
-            utility_cell_high = ex_interim_utility(
-                env, player_position, point_high,
-                agent.get_action(point_high),
-                opponent_batch_size, device
-                ).item()
+                # interim utility at lower cell vertex
+                action = agent.get_action(vertices[0])
+                utility_actual = ex_interim_utility(
+                    env, player_position, valuation_vertex, action,
+                    opponent_batch_size, device
+                    ).item()
 
-            epsilons[i] = util_loss_bound + utility_cell_high - utility_cell_low
-            i += 1
-
-        highest_epsilon = max(highest_epsilon, epsilons.max())
-
-        # plotting
-        # TODO: WIP should be collected to plot all bidders' eps in one plot
-        n_items = grid_cell_lower_corners.shape[1]
-
-        # keep track of upper bound for plotting
-        if not hasattr(exp, '_max_epsilon'):
-            exp._max_epsilon = float(highest_epsilon)
-        else:
-            exp._max_epsilon = max(exp._max_epsilon, float(highest_epsilon))
-
-        if n_items == 1:
-            plot_data = (grid_cell_lower_corners.view(-1, 1, 1), epsilons.view(-1, 1, 1))
-            exp._plot(plot_data=plot_data, writer=exp.writer, x_label="valuation",
-                      y_label="utility loss bound", ylim=[0, exp._max_epsilon],
-                      figure_name=f'utility loss bound bidder {player_position}',
-                      plot_points=n_cells)
-        if n_items == 2:
-            plot_data = (grid_cell_lower_corners[:, :].view(-1, 1, 2), epsilons.view(-1, 1, 1))
-            exp._plot_3d(plot_data=plot_data, writer=exp.writer, zlim=[0, exp._max_epsilon],
-                         figure_name=f'utility loss bound bidder {player_position}',
-                         labels=["utility loss bound"])
+                highest_epsilon = max(highest_epsilon, util_best_response_cell - utility_actual)
 
     return highest_epsilon
 
-def ex_interim_utility_bound(env: AuctionEnvironment, player_position: int,
-                             agent_valuation: torch.Tensor, grid_size: int,
-                             opponent_batch_size: int) -> torch.Tensor:
-    """Calulate an upper bound for the utility and specific actions.
-    According to Bosshard et al. (2020), under some assumptions (see Prop. 1),
-    the expected utility can be bounded based on estimates.
-    """
-    device = env.mechanism.device
-    agent: Bidder = env.agents[player_position]
-    assert agent_valuation.shape[0] == 1, 'Can only check one valuation at a time'
+# def ex_interim_utility_bound(env: AuctionEnvironment, player_position: int,
+#                              agent_valuation: torch.Tensor, grid_size: int,
+#                              opponent_batch_size: int) -> torch.Tensor:
+#     """Calulate an upper bound for the utility and specific actions.
+#     According to Bosshard et al. (2020), under some assumptions (see Prop. 1),
+#     the expected utility can be bounded based on estimates.
+#     """
+#     device = env.mechanism.device
+#     agent: Bidder = env.agents[player_position]
+#     assert agent_valuation.shape[0] == 1, 'Can only check one valuation at a time'
 
-    valuation_size = agent_valuation.shape[-1]
-    bid_size = agent.bid_size
+#     valuation_size = agent_valuation.shape[-1]
+#     bid_size = agent.bid_size
 
-    grid = env.sampler.generate_action_grid(
-        player_position=player_position, minimum_number_of_points=grid_size,
-        device=device
-        )
-    grid_size = grid.shape[0]  # grid might have different sample size for higher dims
+#     grid = env.sampler.generate_action_grid(
+#         player_position=player_position, minimum_number_of_points=grid_size,
+#         device=device
+#         )
+#     grid_size = grid.shape[0]  # grid might have different sample size for higher dims
 
-    bid_profile = torch.empty(opponent_batch_size, grid_size, len(env.agents), bid_size,
-                              dtype=agent_valuation.dtype, device=device)
-    for opponent in env.agents:
-        if opponent.player_position != player_position:
-            bid_profile[:, :, opponent.player_position, :] = \
-                opponent.get_action(
-                    env.sampler.draw_conditional_profiles(
-                        player_position, agent_valuation, opponent_batch_size, device
-                        )[0][:, :, opponent.player_position, :]
-                    ) \
-                    .view(opponent_batch_size, 1, bid_size) \
-                    .repeat(1, grid_size, 1)
-             # repeat opponents' actions to compete against all grid-actions of agent
+#     bid_profile = torch.empty(opponent_batch_size, grid_size, len(env.agents), bid_size,
+#                               dtype=agent_valuation.dtype, device=device)
+#     for opponent in env.agents:
+#         if opponent.player_position != player_position:
+#             bid_profile[:, :, opponent.player_position, :] = \
+#                 opponent.get_action(
+#                     env.sampler.draw_conditional_profiles(
+#                         player_position, agent_valuation, opponent_batch_size, device
+#                         )[0][:, :, opponent.player_position, :]
+#                     ) \
+#                     .view(opponent_batch_size, 1, bid_size) \
+#                     .repeat(1, grid_size, 1)
+#              # repeat opponents' actions to compete against all grid-actions of agent
 
-    bid_profile[:, :, player_position, :] = grid \
-        .view(1, grid_size, bid_size) \
-        .repeat(opponent_batch_size, 1, 1)
-    allocations, payments = env.mechanism.play(bid_profile)
+#     bid_profile[:, :, player_position, :] = grid \
+#         .view(1, grid_size, bid_size) \
+#         .repeat(opponent_batch_size, 1, 1)
+#     allocations, payments = env.mechanism.play(bid_profile)
 
-    # welfare for each grid action, each averaged over all opponents' actions
-    welfare = agent \
-        .get_welfare(
-            allocations[:, :, player_position, :],
-            agent_valuation \
-                .view(1, 1, valuation_size) \
-                .repeat(opponent_batch_size, grid_size, 1)
-            ) \
-        .view(opponent_batch_size, grid_size) \
-        .mean(axis=0)
+#     # welfare for each grid action, each averaged over all opponents' actions
+#     welfare = agent \
+#         .get_welfare(
+#             allocations[:, :, player_position, :],
+#             agent_valuation \
+#                 .view(1, 1, valuation_size) \
+#                 .repeat(opponent_batch_size, grid_size, 1)
+#             ) \
+#         .view(opponent_batch_size, grid_size) \
+#         .mean(axis=0)
 
-    # payments for each grid action averaged over opponents
-    payments = payments[:, :, [player_position]] \
-        .view(opponent_batch_size, grid_size) \
-        .mean(axis=0)
+#     # payments for each grid action averaged over opponents
+#     payments = payments[:, :, [player_position]] \
+#         .view(opponent_batch_size, grid_size) \
+#         .mean(axis=0)
 
-    return torch.max(welfare[1:] - payments[:-1])
+#     # compare welfare of upper bound on grid with payments on lower bound on grid
+#     # TODO support more than one action dim!
+#     if grid.shape[-1] > 1:
+#         raise NotImplementedError()
+
+#     utility_bound = welfare[1:] - payments[:-1]
+
+#     # invert welfare and payments for reverse bidders
+#     # TODO should be handled in bidder class perhaps
+#     if isinstance(agent, ReverseBidder):
+#         utility_bound *= -1
+#
+#    return torch.max(utility_bound)

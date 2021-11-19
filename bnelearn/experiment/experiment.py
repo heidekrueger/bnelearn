@@ -275,6 +275,7 @@ class Experiment(ABC):
         self._setup_bidders()
         self._setup_learning_environment()
         self._setup_learners()
+        self.epoch = 0
 
         if self.logging.log_metrics['opt'] and hasattr(self, 'bne_env'):
 
@@ -421,7 +422,6 @@ class Experiment(ABC):
 
         for run_id, seed in enumerate(self.running.seeds):
             print(f'\nRunning experiment {run_id} (using seed {seed})')
-            self.epoch = 0
             try:
                 t = time.strftime('%T ')
                 if platform == 'win32':
@@ -441,7 +441,6 @@ class Experiment(ABC):
                 if self.logging.enable_logging:
                     self._plot_current_strategies()
 
-                self.epoch = 0
                 for _ in range(self.running.n_epochs + 1):
                     utilities = self._training_loop()
                     self.epoch += 1
@@ -561,7 +560,7 @@ class Experiment(ABC):
                     x_label + add if not isinstance(x_label, list) else x_label[plot_idx])
                 # axs[plot_idx].set_xlabel(
                 #     x_label + add if not isinstance(x_label, list) else x_label[plot_idx])
-            if plot_idx == 0 or (isinstance(ax_idx[plot_idx], tuple) and ax_idx[plot_idx][1] == 0):
+            if plot_idx == 0 or (subplot_order[0] > 1 and ax_idx[plot_idx][1] == 0):
                 add = ' ' + str(ax_idx[plot_idx][0]) if subplot_order[0] > 1 else ''
                 axs[ax_idx[plot_idx]].set_ylabel(y_label + add)
                 if n_players < 10 and labels is not None:
@@ -714,7 +713,7 @@ class Experiment(ABC):
                 self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
 
         if self.logging.log_metrics['util_loss'] and (self.epoch % self.logging.util_loss_frequency) == 0:
-            create_plot_output = epoch % self.logging.plot_frequency == 0
+            create_plot_output = self.epoch % self.logging.plot_frequency == 0
             self._cur_epoch_log_params['util_loss_ex_ante'], \
             self._cur_epoch_log_params['util_loss_ex_interim'], \
             self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'] = \
