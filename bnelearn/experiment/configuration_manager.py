@@ -3,7 +3,6 @@ import os
 import time
 import warnings
 from typing import List, Type, Iterable, Tuple
-from numpy import MAXDIMS
 
 import torch
 import torch.nn as nn
@@ -309,24 +308,31 @@ class ConfigurationManager:
         ConfigurationManager.experiment_types[self.experiment_type][2](self)
 
     def _post_init_single_item_uniform_symmetric(self):
+        """No setting specific post initialization needed."""
         pass
 
     def _post_init_single_item_gaussian_symmetric(self):
+        """No setting specific post initialization needed."""
         pass
 
     def _post_init_single_item_asymmetric_uniform_overlapping(self):
+        """No setting specific post initialization needed."""
         pass
 
     def _post_init_single_item_asymmetric_uniform_disjunct(self):
+        """No setting specific post initialization needed."""
         pass
 
     def _post_init_mineral_rights(self):
+        """No setting specific post initialization needed."""
         pass
 
     def _post_init_affiliated_observations(self):
+        """No setting specific post initialization needed."""
         pass
 
     def _post_init_llg(self):
+        """LLG post-init: infer correct correlation settings"""
         # How many of those types are there and how do they correspond to gammavalues?
         # I might wrongly understand the relationship here
         if self.setting.gamma == 0.0:
@@ -353,12 +359,15 @@ class ConfigurationManager:
         self._post_init_llg()
 
     def _post_init_llllgg(self):
+        """No setting specific post initialization needed."""
         pass
 
     def _post_init_multiunit(self):
+        """No setting specific post initialization needed."""
         pass
 
     def _post_init_splitaward(self):
+        """No setting specific post initialization needed."""
         pass
 
     experiment_types = {
@@ -460,7 +469,8 @@ class ConfigurationManager:
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
-                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
+                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
+                     sampling_method: str = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.learning, arg):
@@ -533,6 +543,7 @@ class ConfigurationManager:
         learning = LearningConfig(
             model_sharing=True,
             learner_type='ESPGLearner',
+            sampling_method = 'pseudorandom',
             learner_hyperparams={'population_size': 64,
                                  'sigma': 1.,
                                  'scale_sigma_by_model_size': True},

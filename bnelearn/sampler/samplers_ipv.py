@@ -1,7 +1,8 @@
 """This module implements samplers for independent-private value auction settings."""
 
 from typing import List, Tuple
-from math import ceil
+from math import ceil, prod
+import warnings
 
 import torch
 from torch.cuda import _device_t as Device
@@ -86,15 +87,15 @@ class SymmetricIPVSampler(PVSampler):
         # repeat support bounds across all players and valuation dimensions
         support_bounds = torch.stack([lower_bound, upper_bound]).repeat([n_players, valuation_size, 1])
 
+        # Standard: pseudorandom sampling, otherwise overload
         if sampling_method == "pseudorandom":
-            self._sample = self._sample_pseudorandom
+            # base case, no action necessary
+            pass
         elif sampling_method == "deterministic_Sobol":
-            """Deterministic Sobol --> Sample once in the beginning, then
-            keep returning the same sample when called again."""
+            """Store largest sampled vector, then access it during sampling."""
             self._sample = self._sample_sobol_deterministic
-            self._deterministic_sample = draw_sobol(self.distribution, 
-                                                    self.default_batch_size,
-                                                    self.default_device)
+            self._stored_sample_batch_size = 0
+            self._stored_sample = None
         else:
             raise ValueError(ERR_MSG_INVALID_SAMPLING_METHOD_PSEUDO_SOBOL)
 
@@ -102,6 +103,10 @@ class SymmetricIPVSampler(PVSampler):
         super().__init__(n_players, valuation_size, support_bounds, default_batch_size, #pylint: disable=arguments-out-of-order
                          default_device)
 
+    def _sample(self, batch_sizes, device) -> torch.Tensor:
+        """Default implementation --> pseudorandom, may be overwritten in init."""
+        return self._sample_pseudorandom(batch_sizes, device)
+    
     def _sample_pseudorandom(self, batch_sizes: int or List[int], device: Device) -> torch.Tensor:
         """Draws a batch of observation/valuation profiles (equivalent in PV)"""
         batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
@@ -109,13 +114,27 @@ class SymmetricIPVSampler(PVSampler):
 
         return self.distribution.sample(batch_sizes).to(device)
 
+    def _store_sobol_sample(self, batch_size):
+        """Overwrites the stored sample with a new one of size batch_size."""
+        print(f"Storing Sobol sample of size {batch_size}")
+        self._stored_sample = draw_sobol(self.distribution,
+                                         batch_size,
+                                         self.default_device)
+        self._stored_sample_batch_size = batch_size
+
+
+
     def _sample_sobol_deterministic(self, batch_sizes: int or List[int], device: Device) -> torch.Tensor:
-        """Draws a batch of observation/valuation profiles (equivalent in PV) via
-        low-discrepancy Sobol sequence sampling."""
-        if batch_sizes != self.default_batch_size or \
-            device != self.default_device:
-            raise NotImplementedError(ERR_MSG_SOBOL_ONLY_FOR_DEFAULTS)
-        return self._deterministic_sample
+        """Use stored sample, redraw if too small. Failover to pseudorandom
+        if necessary."""
+
+        total_size = prod(batch_sizes)
+        if total_size > self._stored_sample_batch_size:
+            self._store_sobol_sample(total_size)
+        _, *sample_sizes = self._stored_sample.shape
+        return self._stored_sample[:total_size] \
+                   .view(*batch_sizes, *sample_sizes) \
+                   .to(device)
 
 
     def draw_conditional_profiles(self,
@@ -227,7 +246,8 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         super().__init__(u_lo, u_hi,
                          n_players, n_items,
                          default_batch_size=default_batch_size,
-                         default_device=default_device)
+                         default_device=default_device,
+                         sampling_method = "psuedorandom")
 
         # define alias AFTER super init such that both point to same memory address
         self.n_items = self.valuation_size

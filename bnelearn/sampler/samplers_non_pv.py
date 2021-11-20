@@ -42,7 +42,8 @@ class MineralRightsValuationObservationSampler(ValuationObservationSampler):
             observation_size,
             support_bounds,
             default_batch_size=default_batch_size,
-            default_device=default_device)
+            default_device=default_device,
+            sampling_method="pseudorandom")
 
     def draw_profiles(self, batch_sizes: List[int] = None, device = None) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
@@ -191,7 +192,8 @@ class AffiliatedValuationObservationSampler(ValuationObservationSampler):
             observation_size,
             support_bounds,
             default_batch_size=default_batch_size,
-            default_device=default_device)
+            default_device=default_device,
+            sampling_method="pseudorandom")
 
     def draw_profiles(self, batch_sizes: List[int] = None, device = None) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_sizes = self._parse_batch_sizes_arg(batch_sizes)

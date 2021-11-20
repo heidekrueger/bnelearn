@@ -67,7 +67,7 @@ class CorrelatedSymmetricUniformPVSampler(PVSampler, ABC):
         support_bounds = torch.tensor([u_lo, u_hi]).repeat([n_players, valuation_size, 1])
 
         super().__init__(n_players, valuation_size, support_bounds,
-                         default_batch_size, default_device)
+                         default_batch_size, default_device, sampling_method="pseudorandom")
 
     @abstractmethod
     def _get_weights(self, batch_sizes: List[int], device: Device) -> torch.Tensor:
@@ -303,7 +303,7 @@ class LocalGlobalCompositePVSampler(CompositeValuationObservationSampler):
         super().__init__(n_players, valuation_size, observation_size, subgroup_samplers, default_batch_size, default_device)
 
     def _get_group_sampler(self, n_group_players, correlation, correlation_method,
-                           u_lo, u_hi, 
+                           u_lo, u_hi,
                            valuation_size,  default_batch_size, default_device) -> PVSampler:
         """Returns a sampler of possibly correlated Uniform PV players for a
             symmetric group of players (e.g. the locals or globals)"""
@@ -369,7 +369,8 @@ class LLGFullSampler(LLGSampler):
         return grid
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
-                                dtype=torch.float, device=None) -> torch.Tensor:
+                                dtype=torch.float, device=None,
+                                support_bounds: torch.Tensor =None) -> torch.Tensor:
         """Here, the grid needs to be three dimensional, as bidders can bid on
         all three items, even though they're only interested in one.
         """
