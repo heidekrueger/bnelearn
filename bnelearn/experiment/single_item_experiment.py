@@ -104,7 +104,8 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
     def _setup_sampler(self):
         self.sampler = SymmetricIPVSampler(
             self.common_prior, self.n_players, self.valuation_size,
-            self.config.learning.batch_size, self.config.hardware.device
+            self.config.learning.batch_size, self.config.hardware.device,
+            self.config.learning.sampling_method
         )
 
     def _check_and_set_known_bne(self):
