@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # non-python requirements (for package development only)
 # jq # installable via apt-get; used to automatically clean up ipynb files on commit via git filters.
-## Tested with python==3.9.5
+## Tested with python==3.9.7
 --find-links https://download.pytorch.org/whl/torch_stable.html
 
 cvxpy
@@ -23,5 +23,5 @@ Sphinx
 sphinx-rtd-theme
 tabulate
 tensorboard
-torch==1.9.0+cu111 # alternative via conda: pytorch -c pytorch
+torch==1.10.0+cu113 # alternative via conda: pytorch -c pytorch
 tqdm # for progress bars
