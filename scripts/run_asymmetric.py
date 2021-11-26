@@ -127,32 +127,32 @@ if __name__ == '__main__':
         ConfigurationManager(
             experiment_type='splitaward',
             n_runs=n_runs, n_epochs=n_epochs
-                ) \
-            .set_learning(
-                learner_hyperparams={
-                    'population_size': 64,
-                    'sigma': sigma,
-                    'scale_sigma_by_model_size': True
-                    },
-                ) \
-            .set_logging(
-                util_loss_batch_size=2**12,
-                util_loss_grid_size=2**12,
-                util_loss_frequency=n_epochs,
-                best_response=True,
-                plot_frequency=500,
-                cache_eval_actions=True,
-                log_root_dir=log_root_dir,
-                log_metrics = {
-                    'opt': True,
-                    'util_loss': True,
-                    'epsilon': True,
-                    },
-                ) \
-            .set_hardware(
-                specific_gpu=specific_gpu
-                ) \
-            .get_config()
+            ) \
+        .set_learning(
+            learner_hyperparams={
+                'population_size': 64,
+                'sigma': sigma,
+                'scale_sigma_by_model_size': True
+                },
+            ) \
+        .set_logging(
+            util_loss_batch_size=2**12,
+            util_loss_grid_size=2**12,
+            util_loss_frequency=n_epochs,
+            best_response=True,
+            plot_frequency=500,
+            cache_eval_actions=True,
+            log_root_dir=log_root_dir,
+            log_metrics = {
+                'opt': True,
+                'util_loss': True,
+                'epsilon': True,
+                },
+            ) \
+        .set_hardware(
+            specific_gpu=specific_gpu
+            ) \
+        .get_config()
     experiment = experiment_class(experiment_config)
     experiment.run()
     torch.cuda.empty_cache()
@@ -162,37 +162,37 @@ if __name__ == '__main__':
     experiment_config, experiment_class = \
         ConfigurationManager(
             experiment_type='llllgg',
-            n_runs=5, n_epochs=n_epochs
+            n_runs=5, n_epochs=10000
             ) \
-            .set_setting(
-                core_solver='mpc',
-                payment_rule='nearest_vcg'
-                ) \
-            .set_learning(
-                batch_size=2**8,
-                learner_hyperparams={
-                    'population_size': 64,
-                    'sigma': sigma,
-                    'scale_sigma_by_model_size': True
-                    },
-                ) \
-            .set_logging(
-                eval_batch_size=2**8,
-                log_root_dir=log_root_dir,
-                util_loss_batch_size=2**4,
-                util_loss_grid_size=2**6,
-                util_loss_frequency=n_epochs,
-                plot_frequency=500,
-                cache_eval_actions=True,
-                log_metrics = {
-                    'util_loss': True,
-                    'epsilon': True,
-                    },
-                ) \
-            .set_hardware(
-                specific_gpu=specific_gpu
-                ) \
-            .get_config()
+        .set_setting(
+            core_solver='mpc',
+            payment_rule='nearest_vcg'
+            ) \
+        .set_learning(
+            batch_size=2**8,
+            learner_hyperparams={
+                'population_size': 32,
+                'sigma': sigma,
+                'scale_sigma_by_model_size': True
+                },
+            ) \
+        .set_logging(
+            eval_batch_size=2**8,
+            log_root_dir=log_root_dir,
+            util_loss_batch_size=2**4,
+            util_loss_grid_size=2**6,
+            util_loss_frequency=n_epochs,
+            plot_frequency=500,
+            cache_eval_actions=True,
+            log_metrics = {
+                'util_loss': True,
+                'epsilon': True,
+                },
+            ) \
+        .set_hardware(
+            specific_gpu=specific_gpu
+            ) \
+        .get_config()
     experiment = experiment_class(experiment_config)
     experiment.run()
     torch.cuda.empty_cache()

@@ -421,7 +421,7 @@ class Experiment(ABC):
             "Number of seeds doesn't match number of runs."
 
         for run_id, seed in enumerate(self.running.seeds):
-            print(f'\nRunning experiment {run_id} (using seed {seed})')
+            print(f'\n\nRunning experiment {run_id} (using seed {seed})')
             try:
                 t = time.strftime('%T ')
                 if platform == 'win32':
