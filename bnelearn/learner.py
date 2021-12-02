@@ -308,14 +308,9 @@ class PGLearner(GradientBasedLearner):
     """Neural Self-Play with directly computed Policy Gradients.
 
     """
-    def __init__(self,
-                 model: torch.nn.Module, environment: Environment, hyperparams: dict,
-                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 strat_to_player_kwargs: dict = None):
+    def __init__(self, hyperparams: dict, **kwargs):
         # Create and validate optimizer
-        super().__init__(model, environment,
-                         optimizer_type, optimizer_hyperparams,
-                         strat_to_player_kwargs)
+        super().__init__(**kwargs)
 
         if 'normalize_gradient' in hyperparams and hyperparams['normalize_gradient']:
             self.normalize_gradient = True
