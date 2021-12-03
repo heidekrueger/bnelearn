@@ -103,8 +103,8 @@ def bne1_kaplan_zhamir(u_lo: List, u_hi: List):
     interpol_points = 2**11
 
     # 1. Solve implicit bid function
-    v1 = np.linspace(u_lo[0], u_hi[0], interpol_points)
-    v2 = np.linspace(u_lo[1], u_hi[1], interpol_points)
+    v1 = np.linspace(10*u_lo[0], 10*u_hi[0], interpol_points)
+    v2 = np.linspace(10*u_lo[1], 10*u_hi[1], interpol_points)
 
     def inverse_bid_player_1(bid):
         return 36 / ((2 * bid - 6) * (1 / 5) * np.exp(9 / 4 + 6 / (6 - 2 * bid)) + 24 - 4 * bid)
@@ -113,7 +113,7 @@ def bne1_kaplan_zhamir(u_lo: List, u_hi: List):
 
     u_lo_cut = 0
     for i in range(interpol_points):
-        if v1[i] > u_lo[1] / 2:
+        if v1[i] > 10*u_lo[1] / 2:
             u_lo_cut = i
             break
 
@@ -136,7 +136,7 @@ def bne1_kaplan_zhamir(u_lo: List, u_hi: List):
         if valuation.dim() == 0:
             valuation.unsqueeze_(0)
         bid = torch.tensor(
-            opt_bid_function[player_position](valuation.cpu().numpy()),
+            0.1*opt_bid_function[player_position](10*valuation.cpu().numpy()),
             device=valuation.device,
             dtype=valuation.dtype
         )
@@ -168,10 +168,10 @@ def bne2_kaplan_zhamir(
 
     if player_position == 0:
         bids = torch.zeros_like(valuation)
-        bids[valuation > 4] = valuation[valuation > 4] / 2 + 2
-        bids[valuation <= 4] = valuation[valuation <= 4] / 4 + 3
+        bids[valuation > .4] = valuation[valuation > .4] / 2 + .2
+        bids[valuation <= .4] = valuation[valuation <= .4] / 4 + .3
     else:
-        bids = valuation / 2 + 1
+        bids = valuation / 2 + .1
 
     return bids
 
@@ -198,9 +198,9 @@ def bne3_kaplan_zhamir(
         valuation.unsqueeze_(0)
 
     if player_position == 0:
-        bids = valuation / 5 + 4
+        bids = valuation / 5 + .4
     else:
-        bids = 5 * torch.ones_like(valuation)
+        bids = .5 * torch.ones_like(valuation)
 
     return bids
 
@@ -253,7 +253,7 @@ def multiunit_bne_factory(setting, payment_rule) -> Callable or None:
         return None
 
     if payment_rule in ('first_price', 'discriminatory'):
-        if setting.n_units == 2 and setting.n_players == 2:
+        if setting.n_items == 2 and setting.n_players == 2:
             if not setting.constant_marginal_values:
                 print('BNE is only approximated roughly!')
                 return _bne_multiunit_discriminatory_2x2
@@ -261,9 +261,9 @@ def multiunit_bne_factory(setting, payment_rule) -> Callable or None:
                 return _bne_multiunit_discriminatory_2x2_cmv(setting.common_prior)
 
     if payment_rule == 'uniform':
-        if setting.n_units == 2 and setting.n_players == 2:
+        if setting.n_items == 2 and setting.n_players == 2:
             return _bne_multiunit_uniform_2x2()
-        if (setting.n_units == 3 and setting.n_players == 2
+        if (setting.n_items == 3 and setting.n_players == 2
                 and setting.item_interest_limit == 2):
             return _bne_multiunit_uniform_3x2_limit2
 
@@ -347,31 +347,40 @@ def bne_splitaward_2x2_1_factory(experiment_config, payoff_dominant: bool=True):
     clip_cutoff = 4 * u_hi
 
     def optimal_bid(valuation, player_position=None):
+        batch_sizes = valuation.shape[:-1]
+        if valuation.shape[-1] == 1:
+            valuation = valuation.repeat(*([1] * len(batch_sizes)), 2)
+            valuation[..., 0] *= efficiency_parameter
+
+        if valuation.shape[-1] == 1:
+            valuation = torch.cat((efficiency_parameter*valuation, valuation), axis=1)
 
         device = valuation.device
         dist = torch.distributions.Uniform(torch.tensor(u_lo, device=device),
-                                            torch.tensor(u_hi, device=device))
+                                           torch.tensor(u_hi, device=device))
         value_cdf = dist.cdf
-
-        sigma_bounds = torch.ones((valuation.shape[0], 2), device=device)
-        sigma_bounds[:, 1] = efficiency_parameter * u_hi
-        sigma_bounds[:, 0] = (1 - efficiency_parameter) * u_lo
-
         p_sigma = (1 - efficiency_parameter) * u_lo  # highest possible p_sigma
+
+        sigma_bounds = torch.ones((*valuation.shape[:-1], 2), device=device)
+        sigma_bounds[..., 1] = efficiency_parameter * u_hi
+        sigma_bounds[..., 0] = p_sigma
 
         def G(theta):
             return p_sigma + (p_sigma - u_hi * efficiency_parameter * value_cdf(theta)) \
                     / (1 - value_cdf(theta))
 
         wta_bounds = 2 * sigma_bounds
-        wta_bounds[:, 0] = G(valuation[:, 1])
+        wta_bounds[..., 0] = G(valuation[..., 1])
 
         action_idx = 1 if payoff_dominant else 0
         bid = torch.cat(
-            (sigma_bounds[:, action_idx].view(-1, 1),
-            wta_bounds[:, action_idx].view(-1, 1)),
-            axis=1
+            (sigma_bounds[..., action_idx].view(*batch_sizes, 1),
+            wta_bounds[..., action_idx].view(*batch_sizes, 1)),
+            axis=-1
         )
+        mean = bid.mean(axis=list(range(len(batch_sizes))))
+        bid[..., 0] = mean[0]
+        bid[..., 1] = mean[1]
         bid[bid > clip_cutoff] = clip_cutoff
         return bid
 
@@ -390,22 +399,29 @@ def bne_splitaward_2x2_2_factory(experiment_config):
     n_players = experiment_config.n_players
 
     def optimal_bid(valuation, player_position=None):
+        batch_sizes = valuation.shape[:-1]
+        if valuation.shape[-1] == 1:
+            valuation = valuation.repeat(*([1] * len(batch_sizes)), 2)
+            valuation[..., 0] *= efficiency_parameter
+
         device = valuation.device
         valuation_cdf = torch.distributions.Uniform(
             torch.tensor(u_lo[0], device=device),
             torch.tensor(u_hi[0], device=device)).cdf
 
         integrand = lambda x: torch.pow(1 - valuation_cdf(x), n_players - 1)
-        integral = - cumulatively_integrate(integrand, 
-                                            upper_bounds = valuation[:, [1]],
-                                            lower_bound=u_hi[0] - 1e-4)
+        integral = - cumulatively_integrate(
+            integrand, 
+            upper_bounds=valuation[..., [1]],
+            lower_bound=u_hi[0] - 1e-4
+            ).view_as(valuation[..., [1]])
 
-        opt_bid_100 = valuation[:, [1]] + integral \
-            / torch.pow(1 - valuation_cdf(valuation[:, [1]]), n_players - 1)
+        opt_bid_100 = valuation[..., [1]] + integral \
+            / torch.pow(1 - valuation_cdf(valuation[..., [1]]), n_players - 1)
 
         opt_bid = torch.cat(
             [opt_bid_100 - efficiency_parameter * u_lo[0], opt_bid_100],
-            axis=1)
+            axis=-1)
         opt_bid[opt_bid < 0] = 0
         return opt_bid
 

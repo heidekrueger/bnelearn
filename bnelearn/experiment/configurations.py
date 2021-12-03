@@ -30,6 +30,7 @@ class RunningConfig:
 @dataclass
 class SettingConfig:
     n_players: int
+    n_items: int
     payment_rule: str
     risk: float
 
@@ -51,7 +52,6 @@ class SettingConfig:
     correlation_coefficients: List[float] = None  # coefficients in each group
 
     # Multi-Unit
-    n_units: int = None
     pretrain_transform: callable = None
     constant_marginal_values: bool = False
     item_interest_limit: int = None
@@ -63,6 +63,10 @@ class SettingConfig:
     core_solver: str = None
     # parallel: int = 1 in hardware config now
 
+    # CA with Item-Bidding
+    exp_type: str = None
+    exp_params: dict = None
+
 
 @dataclass
 class LearningConfig:
@@ -71,12 +75,14 @@ class LearningConfig:
     learner_hyperparams: dict
     optimizer_type: str
     optimizer_hyperparams: dict
+    scheduler_type: str
+    scheduler_hyperparams: dict
     hidden_nodes: List[int]
     pretrain_iters: int
     batch_size: int
     smooth_market: bool
+    redraw_every_iteration: bool
     hidden_activations: List[nn.Module] = None
-
 
 @dataclass
 class LoggingConfig:

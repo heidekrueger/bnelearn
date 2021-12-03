@@ -42,8 +42,7 @@ def batched_index_select(input: torch.Tensor, dim: int,
 def apply_with_dynamic_mini_batching(
         function: callable,
         args: torch.Tensor,
-        n_outputs: int=1,
-        dtypes: List[type]=[torch.float]
+        mute: bool=False
     ) -> List[torch.Tensor]:
     """Apply the function `function` batch wise to the tensor argument `args`
     with error handling for CUDA Out-Of-Memory problems. Starting with the full
@@ -57,29 +56,39 @@ def apply_with_dynamic_mini_batching(
     Args:
         function :callable: function to be evaluated.
         args :torch.Tensor: pytorch.tensor arguments passed to function.
-        n_outputs :int: the number of flat tensors to be returned.
-        dtypes: :List[type]: the dtypes of the outputs. Length must match length
-            of `n_outputs`.
+        mute: bool, mute stdout.
 
     Returns:
         function evaluated at args.
     """
     batch_size = args.shape[0]
-    output = [torch.empty(batch_size, dtype=dtypes[i], device=args.device)
-              for i in range(n_outputs)]
+    output_sample = function(args[[0], ...])
+    n_outputs = len(output_sample)
+    output_dtypes = [o.dtype for o in output_sample]
+    output_shapes = [tuple(o.shape[1:]) for o in output_sample]
+    output = [
+        torch.empty(
+            (batch_size, *output_shapes[i]),
+            dtype=output_dtypes[i],
+            device=args.device
+        )
+            for i in range(n_outputs)
+    ]
 
     calculation_successful = False
     mini_batch_size = batch_size
 
     while not calculation_successful:
         try:
-            print(f"Trying {function} calculation with batch_size {mini_batch_size}...")
+            if not mute:
+                print(f"Trying {function} calculation with batch_size {mini_batch_size}...")
 
             # Split up arguments into smaller chunks of batch size `mini_batch_size`
             mini_args = args.split(mini_batch_size)
 
             # Iterate over chunks
-            for i, mini_arg in tqdm(enumerate(mini_args), total=ceil(len(mini_args))):
+            custom_range = enumerate(mini_args) if mute else tqdm(enumerate(mini_args), total=ceil(len(mini_args)))
+            for i, mini_arg in custom_range:
 
                 # Get the indices corresponding to this mini batch
                 indices = slice(i*mini_batch_size, (i+1)*mini_batch_size)
@@ -89,7 +98,8 @@ def apply_with_dynamic_mini_batching(
                     output[out_dim][indices] = mini_output[out_dim]
 
             calculation_successful = True
-            print("\t ... success!")
+            if not mute:
+                print("\t ... success!")
 
         except RuntimeError as e:
             if not str(e).startswith(_CUDA_OOM_ERR_MSG_START):
@@ -99,7 +109,28 @@ def apply_with_dynamic_mini_batching(
                 # pylint: disable = raise-missing-from
                 raise RuntimeError(ERR_MSG_OOM_SINGLE_BATCH)
 
-            print("\t... failed (OOM). Decreasing mini batch size.")
+            if not mute:
+                print("\t... failed (OOM). Decreasing mini batch size.")
             mini_batch_size = int(mini_batch_size / 2)
 
     return output
+
+def item2bundle(n_items: int) -> torch.Tensor:
+    """
+    Returns a tensor of shape (n_bundles, n_bundles) that can be used to
+    multiply a tensor that only contains values for the n_items into a format that
+    translates it to the bundles of items.
+    """
+    n_bundles = (2**n_items) - 1
+    transformation = torch.zeros((n_bundles, n_bundles))
+    for idx, b in enumerate(range(1, n_bundles + 1)):
+        i = [0] * n_items
+        j = 0
+        while b > 0:
+            i[j] = b % 2
+            b = int(b / 2)
+            j += 1
+        transformation[torch.arange(n_items), idx] = torch.tensor(
+            i, dtype=transformation.dtype
+        )
+    return transformation

@@ -152,7 +152,7 @@ class FirstPriceSealedBidAuction(Mechanism):
             payments = bids.clone()  # TODO: I guess here is the error when model sharing is used
 
             # annealing of smoothing
-            self.smoothing = max(0.999*self.smoothing, 0.01)
+            self.smoothing = max(0.9995*self.smoothing, 0.002)
 
             allo_smooth_agent_0 = torch.nn.Sigmoid()((bids[..., 0, :] - bids[..., 1, :]) / self.smoothing)
             allocations[..., 0, :] = allo_smooth_agent_0

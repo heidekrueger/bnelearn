@@ -18,14 +18,17 @@ from bnelearn.experiment.configurations import (SettingConfig,
 
 from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
                                                           LLGFullExperiment,
-                                                          LLLLGGExperiment)
-from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
+                                                          LLLLGGExperiment,
+                                                          CAItemBiddingExperiment)
+from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment,
+                                                       SplitAwardExperiment)
 
 from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSingleItemExperiment,
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
-                                                        AffiliatedObservationsExperiment
+                                                        AffiliatedObservationsExperiment,
+                                                        TwoPlayerAsymmetricBetaPriorSingleItemExperiment
                                                         )
 
 # TODO: server-specific constant hardcoded. We need a more dynamic way to do this.
@@ -149,13 +152,18 @@ class ConfigurationManager:
 
     def _init_single_item_asymmetric_uniform_overlapping(self):
         self.learning.model_sharing = False
-        self.setting.u_lo = [5, 5]
-        self.setting.u_hi = [15, 25]
+        self.setting.u_lo = [0.0, 0.0]
+        self.setting.u_hi = [0.5, 1.0]
 
     def _init_single_item_asymmetric_uniform_disjunct(self):
         self.learning.model_sharing = False
-        self.setting.u_lo = [0, 6]
-        self.setting.u_hi = [5, 7]
+        self.setting.u_lo = [0, .6]
+        self.setting.u_hi = [.5, .7]
+
+    def _init_single_item_asymmetric_beta(self):
+        self.learning.model_sharing = False
+        self.setting.u_lo = [0.8, 1.2]
+        self.setting.u_hi = [1.2, 0.8]
 
     def _init_mineral_rights(self):
         self.setting.n_players = 3
@@ -167,6 +175,7 @@ class ConfigurationManager:
         self.setting.payment_rule = 'second_price'
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
+                                    'epsilon': True,
                                     'efficiency': True,
                                     'revenue': True}
 
@@ -180,6 +189,7 @@ class ConfigurationManager:
         self.setting.payment_rule = 'first_price'
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
+                                    'epsilon': True,
                                     'efficiency': True,
                                     'revenue': True}
 
@@ -195,7 +205,8 @@ class ConfigurationManager:
         self.logging.log_metrics = {'opt': True,
                                     'efficiency': True,
                                     'revenue': True,
-                                    'util_loss': True}
+                                    'util_loss': True,
+                                    'epsilon': True}
 
     #     self.setting.correlation_types = 'independent'
     #
@@ -222,6 +233,7 @@ class ConfigurationManager:
         self.setting.gamma = 0.0
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
+                                    'epsilon': True,
                                     'efficiency': False,
                                     'revenue': False}
 
@@ -235,11 +247,12 @@ class ConfigurationManager:
         self.setting.n_players = 6
         self.logging.util_loss_frequency = 1000  # Or 100?
         self.logging.log_metrics = {'opt': False,
-                                    'util_loss': True}
+                                    'util_loss': True,
+                                    'epsilon': True}
 
     def _init_multiunit(self):
         self.setting.payment_rule = 'vcg'
-        self.setting.n_units = 2
+        self.setting.n_items = 2
         self.learning.model_sharing = True
         self.setting.u_lo = [0]
         self.setting.u_hi = [1]
@@ -250,11 +263,12 @@ class ConfigurationManager:
         self.logging.plot_points = 1000
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
+                                    'epsilon': True,
                                     'efficiency': True,
                                     'revenue': True}
 
     def _init_splitaward(self):
-        self.setting.n_units = 2
+        self.setting.n_items = 2
         self.learning.model_sharing = True
         self.setting.u_lo = [1]
         self.setting.u_hi = [1.4]
@@ -262,11 +276,26 @@ class ConfigurationManager:
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
 
+    def _init_caib(self):
+        self.setting.n_players = 2
+        self.setting.n_items = 2
+        self.setting.payment_rule = 'vcg'
+        self.setting.exp_type = 'XOS'
+        self.setting.u_lo = [0] * self.setting.n_players
+        self.setting.u_hi = [1] * self.setting.n_players
+        self.setting.risk = 1.0
+        self.logging.log_metrics = {'opt': True,
+                                    'util_loss': True,
+                                    'epsilon': True,
+                                    'efficiency': True,
+                                    'PoA': True}
+
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
         # Learning
         assert len(self.learning.hidden_activations) == len(self.learning.hidden_nodes)
         self.learning.optimizer = ConfigurationManager._set_optimizer(self.learning.optimizer_type)
+        self.learning.scheduler = ConfigurationManager._set_scheduler(self.learning.scheduler_type)
 
         # Logging
         # Rationale behind timestamp format: should be ordered chronologically but include weekday.
@@ -277,7 +306,7 @@ class ConfigurationManager:
         if self.logging.experiment_name:
             self.logging.experiment_dir += ' ' + str(self.logging.experiment_name)
 
-        valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue']
+        valid_log_metrics = ['opt', 'util_loss', 'epsilon', 'efficiency', 'revenue', 'PoA']
         if self.logging.log_metrics is not None:
             for metric in self.logging.log_metrics:
                 assert metric in valid_log_metrics, "Metric not known."
@@ -318,6 +347,9 @@ class ConfigurationManager:
         pass
 
     def _post_init_single_item_asymmetric_uniform_disjunct(self):
+        pass
+
+    def _post_init_single_item_asymmetric_beta(self):
         pass
 
     def _post_init_mineral_rights(self):
@@ -361,6 +393,9 @@ class ConfigurationManager:
     def _post_init_splitaward(self):
         pass
 
+    def _post_init_caib(self):
+        pass
+
     experiment_types = {
         'single_item_uniform_symmetric':
             (UniformSymmetricPriorSingleItemExperiment, _init_single_item_uniform_symmetric,
@@ -374,6 +409,9 @@ class ConfigurationManager:
         'single_item_asymmetric_uniform_disjunct':
             (TwoPlayerAsymmetricUniformPriorSingleItemExperiment, _init_single_item_asymmetric_uniform_disjunct,
              _post_init_single_item_asymmetric_uniform_disjunct),
+        'single_item_asymmetric_beta':
+            (TwoPlayerAsymmetricBetaPriorSingleItemExperiment, _init_single_item_asymmetric_beta,
+             _post_init_single_item_asymmetric_beta),
         'mineral_rights':
            (MineralRightsExperiment, _init_mineral_rights, _post_init_mineral_rights),
         'affiliated_observations':
@@ -387,7 +425,9 @@ class ConfigurationManager:
         'multiunit':
            (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
-           (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)
+            (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
+        'caib':
+            (CAItemBiddingExperiment, _init_caib, _post_init_caib)
         }
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
@@ -407,14 +447,15 @@ class ConfigurationManager:
 
     # pylint: disable=too-many-arguments, unused-argument
     def set_setting(self, n_players: int = 'None', payment_rule: str = 'None', risk: float = 'None',
-                    common_prior: torch.distributions.Distribution = 'None', valuation_mean: float = 'None',
-                    valuation_std: float = 'None', u_lo: list = 'None', u_hi: list = 'None', gamma: float = 'None',
+                    n_items: int = 'None', common_prior: torch.distributions.Distribution = 'None',
+                    valuation_mean: float = 'None', valuation_std: float = 'None', u_lo: list = 'None',
+                    u_hi: list = 'None', gamma: float = 'None',
                     correlation_types: str = 'None', correlation_groups: List[List[int]] = 'None',
-                    correlation_coefficients: List[float] = 'None', n_units: int = 'None',
+                    correlation_coefficients: List[float] = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None', regret: float = 'None',                  
-                    ):
+                    core_solver: str = 'None', regret: float = 'None', exp_type: str = 'None',
+                    exp_params: dict = 'None'):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
@@ -438,7 +479,6 @@ class ConfigurationManager:
                 should be part of exactly one sublist. (Relevant settings: LLG)
             correlation_coefficients: List of correlation coefficients for each
                 group specified with ``correlation_groups``.
-            n_units: TODO: @Nils?
             pretrain_transform: A function used to explicitly give the desired behavior in pretraining for
                 given neural net inputs. Defaults to identity, i.e. truthful bidding.
             constant_marginal_values: TODO @Nils
@@ -459,9 +499,11 @@ class ConfigurationManager:
     # pylint: disable=too-many-arguments, unused-argument
     def set_learning(self, model_sharing: bool = 'None', learner_type: str = 'None',
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
-                     optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
+                     optimizer_hyperparams: dict = 'None', scheduler_type: str = 'None',
+                     scheduler_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None', smooth_market: bool = 'None',
-                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
+                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
+                     redraw_every_iteration: bool = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.learning, arg):
@@ -528,9 +570,11 @@ class ConfigurationManager:
          of the ExperimentConfig"""
         running = RunningConfig(n_runs=0, n_epochs=0)
         setting = SettingConfig(
+            n_items=1,
             n_players=2,
             payment_rule='first_price',
-            risk=1.0)
+            risk=1.0,
+            exp_params={})
         learning = LearningConfig(
             model_sharing=True,
             learner_type='ESPGLearner',
@@ -539,11 +583,14 @@ class ConfigurationManager:
                                  'scale_sigma_by_model_size': True},
             optimizer_type='adam',
             optimizer_hyperparams={'lr': 1e-3},
+            scheduler_type=None,
+            scheduler_hyperparams={},
             hidden_nodes=[10, 10],
             pretrain_iters=500,
             batch_size=2 ** 18,
             hidden_activations=[nn.SELU(), nn.SELU()],
-            smooth_market=False)
+            smooth_market=False,
+            redraw_every_iteration=False)
         logging = LoggingConfig(
             enable_logging=True,
             log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),
@@ -551,7 +598,8 @@ class ConfigurationManager:
             plot_points=100,
             plot_show_inline=True,
             log_metrics={'opt': True,
-                         'util_loss': True},
+                         'util_loss': True,
+                         'epsilon': True},
             log_componentwise_norm=False,
             save_tb_events_to_csv_aggregate=True,
             save_tb_events_to_csv_detailed=False,
@@ -708,5 +756,20 @@ class ConfigurationManager:
                 return torch.optim.Adam
             if optimizer in ('SGD', 'sgd', 'Sgd'):
                 return torch.optim.SGD
-            # add more optimizers as needed
-        raise ValueError('Optimizer type could not be inferred!')
+            try:
+                return eval('torch.optim.' + optimizer)
+            except AttributeError as e:
+                raise AttributeError(f'Optimizer type `{optimizer}` could not be inferred!') \
+                    from e
+
+    @staticmethod
+    def _set_scheduler(scheduler: str) -> object:
+        """Set learning rate scheduler."""
+        if scheduler is None:
+            return None
+        if isinstance(scheduler, str):
+            try:
+                return eval('torch.optim.lr_scheduler.' + scheduler)
+            except AttributeError as e:
+                raise AttributeError(f'Learning rate scheduler type `{scheduler}` could not be inferred!') \
+                    from e

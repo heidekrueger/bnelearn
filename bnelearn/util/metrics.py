@@ -1,8 +1,9 @@
 """This module implements metrics that may be interesting."""
 
 from typing import Tuple
-
+from tqdm import tqdm
 import torch
+import matplotlib.pyplot as plt
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
@@ -15,7 +16,10 @@ MAPPING_METRICS_TAGS = {
     'utilities':            'market/utilities',
     'efficiency':           'market/efficiency',
     'revenue':              'market/revenue',
+    'PoA':                  'market/PoA',
     'update_norm':          'learner_info/update_norm',
+    'gradient_norm':        'learner_info/gradient_norm',
+    'epsilon':              'eval/epsilon',
     'util_loss_ex_ante':    'eval/util_loss_ex_ante',
     'util_loss_ex_interim': 'eval/util_loss_ex_interim',
     'estimated_relative_ex_ante_util_loss': 'eval/estimated_relative_ex_ante_util_loss',
@@ -231,7 +235,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                          agent_observations: torch.Tensor,
                          grid_size: int,
                          opponent_batch_size: int = None,
-                         grid_best_response: bool = False):
+                         grid_best_response: bool = False, mute: bool = False):
     #pylint: disable = anomalous-backslash-in-string
     """Estimates a bidder's utility loss in the current state of the
     environment, i.e. the     potential benefit of deviating from the current
@@ -255,6 +259,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         grid_best_response: bool, whether or not the BRs live on the grid or
             possibly come from the actual actions (in case no better response
             was found on grid).
+        mute: bool, mute stdout.
 
     Returns:
         utility_loss (torch.Tensor, shape: [batch_size]):  the computed
@@ -296,9 +301,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         env, player_position, obs, action_alternatives, opponent_batch_size)
     br_utility, br_indices = apply_with_dynamic_mini_batching(
         function=get_br_utily_and_index,
-        args=agent_observations,
-        n_outputs=2, dtypes=[action_alternatives.dtype, torch.long])
-
+        args=agent_observations, mute=mute)
 
     ##### calculate the loss and return best responses ###########
     utility_loss = (br_utility - utility_actual).relu_()
@@ -346,7 +349,7 @@ def _get_best_responses_among_alternatives(
     # for each agent_observation, find the best response
     # each have shape: [agent_batch_size]
     br_utility, br_indices = grid_utilities.max(dim=0)
-    return br_utility,br_indices
+    return br_utility, br_indices
 
 
 def ex_interim_utility(
@@ -387,7 +390,7 @@ def ex_interim_utility(
     # co has dimension (*agent_batches , opponent_batch, n_players, observation_size)
     # each agent_observations is repeated opponent_batch_size times
     cv, co = env.draw_conditionals(
-        player_position, agent_observations, opponent_batch_size
+        player_position, agent_observations, opponent_batch_size, device
         )
 
     action_profile_actual = torch.zeros(
@@ -420,3 +423,121 @@ def ex_interim_utility(
     # expectation over opponent batches
     utility = torch.mean(utility, axis=-1) #dim: agent_batch_size
     return utility
+
+def verify_epsilon_bne(exp: 'Experiment', grid_size: int,
+                       opponent_batch_size: int) -> torch.Tensor:
+    """Calculate the epsilon for which we can guarantee an epsilon-BNE under
+    the assumptions of Bosshard et al. 2017.
+    """
+    env = exp.env
+    device = env._observations.device
+    dtype = env._observations.dtype
+    valuation_size = env._observations.shape[-1]
+    highest_epsilon = 0.0
+
+    # maximum over all bidders
+    for player_positions in exp._model2bidder:
+        player_position = player_positions[0]
+        agent: Bidder = env.agents[player_position]
+
+        # maximum over observation/valuation grid
+        # (this should also include the boundaries, s.t. all parts of the step-
+        # wise function are covered)
+        for vertices in tqdm(
+            exp.sampler.generate_cell_partition(player_position, grid_size, device=device),
+            total=grid_size
+            ):
+
+            action_alternatives = env.sampler.generate_action_grid(
+                player_position, minimum_number_of_points=grid_size,
+                dtype=dtype, device=device
+                )
+            util_best_response_cell = -float('inf')
+            for valuation_vertex in vertices:
+
+                # caluclate BR utiltiy at all vertices and take the maximum
+                util_best_response_vertex = _get_best_responses_among_alternatives(
+                    env, player_position, valuation_vertex, action_alternatives,
+                    opponent_batch_size
+                    )[0]
+                util_best_response_cell = max(util_best_response_cell, util_best_response_vertex)
+
+                # interim utility at lower cell vertex
+                action = agent.get_action(vertices[0])
+                utility_actual = ex_interim_utility(
+                    env, player_position, valuation_vertex, action,
+                    opponent_batch_size, device
+                    ).item()
+
+                highest_epsilon = max(highest_epsilon, util_best_response_cell - utility_actual)
+
+    return highest_epsilon
+
+# def ex_interim_utility_bound(env: AuctionEnvironment, player_position: int,
+#                              agent_valuation: torch.Tensor, grid_size: int,
+#                              opponent_batch_size: int) -> torch.Tensor:
+#     """Calulate an upper bound for the utility and specific actions.
+#     According to Bosshard et al. (2020), under some assumptions (see Prop. 1),
+#     the expected utility can be bounded based on estimates.
+#     """
+#     device = env.mechanism.device
+#     agent: Bidder = env.agents[player_position]
+#     assert agent_valuation.shape[0] == 1, 'Can only check one valuation at a time'
+
+#     valuation_size = agent_valuation.shape[-1]
+#     bid_size = agent.bid_size
+
+#     grid = env.sampler.generate_action_grid(
+#         player_position=player_position, minimum_number_of_points=grid_size,
+#         device=device
+#         )
+#     grid_size = grid.shape[0]  # grid might have different sample size for higher dims
+
+#     bid_profile = torch.empty(opponent_batch_size, grid_size, len(env.agents), bid_size,
+#                               dtype=agent_valuation.dtype, device=device)
+#     for opponent in env.agents:
+#         if opponent.player_position != player_position:
+#             bid_profile[:, :, opponent.player_position, :] = \
+#                 opponent.get_action(
+#                     env.sampler.draw_conditional_profiles(
+#                         player_position, agent_valuation, opponent_batch_size, device
+#                         )[0][:, :, opponent.player_position, :]
+#                     ) \
+#                     .view(opponent_batch_size, 1, bid_size) \
+#                     .repeat(1, grid_size, 1)
+#              # repeat opponents' actions to compete against all grid-actions of agent
+
+#     bid_profile[:, :, player_position, :] = grid \
+#         .view(1, grid_size, bid_size) \
+#         .repeat(opponent_batch_size, 1, 1)
+#     allocations, payments = env.mechanism.play(bid_profile)
+
+#     # welfare for each grid action, each averaged over all opponents' actions
+#     welfare = agent \
+#         .get_welfare(
+#             allocations[:, :, player_position, :],
+#             agent_valuation \
+#                 .view(1, 1, valuation_size) \
+#                 .repeat(opponent_batch_size, grid_size, 1)
+#             ) \
+#         .view(opponent_batch_size, grid_size) \
+#         .mean(axis=0)
+
+#     # payments for each grid action averaged over opponents
+#     payments = payments[:, :, [player_position]] \
+#         .view(opponent_batch_size, grid_size) \
+#         .mean(axis=0)
+
+#     # compare welfare of upper bound on grid with payments on lower bound on grid
+#     # TODO support more than one action dim!
+#     if grid.shape[-1] > 1:
+#         raise NotImplementedError()
+
+#     utility_bound = welfare[1:] - payments[:-1]
+
+#     # invert welfare and payments for reverse bidders
+#     # TODO should be handled in bidder class perhaps
+#     if isinstance(agent, ReverseBidder):
+#         utility_bound *= -1
+#
+#    return torch.max(utility_bound)
