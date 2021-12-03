@@ -6,14 +6,14 @@ implements reward allocation to agents.
 """
 
 from abc import ABC, abstractmethod
-from typing import Callable, Set, List, Iterable
+from typing import Callable, Set, Iterable, Tuple
 
 import torch
 
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism
 from bnelearn.strategy import Strategy
-from bnelearn.correlation_device import CorrelationDevice, IndependentValuationDevice
+from bnelearn.sampler import ValuationObservationSampler
 
 class Environment(ABC):
     """Environment
@@ -37,11 +37,10 @@ class Environment(ABC):
         self.n_players = n_players
 
         # transform agents into players, if specified as Strategies:
-        agents = [
+        self.agents: Iterable[Player] = [
             self._strategy_to_player(agent, batch_size, player_position) if isinstance(agent, Strategy) else agent
             for player_position, agent in enumerate(agents)
         ]
-        self.agents: Iterable[Player] = agents
         self.__len__ = self.agents.__len__
 
         # test whether all provided agents implement correct batch_size
@@ -55,8 +54,8 @@ class Environment(ABC):
         pass #pylint: disable=unnecessary-pass
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
-                            draw_valuations=False, aggregate_batch=True,
-                            use_env_valuations=True,
+                            redraw_valuations=False, aggregate_batch=True,
+                            regularize: float=0,
                             **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
@@ -64,28 +63,26 @@ class Environment(ABC):
         Args:
             strategy: the strategy to be evaluated
             player_position: the player position at which the agent will be evaluated
-            draw_valuation: whether to redraw valuations (default false)
+            redraw_valuation: whether to redraw valuations (default false)
             aggregate_batch: whether to aggregate rewards into a single scalar (True),
                 or return batch_size many rewards (one for each sample). Default True
-            use_env_valuations: if True, strategy will be evaluated using the valuations
-                of self.agents[player_position] (default True)
             strat_to_player_kwargs: further arguments needed for agent creation
+            regularize: paramter that penalizes high action values (e.g. if we
+                get the same utility with different actions, we prefer the loweer
+                one). Default value of zero corresponds to no regularization.
 
         """
         if not self._strategy_to_player:
             raise NotImplementedError('This environment has no strategy_to_player closure!')
-        agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
+
+        agent = self._strategy_to_player(strategy=strategy, batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
         # TODO: this should rally be in AuctionEnv subclass
-        env_agent = self.agents[player_position]
-        if use_env_valuations and hasattr(env_agent, 'valuations'):
-            agent.valuations = env_agent.valuations
-        if use_env_valuations and hasattr(env_agent, '_unkown_valuation'):
-            agent._unkown_valuation = env_agent._unkown_valuation
-        return self.get_reward(agent, draw_valuations=draw_valuations, aggregate=aggregate_batch)
+        return self.get_reward(agent, redraw_valuations=redraw_valuations,
+                               aggregate=aggregate_batch, regularize=regularize)
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
-                                       draw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
+                                       redraw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
         """
@@ -95,8 +92,8 @@ class Environment(ABC):
         agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
                                          player_position=player_position, **strat_to_player_kwargs)
 
-        # NOTE: Order matters! if draw_valuations, then action must be calculated AFTER reward
-        reward = self.get_reward(agent, draw_valuations = draw_valuations, aggregate = False)
+        # NOTE: Order matters! if redraw_valuations, then action must be calculated AFTER reward
+        reward = self.get_reward(agent, redraw_valuations = redraw_valuations, aggregate = False)
         action = agent.get_action()
 
         return action, reward
@@ -122,7 +119,7 @@ class Environment(ABC):
             exclude = set()
 
         for agent in (a for a in self.agents if a.player_position not in exclude):
-            yield(agent.player_position, agent.get_action())
+            yield (agent.player_position, agent.get_action())
 
     def prepare_iteration(self):
         """Prepares the interim-stage of a Bayesian game,
@@ -178,7 +175,7 @@ class MatrixGameEnvironment(Environment):
             action_profile[:, position] = action.view(self.batch_size)
 
         allocation, payments = self.game.play(action_profile.view(self.batch_size, self.n_players, -1))
-        utilities =  agent.get_utility(allocation[:,player_position,:], payments[:,player_position])
+        utilities = agent.get_utility(allocation[:,player_position,:], payments[:,player_position])
 
         return utilities.mean()
 
@@ -186,10 +183,6 @@ class MatrixGameEnvironment(Environment):
 class AuctionEnvironment(Environment):
     """
     An environment of agents to play against and evaluate strategies.
-
-    In particular this means:
-        - an iterable of sets of -i players that a strategy of a single player can be tested against
-        - accept strategy as argument, then play batch_size rounds and return the reward
 
     Args:
         ... (TODO: document)
@@ -203,12 +196,14 @@ class AuctionEnvironment(Environment):
             self,
             mechanism: Mechanism,
             agents: Iterable[Bidder],
+            valuation_observation_sampler: ValuationObservationSampler,
             batch_size = 100,
             n_players = None,
             strategy_to_player_closure: Callable[[Strategy], Bidder] = None,
-            correlation_groups: List[List[int]] = None,
-            correlation_devices: List[CorrelationDevice] = None
+            redraw_every_iteration: bool = False
         ):
+
+        assert isinstance(valuation_observation_sampler, ValuationObservationSampler)
 
         if not n_players:
             n_players = len(agents)
@@ -221,25 +216,45 @@ class AuctionEnvironment(Environment):
         )
 
         self.mechanism = mechanism
+        self.sampler = valuation_observation_sampler
 
-        if not correlation_groups:
-            self.correlation_groups = [list(range(n_players))] # all agents in one independent group
-            self.correlation_devices = [IndependentValuationDevice()]
-        else:
-            assert len(correlation_groups) == len(correlation_devices)
-            self.correlation_groups = correlation_groups
-            self.correlation_devices = correlation_devices
+        self._redraw_every_iteration = redraw_every_iteration
+        # draw initial observations and iterations
+        self._observations: torch.Tensor = None
+        self._valuations: torch.Tensor = None
+        self.draw_valuations()
 
-        assert sorted([a for g in self.correlation_groups for a in g]) == list(range(n_players)), \
-            "Each agent should be in exactly one correlation group!"
+    def _generate_agent_actions(self, exclude: Set[int] or None = None):
+        """
+        Generator function yielding batches of bids for each environment agent
+        that is not excluded. Overwrites because in auction_environment, this needs
+        access to observations
+
+        args:
+            exclude:
+                A set of player positions to exclude.
+                Used e.g. to generate action profile of all but currently learning player.
+
+        yields:
+            tuple(player_position, action) for each relevant bidder
+        """
+
+        if exclude is None:
+            exclude = set()
+
+        for agent in (a for a in self.agents if a.player_position not in exclude):
+            yield (agent.player_position,
+                   agent.get_action(self._observations[:, agent.player_position, :]))
 
     def get_reward(
             self,
             agent: Bidder,
-            draw_valuations = False,
-            aggregate = True
-        ) -> torch.Tensor: #pylint: disable=arguments-differ
-        """Returns reward of a single player against the environment.
+            redraw_valuations: bool = False,
+            aggregate: bool = True,
+            regularize: float = 0.0,
+            return_allocation: bool = False
+        ) -> torch.Tensor or Tuple[torch.Tensor, torch.Tensor]: #pylint: disable=arguments-differ
+        """Returns reward of a single player against the environment, and optionally additionally the allocation of that player.
            Reward is calculated as average utility for each of the batch_size x env_size games
         """
 
@@ -251,31 +266,29 @@ class AuctionEnvironment(Environment):
 
         player_position = agent.player_position if agent.player_position else 0
 
-        # draw valuations
-        if draw_valuations:
-            self.draw_valuations_()
+        # draw valuations if desired
+        if redraw_valuations:
+            self.draw_valuations()
+
+        agent_observation = self._observations[:, player_position, :]
+        agent_valuation = self._valuations[:, player_position, :]
 
         # get agent_bid
-        agent_bid = agent.get_action()
+        agent_bid = agent.get_action(agent_observation)
         action_length = agent_bid.shape[1]
 
         if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
-            allocation, payments = self.mechanism.play(
+            allocations, payments = self.mechanism.play(
                 agent_bid.view(agent.batch_size, 1, action_length)
             )
-            utility = agent.get_utility(allocation[:,0,:], payments[:,0])
         else: # at least 2 environment agent --> build bid_profile, then play
             # get bid profile
-            bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
+            bid_profile = torch.empty(self.batch_size, self.n_players, action_length,
                                       dtype=agent_bid.dtype, device=self.mechanism.device)
             bid_profile[:, player_position, :] = agent_bid
 
             # Get actions for all players in the environment except the one at player_position
             # which is overwritten by the active agent instead.
-
-            # the counter thing is an ugly af hack: if environment is dynamic,
-            # all player positions will be none. so simply start at 1 for
-            # the first opponent and count up
 
             # ugly af hack: if environment is dynamic, all player positions will be
             # none. simply start at 1 for the first opponent and count up
@@ -288,87 +301,147 @@ class AuctionEnvironment(Environment):
                 bid_profile[:, opponent_pos, :] = opponent_bid
                 counter = counter + 1
 
-            allocation, payments = self.mechanism.play(bid_profile)
+            allocations, payments = self.mechanism.play(bid_profile)
 
-            # average over batch against this opponent
-            utility = agent.get_utility(allocation[:,player_position,:],
-                                        payments[:,player_position])
+        agent_allocation = allocations[:, player_position, :]
+        agent_payment = payments[:,player_position]
+
+        # average over batch against this opponent
+        agent_utility = agent.get_utility(agent_allocation, agent_payment, agent_valuation)
+
+        # regularize
+        agent_utility -= regularize * agent_bid.mean()
 
         if aggregate:
-            utility = utility.mean()
+            agent_utility = agent_utility.mean()
 
-        return utility
+            if return_allocation:
+                # Returns flat tensor with int entries `i` for an allocation of `i`th item
+                agent_allocation = torch.einsum(
+                    'bi,i->bi', agent_allocation,
+                    torch.arange(1, action_length + 1, device=agent_allocation.device)
+                ).view(1, -1)
+                agent_allocation = agent_allocation[agent_allocation > 0].to(torch.int8)
+
+        return agent_utility if not return_allocation else (agent_utility, agent_allocation)
+
+    def get_allocation(
+            self,
+            agent,
+            redraw_valuations: bool = False,
+            aggregate: bool = True,
+        ) -> torch.Tensor:
+        """Returns allocation of a single player against the environment.
+        """
+        return self.get_reward(
+            agent, redraw_valuations, aggregate, return_allocation=True
+            )[1]
+
+    def get_revenue(self, redraw_valuations: bool = False) -> float:
+        """Returns the average seller revenue over a batch.
+
+        Args:
+            redraw_valuations (bool): whether or not to redraw the valuations of
+                the agents.
+
+        Returns:
+            revenue (float): average of seller revenue over a batch of games.
+
+        """
+        if redraw_valuations:
+            self.draw_valuations()
+
+        action_length = self.agents[0].bid_size
+
+        bid_profile = torch.zeros(self.batch_size, self.n_players, action_length,
+                                  device=self.mechanism.device)
+        for pos, bid in self._generate_agent_actions():  # pylint: disable=protected-access
+            bid_profile[:, pos, :] = bid
+        _, payments = self.mechanism.play(bid_profile)
+
+        return payments.sum(axis=1).float().mean()
+
+    def get_efficiency(self, redraw_valuations: bool = False) -> float:
+        """Average percentage that the actual welfare reaches of the maximal
+        possible welfare over a batch.
+
+        Args:
+            redraw_valuations (:bool:) whether or not to redraw the valuations of
+                the agents.
+
+        Returns:
+            efficiency (:float:) Percentage that the actual welfare reaches of
+                the maximale possible welfare. Averaged over batch.
+
+        """
+        batch_size = min(self.sampler.default_batch_size, 2 ** 13)
+
+        if redraw_valuations:
+            self.draw_valuations()
+
+        # pylint: disable=protected-access
+        valuations = self._valuations[:batch_size, :, :]
+
+        action_length = self.agents[0].bid_size
+
+        # Calculate actual welfare under the current strategies
+        bid_profile = torch.zeros(batch_size, self.n_players, action_length,
+                                  device=self.mechanism.device)
+        for pos, bid in self._generate_agent_actions():  # pylint: disable=protected-access
+            bid_profile[:, pos, :] = bid[:batch_size, ...]
+        actual_allocations, _ = self.mechanism.play(bid_profile)
+        actual_welfare = torch.zeros(batch_size, device=self.mechanism.device)
+        for a in self.agents:
+            actual_welfare += a.get_welfare(
+                actual_allocations[:batch_size, a.player_position],
+                valuations[..., a.player_position, :]
+            )
+
+        # Calculate counterfactual welfare under truthful strategies
+        maximum_allocations, _ = self.mechanism.play(valuations)
+        maximum_welfare = torch.zeros_like(actual_welfare)
+        for a in self.agents:
+            maximum_welfare += a.get_welfare(
+                maximum_allocations[:batch_size, a.player_position],
+                valuations[..., a.player_position, :]
+            )
+
+        efficiency = (actual_welfare / maximum_welfare).mean().float()
+        return efficiency
 
     def prepare_iteration(self):
-        self.draw_valuations_()
+        if self._redraw_every_iteration:
+            self.draw_valuations()
 
-    def draw_valuations_(self, exclude: Set[int] or None = None):
+    def draw_valuations(self):
         """
-        Draws new valuations for each agent in the environment except the
-        excluded set.
-
-        args:
-            exclude: (deprecated - setting this variable will return an error)
-                A set of player positions to exclude.
-                Used e.g. to generate action profile of all but currently
-                learning player.
+        Draws a new valuation and observation profile
 
         returns/yields:
             nothing
 
         side effects:
-            updates agent valuation states
+            updates agent's valuations and observation states
         """
 
-        # TODO: remove exclude block if it turns out to be used nowhere.
-        if exclude is None:
-            exclude = set()
+        self._valuations, self._observations = \
+            self.sampler.draw_profiles(batch_sizes=self.batch_size)
 
-        if exclude:
-            raise ValueError('With the introduction of Correlation Devices, excluding agents is no logner supported!')
+    def draw_conditionals(
+            self,
+            conditioned_player: int,
+            conditioned_observation: torch.Tensor,
+            inner_batch_size: int = None
+        ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Draws a conditional valuation / observation profile based on a (vector of)
+        fixed observations for one player.
 
-        # for agent in (a for a in self.agents if a.player_position not in exclude):
-        #     agent.batch_size = self.batch_size
-        #     if isinstance(agent, Bidder):
-        #         agent.draw_valuations_()
-
-        # For each group of correlated agents, draw their correlated valuations
-        for group, device in zip(self.correlation_groups, self.correlation_devices):
-            common_component, weights = device.get_component_and_weights()
-            for i in group:
-                self.agents[i].draw_valuations_(common_component, weights)
-
-    def draw_conditionals(self, player_position: int, conditional_observation: torch.Tensor, batch_size: int = None):
+        Total batch size will be conditioned_observation.shape[0] x inner_batch_size
         """
-        Draws valuations/observations from all agents conditioned on the observation `cond`
-        of the agent at `player_position` from the correlation_devices.
-        """
-        batch_size_0 = conditional_observation.shape[0]
-        batch_size_1 = batch_size if batch_size is not None else batch_size_0
 
-        group_idx = [player_position in group for group in self.correlation_groups].index(True)
-        cond_device = self.correlation_devices[group_idx]
-        conditionals_dict = dict()
+        cv, co = self.sampler.draw_conditional_profiles(
+            conditioned_player, conditioned_observation,
+            inner_batch_size
+        )
 
-        for group, device in zip(self.correlation_groups, self.correlation_devices):
-
-            # draw conditional valuations from all agents in same correlation
-            if cond_device == device:
-                conditionals_dict.update(
-                    device.draw_conditionals(
-                        agents = [a for a in self.agents if a.player_position in group],
-                        player_position = player_position,
-                        conditional_observation = conditional_observation,
-                        batch_size = batch_size_1
-                    )
-                )
-
-            # draw independent valuations from all agents in other correlations
-            else:
-                common_component, weights = device.get_component_and_weights()
-                for player_position in group:
-                    agent = [a for a in self.agents if a.player_position == player_position][0]
-                    conditionals_dict[player_position] = agent.draw_valuations_(common_component, weights) \
-                            [:batch_size_1, :].repeat(batch_size_0, 1)
-
-        return conditionals_dict
+        return cv, co

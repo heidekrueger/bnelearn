@@ -1,33 +1,50 @@
 stages:
+  - install_env
   - test
   - lint
+  - deploy_docs
+
+install_env:
+  stage: install_env
+  script:
+  - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
+  - conda env remove -n bnelearn-test
+  - conda create -n bnelearn-test python=3.9
+  - source activate bnelearn-test
+  - which pip
+  - pip install -r requirements.txt
+  - pip install -e .
 
 test:
   stage: test
+  #needs: [install_env]
   script:
   # this assumes everything is already installed and we are able to load the correct conda env.
   # when setting up the runner user for the first time, make sure it finds the global conda on the machine
   #- /opt/anaconda/anaconda3/bin/conda init
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
-  - source activate bnelearn
-  - conda list pytorch
+  - source activate bnelearn-test
   # -n4 adds parallelization across cpus to the test. Currently around 25% speedup of test-suite.
   # (some tests are gpu bound, this will create multiple processes on same gpu.)
   # Gives somewhat less readible output when tests have failed, so disabled for now as it only
   # saves us around 10-15 seconds.
-  - pytest --cov-report term-missing --cov=bnelearn --junitxml=testreport.xml
+  # -rxXs: add output about skipped, xfailed, xpassed tests.
+  - pytest -rxXs --cov-report term-missing --cov=bnelearn --junitxml=testreport.xml
+
   artifacts:
     when: always
     reports:
       junit: testreport.xml
+    expire_in: 6 months
 
 lint:
   stage: lint
+  #needs: [install_env]
   script:
     # requires that pylint , pylint-exit and pylint2codeclimate are installed.
     # pylint-exit used as below modifies pylint exit code to prevent false-positive pipeline fails.
   - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
-  - source activate bnelearn
+  - source activate bnelearn-test
   - pylint --exit-zero -f colorized bnelearn | tee pylint.txt
   - score=$(sed -n 's/^Your code has been rated at \([-0-9.]*\)\/.*/\1/p' pylint.txt)
   - pylint --exit-zero -j 8 --output-format=pylint_gitlab.GitlabCodeClimateReporter bnelearn/* > codeclimate.json
@@ -47,7 +64,8 @@ lint:
     - ${CI_PROJECT_DIR}/artifacts/codeclimate.json
     - ${CI_PROJECT_DIR}/artifacts/metrics.txt
     - ${CI_PROJECT_DIR}/artifacts/lint_badge.svg
-  
+    expire_in: 6 months
+
   # get the json with all badge urls via API and regex the id of the badge with 'blue.svg' in it
   # this works with a personal access token but doesn't seem to work with deploy token / project token or
   # deploy key. thus not doing this for now for security purposes.
@@ -66,3 +84,31 @@ lint:
   #artifacts:
   #  paths:
   #    - pylint.txt
+
+deploy_docs:
+  only:
+   refs:
+     - master
+  stage: deploy_docs
+  script:
+  - export PATH="/opt/anaconda/anaconda3/bin:$PATH"
+  ## install new conda env for docs
+  - conda env remove -n bnelearndocs
+  - conda create -n bnelearndocs python=3.9 pip
+  - source activate bnelearndocs
+  - which pip
+  - pip install -r requirements.txt
+  - pip install -e .
+  ## move required doc files to location of docs server
+  - cp -r docs/* ~/docs-bnelearn
+  - cp -r bnelearn ~/docs-bnelearn
+  ## build the documentation
+  - cd ~/docs-bnelearn
+  - sphinx-apidoc -f -o . bnelearn
+  - make html
+  ## kill the existing docs server and 
+  ## run the documentation server in a new tmux session
+  - chmod +x run_docs_server.sh
+  # kill the session if it exists (but don't throw an error if it doesn't)
+  - tmux kill-session -t bnelearndocs || true
+  - tmux new -s bnelearndocs -d 'sh ./run_docs_server.sh'

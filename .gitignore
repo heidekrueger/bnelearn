@@ -56,3 +56,15 @@ pylint.txt
 
 # auto generated tex-files
 #.tex #already captured by /experiments/
+
+# Sphinx autodoc
+# ignore everything except templates, static content and basic config files
+/docs/*
+!/docs/_static
+!/docs/_templates
+!/docs/readme.md
+!/docs/index.rst
+!/docs/make.bat
+!/docs/Makefile
+!/docs/conf.py
+!/docs/run_docs_server.sh

@@ -1,18 +1,21 @@
-import os
-from setuptools import setup
+from setuptools import setup, find_packages
 
-def read(fname):
-      return open(os.path.join(os.path.dirname(__file__), fname)).read()
-
-requirements = read('requirements.txt').split()
-
-setup(name='bnlearn',
-      version = '0.0.x',
+setup(name='bnelearn',
+      version = '0.0.1',
       description='A Framework for learning Equilibria in Bayesian Games',
       url='https://gitlab.lrz.de/heidekrueger/bnelearn',
       author='Stefan Heidekrüger',
       author_email='stefan.heidekrueger@in.tum.de',
-      license='proprietary, all rights reserved.',
-      packages=['bnelearn'],
-      install_requires=requirements,
+      license='GNU-GPLv3',
+      #package_dir={'bnelearn'},
+      packages=find_packages(where='.'),
+      python_requires = '>=3.9, <3.10',
+      install_requires=['torch>=1.10', 'tensorboard', 'matplotlib', 'pandas',
+            'numpy', 'future', 'jupyterlab', 'tabulate', 'tqdm'],
+      extras_require={
+            'external_solvers': ['qpth', 'gurobipy', 'cvxpy'],
+            'dev': ['pylint', 'pylint-gitlab', 'pynvml'],
+            'test': ['pytest', 'pytest-cov', 'pytest-xdist'],
+            'docs': ['Sphinx', 'sphinx-rtd-theme']
+            },
       zip_safe=False)

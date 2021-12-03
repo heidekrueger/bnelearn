@@ -21,6 +21,11 @@ class Learner(ABC):
         """Updates the player's strategy."""
         raise NotImplementedError()
 
+    @abstractmethod
+    def update_strategy_and_evaluate_utility(self, closure = None) -> torch.Tensor:
+        """updates model and returns utility after the update."""
+        pass
+
 class GradientBasedLearner(Learner):
     """A learning rule that is based on computing some version of (pseudo-)
        gradient, then applying an SGD-like update via a `torch.optim.Optimizer`
@@ -36,7 +41,7 @@ class GradientBasedLearner(Learner):
         self.environment = environment
 
         self.strat_to_player_kwargs = strat_to_player_kwargs if strat_to_player_kwargs else {}
-            # warn if weird initialization
+        # warn if weird initialization
         if 'player_position' not in self.strat_to_player_kwargs.keys():
             warnings.warn('You haven\'t specified a player_position to evaluate the model. Defaulting to position 0.')
             self.strat_to_player_kwargs['player_position'] = 0
@@ -50,7 +55,7 @@ class GradientBasedLearner(Learner):
     def _set_gradients(self):
         """Calculate current (pseudo)gradient for all params."""
 
-    def update_strategy(self, closure: Callable=None) -> None or torch.Tensor: # pylint: disable=arguments-differ
+    def update_strategy(self, closure: Callable=None) -> torch.Tensor or None: # pylint: disable=arguments-differ
         """Performs one model-update to the player's strategy.
 
         Params:
@@ -116,6 +121,10 @@ class ESPGLearner(GradientBasedLearner):
                     If a float is given, will use that float as reward.
                     Defaults to 'current_reward' if normalize_gradients is False, or
                     to 'mean_reward' if normalize_gradients is True.
+                regularization: dict of
+                    inital_strength: float, inital penaltization factor of bid value
+                    regularize_decay: float, decay rate by which the regularization factor
+                        is mutliplied each iteration.
 
         optimizer_type: Type[torch.optim.Optimizer]
             A class implementing torch's optimizer interface used for parameter update step.
@@ -162,6 +171,13 @@ class ESPGLearner(GradientBasedLearner):
                 raise ValueError('Invalid baseline provided. Should be float or '\
                     + 'one of "mean_reward", "current_reward"')
 
+        if 'regularization' in hyperparams:
+            self.regularize = hyperparams['regularization']['inital_strength']
+            self.regularize_decay = hyperparams['regularization']['regularize_decay']
+        else:
+            self.regularize = 0.0
+            self.regularize_decay = 1.0
+
     def _set_gradients(self):
         """Calculates ES-pseudogradients and applies them to the model parameter
            gradient data.
@@ -187,13 +203,14 @@ class ESPGLearner(GradientBasedLearner):
         # both of these as a row-matrix. i.e.
         # rewards: population_size x 1
         # epsilons: population_size x parameter_length
-
+        self.regularize *= self.regularize_decay
         rewards, epsilons = (
             torch.cat(tensors).view(self.population_size, -1)
             for tensors in zip(*(
                 (
                     self.environment.get_strategy_reward(
-                        model, **self.strat_to_player_kwargs).detach().view(1),
+                        model, **self.strat_to_player_kwargs, regularize=self.regularize
+                    ).detach().view(1),
                     epsilon
                 )
                 for (model, epsilon) in population
@@ -202,11 +219,15 @@ class ESPGLearner(GradientBasedLearner):
         ### 4. calculate the ES-pseuogradients   ####
         # See ES_Analysis notebook in repository for more information about where
         # these choices come from.
-        baseline = \
-            self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach().view(1) \
-                if self.baseline == 'current_reward' \
-            else rewards.mean(dim=0) if self.baseline == 'mean_reward' \
-            else self.baseline # a float
+        if self.baseline == 'current_reward':
+            baseline = self.environment.get_strategy_reward(
+                self.model, regularize=self.regularize,
+                **self.strat_to_player_kwargs
+            ).detach().view(1)
+        elif self.baseline == 'mean_reward':
+            baseline = rewards.mean(dim=0)
+        else: # baseline is a float
+            baseline = self.baseline
 
         denominator = self.sigma * rewards.std() if self.normalize_gradients else self.sigma**2
 
@@ -279,7 +300,7 @@ class PGLearner(GradientBasedLearner):
                 self.baseline = self.baseline_method
                 self.baseline_method = 'manual'
             else:
-                 self.baseline = 0 # initial baseline
+                self.baseline = 0 # initial baseline
 
         else:
             # standard baseline
@@ -484,4 +505,5 @@ class DummyNonLearner(GradientBasedLearner):
                          strat_to_player_kwargs)
 
     def _set_gradients(self):
+        # This "Learner" doesn't learn.
         pass

@@ -68,6 +68,7 @@ class SettingConfig:
 @dataclass
 class LearningConfig:
     model_sharing: bool
+    learner_type: str
     learner_hyperparams: dict
     optimizer_type: str
     optimizer_hyperparams: dict
@@ -105,7 +106,7 @@ class LoggingConfig:
     plot_points: int
     plot_show_inline: bool
     log_metrics: dict
-
+    best_response: bool
 
     save_tb_events_to_csv_aggregate: bool
     save_tb_events_to_csv_detailed: bool
@@ -116,15 +117,6 @@ class LoggingConfig:
     save_figure_to_disk_png: bool
     save_figure_to_disk_svg: bool
     save_figure_data_to_disk: bool
-
-    best_response = False
-
-    # Stopping Criterion #TODO: this section should go into ExperimentConfiguration
-    stopping_criterion_rel_util_loss_diff: float = None
-    stopping_criterion_frequency: int = 100  # how often (each x iters) to calculate the stopping criterion metric
-    stopping_criterion_duration: int = 3  # the x most recent evaluations will be used for calculating stationarity
-    stopping_criterion_batch_size: int = 2 ** 10  # TODO: ideally this should be unified with general util_loss batch and grid sizes
-    stopping_criterion_grid_size: int = 2 ** 9
 
     export_step_wise_linear_bid_function_size = None
     experiment_dir: str = None
