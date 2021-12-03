@@ -148,15 +148,14 @@ class FirstPriceSealedBidAuction(Mechanism):
             if n_players != 2:
                 raise NotImplementedError()
 
-            allocations = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
-            payments = bids.clone()  # TODO: I guess here is the error when model sharing is used
+            payments = bids.clone()
+            # TODO: I guess here is the error when model sharing is used
+            # Use stop_gradient for other agents?
 
             # annealing of smoothing
             self.smoothing = max(0.9995*self.smoothing, 0.002)
 
-            allo_smooth_agent_0 = torch.nn.Sigmoid()((bids[..., 0, :] - bids[..., 1, :]) / self.smoothing)
-            allocations[..., 0, :] = allo_smooth_agent_0
-            allocations[..., 1, :] = 1 - allo_smooth_agent_0
+            allocations = torch.nn.Softmax(dim=-2)(bids / self.smoothing)
 
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
