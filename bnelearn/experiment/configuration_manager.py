@@ -290,7 +290,8 @@ class ConfigurationManager:
                     correlation_coefficients: List[float] = 'None', n_units: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None'):
+                    core_solver: str = 'None', smooth_market: bool = 'None'                    
+                    ):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
@@ -400,7 +401,8 @@ class ConfigurationManager:
         running = RunningConfig(n_runs=0, n_epochs=0)
         setting = SettingConfig(n_players=2,
                                 payment_rule='first_price',
-                                risk=1.0)
+                                risk=1.0,
+                                smooth_market=False)
         learning = LearningConfig(model_sharing=True,
                                   learner_hyperparams={'population_size': 64,
                                                        'sigma': 1.,

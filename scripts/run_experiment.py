@@ -33,14 +33,34 @@ if __name__ == '__main__':
     # experiment_class = ConfigurationManager.get_class_by_experiment_type(experiment_config.experiment_class)
 
     # Well, path is user-specific
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'test_smooth')
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1,
-                                                               n_epochs=10000) \
-        .set_logging(log_root_dir=log_root_dir, save_tb_events_to_csv_detailed=True)\
-        .set_learning(pretrain_iters=5, optimizer_hyperparams={'lr': 1e-3}) \
-        .set_logging(eval_batch_size=2**4) \
-        .set_hardware(specific_gpu=3) \
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
+    experiment_config, experiment_class = ConfigurationManager(
+        experiment_type='single_item_uniform_symmetric',
+        n_runs=1, n_epochs=2000
+        ) \
+        .set_setting(
+            smooth_market=False,
+            ) \
+        .set_learning(
+            pretrain_iters=5,
+            # TODO: measure time!!!
+            model_sharing=False,
+            ) \
+        .set_logging(
+            eval_batch_size=2**22,
+            util_loss_batch_size=2**12,
+            util_loss_grid_size=2**10,
+            log_root_dir=log_root_dir,
+            save_tb_events_to_csv_detailed=True,
+            ) \
+        .set_hardware(
+            specific_gpu=3
+            ) \
         .get_config()
+    experiment = experiment_class(experiment_config)
+    experiment.run()
+    torch.cuda.empty_cache()
+
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_gaussian_symmetric',
     #                                                            n_runs=1, n_epochs=5)\
@@ -86,17 +106,17 @@ if __name__ == '__main__':
     #     .set_hardware(specific_gpu=1) \
     #     .get_config()
 
-    try:
-        experiment = experiment_class(experiment_config)
+    # try:
+    #     experiment = experiment_class(experiment_config)
 
-        # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
-        if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
-            experiment.run()
-        else:
-            raise Exception('Unable to perform the correct serialization')
-    except KeyboardInterrupt:
-        print('\nKeyboardInterrupt: released memory after interruption')
-        torch.cuda.empty_cache()
+    #     # Could only be done here and not inside Experiment itself while the checking depends on Experiment subclasses
+    #     if ConfigurationManager.experiment_config_could_be_saved_properly(experiment_config):
+    #         experiment.run()
+    #     else:
+    #         raise Exception('Unable to perform the correct serialization')
+    # except KeyboardInterrupt:
+    #     print('\nKeyboardInterrupt: released memory after interruption')
+    #     torch.cuda.empty_cache()
 
     # 10k epoch bug
     # log_dir = os.path.join('/home/gleb/Projects/bnelearn/experiments/test/subrun')

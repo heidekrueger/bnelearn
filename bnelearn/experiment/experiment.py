@@ -157,7 +157,7 @@ class Experiment(ABC):
     def _setup_learners(self):
 
         self.learners = [
-            PGLearner(model=model,
+            ESPGLearner(model=model,
                         environment=self.env,
                         hyperparams=self.learning.learner_hyperparams,
                         optimizer_type=self.learning.optimizer,
@@ -379,9 +379,9 @@ class Experiment(ABC):
                             stop = self._check_convergence(values, epoch=e)
 
                     self.overhead = self.overhead + timer() - start_time
-                    if stop:
-                        print(f'Stopping criterion reached after {e} iterations.')
-                        break
+                    # if stop:
+                    #     print(f'Stopping criterion reached after {e} iterations.')
+                    #     break
 
             if self.logging.enable_logging and (
                     self.logging.export_step_wise_linear_bid_function_size is not None):

@@ -201,7 +201,8 @@ class SingleItemExperiment(Experiment, ABC):
 
     def _setup_mechanism(self):
         if self.payment_rule == 'first_price':
-            self.mechanism = FirstPriceSealedBidAuction(cuda=self.hardware.cuda)
+            self.mechanism = FirstPriceSealedBidAuction(cuda=self.hardware.cuda,
+                                                        smooth=self.setting.smooth_market)
         elif self.payment_rule == 'second_price':
             self.mechanism = VickreyAuction(cuda=self.hardware.cuda)
         else:

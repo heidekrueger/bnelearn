@@ -84,8 +84,10 @@ class VickreyAuction(Mechanism):
 class FirstPriceSealedBidAuction(Mechanism):
     """First Price Sealed Bid auction"""
 
-    def __init__(self, **kwargs):
-        self.smoothing = 10
+    def __init__(self, smooth: bool = False, **kwargs):
+        self.smooth = smooth
+        if smooth:
+            self.smoothing = .05
         super().__init__(**kwargs)
 
     # TODO: If multiple players submit the highest bid, the implementation chooses the first rather than at random
@@ -122,38 +124,44 @@ class FirstPriceSealedBidAuction(Mechanism):
         batch_dim, player_dim, item_dim = 0, 1, 2  # pylint: disable=unused-variable
         batch_size, n_players, n_items = bids.shape
 
-        # allocate return variables
-        payments_per_item = torch.zeros(batch_size, n_players, n_items, device=self.device)
-        allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
+        if not self.smooth:
+            # allocate return variables
+            payments_per_item = torch.zeros(batch_size, n_players, n_items, device=self.device)
+            allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
 
-        highest_bids, winning_bidders = bids.max(dim=player_dim, keepdim=True)  # both shapes: [batch_size, 1, n_items]
+            highest_bids, winning_bidders = bids.max(dim=player_dim, keepdim=True)  # both shapes: [batch_size, 1, n_items]
 
-        # replaced by equivalent, faster torch.scatter operation, see below,
-        # but keeping nested-loop code for readability
-        # note: code in comment references bids.max with keepdim=False.
-        ##for batch in range(batch_size):
-        ##    for j in range(n_items):
-        ##        hb = highest_bidders[batch, j]
-        ##        payments_per_item[batch][ highest_bidders[batch, j] ][j] = highest_bids[batch, j]
-        ##        allocation[batch][ highest_bidders[batch, j] ][j] = 1
-        # The above can be written as the following one-liner:
-        payments_per_item.scatter_(player_dim, winning_bidders, highest_bids)
-        payments = payments_per_item.sum(item_dim)
-        allocations.scatter_(player_dim, winning_bidders, 1)
-        # Don't allocate items that have a winnign bid of zero.
-        allocations.masked_fill_(mask=payments_per_item == 0, value=0)
+            # replaced by equivalent, faster torch.scatter operation, see below,
+            # but keeping nested-loop code for readability
+            # note: code in comment references bids.max with keepdim=False.
+            ##for batch in range(batch_size):
+            ##    for j in range(n_items):
+            ##        hb = highest_bidders[batch, j]
+            ##        payments_per_item[batch][ highest_bidders[batch, j] ][j] = highest_bids[batch, j]
+            ##        allocation[batch][ highest_bidders[batch, j] ][j] = 1
+            # The above can be written as the following one-liner:
+            payments_per_item.scatter_(player_dim, winning_bidders, highest_bids)
+            payments = payments_per_item.sum(item_dim)
+            allocations.scatter_(player_dim, winning_bidders, 1)
 
-        # allocate return variables
-        payments_smooth = bids.detach().clone()
-        allocations_smooth = torch.zeros(batch_size, n_players, n_items, device=self.device)
+            # Don't allocate items that have a winnign bid of zero.
+            allocations.masked_fill_(mask=payments_per_item==0, value=0)
 
-        self.smoothing *= 1.0001
-        print('self.smoothing', self.smoothing)
-        allo_smooth_agent_0 = torch.nn.Sigmoid()(self.smoothing * (bids[:, 0, :] - bids[:, 1, :]))
-        allocations_smooth[:, 0, :] = allo_smooth_agent_0
-        allocations_smooth[:, 1, :] = 1 - allo_smooth_agent_0
+        if self.smooth:
+            if n_players != 2:
+                raise NotImplementedError()
 
-        return (allocations_smooth, payments_smooth)  # payments: batches x players, allocation: batch x players x items
+            allocations = torch.zeros(batch_size, n_players, n_items, device=self.device)
+            payments = bids.clone()  # TODO: I guess here is the error when model sharing is used
+
+            # annealing of smoothing
+            self.smoothing = max(0.999*self.smoothing, 0.005)
+
+            allo_smooth_agent_0 = torch.nn.Sigmoid()((bids[..., 0, :] - bids[..., 1, :]) / self.smoothing)
+            allocations[..., 0, :] = allo_smooth_agent_0
+            allocations[..., 1, :] = 1 - allo_smooth_agent_0
+
+        return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
 
 class ThirdPriceSealedBidAuction(Mechanism):
