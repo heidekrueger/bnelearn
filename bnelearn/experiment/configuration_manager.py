@@ -413,7 +413,7 @@ class ConfigurationManager:
                     correlation_coefficients: List[float] = 'None', n_units: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None', regret: float = 'None', smooth_market: bool = 'None'                    
+                    core_solver: str = 'None', regret: float = 'None',                  
                     ):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
@@ -460,7 +460,7 @@ class ConfigurationManager:
     def set_learning(self, model_sharing: bool = 'None', learner_type: str = 'None',
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
-                     pretrain_iters: int = 'None',
+                     pretrain_iters: int = 'None', smooth_market: bool = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
@@ -530,8 +530,7 @@ class ConfigurationManager:
         setting = SettingConfig(
             n_players=2,
             payment_rule='first_price',
-            risk=1.0,
-            smooth_market=False)
+            risk=1.0)
         learning = LearningConfig(
             model_sharing=True,
             learner_type='ESPGLearner',
@@ -543,7 +542,8 @@ class ConfigurationManager:
             hidden_nodes=[10, 10],
             pretrain_iters=500,
             batch_size=2 ** 18,
-            hidden_activations=[nn.SELU(), nn.SELU()])
+            hidden_activations=[nn.SELU(), nn.SELU()],
+            smooth_market=False)
         logging = LoggingConfig(
             enable_logging=True,
             log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),

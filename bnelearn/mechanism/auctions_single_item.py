@@ -83,14 +83,12 @@ class VickreyAuction(Mechanism):
 class FirstPriceSealedBidAuction(Mechanism):
     """First Price Sealed Bid auction"""
 
-    def __init__(self, smooth: bool = False, **kwargs):
-        self.smooth = smooth
-        if smooth:
-            self.smoothing = .05
+    def __init__(self, **kwargs):
+        self.smoothing = .05
         super().__init__(**kwargs)
 
     # TODO: If multiple players submit the highest bid, the implementation chooses the first rather than at random
-    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def run(self, bids: torch.Tensor, smooth_market: bool=False) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Runs a (batch of) First Price Sealed Bid Auction.
 
@@ -123,7 +121,7 @@ class FirstPriceSealedBidAuction(Mechanism):
         *batch_dims, player_dim, item_dim = range(bids.dim())  # pylint: disable=unused-variable
         *batch_sizes, n_players, n_items = bids.shape
 
-        if not self.smooth:
+        if not smooth_market:
             # allocate return variables
             payments_per_item = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
             allocations = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
@@ -144,9 +142,9 @@ class FirstPriceSealedBidAuction(Mechanism):
             allocations.scatter_(player_dim, winning_bidders, 1)
 
             # Don't allocate items that have a winnign bid of zero.
-            allocations.masked_fill_(mask=payments_per_item==0, value=0)
+            allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
-        if self.smooth:
+        else:
             if n_players != 2:
                 raise NotImplementedError()
 
@@ -154,7 +152,7 @@ class FirstPriceSealedBidAuction(Mechanism):
             payments = bids.clone()  # TODO: I guess here is the error when model sharing is used
 
             # annealing of smoothing
-            self.smoothing = max(0.999*self.smoothing, 0.005)
+            self.smoothing = max(0.999*self.smoothing, 0.01)
 
             allo_smooth_agent_0 = torch.nn.Sigmoid()((bids[..., 0, :] - bids[..., 1, :]) / self.smoothing)
             allocations[..., 0, :] = allo_smooth_agent_0

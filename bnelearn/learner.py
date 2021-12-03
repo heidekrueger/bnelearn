@@ -30,13 +30,13 @@ class GradientBasedLearner(Learner):
     """A learning rule that is based on computing some version of (pseudo-)
        gradient, then applying an SGD-like update via a `torch.optim.Optimizer`
     """
-    def __init__(self,
-                 model: torch.nn.Module, environment: Environment,
+    def __init__(self,model: torch.nn.Module, environment: Environment,
                  optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 strat_to_player_kwargs: dict = None):
+                 strat_to_player_kwargs: dict = None, smooth_market: bool = False):
         self.model = model
         self.params = model.parameters
         self.n_parameters = sum([p.numel() for p in self.params()])
+        self.smooth_market = smooth_market
 
         self.environment = environment
 
@@ -77,7 +77,7 @@ class GradientBasedLearner(Learner):
 
         self.update_strategy(closure)
         return self.environment.get_strategy_reward(
-            self.model,
+            self.model, smooth_market=self.smooth_market,
             **self.strat_to_player_kwargs
         ).detach()
 
@@ -132,14 +132,9 @@ class ESPGLearner(GradientBasedLearner):
                 dict of arguments provided to environment used for evaluating
                 utility of current and candidate strategies.
     """
-    def __init__(self,
-                 model: torch.nn.Module, environment: Environment, hyperparams: dict,
-                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 strat_to_player_kwargs: dict = None):
+    def __init__(self,  hyperparams: dict, **kwargs):
         # Create and validate optimizer
-        super().__init__(model, environment,
-                         optimizer_type, optimizer_hyperparams,
-                         strat_to_player_kwargs)
+        super().__init__(**kwargs)
 
         # Validate ES hyperparams
         if not set(['population_size', 'sigma', 'scale_sigma_by_model_size']) <= set(hyperparams):
@@ -275,14 +270,9 @@ class PGLearner(GradientBasedLearner):
     """Neural Self-Play with directly computed Policy Gradients.
 
     """
-    def __init__(self,
-                 model: torch.nn.Module, environment: Environment, hyperparams: dict,
-                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 strat_to_player_kwargs: dict = None):
+    def __init__(self, hyperparams: dict, **kwargs):
         # Create and validate optimizer
-        super().__init__(model, environment,
-                         optimizer_type, optimizer_hyperparams,
-                         strat_to_player_kwargs)
+        super().__init__(**kwargs)
 
         if 'normalize_gradient' in hyperparams and hyperparams['normalize_gradient']:
             self.normalize_gradient = True
@@ -312,13 +302,15 @@ class PGLearner(GradientBasedLearner):
 
         if self.baseline_method == 'current_reward':
             self.baseline = self.environment.get_strategy_reward(
-                self.model,**self.strat_to_player_kwargs
+                self.model, **self.strat_to_player_kwargs,
+                smooth_market=self.smooth_market,
                 ).detach().view(1)
         else:
             pass # is already constant float
 
         loss = -self.environment.get_strategy_reward(
-            self.model,**self.strat_to_player_kwargs
+            self.model, **self.strat_to_player_kwargs,
+            smooth_market=self.smooth_market
         )
 
         loss.backward()

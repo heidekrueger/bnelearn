@@ -32,7 +32,6 @@ class SettingConfig:
     n_players: int
     payment_rule: str
     risk: float
-    smooth_market: bool
 
     # SymmetricPriorSingleItemExperiment
     common_prior: torch.distributions.Distribution = None
@@ -75,6 +74,7 @@ class LearningConfig:
     hidden_nodes: List[int]
     pretrain_iters: int
     batch_size: int
+    smooth_market: bool
     hidden_activations: List[nn.Module] = None
 
 

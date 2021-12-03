@@ -55,7 +55,7 @@ class Environment(ABC):
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
                             redraw_valuations=False, aggregate_batch=True,
-                            regularize: float=0,
+                            regularize: float=0, smooth_market: bool=False,
                             **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
@@ -79,7 +79,8 @@ class Environment(ABC):
                                          player_position=player_position, **strat_to_player_kwargs)
         # TODO: this should rally be in AuctionEnv subclass
         return self.get_reward(agent, redraw_valuations=redraw_valuations,
-                               aggregate=aggregate_batch, regularize=regularize)
+                               aggregate=aggregate_batch, regularize=regularize,
+                               smooth_market=smooth_market)
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
                                        redraw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
@@ -252,7 +253,8 @@ class AuctionEnvironment(Environment):
             redraw_valuations: bool = False,
             aggregate: bool = True,
             regularize: float = 0.0,
-            return_allocation: bool = False
+            return_allocation: bool = False,
+            smooth_market: bool = False,
         ) -> torch.Tensor or Tuple[torch.Tensor, torch.Tensor]: #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment, and optionally additionally the allocation of that player.
            Reward is calculated as average utility for each of the batch_size x env_size games
@@ -279,7 +281,8 @@ class AuctionEnvironment(Environment):
 
         if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
             allocations, payments = self.mechanism.play(
-                agent_bid.view(agent.batch_size, 1, action_length)
+                agent_bid.view(agent.batch_size, 1, action_length),
+                smooth_market=smooth_market
             )
         else: # at least 2 environment agent --> build bid_profile, then play
             # get bid profile
@@ -301,7 +304,7 @@ class AuctionEnvironment(Environment):
                 bid_profile[:, opponent_pos, :] = opponent_bid
                 counter = counter + 1
 
-            allocations, payments = self.mechanism.play(bid_profile)
+            allocations, payments = self.mechanism.play(bid_profile, smooth_market=smooth_market)
 
         agent_allocation = allocations[:, player_position, :]
         agent_payment = payments[:,player_position]

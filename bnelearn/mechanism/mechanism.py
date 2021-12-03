@@ -34,8 +34,8 @@ class Mechanism(Game, ABC):
     items as well as payments for each of the players.
     """
 
-    def play(self, action_profile) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.run(bids=action_profile)
+    def play(self, action_profile, smooth_market: bool=False) -> Tuple[torch.Tensor, torch.Tensor]:
+        return self.run(bids=action_profile, smooth_market=smooth_market)
 
     @abstractmethod
     def run(self, bids) -> Tuple[torch.Tensor, torch.Tensor]:

@@ -188,6 +188,7 @@ class Experiment(ABC):
                 hyperparams=self.learning.learner_hyperparams,
                 optimizer_type=self.learning.optimizer,
                 optimizer_hyperparams=self.learning.optimizer_hyperparams,
+                smooth_market=self.learning.smooth_market,
                 strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
             )
             for m_id, model in enumerate(self.models)]
@@ -376,16 +377,19 @@ class Experiment(ABC):
                        for model in self.models]
 
         # update model
+        tic_training = timer()
         utilities = torch.tensor([
             learner.update_strategy_and_evaluate_utility()
             for learner in self.learners
         ])
+        elapsed_training = timer() - tic_training
 
         if self.logging.enable_logging:
             # pylint: disable=attribute-defined-outside-init
             self._cur_epoch_log_params = {
                 'utilities': utilities.detach(),
-                'prev_params': prev_params
+                'prev_params': prev_params,
+                'elapsed_training': elapsed_training
             }
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
             print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),

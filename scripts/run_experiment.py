@@ -75,16 +75,17 @@ if __name__ == '__main__':
         n_runs=1, n_epochs=2000
         ) \
         .set_setting(
-            smooth_market=False,
             ) \
         .set_learning(
-            pretrain_iters=5,
-            # TODO: measure time!!!
+            pretrain_iters=50,
             model_sharing=False,
+            learner_type='PGLearner',
+            optimizer_hyperparams={'lr': 1e-3, 'weight_decay': 0.001},
+            smooth_market=True,
             ) \
         .set_logging(
             eval_batch_size=2**22,
-            util_loss_batch_size=2**12,
+            util_loss_batch_size=2**10,
             util_loss_grid_size=2**10,
             log_root_dir=log_root_dir,
             save_tb_events_to_csv_detailed=True,
