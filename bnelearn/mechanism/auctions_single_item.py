@@ -145,9 +145,6 @@ class FirstPriceSealedBidAuction(Mechanism):
             allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
         else:
-            if n_players != 2:
-                raise NotImplementedError()
-
             payments = bids.clone()
             # TODO: I guess here is the error when model sharing is used
             # Use stop_gradient for other agents?
