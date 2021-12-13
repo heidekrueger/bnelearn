@@ -15,7 +15,7 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager  # py
 
 if __name__ == '__main__':
 
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'final')
 
     r"""
     For the final experiments of double-auctions, we want to report (at least)
@@ -32,22 +32,23 @@ if __name__ == '__main__':
 
     # loop over the different paramters you want to try out -> extend & varry!
     model_sharings = [True, False]
-    n_buyers = range(1, 3)
-    n_sellers = range(1, 3)
-    #ks = [0.0, 0.5, 1.0]
+    n_buyers = range(3, 4)
+    n_sellers = range(3, 4)
+    #payment_rules = ['vcg_price', 'mcafee_price', 'sbb_price']
+    ks = [0.0, 0.5, 1.0]
     # ...
 
-    for (model_sharing, n_buyers, n_sellers) in product(model_sharings, n_buyers, n_sellers):
+    for (model_sharing, n_buyers, n_sellers, k) in product(model_sharings, n_buyers, n_sellers, ks):
 
         experiment_config, experiment_class = \
             ConfigurationManager(
-                experiment_type='double_auction_single_item_gaussian_symmetric',
+                experiment_type='double_auction_single_item_uniform_symmetric',
                 n_runs=10,  # repeat exp. for 10 different random seeds
                 n_epochs=2000,
             ) \
             .set_setting(
-                payment_rule='mcafee_price',
-                #k=k,
+                payment_rule='k_price',
+                k=k,
                 # TODO
                 n_buyers=n_buyers,
                 n_sellers=n_sellers,
@@ -65,7 +66,7 @@ if __name__ == '__main__':
                 }
             ) \
             .set_hardware(
-                specific_gpu=3,
+                specific_gpu=2,
             ) \
             .set_logging(
                 eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
