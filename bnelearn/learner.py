@@ -6,7 +6,6 @@ from copy import deepcopy
 from abc import ABC, abstractmethod
 from typing import Tuple, Type, Callable
 
-#for PSOLearner
 import sympy.ntheory as sympy
 import math
 from time import perf_counter as timer
@@ -864,7 +863,7 @@ class PSOLearner(Learner):
 
         ### --- move ---
         ### 5. update the velocities:
-        #save current velocity before updating
+        # save current velocity before updating
         cur_velocity = self.velocity
         cur_position = self.position
         if self.decrease_w:
@@ -873,6 +872,7 @@ class PSOLearner(Learner):
         self.velocity = self.inertia * self.velocity \
                         + self.cognition * torch.rand_like(self.position) * (self.pbest_position - self.position) \
                         + self.social * torch.rand_like(self.position) * (self.best_position - self.position)
+        # note: some version only draw RVs all each serach dimension (and not also for all particles)
         # clamp particles velocity values to be <= the maximal allowed velocity step size
         if self.velocity_clamping:
             self.velocity.clamp_(-self.max_velocity, self.max_velocity)
