@@ -849,17 +849,13 @@ class Experiment(ABC):
 
         env = self.env
         if batch_size is None:
-            # take min of both in case the requested batch size is too large for the env
-            batch_size = min(self.logging.util_loss_batch_size, self.learning.batch_size)
+            batch_size = self.logging.util_loss_batch_size
         if grid_size is None:
             grid_size = self.logging.util_loss_grid_size
 
-        assert batch_size <= env.batch_size, \
-            "Util_loss for larger than actual batch size not implemented."
-
         with torch.no_grad():  # don't need any gradient information here
-            # TODO: currently we don't know where exactly a memory leak is
-            observations = self.env._observations[:batch_size, :, :]
+            # TODO: currently we don't know where exactly a memory leak is            
+            _, observations = self.env.sampler.draw_profiles(batch_sizes=[batch_size])
             util_losses, best_responses = zip(*[
                 metrics.ex_interim_util_loss(
                     env=env,
@@ -902,7 +898,6 @@ class Experiment(ABC):
 
             # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
             util_losses = torch.stack(list(util_losses), dim=1).unsqueeze_(-1)
-            observations = self.env._observations[:batch_size, :, :]
             plot_data = (observations[:, [b[0] for b in self._model2bidder], :], util_losses)
             labels = [f'{self._get_model_names()[i]}' for i in range(len(self.models))]
             fmts = ['o'] * len(self.models)

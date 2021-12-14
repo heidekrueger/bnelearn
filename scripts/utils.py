@@ -3,7 +3,12 @@ import os, sys
 import torch
 import pandas as pd
 import numpy as np
+import json
+
 import matplotlib.pyplot as plt
+markers = ['o', '^', 's', 'p', '.', '+']
+colors = [(0/255.,191/255.,196/255.), (248/255.,118/255.,109/255.),
+          (150/255.,120/255.,170/255.), (255/255.,215/255.,130/255.)] 
 
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
@@ -11,7 +16,7 @@ sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 from bnelearn.strategy import NeuralNetStrategy
 from bnelearn.experiment.configuration_manager import ConfigurationManager
 from bnelearn.util import logging
-
+from bnelearn.util.metrics import ALIASES_LATEX
 
 #pylint: disable=anomalous-backslash-in-string
 ALIASES = {
@@ -375,6 +380,64 @@ def bids_to_csv(
         df.to_csv(exp_path + '/actions.csv', index=False)
 
 
+def multi_run_plot(path: str, metrics: list = ['market/utilities',
+                   'eval/estimated_relative_ex_ante_util_loss'],
+                   varied_param="['learning']['learner_hyperparams']['population_size']",
+                   name='llllgg_analysis_batchsize'):
+    """Create side-by-side plots that display the learning for multple
+    configurations of the same (possibly asymmetric) auction. Only tested for
+    LLLLGG setting.
+
+    TODO: Some parts like the legend are hard coded.
+    """
+    runs = [sub_path for sub_path in os.listdir(path)
+            if os.path.isdir(os.path.join(path, sub_path))]
+    aggregate_logs = []
+    configs = []
+    for run in runs:
+        aggregate_logs.append(path+ '/' + run + '/full_results.csv')
+        configs.append(path + '/' + run + '/experiment_configurations.json')
+
+    fig, axs = plt.subplots(nrows=1, ncols=len(metrics), figsize=(10, 4))
+    for aggregate_log_path, config_path, c, m in zip(aggregate_logs, configs, colors, markers):
+        try:
+            df = pd.read_csv(aggregate_log_path)
+            with open(config_path) as json_file:
+                config = json.load(json_file)
+            label = eval(f'config{varied_param}')
+
+            df = df.loc[df['tag'].isin(metrics)]
+            df = df.groupby(['subrun', 'epoch', 'tag'], as_index=False) \
+                .agg({'value': ['mean', 'std']})
+            df.columns = ['subrun', 'epoch', 'tag', 'mean','std']
+
+            for i, (metric, ax) in enumerate(zip(metrics, axs)):
+                for agent in df['subrun'].unique():
+                    temp_df = df[df['tag'] == metric][df['subrun'] == agent]
+                    epoch = temp_df.epoch.to_numpy()
+                    mean = temp_df['mean'].to_numpy()
+                    std = temp_df['std'].to_numpy()
+                    ax.plot(epoch, mean, '-' if agent=='locals' else '--',
+                            marker=m, markevery=50 if i==0 else 1,
+                            label=f'{agent}: {label}', color=c)
+                    ax.fill_between(epoch, mean - std, mean + std, alpha=.3,
+                                    color=c)
+                ax.set_xlabel('epoch')
+                ax.set_ylabel(ALIASES_LATEX[metric] if metric in ALIASES_LATEX.keys() else metric)
+                if metric == 'eval/estimated_relative_ex_ante_util_loss':
+                    ax.set_yscale("log")
+                ax.grid(visible=True, linestyle='--')
+                # ax.set_xlim(0, max(epoch))
+        except Exception as e:
+            pass
+    axs[1].legend(
+        title='bidder and corre-\nsponding batch size' if name=='llllgg_analysis_batchsize' \
+              else 'bidder and corresponding\npopulation size', loc='upper right')
+    plt.tight_layout()
+    plt.savefig(f'{name}.pdf')
+    return
+    
+
 if __name__ == '__main__':
 
     # # Single item asymmetric uniform overlapping
@@ -386,7 +449,7 @@ if __name__ == '__main__':
               caption='Average utilities achieved in asymmetric first-price setting with overlapping valuations. Mean and standard deviation are aggregated over ten runs of 2{,}000 iterations each.',
               label='table:asym_over_results')
 
-    # Single-item asymmetric uniform disjunct
+    # # Single-item asymmetric uniform disjunct
     path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/single_item/first_price/uniform/asymmetric/risk_neutral/2p/2021-10-26 Tue 10.25/aggregate_log.csv'
     df = single_asym_exp_logs_to_df(
         path, metrics=['eval_vs_bne/L_2_bne2', 'eval/epsilon_relative_bne2',
@@ -401,3 +464,13 @@ if __name__ == '__main__':
 
     # LLLLGG setting
     # TODO
+
+
+    # Scalability experiment
+    path = '/home/kohring/bnelearn/experiments/asymmmetric-debug/varied-population_size/LLLLGG/first_price/6p'
+    multi_run_plot(path, varied_param="['learning']['learner_hyperparams']['population_size']",
+                   name='llllgg_analysis_popsize')
+    
+    path = '/home/kohring/bnelearn/experiments/asymmmetric-debug/varied-batch_size/LLLLGG/first_price/6p'
+    multi_run_plot(path, varied_param="['learning']['batch_size']",
+                   name='llllgg_analysis_batchsize')
