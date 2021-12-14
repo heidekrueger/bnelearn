@@ -301,7 +301,7 @@ class LLLLRRGData(CombinatorialAuctionData):
         [4, 5],  #L3: EF, FG
         [6, 7],  #L4: GH, HA
         [8, 9],  #R1: ABCD, EFGH
-        [10, 11] #R2: CDEF, GHAB,
+        [10, 11], #R2: CDEF, GHAB,
         [12]     #G: ABCDEFGH
     ]
 
