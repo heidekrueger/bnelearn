@@ -118,7 +118,7 @@ class CombinatorialAuctionData(ABC):
     def legal_allocations_dense(cls, device='cpu') -> torch.Tensor:
         """returns a dense torch tensor of all possible legal allocations
         on the desired device.
-        Output shape: n_solutions x n_bundles (66 x 12)
+        Output shape: n_legal_allocations x n_bundles
         """
         sparse = cls._legal_allocations_sparse
         n_allocations = sparse[-1][0] + 1 # highest row index + 1
@@ -137,7 +137,7 @@ class LLLLGGData(CombinatorialAuctionData):
 
     ###### possibly efficient allocations ######
     n_bundles = 12
-
+    n_legal_allocations = 66
 
     _player_bundles = [
         # which bundle does each player demand?
@@ -210,7 +210,6 @@ class LLLLGGData(CombinatorialAuctionData):
     # all legal allocations in sparse format (includes inefficient outcomes,
     # e.g. where not all items are allocated. These are necessary to solve
     # restricted subgames.)
-
     # Determines a sparse 66 x 12 matrix.
     # An entry (i,j) determines that bundle j is allocated in solution i.
 
@@ -282,9 +281,6 @@ class LLLLGGData(CombinatorialAuctionData):
         [64, 0],  [64, 2],  [64, 4],  [64, 6],
         [65, 1],  [65, 3],  [65, 5],  [65 ,7]
     ]
-
-    n_legal_allocations = 66
-
 
 class LLLLRRGData(CombinatorialAuctionData):
     """Static data about legal and possibly efficient allocations in the LLLLRRG
