@@ -177,7 +177,7 @@ class LLLLGGData(CombinatorialAuctionData):
         [0,1,0,0, 1,0,0,1, 0,0,0,0], # BC EF HA
         ]
 
-    efficient_allocations_semisparse = [
+    efficient_allocations_semisparse: List[List[int]] = [
         # each row represents a possibly efficient allocation.
         # indices are the indices of allocated bundles in the dense matrix above.
 
@@ -213,7 +213,7 @@ class LLLLGGData(CombinatorialAuctionData):
     # Determines a sparse 66 x 12 matrix.
     # An entry (i,j) determines that bundle j is allocated in solution i.
 
-    _legal_allocations_sparse  = [
+    _legal_allocations_sparse: List[List[int]]  = [
         [0, 0],
         [1, 1],
         [2, 2],
@@ -315,6 +315,6 @@ class LLLLRRGData(CombinatorialAuctionData):
     efficient_allocations_semisparse = \
         LLLLGGData.efficient_allocations_semisparse + [12]
 
-    _legal_allocations_sparse  = LLLLGGData.legal_allocations_sparse + [66, 12]
+    _legal_allocations_sparse  = LLLLGGData._legal_allocations_sparse + [66, 12]
 
     n_legal_allocations = 67
