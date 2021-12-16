@@ -98,8 +98,7 @@ deploy_docs:
   - cd ~/docs-bnelearn
   - sphinx-apidoc -f -o . bnelearn
   - make html
-  ## kill the existing docs server and 
-  ## run the documentation server in a new tmux session
+  #=== (Re)start docs server ===
   - chmod +x run_docs_server.sh
   # kill the session if it exists (but don't throw an error if it doesn't)
   - tmux kill-session -t bnelearndocs || true
