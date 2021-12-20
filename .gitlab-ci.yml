@@ -8,7 +8,6 @@ install_env:
   stage: install_env
   script:
   - source /opt/miniconda3/etc/profile.d/conda.sh
-  - which python
   - which conda
   - conda env remove -n bnelearn-test
   - conda create -n bnelearn-test python=3.9
