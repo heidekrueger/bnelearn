@@ -292,7 +292,8 @@ class LLLLRRGData(CombinatorialAuctionData):
     """
 
     ###### possibly efficient allocations ######
-    n_bundles = 13
+    n_bundles = 14 # 13 real bundles and an empty-pseudobundle
+    n_legal_allocations = 67 # those in LLLLGG and [12]
 
     _player_bundles = [
         # which bundle does each player demand?
@@ -302,19 +303,19 @@ class LLLLRRGData(CombinatorialAuctionData):
         [6, 7],  #L4: GH, HA
         [8, 9],  #R1: ABCD, EFGH
         [10, 11], #R2: CDEF, GHAB,
-        [12]     #G: ABCDEFGH
+        [12, 13]  #G: 12: ABCDEFGH, 13 is an empty pseudo-bundle
     ]
 
     #dense allocations:
     # - either an allocation from LLLLGG (with added 0 in last bundle)
     # - or allocation to the Global player
     _efficient_allocations_dense = [
-        a + [0] for a in LLLLGGData._efficient_allocations_dense
-    ] + [*[0]*12, 1] # ABCDEFGH allocated to G
+        a + [0, 0] for a in LLLLGGData._efficient_allocations_dense
+    ] + [*[0]*12, 1, 0] # ABCDEFGH allocated to G
 
     efficient_allocations_semisparse = \
         LLLLGGData.efficient_allocations_semisparse + [12]
 
     _legal_allocations_sparse  = LLLLGGData._legal_allocations_sparse + [66, 12]
 
-    n_legal_allocations = 67
+    

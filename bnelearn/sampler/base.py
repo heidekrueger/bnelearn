@@ -158,6 +158,56 @@ class PVSampler(ValuationObservationSampler, ABC):
         profile = self._sample(batch_sizes, device)
         return profile, profile
 
+class FlushedWrappedSampler(ValuationObservationSampler):
+    """A sampler that relies on a base sampler but flushes the last valuation and 
+    observations dimensions with zeros.
+    
+    This is useful when some players have lower observation / valuation size than others.
+
+    Note on implementation: an alternative would be using a lower-dimensional 
+    base sampler and then adding extra zeroes. We instead go this route of overwriting
+    unnecessary values because the incurred cost of sampling too many values
+    will be cheaper in most cases compared to 'growing' tensors after the fact.
+    """
+    def __init__(self, base_sampler: ValuationObservationSampler,
+                 flush_val_dims: int = 1, flush_obs_dims: int = 1):
+
+        self._base_sampler = base_sampler
+        self._flush_val_dims = flush_val_dims
+        self._flush_obs_dims = flush_obs_dims
+        
+        self.n_players = base_sampler.n_players
+        self.valuation_size = base_sampler.valuation_size
+        self.observation_size = base_sampler.observation_size
+        self.default_batch_size = base_sampler.default_batch_size
+        self.default_device = base_sampler.default_device
+
+        self.support_bounds = base_sampler.support_bounds
+        # n_players x valuation_size x 2 (lower, upper)
+        # NOTE: will bounds of (0,0) cause a bug somewhere?
+        self.support_bounds[:, -flush_val_dims:, :] = 0.0
+
+    def draw_profiles(self, batch_sizes: Union[int, List[int]] = None,
+        device=None) -> Tuple[torch.Tensor, torch.Tensor]:
+        v, o = self._base_sampler.draw_profiles(
+            batch_sizes=batch_sizes, device=device)
+
+        v[..., -self._flush_val_dims:] = 0.0
+        o[..., -self._flush_obs_dims:] = 0.0
+
+        return v,o
+
+    def draw_conditional_profiles(self,
+                                  conditioned_player: int,
+                                  conditioned_observation: torch.Tensor,
+                                  inner_batch_size: int,
+                                  device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        raise NotImplementedError("TODO: make sure conditioning works correctly " +
+                                  "with the flushed dims.")
+
+
+
+
 class CompositeValuationObservationSampler(ValuationObservationSampler):
     """A class representing composite prior distributions that are
     made up of several groups of bidders, each of which can be represented by

@@ -26,7 +26,7 @@ except ImportError as e:
     GUROBI_IMPORT_ERROR = e
 
 
-from bnelearn.mechanism.data import LLGData, LLLLGGData
+from bnelearn.mechanism.data import LLGData, LLLLGGData, LLLLRRGData
 from bnelearn.util import mpc
 from .mechanism import Mechanism
 
@@ -1170,6 +1170,33 @@ class LLLLGGAuction(Mechanism):
         payments = payments.view(*batch_sizes, self.n_bidders)
 
         return allocation.to(self.device), payments.to(self.device)
+
+
+class LLLLRRGAuction(LLLLGGAuction):
+    """Extended LLLLGG Auction with an additional 'superglobal' bider.
+    Implementation is identical to LLLLGG except we overwrite some settings in
+    the constructor.
+    """
+    def __init__(self, rule='first_price', core_solver='NoCore', parallel: int = 1, cuda: bool = True):
+        super().__init__(rule=rule, core_solver=core_solver, parallel=parallel, cuda=cuda)
+
+        
+        self.n_items = 8
+        self.n_bidders = 7
+        # number of bundles that each bidder is interested in
+        self.action_size = 2 # 1 for G player (only first item matters in that case)
+        # total number of bundles
+        self.n_bundles = LLLLRRGData.n_bundles # = 14 (really 13 + 1 pseudobundle for equal action size)
+        assert self.n_bundles == self.n_bidders * self.action_size
+        self.n_legal_allocations = LLLLRRGData.n_legal_allocations # = 67
+
+        self.legal_allocations = LLLLRRGData.legal_allocations_dense(device=self._solver_device)
+        assert len(self.legal_allocations) == self.n_legal_allocations
+        # subset of all feasible allocations that might be efficient (i.e. bidder optimal)
+        self.candidate_solutions = LLLLRRGData.efficient_allocations_dense(device=self._solver_device)
+        self.player_bundles = LLLLRRGData.player_bundles(device=self._solver_device)
+        assert self.player_bundles.shape == torch.Size([self.n_bidders, self.action_size])
+
 
 
 class CombinatorialAuction(Mechanism):
