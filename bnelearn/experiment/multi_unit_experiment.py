@@ -23,7 +23,8 @@ from bnelearn.mechanism import (FPSBSplitAwardAuction,
                                 MultiUnitVickreyAuction)
 from bnelearn.sampler import (MultiUnitValuationObservationSampler,
                               CompositeValuationObservationSampler,
-                              SplitAwardValuationObservationSampler)
+                              SplitAwardValuationObservationSampler,
+                              MultiUnitSynergyValuationObservationSampler)
 from bnelearn.strategy import ClosureStrategy
 
 
@@ -89,11 +90,21 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
         if len(self.config.setting.u_hi) == 1:
             self.u_hi = self.config.setting.u_hi * self.n_players
 
+        # Synergy effects for the last bidder as in Kagel and Levin (2005)
+        if 'synergy' in self.config.setting.exp_params.keys():
+            self.synergy = self.config.setting.exp_params['synergy']
+        else:
+            self.synergy = False
+
         # Handle model sharing in case of symmetry
         self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
-            self.n_models = 1
-            self._bidder2model = [0] * self.n_players
+            if not self.synergy:
+                self.n_models = 1
+                self._bidder2model = [0] * self.n_players
+            else:
+                self.n_models = 2
+                self._bidder2model = [0] * (self.n_players - 1) + [1]
         else:
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
@@ -113,10 +124,25 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
 
         self.plot_xmin = self.plot_ymin = min(self.u_lo)
         self.plot_xmax = self.plot_ymax = max(self.u_hi)
+        
+        if self.synergy:
+            self.plot_xmax = self.plot_ymax = 2*max(self.u_hi)
 
         super().__init__(config=config)
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+    def pretrain_transform(self, player_position):
+        """Need specialized pretraining for model with synergy effects, because
+        that bidder would otherwise not have the mandatory decreasing bids.
+        """
+        if self.synergy and player_position == self.n_players-1:
+            def transform(input_tensor):
+                return torch.clone(input_tensor)[..., [1, 0]]
+        else:
+            transform = None
+        return transform
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0,
+                         enable_action_caching=False):
         """Standard `strat_to_bidder` method."""
         return Bidder(strategy, player_position, batch_size, bid_size=self.n_items,
                       enable_action_caching=enable_action_caching, risk=self.risk)
@@ -134,28 +160,53 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
         else:
             raise NotImplementedError('Correlation not implemented for MultiUnit settings.')
 
-        # Check for symmetric priors
-        if len(set(self.u_lo)) == 1 and len(set(self.u_hi)) == 1:
-            # Case: Symmetric Priors
-            self.sampler = MultiUnitValuationObservationSampler(
-                n_players=self.n_players, n_items=self.n_items,
-                max_demand=self.item_interest_limit,
-                constant_marginal_values=self.constant_marginal_values,
-                u_lo=self.u_lo[0], u_hi=self.u_hi[0],
-                default_batch_size=default_batch_size,
-                default_device=device)
-        else:
-            # Case: asymmetric bidders with individual samplers
-            bidder_samplers = [
-                MultiUnitValuationObservationSampler(
-                    n_players=1, n_items=self.n_items,
+        # Check for synergy effects 
+        if not self.synergy:
+            # Check for symmetric priors
+            if len(set(self.u_lo)) == 1 and len(set(self.u_hi)) == 1:
+                # Case: Symmetric Priors
+                self.sampler = MultiUnitValuationObservationSampler(
+                    n_players=self.n_players, n_items=self.n_items,
                     max_demand=self.item_interest_limit,
                     constant_marginal_values=self.constant_marginal_values,
-                    u_lo=self.u_lo[i], u_hi=self.u_hi[i],
+                    u_lo=self.u_lo[0], u_hi=self.u_hi[0],
                     default_batch_size=default_batch_size,
                     default_device=device)
-                for i in range(self.n_players)
+            else:
+                # Case: asymmetric bidders with individual samplers
+                bidder_samplers = [
+                    MultiUnitValuationObservationSampler(
+                        n_players=1, n_items=self.n_items,
+                        max_demand=self.item_interest_limit,
+                        constant_marginal_values=self.constant_marginal_values,
+                        u_lo=self.u_lo[i], u_hi=self.u_hi[i],
+                        default_batch_size=default_batch_size,
+                        default_device=device)
+                    for i in range(self.n_players)
+                ]
+                self.sampler = CompositeValuationObservationSampler(
+                    self.n_players, self.valuation_size, self.observation_size,
+                    bidder_samplers, default_batch_size, device)
+        else:
+            # First n-1 bidders have unit demand
+            bidder_samplers = [
+                MultiUnitValuationObservationSampler(
+                    u_lo=self.u_lo[i], u_hi=self.u_hi[i],
+                    n_players=1, n_items=2, max_demand=1,
+                    default_batch_size=default_batch_size,
+                    default_device=device)
+                for i in range(self.n_players - 1)
             ]
+            # Last bidder has synergy effects fro winning two units
+            bidder_samplers.append(
+                MultiUnitSynergyValuationObservationSampler(
+                    n_players=1, n_items=2,
+                    u_lo=self.u_lo[self.n_players-1],
+                    u_hi=self.u_hi[self.n_players - 1],
+                    default_batch_size=default_batch_size,
+                    default_device=device
+                    )
+                )
             self.sampler = CompositeValuationObservationSampler(
                 self.n_players, self.valuation_size, self.observation_size,
                 bidder_samplers, default_batch_size, device)
@@ -174,11 +225,11 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
         self.mechanism = self.mechanism_type(cuda=self.hardware.cuda)
 
     def _check_and_set_known_bne(self):
-        """check for available BNE strategy"""
-        if self.correlation in [0.0, None] and self.config.setting.correlation_types in ['independent', None]:
-            self._optimal_bid = multiunit_bne_factory(self.config.setting, self.config.setting.payment_rule)
-            return self._optimal_bid is not None
-        return super()._check_and_set_known_bne()
+        """Check for available BNE strategy"""
+        self._optimal_bid = multiunit_bne_factory(self.config.setting,
+                                                  self.config.setting.payment_rule,
+                                                  self.synergy)
+        return self._optimal_bid
 
     def _get_logdir_hierarchy(self):
         name = ['multi_unit', self.payment_rule, str(self.risk) + 'risk',
@@ -186,6 +237,20 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
         # if self.gamma > 0:
         #     name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
         return os.path.join(*name)
+
+    def _get_model_names(self):
+        if self.model_sharing:
+            if not self.synergy:
+                names = ['bidder 0']
+            else: 
+                names = ['weak bidder', 'strong bidder']
+        else:
+            if not self.synergy:
+                names = [f'bidder {i}' for i in range(self.n_players)]
+            else: 
+                names = [f'weak bidder {i}' for i in range(self.n_players-1)]
+                names.append('strong bidder')
+        return names
 
     def _plot(self, plot_data, writer: SummaryWriter or None,
               xlim: list = None, ylim: list = None, labels: list = None,
@@ -201,7 +266,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
                       plot_points=plot_points)
 
         # 3D plot if available
-        if self.n_items == 2 and not self.constant_marginal_values:
+        if self.n_items == 2 and not self.constant_marginal_values and not self.synergy:
             # Discard BNEs as they're making 3d plots more complicated
             if self.known_bne and plot_data[0].shape[1] > len(self.models):
                 plot_data = [d[:, :len(self.models), :] for d in plot_data]

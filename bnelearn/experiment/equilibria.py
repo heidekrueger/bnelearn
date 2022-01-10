@@ -237,35 +237,42 @@ def bne_2p_affiliated_values(
 ### Multi-Unit Equilibria                              ###
 ###############################################################################
 
-def multiunit_bne_factory(setting, payment_rule) -> Callable or None:
-    """
-    Factory method that returns the known BNE strategy function for the standard multi-unit auctions
-    (split-award is NOT one of the) as callable if available and None otherwise.
+def multiunit_bne_factory(setting, payment_rule, synergy) -> Callable or None:
+    """Factory method that returns the known BNE strategy function for the
+    standard multi-unit auctions (split-award is NOT one of the) as callable if
+    available and None otherwise.
     """
 
     if payment_rule in ('vcg', 'vickrey'):
         return truthful_bid
 
-    if setting.correlation_types not in [None, 'independent'] or \
+    if not synergy:
+        if setting.correlation_types not in [None, 'independent'] or \
             setting.risk != 1:
-        # Aside from VCG, equilibria are only known for independent priors and
-        # quasilinear/risk-neutral utilities.
-        return None
+            # Aside from VCG, equilibria are only known for independent priors and
+            # quasilinear/risk-neutral utilities.
+            return None
 
-    if payment_rule in ('first_price', 'discriminatory'):
-        if setting.n_items == 2 and setting.n_players == 2:
-            if not setting.constant_marginal_values:
-                print('BNE is only approximated roughly!')
-                return _bne_multiunit_discriminatory_2x2
-            else:
-                return _bne_multiunit_discriminatory_2x2_cmv(setting.common_prior)
+        if payment_rule in ('first_price', 'discriminatory'):
+            if setting.n_items == 2 and setting.n_players == 2:
+                if not setting.constant_marginal_values:
+                    print('BNE is only approximated roughly!')
+                    return _bne_multiunit_discriminatory_2x2
+                else:
+                    return _bne_multiunit_discriminatory_2x2_cmv(setting.common_prior)
 
-    if payment_rule == 'uniform':
-        if setting.n_items == 2 and setting.n_players == 2:
-            return _bne_multiunit_uniform_2x2()
-        if (setting.n_items == 3 and setting.n_players == 2
-                and setting.item_interest_limit == 2):
-            return _bne_multiunit_uniform_3x2_limit2
+        if payment_rule == 'uniform':
+            if setting.n_items == 2 and setting.n_players == 2:
+                return _bne_multiunit_uniform_2x2()
+            if (setting.n_items == 3 and setting.n_players == 2
+                    and setting.item_interest_limit == 2):
+                return _bne_multiunit_uniform_3x2_limit2
+
+    else:
+        if payment_rule == 'uniform' and setting.correlation_types in [None, 'independent'] and \
+            setting.risk == 1:
+            # TODO prior must also be uniform on [0,1]
+            return _bne_multiunit_synergy(setting.n_players)
 
     return None
 
@@ -327,6 +334,42 @@ def _bne_multiunit_uniform_3x2_limit2(valuation, player_position=None):
     opt_bid = torch.clone(valuation)
     opt_bid[:, 1] = opt_bid[:, 1] ** 2
     opt_bid[:, 2] = 0
+    return opt_bid
+
+def _bne_multiunit_synergy(n_players):
+    """BNE from Kagel and Levin (2005)"""
+
+    def opt_bid(valuation, player_position=0):
+        if player_position < n_players - 1:
+            return valuation
+        else:
+            bid = torch.zeros_like(valuation)
+
+            # region 1
+            mask_1 = valuation[..., 0] < 0.5
+            bid[mask_1, 0] = valuation[mask_1, 0]
+
+            # region 2
+            n = n_players - 1  # they use a different notation
+            if n == 1:
+                v_cn = 0  # TODO or 1?
+            elif n == 3:
+                v_cn = 9.0/16.0
+            else:
+                v_cn = (n**2 - n + 2*((n - 1)**2 * (n + 1))**0.5 + 2)/(n - 3)**2
+            mask_2 = torch.logical_and(valuation[..., 0] >= 0.5,
+                                       valuation[..., 0] <= v_cn)
+            phi = (n + (n - 3.0)*valuation[mask_2, 0]) / (n - 1.0)
+            bid[mask_2, 0] = \
+                (phi.clone() - torch.sqrt(phi.clone()**2 - 4*valuation[mask_2, 0])) / 2.0
+            bid[mask_2, 1] = bid[mask_2, 0]
+
+            # region 3
+            mask_3 = valuation[..., 0] > v_cn
+            bid[mask_3, :] = 1
+
+            return bid
+
     return opt_bid
 
 def bne_splitaward_2x2_1_factory(experiment_config, payoff_dominant: bool=True):

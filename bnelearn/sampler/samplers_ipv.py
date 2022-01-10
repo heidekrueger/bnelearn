@@ -152,6 +152,7 @@ class GaussianSymmetricIPVSampler(SymmetricIPVSampler):
             .normal_(self.base_distribution.loc, self.base_distribution.scale) \
             .relu_()
 
+
 class BetaSymmetricIPVSampler(SymmetricIPVSampler):
     """An IPV sampler with symmetric Beta priors."""
     def __init__(self, alpha: float, beta: float,
@@ -169,6 +170,7 @@ class BetaSymmetricIPVSampler(SymmetricIPVSampler):
         size = [self.n_players, self.valuation_size]
         return self.base_distribution.expand(size) \
             .rsample([*batch_sizes]).to(device)
+
 
 class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
     """Sampler for Multi-Unit, private value settings.
@@ -195,7 +197,7 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
             constant_marginal_values: whether or not all values should be
                 constant (i.e. to enforce additive valuations on homogenous goods.)
             u_lo: lower bound for uniform distribution
-            u_hi: upper bound for uniform distribtuion
+            u_hi: upper bound for uniform distribution
             default_batch_size
             default_device
         """
@@ -221,6 +223,9 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         # define alias AFTER super init such that both point to same memory address
         self.n_items = self.valuation_size
 
+        if self.max_demand < self.n_items:
+            self.support_bounds[:, self.max_demand, 1] = 0
+
     def _sample(self, batch_sizes, device) -> torch.Tensor:
         """Draws a batch of uniform valuations, sorts them,
         and masks them out if necessary"""
@@ -238,20 +243,93 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         return profile
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
-                                dtype=torch.float, device = None,
-                                support_bounds: torch.Tensor = None, return_mesh: bool=False) -> torch.Tensor:
+                                dtype=torch.float, device=None, support_bounds: torch.Tensor=None,
+                                return_mesh: bool=False) -> torch.Tensor:
         if return_mesh:
-            raise NotImplementedError('Cell partition not implmented for multi-unit auctions (b/c not rectangular).')
-        
-        rectangular_grid = super().generate_valuation_grid(
-            player_position, minimum_number_of_points, dtype, device, support_bounds)
+            raise NotImplementedError(
+                'Cell partition not implemented for multi-unit auctions (b/c not rectangular).')
 
-        # transform to triangular grid (valuations are marginally descending)
-        return rectangular_grid.sort(dim=1, descending=True)[0].unique(dim=0)
+        if self.max_demand < self.n_items:
+            if support_bounds is None:
+                support_bounds = self.support_bounds
+            bounds = support_bounds[player_position]
+
+            # dimensionality
+            dims = self.max_demand
+            n_points_per_dim = ceil(minimum_number_of_points/dims)
+
+            # create equidistant line along the support
+            lines = [torch.linspace(bounds[d][0], bounds[d][1], n_points_per_dim,
+                                    device=device, dtype=dtype)
+                     for d in range(dims)]
+            mesh = torch.meshgrid(lines)
+
+            max_demand_grid = torch.stack(mesh, dim=-1).view(-1, dims)
+            grid = torch.zeros((max_demand_grid.shape[0], self.n_items),
+                               device=device, dtype=dtype)
+            grid[:, :self.max_demand] = max_demand_grid
+        else:
+            rectangular_grid = super().generate_valuation_grid(
+                player_position, minimum_number_of_points, dtype, device, support_bounds)
+
+            # transform to triangular grid (valuations are marginally descending)
+            grid = rectangular_grid.sort(dim=1, descending=True)[0].unique(dim=0)
+
+        return grid
 
     def generate_cell_partition(self, player_position: int, grid_size: int,
                                 dtype=torch.float, device=None):
-        raise NotImplementedError('Cell partition not implmented for multi-unit auctions (b/c not rectangular).')
+        raise NotImplementedError('Cell partition not implemented for multi-unit auctions (b/c not rectangular).')
+
+
+class MultiUnitSynergyValuationObservationSampler(MultiUnitValuationObservationSampler):
+    r"""`ValuationObservationSampler` that models synergy effects for the last
+    bidder as in Kagel and Levin (2005).
+    """
+    _SYNERGY_PARAMETER = 2.0
+    def _sample(self, batch_sizes, device) -> torch.Tensor:
+        # TODO: can we load all the synergy to the 2nd index b/c we only win
+        # that when we also win the first one?
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
+        # profile is batch x player x items
+        profile =  super()._sample(batch_sizes, device)
+        # valuations beyond the limit are 0
+        profile[..., 1] = self._SYNERGY_PARAMETER * profile[..., 0]
+        return profile
+
+    def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
+                                dtype=torch.float, device = None, support_bounds: torch.Tensor = None,
+                                return_mesh: bool=False) -> torch.Tensor:
+        if return_mesh:
+            raise NotImplementedError(
+                'Cell partition not implemented for multi-unit auctions (b/c not rectangular).')
+        
+        if support_bounds is None:
+            support_bounds = self.support_bounds
+        bounds = support_bounds[player_position]
+        line = torch.linspace(bounds[0][0], bounds[0][1], minimum_number_of_points,
+                               device=device, dtype=dtype)
+
+        grid = torch.stack([line, self._SYNERGY_PARAMETER * line], axis=-1)
+        return grid
+
+    def generate_action_grid(self, player_position: int, minimum_number_of_points: int,
+                             dtype=torch.float, device = None) -> torch.Tensor:
+        """Here we need higher action values for the synergy effects."""
+        support_bounds = self.support_bounds.clone()
+
+        return self._SYNERGY_PARAMETER * super().generate_valuation_grid(
+            player_position=player_position, minimum_number_of_points=minimum_number_of_points,
+            dtype=dtype, device=device, support_bounds=support_bounds)
+
+    def generate_reduced_grid(self, player_position: int, minimum_number_of_points: int,
+                              dtype=torch.float, device = None) -> torch.Tensor:
+        """For some samplers, the action dimension is smaller and the grid can
+        be reduced to that lower dimension.
+        """
+        return self.generate_valuation_grid(player_position, minimum_number_of_points,
+                                            dtype, device)
+
 
 class SplitAwardValuationObservationSampler(UniformSymmetricIPVSampler):
     """Sampler for Split-Award, private value settings. Here bidders have two
@@ -261,9 +339,9 @@ class SplitAwardValuationObservationSampler(UniformSymmetricIPVSampler):
         super().__init__(n_players=2, **kwargs)
         self.efficiency_parameter = efficiency_parameter
         assert self.support_bounds[0, 0, 0] == self.support_bounds[1, 0, 0], \
-            'Bounds not suppoted in this setting.'
+            'Bounds not supported in this setting.'
         assert self.support_bounds[0, 0, 1] == self.support_bounds[1, 0, 1], \
-            'Bounds not suppoted in this setting.'
+            'Bounds not supported in this setting.'
 
     def _sample(self, batch_sizes, device) -> torch.Tensor:
         batch_sizes = self._parse_batch_sizes_arg(batch_sizes)

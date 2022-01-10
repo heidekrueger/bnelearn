@@ -15,6 +15,8 @@ import sys
 import torch
 from itertools import product
 
+torch.set_printoptions(precision=4, sci_mode=False)
+
 # put bnelearn imports after this.
 # pylint: disable=wrong-import-position
 sys.path.append(os.path.realpath('.'))
@@ -28,7 +30,7 @@ if __name__ == '__main__':
 
     # Path is user-specific
     log_root_dir = os.path.join(
-        os.path.expanduser('~'), 'bnelearn', 'experiments', 'asymmmetric-debug', 'varied-batch_size'
+        'experiments/asymmetric-debug'
         )
 
     # 1. Individual experiments
@@ -250,8 +252,58 @@ if __name__ == '__main__':
         #         experiment.run()
         #         torch.cuda.empty_cache()
 
-    # 2. Scalability experiment
-    if True:
+    # Common parameters #######################################################
+    n_epochs = 2000
+    n_runs = 1
+    sigma = .1
+    specific_gpu = 6
+
+    # Multi-unit asymmetric experiments ######################################
+    experiment_config, experiment_class = \
+        ConfigurationManager(
+            experiment_type='multiunit',
+            n_runs=n_runs, n_epochs=n_epochs,
+            ) \
+        .set_setting(
+            n_players=4, n_items=2,
+            payment_rule='uniform',
+            exp_params={'synergy': True}
+            ) \
+        .set_learning(
+            # model_sharing=False,
+            pretrain_iters=50,
+            learner_hyperparams={
+                'population_size': 32,
+                'sigma': sigma,
+                'scale_sigma_by_model_size': True
+                },
+            ) \
+        .set_logging(
+            util_loss_batch_size=2**8,
+            util_loss_grid_size=2**9,
+            util_loss_frequency=50,
+            plot_frequency=50,
+            log_root_dir=log_root_dir,
+            best_response=True,
+            cache_eval_actions=True,
+            log_metrics = {
+                'opt': True,
+                'util_loss': True,
+                # 'epsilon': True,
+                },
+            save_models=True
+            ) \
+        .set_hardware(
+            specific_gpu=specific_gpu,
+        ) \
+        .get_config()
+    experiment = experiment_class(experiment_config)
+    experiment.run()
+    torch.cuda.empty_cache()
+
+
+    # 3. Scalability experiment
+    if False:
         n_epochs = 500
         sigma = .1
         # population_sizes = [16, 32, 64]
