@@ -311,11 +311,11 @@ class LLLLRRGData(CombinatorialAuctionData):
     # - or allocation to the Global player
     _efficient_allocations_dense = [
         a + [0, 0] for a in LLLLGGData._efficient_allocations_dense
-    ] + [*[0]*12, 1, 0] # ABCDEFGH allocated to G
+    ] + [[*[0]*12, 1, 0]] # ABCDEFGH allocated to G
 
     efficient_allocations_semisparse = \
         LLLLGGData.efficient_allocations_semisparse + [12]
 
-    _legal_allocations_sparse  = LLLLGGData._legal_allocations_sparse + [66, 12]
+    _legal_allocations_sparse  = LLLLGGData._legal_allocations_sparse + [[66, 12]]
 
     
