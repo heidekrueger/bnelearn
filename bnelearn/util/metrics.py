@@ -125,8 +125,6 @@ def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: fl
     else:
         return norm_actions(s_actions, actions, p)
 
-
-
 def _create_grid_bid_profiles(bidder_position: int, grid: torch.Tensor, bid_profile: torch.Tensor):
     """Given an original bid profile, creates a tensor of (grid_size *
     batch_size) batches of bid profiles, where for each original batch, the
@@ -153,7 +151,6 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.Tensor, bid_prof
     bid_profile[:, bidder_position, :] = grid.repeat_interleave(repeats = batch_size, dim=0)
 
     return bid_profile #bid_eval_size*batch, 1,n_items
-
 
 def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid_profile: torch.Tensor, bidder: Bidder,
                       grid: torch.Tensor, half_precision = False):
@@ -229,7 +226,6 @@ def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid
 
     return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
 
-
 def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                          agent_observations: torch.Tensor,
                          grid_size: int,
@@ -238,13 +234,13 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     #pylint: disable = anomalous-backslash-in-string
     """Estimates a bidder's utility loss in the current state of the
     environment, i.e. the     potential benefit of deviating from the current
-    strategy, evaluated at each point of the agent_valuations. therfore, we
+    strategy, evaluated at each point of the agent_valuations. Therefore, we
     calculate
 
     .. math::
         \max_{v_i \in V_i} \max_{b_i^* \in A_i} + E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i})) - u(v_i, b_i, b_{-i}(v_{-i}))]
 
-    We're conditoning on the agent's observation at `player_position`. That
+    We're conditioning on the agent's observation at `player_position`. That
     means, types and observations of other palyers as well as its own type have
     to be conditioned. As it's     conditioned on the observation, the agent's
     action stays the same.
@@ -290,7 +286,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
 
     ####### get best responses over grid of alternative actions #######
     action_alternatives = env.sampler.generate_action_grid(
-        player_position,
+        player_position=player_position,
         minimum_number_of_points=grid_size,
         dtype=agent_action_actual.dtype, device=agent_action_actual.device
     )
@@ -349,7 +345,6 @@ def _get_best_responses_among_alternatives(
     # each have shape: [agent_batch_size]
     br_utility, br_indices = grid_utilities.max(dim=0)
     return br_utility, br_indices
-
 
 def ex_interim_utility(
         env: AuctionEnvironment, player_position: int,
@@ -475,7 +470,7 @@ def verify_epsilon_bne(exp: 'Experiment', grid_size: int,
 # def ex_interim_utility_bound(env: AuctionEnvironment, player_position: int,
 #                              agent_valuation: torch.Tensor, grid_size: int,
 #                              opponent_batch_size: int) -> torch.Tensor:
-#     """Calulate an upper bound for the utility and specific actions.
+#     """Calculate an upper bound for the utility and specific actions.
 #     According to Bosshard et al. (2020), under some assumptions (see Prop. 1),
 #     the expected utility can be bounded based on estimates.
 #     """

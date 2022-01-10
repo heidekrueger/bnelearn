@@ -238,7 +238,7 @@ class ReverseBidder(Bidder):
 
 
 class CombinatorialBidder(Bidder):
-    """Bidder in combinatrorial auctions.
+    """Bidder in combinatorial auctions.
 
     Note: Currently only set up for full LLG setting.
 

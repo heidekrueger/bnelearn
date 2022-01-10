@@ -329,7 +329,12 @@ class Experiment(ABC):
             model_players = [m[0] for m in self._model2bidder]
 
             self.v_opt[bne_id] = torch.stack(
-                [self.sampler.generate_reduced_grid(i, self.plot_points) for i in model_players],
+                [
+                    self.sampler.generate_reduced_grid(
+                        player_position=i,
+                        minimum_number_of_points=self.plot_points)
+                    for i in model_players
+                ],
                 dim=1)
 
             self.b_opt[bne_id] = torch.stack(
@@ -342,7 +347,7 @@ class Experiment(ABC):
                 grid_size_differs = True
 
         if grid_size_differs:
-            print('´plot_points´ changed due to get_valuation_grid')
+            print('`plot_points` changed due to get_valuation_grid')
             self.plot_points = self.v_opt[0].shape[0]
 
     def _initialize_logging(self):
@@ -500,7 +505,7 @@ class Experiment(ABC):
             ylim: list of floats, y axis limits for all n_bundles dimensions
             labels: list of str lables for legend
             fmts: list of str for matplotlib markers and lines
-            figure_name: str, for seperate plot saving of e.g. bids and util_loss,
+            figure_name: str, for separate plot saving of e.g. bids and util_loss,
             plot_point: int of number of ploting points for each strategy in each subplot
             subplot_order: [nrows, ncols], list of two int, for ordering of subplots.
         """
@@ -873,7 +878,7 @@ class Experiment(ABC):
             labels = [f'{self._get_model_names()[i]}' for i in range(len(self.models))]
             fmts = ['o'] * len(self.models)
             self._plot(plot_data=plot_data, writer=self.writer,
-                       ylim=[0, self.sampler.support_bounds.max().item()],
+                       ylim=[0, self.plot_ymax],
                        figure_name='best_responses', y_label='best response',
                        labels=labels, fmts=fmts,
                        plot_points=self.plot_points)
@@ -909,11 +914,9 @@ class Experiment(ABC):
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 
     def _calculate_metrics_PoA(self):
+        """Calculate ratio of achieved welfare to maximal welfare by brute
+        force. Can be seen as a bound for the (Bayesian) Price of Anarchy.
         """
-        Calculate ratio of achived welfare to maximal welfare by brute force.
-        Can be seen as a ound for the (Bayesian) Price of Anarchy.
-        """
-
         # calculate actual allocations
         env = self.env
         bid_profile = torch.zeros(env.batch_size, env.n_players, env.agents[0].bid_size,

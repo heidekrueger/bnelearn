@@ -21,18 +21,19 @@ class MultiUnitAuction(Mechanism):
     def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
         """Helper function for cleaning bids in multi-unit auctions.
 
-        For multi-unit actions bids per must be in decreasing for each bidder.
-        If agents' bids fail to fulfill this property, this function sets their bid
-        to zero, which will result in no items allocated and thus zero payoff.
+        For multi-unit actions bids must be in decreasing order for each
+        bidder. If agents' bids fail to fulfill this property, this function
+        sets their bid to zero, which will result in no items allocated and
+        thus zero payoff.
 
         Args:
             bids: torch.Tensor
-                of bids with dimensions (*batch_sizes, n_players, n_items); first entry of
-                n_items dim corrsponds to bid of first unit, second entry to bid of second
-                unit, etc.
+                of bids with dimensions (*batch_sizes, n_players, n_items),
+                first entry of n_items dim corresponds to bid of first unit,
+                second entry to bid of second unit, etc.
 
         Returns:
-            cleaned_bids: torch.Tensor (*batch_sizes, n_players, n_items)
+            cleaned_bids: torch.Tensor (*batch_sizes, n_players, n_items),
                 same dimension as bids, with zero entries whenever a bidder bid
                 nondecreasing in a batch.
         """
@@ -55,7 +56,7 @@ class MultiUnitAuction(Mechanism):
 
         Args:
             bids (torch.Tensor) of agents bids of shape (batch, agent, unit)
-            random_tie_break (bool), optinoal: wether or not to randomize the
+            random_tie_break (bool), optional: wether or not to randomize the
                 order of the agents (matters e.g. when all agents bid same
                 amount, then the first agent would always win).
             accept_zero_bids (bool), wether or not agents can win by bidding
@@ -63,7 +64,7 @@ class MultiUnitAuction(Mechanism):
 
         Returns:
             allocations (torch.Tensor) of zeros and ones to indicate the
-                alocated units for each batch and for each bid.
+                allocated units for each batch and for each bid.
 
         Note:
             This function assumes that validity checks have already been
@@ -72,7 +73,6 @@ class MultiUnitAuction(Mechanism):
         """
         *batch_sizes, n_players, n_items = bids.shape
         total_batch_size = reduce(mul, batch_sizes, 1)
-
 
         if random_tie_break: # randomly change order of bidders
             idx = torch.randn((*batch_sizes, n_players*n_items), device=bids.device) \
@@ -88,7 +88,7 @@ class MultiUnitAuction(Mechanism):
 
         if random_tie_break:  # restore bidder order
             idx_rev = idx.sort()[1] + (n_players*n_items) \
-                    * torch.arange(*batch_sizes, device=bids.device).reshape(-1, 1)
+                * torch.arange(*batch_sizes, device=bids.device).reshape(-1, 1)
             allocations = allocations.view(-1)[idx_rev.view(-1)]
 
         # sorting is needed, since tie break could end up in favour of lower valued item
@@ -116,7 +116,7 @@ class MultiUnitDiscriminatoryAuction(MultiUnitAuction):
         Args:
             bids: torch.Tensor
                 of bids with dimensions (*batch_sizes, n_players, n_items);
-                first entry of n_items dim corrsponds to bid of first unit,
+                first entry of n_items dim corresponds to bid of first unit,
                 second entry to bid of second unit, etc.
 
         Returns:
@@ -135,8 +135,6 @@ class MultiUnitDiscriminatoryAuction(MultiUnitAuction):
         bids = bids.to(self.device)
 
         # only accept decreasing bids
-        # assert torch.equal(bids.sort(dim=item_dim, descending=True)[0], bids), \
-        #     "Bids must be in decreasing order"
         bids = self._remove_invalid_bids(bids)
 
         # Alternative w/o loops
@@ -148,7 +146,7 @@ class MultiUnitDiscriminatoryAuction(MultiUnitAuction):
 
 
 class MultiUnitUniformPriceAuction(MultiUnitAuction):
-    """ In a uniform-price auction, all units are sold at a "market-clearing"
+    """In a uniform-price auction, all units are sold at a "market-clearing"
     price such that the total amount demanded is equal to the total amount
     supplied. We adopt the rule that the market-clearing price is the same as
     the highest losing bid.
@@ -160,12 +158,12 @@ class MultiUnitUniformPriceAuction(MultiUnitAuction):
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Runs a (batch of) Multi Unit Uniform-Price Auction(s). Invalid bids
         (i.e. in increasing order) will be ignored (-> no allocation to that
-        bidder), s.t. the bidder might be able to ´learn´ the right behavior.
+        bidder), s.t. the bidder might be able to 'learn' the right behavior.
 
         Args:
             bids: torch.Tensor
                 of bids with dimensions (*batch_sizes, n_players, n_items);
-                first entry of n_items dim corrsponds to bid of first unit,
+                first entry of n_items dim corresponds to bid of first unit,
                 second entry to bid of second unit, etc.
 
         Returns:
@@ -180,7 +178,7 @@ class MultiUnitUniformPriceAuction(MultiUnitAuction):
         assert bids.dim() >= 3, "Bid tensor must be at least 3d (*batches x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
-        # name dimensions for readibility
+        # name dimensions for readability
         *batch_sizes, n_players, n_items = bids.shape
         total_batch_size = reduce(mul, batch_sizes, 1)
 
@@ -188,8 +186,6 @@ class MultiUnitUniformPriceAuction(MultiUnitAuction):
         bids = bids.to(self.device)
 
         # only accept decreasing bids
-        # assert torch.equal(bids.sort(dim=-1, descending=True)[0], bids), \
-        #     "Bids must be in decreasing order"
         bids = self._remove_invalid_bids(bids)
 
         # allocate return variables (flat at this stage)
@@ -221,12 +217,12 @@ class MultiUnitVickreyAuction(MultiUnitAuction):
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Runs a (batch of) Multi Unit Vickrey Auction(s). Invalid bids (i.e.
         in increasing order) will be ignored (-> no allocation to that bidder),
-        s.t. the bidder might be able to ´learn´ the right behavior.
+        s.t. the bidder might be able to 'learn' the right behavior.
 
         Args:
             bids: torch.Tensor
                 of bids with dimensions (*batch_sizes, n_players, n_items);
-                first entry of n_items dim corrsponds to bid of first unit,
+                first entry of n_items dim corresponds to bid of first unit,
                 second entry to bid of second unit, etc.
 
         Returns:
@@ -241,7 +237,7 @@ class MultiUnitVickreyAuction(MultiUnitAuction):
         assert bids.dim() >= 3, "Bid tensor must be at least 3d (*batches x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
-        # name dimensions for readibility
+        # name dimensions for readability
         *batch_sizes, n_players, n_items = bids.shape
         total_batch_size = reduce(mul, batch_sizes, 1)
 
@@ -249,8 +245,6 @@ class MultiUnitVickreyAuction(MultiUnitAuction):
         bids = bids.to(self.device)
 
         # only accept decreasing bids
-        # assert torch.equal(bids.sort(dim=-1, descending=True)[0], bids), \
-        #     "Bids must be in decreasing order"
         bids = self._remove_invalid_bids(bids)
 
         # allocate return variables
@@ -282,7 +276,7 @@ class FPSBSplitAwardAuction(MultiUnitAuction):
     """First-price sealed-bid split-award auction: Multiple agents bidding for
     either 100% of the share or 50%.
 
-    We define a bids as ´torch.Tensor´ with dimensions (*batch_sizes,
+    We define a bids as `torch.Tensor` with dimensions (*batch_sizes,
     n_players, n_bids=2), where the first bid is for the 50% share and the
     second for the 100% share.
     """
@@ -345,7 +339,7 @@ class FPSBSplitAwardAuction(MultiUnitAuction):
             winning_bundles = batched_index_select(winning_bundles, 1, idx_rev)
             # bids_flat = batched_index_select(bids_flat, 1, idx_rev)  # unused
 
-        winning_bundles = winning_bundles.view_as(bids)  # reshape to original sahpe
+        winning_bundles = winning_bundles.view_as(bids)  # reshape to original shape
 
         if not accept_zero_bids:
             winning_bundles.masked_fill_(mask=bids==0, value=0)
@@ -374,7 +368,7 @@ class FPSBSplitAwardAuction(MultiUnitAuction):
         Args:
             bids: torch.Tensor
                 of bids with dimensions (*batch_sizes, n_players, n_items=2);
-                first entry of n_items dim corrsponds to bid for 50% lot,
+                first entry of n_items dim corresponds to bid for 50% lot,
                 second entry to bid for 100% lot, etc.
 
         Returns:

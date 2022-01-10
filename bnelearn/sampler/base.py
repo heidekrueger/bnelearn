@@ -162,11 +162,11 @@ class ValuationObservationSampler(ABC):
                 [g[tuple(vertex_index)] for g in grid]
                 ).view(1, valuation_size)
 
-        # loop over all lower verices of all cells
+        # loop over all lower vertices of all cells
         for lower_vertex_index in product(*[list(range(j - 1)) for j in grid_shape]):
-            # these are the indecies: one for each of the grid dimensions
+            # these are the indices: one for each of the grid dimensions
 
-            # collecting all `upper' verticies adjacent to `lower_vertex`
+            # collecting all `upper' vertices adjacent to `lower_vertex`
             vertices_indices = list()
             for k in list(product(*([0, 1] for _ in range(valuation_size)))):
                 vertex_index = list(map(add, lower_vertex_index, k))
@@ -178,7 +178,7 @@ class ValuationObservationSampler(ABC):
 
 class PVSampler(ValuationObservationSampler, ABC):
     """A sampler for Private Value settings, i.e. when observations and
-     valuations are identical.
+    valuations are identical.
     """
 
     def __init__(self, n_players: int, valuation_size: int, support_bounds,
@@ -197,6 +197,7 @@ class PVSampler(ValuationObservationSampler, ABC):
         # In the PV setting, valuations and observations are identical.
         profile = self._sample(batch_sizes, device)
         return profile, profile
+
 
 class CompositeValuationObservationSampler(ValuationObservationSampler):
     """A class representing composite prior distributions that are
@@ -327,14 +328,38 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
 
         return cv, co
 
-    def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
-                                dtype=torch.float, device = None,
-                                support_bounds: torch.Tensor = None, return_mesh: bool=False) -> torch.Tensor:
-        """Possibly need to call specific grid sampling"""
+    def generate_valuation_grid(self, **kwargs) -> torch.Tensor:
+        """Possibly need to call specific sampling"""
         for g in range(self.n_groups):  # iterate over groups
-            players = self.group_indices[g]  # player_positions within group
-            for i, pos in enumerate(players):  # need to keep track of list index: i != pos
-                if player_position == pos:
-                    return self.group_samplers[g].generate_valuation_grid(
-                        i, minimum_number_of_points, dtype, device, support_bounds, return_mesh
-                    )
+            player_positions = self.group_indices[g]  # player_positions within group
+            for pos in player_positions:
+                if kwargs['player_position'] == pos:
+                    kwargs['player_position'] =  pos - sum(self.group_sizes[:g])  # i's relative position in subgroup
+                    return self.group_samplers[g].generate_valuation_grid(**kwargs)
+
+    def generate_reduced_grid(self, **kwargs) -> torch.Tensor:
+        """Possibly need to call specific sampling"""
+        for g in range(self.n_groups):  # iterate over groups
+            player_positions = self.group_indices[g]  # player_positions within group
+            for pos in player_positions:
+                if kwargs['player_position'] == pos:
+                    kwargs['player_position'] =  pos - sum(self.group_sizes[:g])  # i's relative position in subgroup
+                    return self.group_samplers[g].generate_reduced_grid(**kwargs)
+
+    def generate_action_grid(self, **kwargs) -> torch.Tensor:
+        """Possibly need to call specific sampling"""
+        for g in range(self.n_groups):  # iterate over groups
+            player_positions = self.group_indices[g]  # player_positions within group
+            for pos in player_positions:
+                if kwargs['player_position'] == pos:
+                    kwargs['player_position'] =  pos - sum(self.group_sizes[:g])  # i's relative position in subgroup
+                    return self.group_samplers[g].generate_action_grid(**kwargs)
+
+    def generate_cell_partition(self, **kwargs) -> torch.Tensor:
+        """Possibly need to call specific sampling"""
+        for g in range(self.n_groups):  # iterate over groups
+            player_positions = self.group_indices[g]  # player_positions within group
+            for pos in player_positions:
+                if kwargs['player_position'] == pos:
+                    kwargs['player_position'] =  pos - sum(self.group_sizes[:g])  # i's relative position in subgroup
+                    return self.group_samplers[g].generate_cell_partition(**kwargs)
