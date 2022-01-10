@@ -233,7 +233,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                          grid_best_response: bool = False, mute: bool = False):
     #pylint: disable = anomalous-backslash-in-string
     """Estimates a bidder's utility loss in the current state of the
-    environment, i.e. the     potential benefit of deviating from the current
+    environment, i.e. the potential benefit of deviating from the current
     strategy, evaluated at each point of the agent_valuations. Therefore, we
     calculate
 
