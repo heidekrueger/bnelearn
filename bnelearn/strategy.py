@@ -376,6 +376,49 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         return strategy
 
+    @classmethod
+    def load_old(cls, path: str, device='cpu'):
+        """
+        Initializes a saved NeuralNetStrategy from ´path´.
+        """
+        model_dict = torch.load(path, map_location=device)
+
+        # TODO: Dangerous hack for reloading a strategy
+        params = {}
+        params["hidden_nodes"] = []
+        params["hidden_activations"] = []
+        length = len(list(model_dict.values()))
+        layer_idx = 0
+        value_key_zip = zip(
+            list(model_dict.values()),
+            list(model_dict._metadata.keys())[2:] # pylint: disable=protected-access
+        )
+        for tensor, layer_activation in value_key_zip:
+            if layer_idx == 0:
+                params["input_length"] = tensor.shape[1]
+            elif layer_idx == length - 1:
+                params["output_length"] = tensor.shape[0]
+            elif layer_idx % 2 == 1:
+                params["hidden_nodes"].append(tensor.shape[0])
+                params["hidden_activations"].append(
+                    # TODO Nils: change once models are saved correctly
+                    # eval('nn.' + layer_activation[7:-2]))
+                    nn.SELU())
+            layer_idx += 1
+
+        # standard initialization
+        strategy = cls(
+            input_length=params["input_length"],
+            hidden_nodes=params["hidden_nodes"],
+            hidden_activations=params["hidden_activations"],
+            output_length=params["output_length"]
+        )
+
+        # override model weights with saved ones
+        strategy.load_state_dict(model_dict)
+
+        return strategy
+
     def state_dict(self):
         """Overwrite the nn.Module state_dict, s.t. it additionally contains this classes'
            attributes so we're able to save and load.

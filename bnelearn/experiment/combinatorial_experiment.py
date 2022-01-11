@@ -281,7 +281,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
 
     Each bidder bids on all bundles. Local bidder 1 has only a value for the
     first item, the second only for the second and global only on both. This
-    experiment is therfore more general than the `LLGExperiment` and includes
+    experiment is therefore more general than the `LLGExperiment` and includes
     the specifc payment rule from Beck & Ott, where the 2nd local bidder is
     favored (pays VCG prices).
     """
@@ -291,7 +291,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
             "Incorrect number of players specified."
 
         self.gamma = self.correlation = float(config.setting.gamma)
-        if config.setting.correlation_types != 'independent' or \
+        if config.setting.correlation_types not in ['independent', None] or \
             self.gamma > 0.0:
             # Should be similar to reduced LLG setting, but we have to consider
             # asymmetry of local bidders.
