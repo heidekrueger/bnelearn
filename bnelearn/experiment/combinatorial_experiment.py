@@ -450,7 +450,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
         else:
             name += ['independent']
         if self.risk != 1.0:
-            name += ['risk_{}'.format(self.risk)]
+            name += [f'risk_{self.risk}']
         return os.path.join(*name)
 
     def _get_model_names(self):

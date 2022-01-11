@@ -163,20 +163,20 @@ class PVSampler(ValuationObservationSampler, ABC):
 
 class IPVSampler(PVSampler, ABC):
     """A sampler in Independent Private Value Settings.
-    
-    NOTE: We will only use this class as an interface to perform quick checks for 
+
+    NOTE: We will only use this class as an interface to perform quick checks for
     IPV (e.g. in FlushedWrappedSampler below). Implementation is left to subclasses.
 
     See the module .samplers_ipv for examples.
     """
 
 class FlushedWrappedSampler(ValuationObservationSampler):
-    """A sampler that relies on a base sampler but flushes the last valuation and 
+    """A sampler that relies on a base sampler but flushes the last valuation and
     observations dimensions with zeros.
-    
+
     This is useful when some players have lower observation / valuation size than others.
 
-    Note on implementation: an alternative would be using a lower-dimensional 
+    Note on implementation: an alternative would be using a lower-dimensional
     base sampler and then adding extra zeroes. We instead go this route of overwriting
     unnecessary values because the incurred cost of sampling too many values
     will be cheaper in most cases compared to 'growing' tensors after the fact.
@@ -184,7 +184,7 @@ class FlushedWrappedSampler(ValuationObservationSampler):
     def __init__(self, base_sampler: ValuationObservationSampler,
                  flush_val_dims: int = 1, flush_obs_dims: int = 1):
         """
-        Args: 
+        Args:
             base_sampler: A `ValuationObservationSampler` that will have some
                 of its valuation/observation dimensions flushed.
                 NOTE: if you want (n + f) total dimensions, where f is the number of flushed dims,
@@ -193,10 +193,12 @@ class FlushedWrappedSampler(ValuationObservationSampler):
             flush_obs_dims (int): the number of observation dims to be flushed (from the right)
         """
 
+        # pylint: diable = super-init-not-called (This is by design.)
+
         self._base_sampler = base_sampler
         self._flush_val_dims = flush_val_dims
         self._flush_obs_dims = flush_obs_dims
-        
+
         self.n_players = base_sampler.n_players
         self.valuation_size = base_sampler.valuation_size
         self.observation_size = base_sampler.observation_size
