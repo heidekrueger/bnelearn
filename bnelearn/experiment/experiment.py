@@ -860,7 +860,7 @@ class Experiment(ABC):
 
         with torch.no_grad():  # don't need any gradient information here
             # TODO: currently we don't know where exactly a memory leak is            
-            _, observations = self.env.sampler.draw_profiles(batch_sizes=[batch_size])
+            _, observations = env.sampler.draw_profiles(batch_sizes=[batch_size])
             util_losses, best_responses = zip(*[
                 metrics.ex_interim_util_loss(
                     env=env,
