@@ -877,8 +877,12 @@ class Experiment(ABC):
                          torch.stack(best_responses, 1))
             labels = [f'{self._get_model_names()[i]}' for i in range(len(self.models))]
             fmts = ['o'] * len(self.models)
+            if isinstance(self.plot_ymax, Iterable):
+                ymax = max(self.plot_ymax)
+            else:
+                ymax = self.plot_ymax
             self._plot(plot_data=plot_data, writer=self.writer,
-                       ylim=[0, self.plot_ymax],
+                       ylim=[0, ymax],
                        figure_name='best_responses', y_label='best response',
                        labels=labels, fmts=fmts,
                        plot_points=self.plot_points)

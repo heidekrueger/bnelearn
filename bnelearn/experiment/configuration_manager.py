@@ -175,7 +175,6 @@ class ConfigurationManager:
         self.setting.payment_rule = 'second_price'
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
-                                    'epsilon': True,
                                     'efficiency': True,
                                     'revenue': True}
 
@@ -189,7 +188,6 @@ class ConfigurationManager:
         self.setting.payment_rule = 'first_price'
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
-                                    'epsilon': True,
                                     'efficiency': True,
                                     'revenue': True}
 
@@ -205,8 +203,7 @@ class ConfigurationManager:
         self.logging.log_metrics = {'opt': True,
                                     'efficiency': True,
                                     'revenue': True,
-                                    'util_loss': True,
-                                    'epsilon': True}
+                                    'util_loss': True}
 
     #     self.setting.correlation_types = 'independent'
     #
@@ -233,7 +230,6 @@ class ConfigurationManager:
         self.setting.gamma = 0.0
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
-                                    'epsilon': True,
                                     'efficiency': False,
                                     'revenue': False}
 
@@ -247,8 +243,7 @@ class ConfigurationManager:
         self.setting.n_players = 6
         self.logging.util_loss_frequency = 1000  # Or 100?
         self.logging.log_metrics = {'opt': False,
-                                    'util_loss': True,
-                                    'epsilon': True}
+                                    'util_loss': True}
 
     def _init_multiunit(self):
         self.setting.payment_rule = 'vcg'
@@ -263,7 +258,6 @@ class ConfigurationManager:
         self.logging.plot_points = 1000
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
-                                    'epsilon': True,
                                     'efficiency': True,
                                     'revenue': True}
 
@@ -286,7 +280,6 @@ class ConfigurationManager:
         self.setting.risk = 1.0
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
-                                    'epsilon': True,
                                     'efficiency': True,
                                     'PoA': True}
 
@@ -597,8 +590,7 @@ class ConfigurationManager:
             plot_points=100,
             plot_show_inline=True,
             log_metrics={'opt': True,
-                         'util_loss': True,
-                         'epsilon': True},
+                         'util_loss': True},
             log_componentwise_norm=False,
             save_tb_events_to_csv_aggregate=True,
             save_tb_events_to_csv_detailed=False,

@@ -28,16 +28,18 @@ if __name__ == '__main__':
 
     # Path is user-specific
     log_root_dir = os.path.join(
-        os.path.expanduser('~'), 'bnelearn', 'experiments', 'asymmetric',
+        os.path.expanduser('~'), 'bnelearn', 'experiments', 'asymmetric-2022',
         )
+
+    sigma = .1
+    specific_gpu = 5
+
 
     # 1. Individual experiments
     if False:
         # Common parameters #######################################################
         n_epochs = 2000
         n_runs = 10
-        sigma = .1
-        specific_gpu = 7
 
         # Single-item asymmetric experiments ######################################
         experiment_types = [
@@ -61,7 +63,7 @@ if __name__ == '__main__':
                     ) \
                 .set_logging(
                     util_loss_batch_size=2**12,
-                    util_loss_grid_size=2**12,
+                    util_loss_grid_size=2**10,
                     util_loss_frequency=n_epochs,
                     plot_frequency=500,
                     log_root_dir=log_root_dir,
@@ -98,7 +100,7 @@ if __name__ == '__main__':
             .set_logging(
                 eval_batch_size=2**17,
                 util_loss_batch_size=2**11,
-                util_loss_grid_size=2**11,
+                util_loss_grid_size=2**10,
                 util_loss_frequency=n_epochs,
                 best_response=True,
                 plot_frequency=500,
@@ -130,7 +132,7 @@ if __name__ == '__main__':
                 ) \
             .set_logging(
                 util_loss_batch_size=2**12,
-                util_loss_grid_size=2**12,
+                util_loss_grid_size=2**10,
                 util_loss_frequency=n_epochs,
                 best_response=True,
                 plot_frequency=500,
@@ -147,42 +149,55 @@ if __name__ == '__main__':
         torch.cuda.empty_cache()
 
 
+    if True:
         ### LLLLGG combinatorial experiment ###
-        experiment_config, experiment_class = \
-            ConfigurationManager(
-                experiment_type='llllgg',
-                n_runs=2, n_epochs=10
-                ) \
-            .set_setting(
-                core_solver='mpc',
-                payment_rule='first_price'
-                ) \
-            .set_learning(
-                batch_size=2**18,
-                pretrain_iters=500,
-                learner_hyperparams={
-                    'population_size': 64,
-                    'sigma': sigma,
-                    'scale_sigma_by_model_size': True
-                    },
-                ) \
-            .set_logging(
-                # eval_batch_size=2**14,
-                log_root_dir=log_root_dir,
-                util_loss_batch_size=2**12,
-                util_loss_grid_size=2**10,
-                util_loss_frequency=n_epochs,
-                plot_frequency=100,
-                cache_eval_actions=True,
-                save_models=True,
-                ) \
-            .set_hardware(
-                specific_gpu=specific_gpu
-                ) \
-            .get_config()
-        experiment = experiment_class(experiment_config)
-        experiment.run()
-        torch.cuda.empty_cache()
+        n_runs = [10, 2]
+        n_epochss = [5000, 1000]
+        payment_rules = ['first_price', 'nearest_vcg']
+        population_sizes = [64, 32]
+        batch_sizes = [2**18, 2**14]
+        util_loss_batch_sizes = [2**12, 2**7]
+        util_loss_grid_sizes = [2**10, 2**8]
+        
+        for n_run, n_epochs, payment_rule, population_size, batch_size, \
+            util_loss_batch_size, util_loss_grid_size in zip(n_runs, \
+            n_epochss, payment_rules, population_sizes, batch_sizes, \
+            util_loss_batch_sizes, util_loss_grid_sizes):
+            experiment_config, experiment_class = \
+                ConfigurationManager(
+                    experiment_type='llllgg',
+                    n_runs=n_run, n_epochs=n_epochs
+                    ) \
+                .set_setting(
+                    core_solver='mpc',
+                    payment_rule=payment_rule
+                    ) \
+                .set_learning(
+                    batch_size=batch_size,
+                    pretrain_iters=500,
+                    learner_hyperparams={
+                        'population_size': population_size,
+                        'sigma': sigma,
+                        'scale_sigma_by_model_size': True
+                        },
+                    ) \
+                .set_logging(
+                    log_root_dir=log_root_dir,
+                    util_loss_batch_size=util_loss_batch_size,
+                    util_loss_grid_size=util_loss_grid_size,
+                    util_loss_frequency=n_epochs,
+                    plot_frequency=500,
+                    cache_eval_actions=True,
+                    save_models=True,
+                    ) \
+                .set_hardware(
+                    specific_gpu=specific_gpu
+                    ) \
+                .get_config()
+            experiment = experiment_class(experiment_config)
+            experiment.run()
+            torch.cuda.empty_cache()
+
 
     # 2. Scalability experiment
     if False:
