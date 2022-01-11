@@ -7,8 +7,7 @@ stages:
 install_env:
   stage: install_env
   script:
-  - source /opt/anaconda/anaconda3/etc/profile.d/conda.sh
-  - which python
+  - source /opt/miniconda3/etc/profile.d/conda.sh
   - which conda
   - conda env remove -n bnelearn-test
   - conda create -n bnelearn-test python=3.9
@@ -24,7 +23,7 @@ test:
   script:
   # this assumes everything is already installed and we are able to load the correct conda env 
   # as created in the install_env step.
-  - source /opt/anaconda/anaconda3/etc/profile.d/conda.sh
+  - source /opt/miniconda3/etc/profile.d/conda.sh
   - which conda
   - conda activate bnelearn-test
   - which python
@@ -49,7 +48,7 @@ lint:
   script:
     # requires that pylint , pylint-exit and pylint2codeclimate are installed.
     # pylint-exit used as below modifies pylint exit code to prevent false-positive pipeline fails.
-  - source /opt/anaconda/anaconda3/etc/profile.d/conda.sh
+  - source /opt/miniconda3/etc/profile.d/conda.sh
   - conda activate bnelearn-test
   - which python
   - which pylint
@@ -81,7 +80,7 @@ deploy_docs:
   stage: deploy_docs
   script:
   # init the shell for conda activate
-  - source /opt/anaconda/anaconda3/etc/profile.d/conda.sh
+  - source /opt/miniconda3/etc/profile.d/conda.sh
   - which conda
   ## install new conda env for docs
   - conda env remove -n bnelearndocs
