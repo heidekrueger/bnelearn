@@ -18,7 +18,8 @@ from bnelearn.experiment.configurations import (SettingConfig,
 
 from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
                                                           LLGFullExperiment,
-                                                          LLLLGGExperiment)
+                                                          LLLLGGExperiment,
+                                                          LLLLRRGExperiment)
 from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
 
 from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSingleItemExperiment,
@@ -237,6 +238,18 @@ class ConfigurationManager:
         self.logging.log_metrics = {'opt': False,
                                     'util_loss': True}
 
+    def _init_llllrrg(self):
+        self.logging.util_loss_batch_size = 2 ** 12
+        self.learning.model_sharing = True
+        self.setting.u_lo = [0, 0, 0, 0, 0, 0, 0]
+        self.setting.u_hi = [1, 1, 1, 1, 2, 2, 4]
+        self.setting.core_solver = 'NoCore'
+        self.setting.parallel = 1
+        self.setting.n_players = 7
+        self.logging.util_loss_frequency = 100  # Or 100?
+        self.logging.log_metrics = {'opt': False,
+                                    'util_loss': True}
+
     def _init_multiunit(self):
         self.setting.payment_rule = 'vcg'
         self.setting.n_units = 2
@@ -355,6 +368,9 @@ class ConfigurationManager:
     def _post_init_llllgg(self):
         pass
 
+    def _post_init_llllrrg(self):
+        pass
+
     def _post_init_multiunit(self):
         pass
 
@@ -384,6 +400,8 @@ class ConfigurationManager:
             (LLGFullExperiment, _init_llg_full, _post_init_llg_full),
         'llllgg':
             (LLLLGGExperiment, _init_llllgg, _post_init_llllgg),
+        'llllrrg':
+            (LLLLRRGExperiment, _init_llllrrg, _post_init_llllrrg),
         'multiunit':
            (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
