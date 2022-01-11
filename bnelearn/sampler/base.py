@@ -7,6 +7,9 @@ from typing import List, Tuple, Union
 import torch
 from torch.cuda import _device_t as Device
 
+_ERR_MSG_COND_SAMPLE_FLUSHED = \
+    "Conditional sampling from FlushedWrappedSampler only implemented for IPV base samplers!"
+
 
 class ValuationObservationSampler(ABC):
     """Provides functionality to draw valuation and observation profiles."""
@@ -158,6 +161,15 @@ class PVSampler(ValuationObservationSampler, ABC):
         profile = self._sample(batch_sizes, device)
         return profile, profile
 
+class IPVSampler(PVSampler, ABC):
+    """A sampler in Independent Private Value Settings.
+    
+    NOTE: We will only use this class as an interface to perform quick checks for 
+    IPV (e.g. in FlushedWrappedSampler below). Implementation is left to subclasses.
+
+    See the module .samplers_ipv for examples.
+    """
+
 class FlushedWrappedSampler(ValuationObservationSampler):
     """A sampler that relies on a base sampler but flushes the last valuation and 
     observations dimensions with zeros.
@@ -171,6 +183,15 @@ class FlushedWrappedSampler(ValuationObservationSampler):
     """
     def __init__(self, base_sampler: ValuationObservationSampler,
                  flush_val_dims: int = 1, flush_obs_dims: int = 1):
+        """
+        Args: 
+            base_sampler: A `ValuationObservationSampler` that will have some
+                of its valuation/observation dimensions flushed.
+                NOTE: if you want (n + f) total dimensions, where f is the number of flushed dims,
+                then the base_sampler should be of size (n+f), not n.
+            flush_val_dims (int): the number of valuation dims to be flushed (from the right)
+            flush_obs_dims (int): the number of observation dims to be flushed (from the right)
+        """
 
         self._base_sampler = base_sampler
         self._flush_val_dims = flush_val_dims
@@ -185,6 +206,8 @@ class FlushedWrappedSampler(ValuationObservationSampler):
         self.support_bounds = base_sampler.support_bounds
         # n_players x valuation_size x 2 (lower, upper)
         # NOTE: will bounds of (0,0) cause a bug somewhere?
+        # TODO Stefan: At the very least, this breaks 3D plots, everything else
+        # seems to work fine.
         self.support_bounds[:, -flush_val_dims:, :] = 0.0
 
     def draw_profiles(self, batch_sizes: Union[int, List[int]] = None,
@@ -202,9 +225,20 @@ class FlushedWrappedSampler(ValuationObservationSampler):
                                   conditioned_observation: torch.Tensor,
                                   inner_batch_size: int,
                                   device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        raise NotImplementedError("TODO: make sure conditioning works correctly " +
-                                  "with the flushed dims.")
+        if not isinstance(self._base_sampler, IPVSampler):
+            raise NotImplementedError(_ERR_MSG_COND_SAMPLE_FLUSHED)
 
+        if conditioned_observation[..., -self._flush_obs_dims].any():
+            raise ValueError("conditioned observation contains nonzero entry in flushed dimensions!")
+
+        # For IPV samplers, we can simply draw from the _base_sampler and then flush
+        cv, co = self._base_sampler.draw_conditional_profiles(
+            conditioned_player, conditioned_observation, inner_batch_size, device)
+
+        cv[..., -self._flush_val_dims:] = 0.0
+        co[..., -self._flush_obs_dims:] = 0.0
+
+        return cv,co
 
 
 

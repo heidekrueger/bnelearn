@@ -14,7 +14,7 @@ from abc import ABC
 from functools import partial
 from typing import Iterable, List
 import math
-import warnings
+
 from scipy import optimize
 from tqdm import tqdm
 import numpy as np
@@ -268,7 +268,7 @@ class LLGExperiment(LocalGlobalExperiment):
         else:
             name += ['independent']
         if self.risk != 1.0:
-            name += ['risk_{}'.format(self.risk)]
+            name += [f'risk_{self.risk}']
         return os.path.join(*name)
 
 
@@ -613,8 +613,9 @@ class LLLLRRGExperiment(Experiment):
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch = None, fmts=['o'], **kwargs):
         super()._plot(plot_data=plot_data, writer = writer, epoch=epoch, fmts=fmts, **kwargs)
-        super()._plot_3d(plot_data = plot_data, writer = writer, epoch=epoch,
-                         figure_name=kwargs['figure_name'])
+        # TODO: 3d plot for LLLLRRG broken because 2nd dim of global player is singular (always 0.0).
+        #super()._plot_3d(plot_data = plot_data, writer = writer, epoch=epoch,
+        #                 figure_name=kwargs['figure_name'])
 
 
     def _set_valuation_bounds(self):

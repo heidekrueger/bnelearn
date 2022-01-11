@@ -25,7 +25,7 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager  # py
 if __name__ == '__main__':
 
     # path is user-specific
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
 
     # Run exps that contain integration
     # experiment_types = ['splitaward']  # ['single_item_gaussian_symmetric', 'multiunit', 'splitaward']
@@ -139,7 +139,7 @@ if __name__ == '__main__':
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .get_config()
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='llllrrg', n_runs=1, n_epochs=2000) \
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='llllrrg', n_runs=10, n_epochs=4000) \
         .set_logging(log_root_dir=log_root_dir) \
         .set_hardware(specific_gpu=1) \
         .get_config()

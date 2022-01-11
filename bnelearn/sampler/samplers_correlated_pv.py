@@ -6,7 +6,7 @@ import warnings
 from typing import List, Tuple
 import torch
 from torch.cuda import _device_t as Device
-from .base import PVSampler, CompositeValuationObservationSampler
+from .base import PVSampler, CompositeValuationObservationSampler, FlushedWrappedSampler
 from .samplers_ipv import UniformSymmetricIPVSampler
 
 ERR_MSG_INVALID_LOCAL_GLOBAL_CORRELATION_METHOD = \
@@ -303,7 +303,7 @@ class LocalGlobalCompositePVSampler(CompositeValuationObservationSampler):
         super().__init__(n_players, valuation_size, observation_size, subgroup_samplers, default_batch_size, default_device)
 
     def _get_group_sampler(self, n_group_players, correlation, correlation_method,
-                           u_lo, u_hi, 
+                           u_lo, u_hi,
                            valuation_size,  default_batch_size, default_device) -> PVSampler:
         """Returns a sampler of possibly correlated Uniform PV players for a
             symmetric group of players (e.g. the locals or globals)"""
@@ -447,10 +447,10 @@ class LLLLRRGSampler(CompositeValuationObservationSampler):
             u_lo, u_hi_regionals,
             valuation_size, default_batch_size, default_device)
 
-        sampler_global = self._get_group_sampler(
-            n_global, correlation_global, correlation_method_global,
-            u_lo, u_hi_global,
-            valuation_size, default_batch_size, default_device)
+        # global player sampler: 1st obs/val dim is Univform IPV, second dim is always 0.0
+        sampler_global = FlushedWrappedSampler(
+            UniformSymmetricIPVSampler(u_lo, u_hi_global, 1, 2, default_batch_size, default_device),
+            flush_val_dims=1, flush_obs_dims=1)
 
         n_players = n_locals + n_regionals + n_global
         observation_size = valuation_size # this is a PV setting, valuations = observations
@@ -459,7 +459,7 @@ class LLLLRRGSampler(CompositeValuationObservationSampler):
         super().__init__(n_players, valuation_size, observation_size, subgroup_samplers, default_batch_size, default_device)
 
     def _get_group_sampler(self, n_group_players, correlation, correlation_method,
-                           u_lo, u_hi, 
+                           u_lo, u_hi,
                            valuation_size,  default_batch_size, default_device) -> PVSampler:
         """Returns a sampler of possibly correlated Uniform PV players for a
             symmetric group of players (e.g. the locals or globals)"""
