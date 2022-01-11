@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     # Path is user-specific
     log_root_dir = os.path.join(
-        os.path.expanduser('~'), 'bnelearn', 'experiments', 'asymmmetric-debug', 'varied-batch_size'
+        os.path.expanduser('~'), 'bnelearn', 'experiments', 'asymmetric',
         )
 
     # 1. Individual experiments
@@ -67,12 +67,7 @@ if __name__ == '__main__':
                     log_root_dir=log_root_dir,
                     best_response=True,
                     cache_eval_actions=True,
-                    log_metrics = {
-                        'opt': True,
-                        'util_loss': True,
-                        'epsilon': True,
-                        },
-                    save_models=True
+                    save_models=True,
                     ) \
                 .set_hardware(
                     specific_gpu=specific_gpu,
@@ -110,11 +105,6 @@ if __name__ == '__main__':
                 cache_eval_actions=True,
                 log_root_dir=log_root_dir,
                 save_models=True,
-                log_metrics = {
-                    'opt': True,
-                    'util_loss': True,
-                    'epsilon': True,
-                    },
                 ) \
             .set_hardware(
                 specific_gpu=specific_gpu
@@ -123,6 +113,7 @@ if __name__ == '__main__':
         experiment = experiment_class(experiment_config)
         experiment.run()
         torch.cuda.empty_cache()
+
 
         # Split-award auction #####################################################
         experiment_config, experiment_class = \
@@ -145,11 +136,7 @@ if __name__ == '__main__':
                 plot_frequency=500,
                 cache_eval_actions=True,
                 log_root_dir=log_root_dir,
-                log_metrics = {
-                    'opt': True,
-                    'util_loss': True,
-                    'epsilon': True,
-                    },
+                save_models=True,
                 ) \
             .set_hardware(
                 specific_gpu=specific_gpu
@@ -187,10 +174,7 @@ if __name__ == '__main__':
                 util_loss_frequency=n_epochs,
                 plot_frequency=100,
                 cache_eval_actions=True,
-                log_metrics = {
-                    'util_loss': True,
-                    'epsilon': True,
-                    },
+                save_models=True,
                 ) \
             .set_hardware(
                 specific_gpu=specific_gpu
@@ -200,58 +184,8 @@ if __name__ == '__main__':
         experiment.run()
         torch.cuda.empty_cache()
 
-
-        # Combinatoriral auction with item bidding ################################
-        # # DEPRECATED
-        # log_root_dir = os.path.join(
-        #     os.path.expanduser('~'), 'bnelearn', 'experiments', 'asymmmetric', 'caib'
-        #     )
-
-        # # n_collections = [3, 2, 1]
-        # n_items = [2]  # [3, 2, 1]
-        # n_players = [2]  #[3, 2]
-
-        # # TODO Nils: debug sampler for one_player_with_unit_demand
-        # # for n_collection in n_collections:
-        # for n_item in n_items:
-        #     for n_player in n_players:
-        #         experiment_config, experiment_class = \
-        #             ConfigurationManager(
-        #                 experiment_type='caib', n_runs=5,
-        #                 n_epochs=n_epochs
-        #                 ) \
-        #             .set_setting(
-        #                 n_players=n_player,
-        #                 n_items=n_item,
-        #                 exp_type='XOS',
-        #                 exp_params={
-        #                     'n_collections': n_collection,
-        #                     'one_player_with_unit_demand': True
-        #                     },
-        #                 ) \
-        #             .set_logging(
-        #                 log_root_dir=log_root_dir,
-        #                 util_loss_batch_size=2**11,
-        #                 util_loss_grid_size=2**10,
-        #                 util_loss_frequency=20,
-        #                 best_response=True,
-        #                 plot_frequency=100,
-        #                 log_metrics = {
-        #                     'opt': True,
-        #                     'util_loss': True,
-        #                     'epsilon': True,
-        #                     },
-        #                 ) \
-        #             .set_hardware(
-        #                 specific_gpu=specific_gpu
-        #                 ) \
-        #             .get_config()
-        #         experiment = experiment_class(experiment_config)
-        #         experiment.run()
-        #         torch.cuda.empty_cache()
-
     # 2. Scalability experiment
-    if True:
+    if False:
         n_epochs = 500
         sigma = .1
         # population_sizes = [16, 32, 64]
@@ -288,10 +222,7 @@ if __name__ == '__main__':
                     plot_frequency=n_epochs,
                     cache_eval_actions=True,
                     save_tb_events_to_csv_detailed=True,
-                    log_metrics = {
-                        'util_loss': True,
-                        # 'epsilon': True,
-                        },
+                    save_models=True,
                     ) \
                 .set_hardware(
                     specific_gpu=7

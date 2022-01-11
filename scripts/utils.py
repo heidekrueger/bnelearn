@@ -19,21 +19,31 @@ from bnelearn.util import logging
 from bnelearn.util.metrics import ALIASES_LATEX
 
 #pylint: disable=anomalous-backslash-in-string
+# TODO replace by: from bnelearn.util.metrics import ALIASES_LATEX as ALIASES
 ALIASES = {
-    'eval/epsilon':       '$\epsilon$',
+    'eval/epsilon':              '$\epsilon$',
     'eval_vs_bne/L_2':           '$L_2$',
     'eval_vs_bne/L_inf':         '$L_\infty$',
     'eval/epsilon_absolute':     '$\epsilon_\text{abs}$',
     'eval/epsilon_relative':     '$\mathcal{L}$',
     'eval/overhead_hours':       '$T$',
     'eval/update_norm':          '$|\Delta \theta|$',
-    'eval/utilities':            '$u$',
+    'market/utilities':          '$u$',
     'eval/utility_vs_bne':       '$\hat u(\beta_i, \beta^*_{-i})$',
     'eval/util_loss_ex_ante':    '$\hat \ell$',
     'eval/util_loss_ex_interim': '$\hat \epsilon$',
     'eval/estimated_relative_ex_ante_util_loss': '$\hat{\mathcal{L}}$',
     'eval/efficiency':           '$\mathcal{E}$',
     'eval/revenue':              '$\mathcal{R}$'
+}
+
+SETTING_ALIASES = {
+    'correlation_types':         'Corr type',
+    'correlation_coefficients':  'Corr strength',
+    'risk':                      'risk $\rho$',
+    'payment_rule':              'payment rule',
+    'n_items':                   'items $m$',
+    'n_players':                 'players $n$'
 }
 
 
@@ -44,20 +54,22 @@ def multiple_exps_logs_to_df(
                          'eval/efficiency', 'eval/revenue', 'eval/utilities'],
         precision: int = 4,
         with_stddev: bool = False,
-        with_setting_parameters: bool = True,
+        setting_parameters: list = ['correlation_types', 'correlation_coefficients',
+                                    'risk', 'payment_rule', 'n_items', 'n_players'],
+        save: bool = False
     ):
     """Creates and returns a Pandas DataFrame from all logs in `path`.
 
-    This function is universially usable.
+    This function is universally usable.
 
     Arguments:
         path: str or dict, which path to crawl for csv logs.
         metrics: list of which metrics we want to load in the df.
         precision: int of how many decimals we request.
         with_stddev: bool.
-        with_setting_parameters: bool, some hyperparams can be read in from
+        setting_parameters: list, some hyperparams can be read in from
             the path itself. Turning this switch on pareses these values to
-            individuall columns.
+            individual columns.
 
     Returns:
         aggregate_df pandas Dataframe with one run corresponding to one row,
@@ -74,13 +86,14 @@ def multiple_exps_logs_to_df(
 
     form = '{:.' + str(precision) + 'f}'
 
-    columns = ['Auction game'] + metrics
+    columns = ['Auction game'] + metrics + setting_parameters
     aggregate_df = pd.DataFrame(columns=columns)
     for exp_name, exp_path in experiments.items():
         df = pd.read_csv(exp_path)
         end_epoch = df.epoch.max()
         df = df[df.epoch == end_epoch]
 
+        # load learning logs
         single_df = df.groupby(['tag'], as_index=False) \
             .agg({'value': ['mean', 'std']})
         single_df.columns = ['metric', 'mean','std']
@@ -96,105 +109,24 @@ def multiple_exps_logs_to_df(
 
         single_df.index = single_df['metric']
         del single_df['mean'], single_df['std'], single_df['metric']
-        aggregate_df = pd.concat([aggregate_df, single_df.T])
+        single_df = single_df.T
+
+        # load setting parameters
+        with open(path + '/experiment_configurations.json') as json_file:
+            config = json.load(json_file)
+        for param in setting_parameters:
+            single_df[param] = config['setting'][param]
+
+        aggregate_df = pd.concat([aggregate_df, single_df])
         aggregate_df['Auction game'][-1] = exp_name
 
     aggregate_df.columns = aggregate_df.columns.map(
-        lambda m: ALIASES[m] if m in ALIASES.keys() else m
-    )
-
-    if with_setting_parameters:
-        def map_corrtype(row):
-            for t in ['Bernoulli', 'constant', 'independent']:
-                if t in row['Auction game']:
-                    return t
-            return None
-        cor = aggregate_df.apply(map_corrtype, axis=1)
-        if cor.shape[0] > 0:
-            aggregate_df['Corr Type'] = cor
-
-        def map_strength(row):
-            if row['Corr Type'] == 'independent':
-                return 0.0
-            elif 'gamma_' in row['Auction game']:
-                start = row['Auction game'].find('gamma_') + 6
-                end = row['Auction game'].find('/', start)
-                return row['Auction game'][start:end]
-            return 0.0
-        stre = aggregate_df.apply(map_strength, axis=1)
-        if stre.shape[0] > 0:
-            aggregate_df['Corr Strength'] = pd.to_numeric(stre)
-
-        def map_risk(row):
-            if 'risk' in row['Auction game']:
-                end = row['Auction game'].find('risk')
-                start = end - 1
-                while row['Auction game'][start] != '/':
-                    start -= 1
-                start += 1
-                return row['Auction game'][start:end]
-            return 1.0
-        ris = aggregate_df.apply(map_risk, axis=1)
-        if ris.shape[0] > 0:
-            aggregate_df['Risk'] = pd.to_numeric(ris)
-
-        # multi-unit mapppings
-        def map_pricing(row):
-            if 'first_price' in row['Auction game']:
-                return 'first_price'
-            if 'uniform' in row['Auction game']:
-                return 'uniform'
-            if 'nearest_vcg' in row['Auction game']:
-                return 'nearest_vcg'
-            if 'vcg' in row['Auction game']:
-                return 'vcg'
-            if 'nearest_bid' in row['Auction game']:
-                return 'nearest_bid'
-            if 'nearest_zero' in row['Auction game']:
-                return 'nearest_zero'
-            return None
-        pri = aggregate_df.apply(map_pricing, axis=1)
-        if pri.shape[0] > 0:
-            aggregate_df['Pricing'] = pri
-
-        def map_units(row):
-            if 'units' in row['Auction game']:
-                end = row['Auction game'].find('units')
-                start = end - 1
-                while row['Auction game'][start] != '_':
-                    start -= 1
-                start += 1
-                return row['Auction game'][start:end]
-            return None
-        uni = aggregate_df.apply(map_units, axis=1)
-        if uni.shape[0] > 0:
-            aggregate_df['Units'] = pd.to_numeric(uni)
-
-        def map_players(row):
-            if 'players' in row['Auction game']:
-                end = row['Auction game'].find('players')
-                start = end - 1
-                while row['Auction game'][start] != '/':
-                    start -= 1
-                start += 1
-                return row['Auction game'][start:end]
-            return None
-        pla = aggregate_df.apply(map_players, axis=1)
-        if pla.shape[0] > 0:
-            aggregate_df['Players'] = pd.to_numeric(pla)
-
-        def map_regret(row):
-            if 'regret_' in row['Auction game']:
-                start = row['Auction game'].find('regret_') + 7
-                end = row['Auction game'].find('/', start)
-                return row['Auction game'][start:end]
-            return 0.0
-        reg = aggregate_df.apply(map_regret, axis=1)
-        if reg.shape[0] > 0:
-            aggregate_df['Regret'] = pd.to_numeric(reg)
+        lambda m: (ALIASES | SETTING_ALIASES)[m]
+            if m in (ALIASES | SETTING_ALIASES).keys() else m)
 
     # write to file
-    aggregate_df.to_csv('experiments/summary.csv', index=False)
+    if save:
+        aggregate_df.to_csv('experiments/summary.csv', index=False)
 
     return aggregate_df
 
@@ -210,7 +142,7 @@ def single_asym_exp_logs_to_df(
     """Creates and returns a Pandas DataFrame from the logs in `path` for an
     individual experiment with different bidders.
 
-    This function is universially usable.
+    This function is universally usable.
 
     Arguments:
         exp_path: str to `full_results.csv`.
@@ -251,18 +183,21 @@ def single_asym_exp_logs_to_df(
     df = df.unstack(level='metric')
     df.columns = [y for (x, y) in df.columns]
 
+    # establish requested column order
+    df = df[metrics] 
+
     # bidder names
     if bidder_names is None:
         bidder_names = df.index
     df.insert(0, 'bidder', bidder_names)
 
-    aliasies = ALIASES.copy()
+    aliases = ALIASES.copy()
     for m in metrics:
         if m[-5:-1] == '_bne':
-            aliasies[m] = aliasies[m[:-5]][:-1] + '^\text{BNE{'+str(m[-1])+'}}$'
+            aliases[m] = aliases[m[:-5]][:-1] + '^\text{BNE{'+str(m[-1])+'}}$'
 
     df.columns = df.columns.map(
-        lambda m: aliasies[m] if m in aliasies.keys() else m
+        lambda m: aliases[m] if m in aliases.keys() else m
     )
 
     return df
@@ -384,7 +319,7 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
                    'eval/estimated_relative_ex_ante_util_loss'],
                    varied_param="['learning']['learner_hyperparams']['population_size']",
                    name='llllgg_analysis_batchsize'):
-    """Create side-by-side plots that display the learning for multple
+    """Create side-by-side plots that display the learning for multiple
     configurations of the same (possibly asymmetric) auction. Only tested for
     LLLLGG setting.
 
@@ -436,41 +371,59 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
     plt.tight_layout()
     plt.savefig(f'{name}.pdf')
     return
-    
+
 
 if __name__ == '__main__':
 
-    # # Single item asymmetric uniform overlapping
-    path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/single_item/first_price/uniform/asymmetric/risk_neutral/2p/2021-10-26 Tue 16.02/aggregate_log.csv'
+    # Single item asymmetric uniform overlapping
+    path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/single_item/first_price/uniform/asymmetric/risk_neutral/2p/2021-11-23 Tue 16.23/aggregate_log.csv'
     df = single_asym_exp_logs_to_df(
         path, metrics=['eval_vs_bne/L_2', 'eval/epsilon_relative',
-        'eval/estimated_relative_ex_ante_util_loss'])
+        'eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim'])
     df_to_tex(df, name='table_asym_overlapping.tex',
               caption='Average utilities achieved in asymmetric first-price setting with overlapping valuations. Mean and standard deviation are aggregated over ten runs of 2{,}000 iterations each.',
               label='table:asym_over_results')
 
-    # # Single-item asymmetric uniform disjunct
-    path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/single_item/first_price/uniform/asymmetric/risk_neutral/2p/2021-10-26 Tue 10.25/aggregate_log.csv'
+    # Single-item asymmetric uniform disjunct
+    path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/single_item/first_price/uniform/asymmetric/risk_neutral/2p/2021-11-23 Tue 22.26/aggregate_log.csv'
     df = single_asym_exp_logs_to_df(
         path, metrics=['eval_vs_bne/L_2_bne2', 'eval/epsilon_relative_bne2',
-        'eval/estimated_relative_ex_ante_util_loss'])
+        'eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim'])
     df_to_tex(df, name='table_asym_nonoverlapping.tex',
               caption='Average NPGA utilities achieved in asymmetric first-price setting with non-overlapping valuations. Aggregated over ten runs of 2{,}000 iterations each. Compared against the second equilibrium of \cite{kaplan2015multiple}.',
     	      label='table:asym_nonover_results')
 
-    # Asymmetric LLG setting
-    # TODO
+    # # Single-item beta setting
+    # Note: Not used in paper
+    # path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/single_item/first_price/non-common/1.0risk/2players/2021-11-24 Wed 04.57/aggregate_log.csv'
+    # df = single_asym_exp_logs_to_df(
+    #     path, metrics=['eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim'])
+    # df_to_tex(df, name='table_asym_nonoverlapping.tex',
+    #           caption='Average NPGA utilities achieved in single item setting with beta distributed prior. Aggregated over ten runs of 2{,}000 iterations each.',
+    # 	        label='table:asym_beta')
 
+    # Asymmetric LLG setting
+    path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/LLGFull/mrcs_favored/independent/2021-11-24 Wed 11.39/aggregate_log.csv'
+    df = single_asym_exp_logs_to_df(
+        path, metrics=['eval_vs_bne/L_2', 'eval/epsilon_relative',
+        'eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim'])
+    df_to_tex(df, name='table_llgfull.tex',
+              caption='Results in the asymmetric LLG setting after 2{,}000 iterations and averaged over ten repetitions. Shown are the mean and standard deviation.',
+    	      label='table:asym_nonover_results')
 
     # LLLLGG setting
-    # TODO
+    path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/LLLLGG/nearest_vcg/6p/2021-12-01 Wed 10.07'
+    df = multiple_exps_logs_to_df(
+        path, metrics=['eval/estimated_relative_ex_ante_util_loss',
+        'eval/util_loss_ex_interim'], with_stddev=True)
+    cols = ['payment rule', '$\hat{\mathcal{L}}$', '$\hat \epsilon$']
+    df_to_tex(df[cols], name='table_llllgg.tex', label='table:auction-results-llllgg',
+        caption='Results of NPGA after 5{,}000 (1{,}000) iterations in the LLLLGG first-price (nearest-vcg) auction. Results are averages over 10 (2) replications and the standard deviation displayed in brackets.',)
 
-
-    # Scalability experiment
+    # Scalability experiments
     path = '/home/kohring/bnelearn/experiments/asymmmetric-debug/varied-population_size/LLLLGG/first_price/6p'
     multi_run_plot(path, varied_param="['learning']['learner_hyperparams']['population_size']",
                    name='llllgg_analysis_popsize')
-    
     path = '/home/kohring/bnelearn/experiments/asymmmetric-debug/varied-batch_size/LLLLGG/first_price/6p'
     multi_run_plot(path, varied_param="['learning']['batch_size']",
                    name='llllgg_analysis_batchsize')
