@@ -466,7 +466,7 @@ class Experiment(ABC):
                 self._exit_run()
 
         # Once all runs are done, convert tb event files to csv
-        if self.logging.enable_logging and (
+        if self.logging.enable_logging and self.config.running.n_runs > 0 and (
                 self.logging.save_tb_events_to_csv_detailed or
                 self.logging.save_tb_events_to_csv_aggregate or
                 self.logging.save_tb_events_to_binary_detailed):
