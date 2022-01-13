@@ -83,17 +83,33 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
         self.payment_rule = self.config.setting.payment_rule
         self.risk = float(self.config.setting.risk)
 
+        self.u_lo = self.config.setting.u_lo
+        self.u_hi = self.config.setting.u_hi
+
         # Transfrom bounds to list in case of symmetry
         if len(self.config.setting.u_lo) == 1:
-            self.u_lo = self.config.setting.u_lo * self.n_players
+            self.u_lo *= self.n_players
         if len(self.config.setting.u_hi) == 1:
-            self.u_hi = self.config.setting.u_hi * self.n_players
+            self.u_hi *= self.n_players
+
+        # Consistency check of input dims
+        if len(set([len(self.u_lo), len(self.u_hi)])) != 1:
+            warnings.warn('Dimensions of prior do not match.')
+        if len(self.u_lo) != self.n_players:
+            warnings.warn('Dimensions of prior do not match no. of players.')
+            self.n_players = len(self.u_lo)
 
         # Handle model sharing in case of symmetry
         self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
-            self.n_models = 1
-            self._bidder2model = [0] * self.n_players
+            # Handle asymmetric priors
+            prior_bounds = list(zip(self.u_lo, self.u_hi))
+            unique_priors = list(set(prior_bounds))
+            self.n_models = len(unique_priors)
+            self._bidder2model: List[int] = list()
+            for model_position in range(self.n_models):
+                n_bidders_per_model = prior_bounds.count(unique_priors[model_position])
+                self._bidder2model += [model_position] * n_bidders_per_model
         else:
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
@@ -207,6 +223,12 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
                 plot_data = [d[:, :len(self.models), :] for d in plot_data]
             super()._plot_3d(plot_data=plot_data, writer=writer,
                              figure_name=figure_name, labels=labels)
+
+    def _get_model_names(self):
+        model_names: List[str] = list()
+        for i in range(self.n_models):
+            model_names.append(f'bidder {i}')
+        return model_names
 
 
 class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
