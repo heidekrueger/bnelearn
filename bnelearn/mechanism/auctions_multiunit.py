@@ -49,7 +49,7 @@ class MultiUnitAuction(Mechanism):
     def _solve_allocation_problem(
             bids: torch.Tensor,
             random_tie_break: bool = False,
-            accept_zero_bids: bool = False,
+            accept_zero_bids: bool = True,
         ) -> torch.Tensor:
         """For bids (batch x player x item) in descending order for each batch/
         player, returns efficient allocation (0/1, batch x player x item).
@@ -186,7 +186,7 @@ class MultiUnitUniformPriceAuction(MultiUnitAuction):
         bids = bids.to(self.device)
 
         # only accept decreasing bids
-        bids = self._remove_invalid_bids(bids)
+        # bids = self._remove_invalid_bids(bids)
 
         # allocate return variables (flat at this stage)
         allocations = self._solve_allocation_problem(bids)

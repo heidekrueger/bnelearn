@@ -299,7 +299,7 @@ class ConfigurationManager:
         if self.logging.experiment_name:
             self.logging.experiment_dir += ' ' + str(self.logging.experiment_name)
 
-        valid_log_metrics = ['opt', 'util_loss', 'epsilon', 'efficiency', 'revenue', 'PoA']
+        valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue', 'PoA']
         if self.logging.log_metrics is not None:
             for metric in self.logging.log_metrics:
                 assert metric in valid_log_metrics, "Metric not known."

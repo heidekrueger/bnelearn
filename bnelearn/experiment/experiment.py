@@ -382,10 +382,12 @@ class Experiment(ABC):
 
     def _training_loop(self):
         """Actual training in each iteration."""
-        tic = timer()
         # save current params to calculate update norm
         prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
                        for model in self.models]
+
+        # time iteration
+        tic = timer()
 
         # update model
         utilities = torch.tensor([
@@ -393,17 +395,20 @@ class Experiment(ABC):
             for learner in self.learners
         ])
 
+        time_per_step = timer() - tic
+
         if self.logging.enable_logging:
             # pylint: disable=attribute-defined-outside-init
             self._cur_epoch_log_params = {
                 'utilities': utilities.detach(),
-                'prev_params': prev_params
+                'prev_params': prev_params,
+                'time_per_step': time_per_step
             }
             elapsed_overhead = self._evaluate_and_log_epoch()
-            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(self.epoch, timer() - tic, elapsed_overhead),
+            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(self.epoch, time_per_step, elapsed_overhead),
                   end="\r")
         else:
-            print('epoch {}:\telapsed {:.2f}s'.format(self.epoch, timer() - tic),
+            print('epoch {}:\telapsed {:.2f}s'.format(self.epoch, time_per_step),
                   end="\r")
         return utilities
 
@@ -730,12 +735,6 @@ class Experiment(ABC):
         if self.logging.log_metrics['PoA']:
             self._cur_epoch_log_params['PoA'] = self._calculate_metrics_PoA()
 
-        if self.logging.log_metrics['epsilon'] and (self.epoch % self.logging.util_loss_frequency) == 0:
-            with torch.no_grad():
-                self._cur_epoch_log_params['epsilon'] = metrics.verify_epsilon_bne(
-                    exp=self, grid_size=self.logging.util_loss_grid_size,
-                    opponent_batch_size=min(self.logging.util_loss_batch_size, self.learning.batch_size))
-
         if self.logging.log_metrics['efficiency'] and (self.epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['efficiency'] = \
                 self.env.get_efficiency(self.env)
@@ -764,7 +763,7 @@ class Experiment(ABC):
             epsilon_relative: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
             epsilon_absolute: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
 
-        These are all lists of lists. The outer list corrsponds to which BNE is comapred
+        These are all lists of lists. The outer list corresponds to which BNE is comapred
         (usually there's only one BNE). Each inner list is of length `self.n_models`.
         """
         # shorthand for model to bidder index conversion

@@ -292,7 +292,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
             positive bid anywhere at the given input tensor. Otherwise,
             the weights will be reinitialized.
         output_length (optional): int
-            length of output/action vectorm defaults to 1
+            length of output/action vector defaults to 1
             (currently given last for backwards-compatibility)
         dropout (optional): float
             If not 0, applies AlphaDropout (https://pytorch.org/docs/stable/nn.html#torch.nn.AlphaDropout)

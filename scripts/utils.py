@@ -1,5 +1,6 @@
 """utilities for run scripts"""
 import os, sys
+import re
 import torch
 import pandas as pd
 import numpy as np
@@ -21,11 +22,10 @@ from bnelearn.util.metrics import ALIASES_LATEX
 #pylint: disable=anomalous-backslash-in-string
 # TODO replace by: from bnelearn.util.metrics import ALIASES_LATEX as ALIASES
 ALIASES = {
-    'eval/epsilon':              '$\epsilon$',
     'eval_vs_bne/L_2':           '$L_2$',
     'eval_vs_bne/L_inf':         '$L_\infty$',
     'eval/epsilon_absolute':     '$\epsilon_\text{abs}$',
-    'eval/epsilon_relative':     '$\mathcal{L}$',
+    'eval_vs_bne/epsilon_relative':     '$\mathcal{L}$',
     'eval/overhead_hours':       '$T$',
     'eval/update_norm':          '$|\Delta \theta|$',
     'market/utilities':          '$u$',
@@ -33,8 +33,8 @@ ALIASES = {
     'eval/util_loss_ex_ante':    '$\hat \ell$',
     'eval/util_loss_ex_interim': '$\hat \epsilon$',
     'eval/estimated_relative_ex_ante_util_loss': '$\hat{\mathcal{L}}$',
-    'eval/efficiency':           '$\mathcal{E}$',
-    'eval/revenue':              '$\mathcal{R}$'
+    'eval/efficiency':           '$efficiency \mathcal{E}$',
+    'eval/revenue':              '$revenue \mathcal{R}$'
 }
 
 SETTING_ALIASES = {
@@ -112,8 +112,13 @@ def multiple_exps_logs_to_df(
         single_df = single_df.T
 
         # load setting parameters
-        with open(path + '/experiment_configurations.json') as json_file:
-            config = json.load(json_file)
+        try:
+            with open(path + '/experiment_configurations.json') as json_file:
+                config = json.load(json_file)
+        except:
+            with open(exp_path[:exp_path.rfind('/')] + '/experiment_configurations.json') as json_file:
+                config = json.load(json_file)
+
         for param in setting_parameters:
             single_df[param] = config['setting'][param]
 
@@ -212,7 +217,7 @@ def df_to_tex(
     """Creates a tex file with the csv at `path` as a LaTeX table."""
     def bold(x):
         return r'\textbf{' + x + '}'
-    df.to_latex('experiments/' + name, na_rep='--', escape=False,
+    df.to_latex(name, na_rep='--', escape=False,
                 index=False, index_names=False, caption=caption, column_format='l'+'r'*(len(df.columns)-1),
                 label=label, formatters={'bidder': bold})
 
@@ -318,20 +323,26 @@ def bids_to_csv(
 def multi_run_plot(path: str, metrics: list = ['market/utilities',
                    'eval/estimated_relative_ex_ante_util_loss'],
                    varied_param="['learning']['learner_hyperparams']['population_size']",
-                   name='llllgg_analysis_batchsize'):
+                   name='llllgg_analysis_batchsize', title=None, max_iter: int=None,
+                   markevery=[50, 1], labels='agent_names'):
     """Create side-by-side plots that display the learning for multiple
     configurations of the same (possibly asymmetric) auction. Only tested for
     LLLLGG setting.
 
     TODO: Some parts like the legend are hard coded.
     """
-    runs = [sub_path for sub_path in os.listdir(path)
-            if os.path.isdir(os.path.join(path, sub_path))]
     aggregate_logs = []
     configs = []
-    for run in runs:
-        aggregate_logs.append(path+ '/' + run + '/full_results.csv')
-        configs.append(path + '/' + run + '/experiment_configurations.json')
+    for root, _, files in os.walk(path):
+        for file in files:
+            if str(file).endswith('full_results.csv'):
+                aggregate_logs.append(root + '/' + file)
+            if str(file).endswith('experiment_configurations.json'):
+                configs.append(root + '/' + file)           
+
+    # sort
+    aggregate_logs = natural_sort(aggregate_logs)
+    configs = natural_sort(configs)
 
     fig, axs = plt.subplots(nrows=1, ncols=len(metrics), figsize=(10, 4))
     for aggregate_log_path, config_path, c, m in zip(aggregate_logs, configs, colors, markers):
@@ -342,6 +353,10 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
             label = eval(f'config{varied_param}')
 
             df = df.loc[df['tag'].isin(metrics)]
+            
+            if max_iter is not None:
+                df = df[df.epoch <= max_iter]
+
             df = df.groupby(['subrun', 'epoch', 'tag'], as_index=False) \
                 .agg({'value': ['mean', 'std']})
             df.columns = ['subrun', 'epoch', 'tag', 'mean','std']
@@ -352,9 +367,13 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
                     epoch = temp_df.epoch.to_numpy()
                     mean = temp_df['mean'].to_numpy()
                     std = temp_df['std'].to_numpy()
+                    if labels == 'agent_names':
+                        run_label = f'{agent}: {label}'
+                    elif labels == 'n_items':
+                        run_label = f'$m = {label}$'
                     ax.plot(epoch, mean, '-' if agent=='locals' else '--',
-                            marker=m, markevery=50 if i==0 else 1,
-                            label=f'{agent}: {label}', color=c)
+                            marker=m, markevery=markevery[0] if i==0 else markevery[1],
+                            label=run_label, color=c)
                     ax.fill_between(epoch, mean - std, mean + std, alpha=.3,
                                     color=c)
                 ax.set_xlabel('epoch')
@@ -365,65 +384,106 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
                 # ax.set_xlim(0, max(epoch))
         except Exception as e:
             pass
-    axs[1].legend(
-        title='bidder and corre-\nsponding batch size' if name=='llllgg_analysis_batchsize' \
-              else 'bidder and corresponding\npopulation size', loc='upper right')
+    axs[1].legend(title=title)
     plt.tight_layout()
     plt.savefig(f'{name}.pdf')
     return
 
+def natural_sort(l: list): 
+    convert = lambda text: int(text) if text.isdigit() else text.lower()
+    alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)]
+    return sorted(l, key=alphanum_key)
+
 
 if __name__ == '__main__':
 
-    # Single item asymmetric uniform overlapping
-    path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/single_item/first_price/uniform/asymmetric/risk_neutral/2p/2021-11-23 Tue 16.23/aggregate_log.csv'
-    df = single_asym_exp_logs_to_df(
-        path, metrics=['eval_vs_bne/L_2', 'eval/epsilon_relative',
-        'eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim'])
-    df_to_tex(df, name='table_asym_overlapping.tex',
-              caption='Average utilities achieved in asymmetric first-price setting with overlapping valuations. Mean and standard deviation are aggregated over ten runs of 2{,}000 iterations each.',
-              label='table:asym_over_results')
+    experiments_dir = '/home/kohring/bnelearn/experiments/asymmetric-20220114'
 
-    # Single-item asymmetric uniform disjunct
-    path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/single_item/first_price/uniform/asymmetric/risk_neutral/2p/2021-11-23 Tue 22.26/aggregate_log.csv'
-    df = single_asym_exp_logs_to_df(
-        path, metrics=['eval_vs_bne/L_2_bne2', 'eval/epsilon_relative_bne2',
-        'eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim'])
-    df_to_tex(df, name='table_asym_nonoverlapping.tex',
-              caption='Average NPGA utilities achieved in asymmetric first-price setting with non-overlapping valuations. Aggregated over ten runs of 2{,}000 iterations each. Compared against the second equilibrium of \cite{kaplan2015multiple}.',
-    	      label='table:asym_nonover_results')
+    # # Preprocess for single item uniform
+    # single_item_postfix = '/single_item/first_price/uniform/asymmetric/risk_neutral/2p/'
+    # single_item_unifrom_dirs = next(os.walk(experiments_dir + single_item_postfix))[1]
+    # for e in single_item_unifrom_dirs:
+    #     with open(experiments_dir + single_item_postfix + e + '/experiment_configurations.json') as json_file:
+    #         config = json.load(json_file)
+    #     if config['setting']['u_lo'] == [0.0, 0.6]:
+    #         disjunct_path = experiments_dir + single_item_postfix + e + '/aggregate_log.csv'
+    #     else:
+    #         overlapping_path = experiments_dir + single_item_postfix + e + '/aggregate_log.csv'
 
-    # # Single-item beta setting
-    # Note: Not used in paper
-    # path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/single_item/first_price/non-common/1.0risk/2players/2021-11-24 Wed 04.57/aggregate_log.csv'
+    # # Single item asymmetric uniform overlapping
     # df = single_asym_exp_logs_to_df(
-    #     path, metrics=['eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim'])
-    # df_to_tex(df, name='table_asym_nonoverlapping.tex',
-    #           caption='Average NPGA utilities achieved in single item setting with beta distributed prior. Aggregated over ten runs of 2{,}000 iterations each.',
-    # 	        label='table:asym_beta')
+    #     overlapping_path, metrics=['eval_vs_bne/L_2', 'eval_vs_bne/epsilon_relative',
+    #     'eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim', 'time_per_step'])
+    # print(f"Average time per iteration in `{overlapping_path}` is {df['time_per_step'][0]} seconds.")
+    # df.drop(labels=['.'], axis='index', inplace=True)
+    # df.drop(labels=['time_per_step'], axis='columns', inplace=True)
+    # df_to_tex(df, name=f'{experiments_dir}/table_asym_overlapping.tex',
+    #           caption='Average utilities achieved in asymmetric first-price setting with overlapping valuations. Mean and standard deviation are aggregated over ten runs of 2{,}000 iterations each.',
+    #           label='table:asym_over_results')
 
-    # Asymmetric LLG setting
-    path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/LLGFull/mrcs_favored/independent/2021-11-24 Wed 11.39/aggregate_log.csv'
-    df = single_asym_exp_logs_to_df(
-        path, metrics=['eval_vs_bne/L_2', 'eval/epsilon_relative',
-        'eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim'])
-    df_to_tex(df, name='table_llgfull.tex',
-              caption='Results in the asymmetric LLG setting after 2{,}000 iterations and averaged over ten repetitions. Shown are the mean and standard deviation.',
-    	      label='table:asym_nonover_results')
+    # # Single-item asymmetric uniform disjunct
+    # df = single_asym_exp_logs_to_df(
+    #     disjunct_path, metrics=['eval_vs_bne/L_2_bne2', 'eval_vs_bne/epsilon_relative_bne2',
+    #     'eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim', 'time_per_step'])
+    # print(f"Average time per iteration in `{disjunct_path}` is {df['time_per_step'][0]} seconds.")
+    # df.drop(labels=['.'], axis='index', inplace=True)
+    # df.drop(labels=['time_per_step'], axis='columns', inplace=True)
+    # df_to_tex(df, name=f'{experiments_dir}/table_asym_nonoverlapping.tex',
+    #           caption='Average NPGA utilities achieved in asymmetric first-price setting with non-overlapping valuations. Aggregated over ten runs of 2{,}000 iterations each. Compared against the second equilibrium of \cite{kaplan2015multiple}.',
+    # 	      label='table:asym_nonover_results')
+
+    # # # Single-item beta setting
+    # # # Note: Table not reported in paper
+    # # path = f'{experiments_dir}/single_item/first_price/non-common/1.0risk/2players/2021-11-24 Wed 04.57/aggregate_log.csv'
+    # # df = single_asym_exp_logs_to_df(
+    # #     path, metrics=['eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim'])
+    # # print(f"Average time per iteration in `{path}` is {df['time_per_step'][0]} seconds.")
+    # # df.drop(labels=['.'], axis='index', inplace=True)
+    # # df.drop(labels=['time_per_step'], axis='columns', inplace=True)
+    # # df_to_tex(df, name='table_asym_nonoverlapping.tex',
+    # #           caption='Average NPGA utilities achieved in single item setting with beta distributed prior. Aggregated over ten runs of 2{,}000 iterations each.',
+    # # 	        label='table:asym_beta')
+
+    # # Asymmetric LLG setting
+    # path = f'{experiments_dir}/LLGFull/mrcs_favored/independent/'
+    # path += next(os.walk(path))[1][0] + '/aggregate_log.csv'
+    # df = single_asym_exp_logs_to_df(
+    #     path, metrics=['eval_vs_bne/L_2', 'eval_vs_bne/epsilon_relative',
+    #     'eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim', 'time_per_step'])
+    # print(f"Average time per iteration in `{path}` is {df['time_per_step'][0]} seconds.")
+    # df.drop(labels=['.'], axis='index', inplace=True)
+    # df.drop(labels=['time_per_step'], axis='columns', inplace=True)
+    # df_to_tex(df, name=f'{experiments_dir}/table_llgfull.tex',
+    #           caption='Results in the asymmetric LLG setting after 2{,}000 iterations and averaged over ten repetitions. Shown are the mean and standard deviation.',
+    # 	      label='table:asym_nonover_results')
 
     # LLLLGG setting
-    path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/LLLLGG/nearest_vcg/6p/2021-12-01 Wed 10.07'
-    df = multiple_exps_logs_to_df(
-        path, metrics=['eval/estimated_relative_ex_ante_util_loss',
-        'eval/util_loss_ex_interim'], with_stddev=True)
-    cols = ['payment rule', '$\hat{\mathcal{L}}$', '$\hat \epsilon$']
-    df_to_tex(df[cols], name='table_llllgg.tex', label='table:auction-results-llllgg',
-        caption='Results of NPGA after 5{,}000 (1{,}000) iterations in the LLLLGG first-price (nearest-vcg) auction. Results are averages over 10 (2) replications and the standard deviation displayed in brackets.',)
+    # path = f'{experiments_dir}/LLLLGG/'
+    # metrics = ['eval/estimated_relative_ex_ante_util_loss',
+    #     'eval/util_loss_ex_interim', 'time_per_step']
+    # df = single_asym_exp_logs_to_df(path, metrics=metrics, with_stddev=True)
+    # # df = multiple_exps_logs_to_df(path, metrics=metrics, with_stddev=True)
 
-    # Scalability experiments
-    path = '/home/kohring/bnelearn/experiments/asymmmetric-debug/varied-population_size/LLLLGG/first_price/6p'
-    multi_run_plot(path, varied_param="['learning']['learner_hyperparams']['population_size']",
-                   name='llllgg_analysis_popsize')
-    path = '/home/kohring/bnelearn/experiments/asymmmetric-debug/varied-batch_size/LLLLGG/first_price/6p'
-    multi_run_plot(path, varied_param="['learning']['batch_size']",
-                   name='llllgg_analysis_batchsize')
+    # print(f"Average time per iteration in `{path}` is {df['time_per_step'][0]} seconds.")
+    # df.drop(labels=['time_per_step'], axis='columns', inplace=True)
+    # cols = ['payment rule', '$\hat{\mathcal{L}}$', '$\hat \epsilon$']
+    # df_to_tex(df[cols], name=f'{experiments_dir}/table_llllgg.tex', label='table:auction-results-llllgg',
+    #     caption='Results of NPGA after 5{,}000 (1{,}000) iterations in the LLLLGG first-price (nearest-vcg) auction. Results are averages over 10 (2) replications and the standard deviation displayed in brackets.',)
+
+
+    # # Asymmetric multi-unit experiments
+    # path = '/home/kohring/bnelearn/experiments/asymmetric-multiunit-accept-all-bids'
+    # multi_run_plot(path, varied_param="['setting']['n_items']",
+    #                metrics=['market/revenue', 'market/efficiency'], max_iter=200,
+    #                markevery=[2, 2], title='number of units', labels='n_items', name=f'{path}/multiunit_asym')
+
+
+    # # Scalability experiments
+    # path = '/home/kohring/bnelearn/experiments/asymmmetric-debug/varied-population_size/LLLLGG/first_price/6p'
+    # multi_run_plot(path, varied_param="['learning']['learner_hyperparams']['population_size']",
+    #                title='bidder and corresponding\npopulation size', labels='agent_names',
+    #                name='llllgg_analysis_popsize')
+    # path = '/home/kohring/bnelearn/experiments/asymmmetric-debug/varied-batch_size/LLLLGG/first_price/6p'
+    # multi_run_plot(path, varied_param="['learning']['batch_size']",
+    #                title='bidder and corre-\nsponding batch size', labels='agent_names',
+    #                name='llllgg_analysis_batchsize')

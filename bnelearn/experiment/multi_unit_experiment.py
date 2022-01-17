@@ -135,6 +135,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         """Standard `strat_to_bidder` method."""
         return Bidder(strategy, player_position, batch_size, bid_size=self.n_items,
+                      valuation_size=self.n_items, observation_size=self.n_items,
                       enable_action_caching=enable_action_caching, risk=self.risk)
 
     def _setup_sampler(self):

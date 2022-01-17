@@ -44,10 +44,6 @@ if __name__ == '__main__':
             best_response=True,
             cache_eval_actions=True,
             log_root_dir=log_root_dir,
-            log_metrics={
-                'opt': True,
-                'epsilon': True
-                }
             ) \
         .set_learning(
             # model_sharing=False

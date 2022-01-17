@@ -19,7 +19,6 @@ MAPPING_METRICS_TAGS = {
     'PoA':                  'market/PoA',
     'update_norm':          'learner_info/update_norm',
     'gradient_norm':        'learner_info/gradient_norm',
-    'epsilon':              'eval/epsilon',
     'util_loss_ex_ante':    'eval/util_loss_ex_ante',
     'util_loss_ex_interim': 'eval/util_loss_ex_interim',
     'estimated_relative_ex_ante_util_loss': 'eval/estimated_relative_ex_ante_util_loss',
@@ -37,9 +36,9 @@ MAPPING_METRICS_TAGS = {
 # aliases of tf tags for plotting/publications
 #pylint: disable=anomalous-backslash-in-string
 ALIASES_LATEX = {
-    'market/efficiency':           '$\mathcal{E}$',
-    'market/revenue':              '$\mathcal{R}$',
-    'market/utilities':            '$u$',
+    'market/efficiency':           'efficiency $\mathcal{E}$',
+    'market/revenue':              'revenue $\mathcal{R}$',
+    'market/utilities':            'utility $u$',
 
     'eval/util_loss_ex_ante':    '$\hat \ell$',
     'eval/util_loss_ex_interim': '$\hat \epsilon$',

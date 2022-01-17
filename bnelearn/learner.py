@@ -123,7 +123,7 @@ class ESPGLearner(GradientBasedLearner):
                     using current utility as a baseline for variance reduction.
                 baseline: ('current_reward', 'mean_reward' or a float.)
                     If 'current_reward', will use current utility before update as a baseline.
-                    If 'mean_reward', will use mean of candiate rewards.
+                    If 'mean_reward', will use mean of candidate rewards.
                         For small perturbations, 'mean_reward' is cheaper to compute
                         (one fewer game played) and yields slightly lower gradient
                         sample variance but yields a biased estimate of the true gradient:
@@ -134,7 +134,7 @@ class ESPGLearner(GradientBasedLearner):
                     Defaults to 'current_reward' if normalize_gradients is False, or
                     to 'mean_reward' if normalize_gradients is True.
                 regularization: dict of
-                    inital_strength: float, inital penaltization factor of bid value
+                    initial_strength: float, initial penalization factor of bid value
                     regularize_decay: float, decay rate by which the regularization factor
                         is mutliplied each iteration.
                 symmetric_sampling: bool
@@ -188,7 +188,7 @@ class ESPGLearner(GradientBasedLearner):
                     + 'one of "mean_reward", "current_reward"')
 
         if 'regularization' in hyperparams:
-            self.regularize = hyperparams['regularization']['inital_strength']
+            self.regularize = hyperparams['regularization']['initial_strength']
             self.regularize_decay = hyperparams['regularization']['regularize_decay']
         else:
             self.regularize = 0.0
@@ -457,7 +457,7 @@ class AESPGLearner(GradientBasedLearner):
                 for (model, epsilon) in population
                 ))
             )
-        ### 4. calculate the ES-pseuogradients   ####
+        ### 4. calculate the ES-pseudogradients   ####
         ## base case: current reward
         # action: batch x 1, baseline: batch
         action, baseline = self.environment.get_strategy_action_and_reward(self.model,**self.strat_to_player_kwargs)
