@@ -1,6 +1,8 @@
 """This module contains static data about all possible solutions
    in the LLG and LLLLGG combinatorial auctions, which may constitute efficient allocations."""
 
+from abc import ABC, abstractmethod
+from typing import List
 import torch
 
 
@@ -53,7 +55,81 @@ class LLGData():
         [17, 6], [17, 7]
         ]
 
-class LLLLGGData():
+
+class CombinatorialAuctionData(ABC):
+    """Wraper class to represent static data of a large
+    combinatorial auction.
+    """
+    @classmethod
+    @property
+    @abstractmethod
+    def n_bundles(cls) -> int:
+        pass
+
+    @classmethod
+    @property
+    @abstractmethod
+    def n_legal_allocations(cls) -> int:
+        pass
+
+    @classmethod
+    @property
+    @abstractmethod
+    def _player_bundles(cls) -> List[List[int]]:
+        pass
+
+    @classmethod
+    @property
+    @abstractmethod
+    def _efficient_allocations_dense(cls) -> List[List[int]]:
+        pass
+
+    @classmethod
+    @property
+    @abstractmethod
+    def _efficient_allocations_semisparse(cls) -> List[List[int]]:
+        pass
+
+    @classmethod
+    @property
+    @abstractmethod
+    def _legal_allocations_sparse(cls) -> List[List[int]]:
+        pass
+
+    @classmethod
+    def player_bundles(cls, device='cpu') -> torch.Tensor:
+        "returns the player bundle matching as a torch.Tensor"
+        return torch.tensor(cls._player_bundles, device=device, dtype=torch.long)
+
+
+    @classmethod
+    def efficient_allocations_dense(cls, device='cpu') -> torch.Tensor:
+        """Returns the possible efficient allocations as a dense tensor"""
+        return torch.tensor(cls._efficient_allocations_dense,
+                            dtype=torch.float,device=device)
+
+    @classmethod
+    def legal_allocations_sparse(cls, device='cpu') -> torch.Tensor:
+        """returns the sparse index representation of legal allocations as
+        a torch.Tensor."""
+        return torch.tensor(cls._legal_allocations_sparse, device=device)
+
+    @classmethod
+    def legal_allocations_dense(cls, device='cpu') -> torch.Tensor:
+        """returns a dense torch tensor of all possible legal allocations
+        on the desired device.
+        Output shape: n_legal_allocations x n_bundles
+        """
+        sparse = cls._legal_allocations_sparse
+        n_allocations = sparse[-1][0] + 1 # highest row index + 1
+        dense = torch.sparse_coo_tensor(
+            torch.tensor(sparse, device=device).t(),
+            torch.ones(len(sparse), device=device),
+            [n_allocations, cls.n_bundles]
+        ).to_dense()
+        return dense
+
+class LLLLGGData(CombinatorialAuctionData):
     """Static data about legal and possibly efficient allocations in the LLLLGG
     setting. For details about the representation, see
     Bosshard et al. (2019), https://arxiv.org/abs/1812.01955.
@@ -61,7 +137,7 @@ class LLLLGGData():
 
     ###### possibly efficient allocations ######
     n_bundles = 12
-
+    n_legal_allocations = 66
 
     _player_bundles = [
         # which bundle does each player demand?
@@ -69,13 +145,13 @@ class LLLLGGData():
         [2, 3],  #L2: CD, DE
         [4, 5],  #L3: EF, FG
         [6, 7],  #L4: GH, HA
-        [8, 9],  #G1: ABCD, EFGH 
+        [8, 9],  #G1: ABCD, EFGH
         [10, 11] #G2: CDEF, GHAB
     ]
 
     _efficient_allocations_dense = [
         # rows: possible solutions that may be efficient
-        # columns: allocated bundle (deterministic to one of the bidders due to the 
+        # columns: allocated bundle (deterministic to one of the bidders due to the
         # demand structure)
         # 4 local bidders win
         [1,0,1,0, 1,0,1,0, 0,0,0,0], # AB CD EF GH
@@ -101,10 +177,10 @@ class LLLLGGData():
         [0,1,0,0, 1,0,0,1, 0,0,0,0], # BC EF HA
         ]
 
-    efficient_allocations_semisparse = [
+    efficient_allocations_semisparse: List[List[int]] = [
         # each row represents a possibly efficient allocation.
         # indices are the indices of allocated bundles in the dense matrix above.
-        
+
         # 4 local bidders win
         [0, 2, 4, 6], 	# AB CD EF GH
         [1, 3, 5, 7], 	# BC DE FG HA
@@ -134,11 +210,10 @@ class LLLLGGData():
     # all legal allocations in sparse format (includes inefficient outcomes,
     # e.g. where not all items are allocated. These are necessary to solve
     # restricted subgames.)
-
     # Determines a sparse 66 x 12 matrix.
     # An entry (i,j) determines that bundle j is allocated in solution i.
 
-    _legal_allocations_sparse  = [
+    _legal_allocations_sparse: List[List[int]]  = [
         [0, 0],
         [1, 1],
         [2, 2],
@@ -207,37 +282,40 @@ class LLLLGGData():
         [65, 1],  [65, 3],  [65, 5],  [65 ,7]
     ]
 
-    n_legal_allocations = _legal_allocations_sparse[-1][0] + 1
+class LLLLRRGData(CombinatorialAuctionData):
+    """Static data about legal and possibly efficient allocations in the LLLLRRG
+    setting. This extends the LLLLGG setting by adding a 7th, "superglobal"
+    player, who is interested in the bundle of all 8 items.
 
-    @classmethod
-    def player_bundles(cls, device='cpu') -> torch.Tensor:
-        "returns the player bundle matching as a torch.Tensor"
-        return torch.tensor(cls._player_bundles, device=device, dtype=torch.long)
+    In this setting, we'll call the new player 'global', and the players
+    interested in 4-item-bundles (R in LLLLRRG, G in LLLLGG) 'regional'.
+    """
 
+    ###### possibly efficient allocations ######
+    n_bundles = 14 # 13 real bundles and an empty-pseudobundle
+    n_legal_allocations = 67 # those in LLLLGG and [12]
 
-    @classmethod
-    def efficient_allocations_dense(cls, device='cpu') -> torch.Tensor:
-        """Returns the possible efficient allocations as a dense tensor"""
-        return torch.tensor(cls._efficient_allocations_dense,
-                            dtype=torch.float,device=device)
+    _player_bundles = [
+        # which bundle does each player demand?
+        [0, 1],  #L1: AB, BC
+        [2, 3],  #L2: CD, DE
+        [4, 5],  #L3: EF, FG
+        [6, 7],  #L4: GH, HA
+        [8, 9],  #R1: ABCD, EFGH
+        [10, 11], #R2: CDEF, GHAB,
+        [12, 13]  #G: 12: ABCDEFGH, 13 is an empty pseudo-bundle
+    ]
 
-    @classmethod
-    def legal_allocations_sparse(cls, device='cpu') -> torch.Tensor:
-        """returns the sparse index representation of legal allocations as 
-        a torch.Tensor."""
-        return torch.tensor(cls._legal_allocations_sparse, device=device)
+    #dense allocations:
+    # - either an allocation from LLLLGG (with added 0 in last bundle)
+    # - or allocation to the Global player
+    _efficient_allocations_dense = [
+        a + [0, 0] for a in LLLLGGData._efficient_allocations_dense
+    ] + [[*[0]*12, 1, 0]] # ABCDEFGH allocated to G
 
-    @classmethod
-    def legal_allocations_dense(cls, device='cpu') -> torch.Tensor:
-        """returns a dense torch tensor of all possible legal allocations
-        on the desired device.
-        Output shape: n_solutions x n_bundles (66 x 12)
-        """
-        sparse = cls._legal_allocations_sparse
-        n_allocations = sparse[-1][0] + 1 # highest row index + 1
-        dense = torch.sparse_coo_tensor(
-            torch.tensor(sparse, device=device).t(),
-            torch.ones(len(sparse), device=device),
-            [n_allocations, cls.n_bundles]
-        ).to_dense()
-        return dense
+    efficient_allocations_semisparse = \
+        LLLLGGData.efficient_allocations_semisparse + [12]
+
+    _legal_allocations_sparse  = LLLLGGData._legal_allocations_sparse + [[66, 12]]
+
+    

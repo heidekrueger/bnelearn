@@ -16,7 +16,6 @@ import torch
 from itertools import product
 
 # put bnelearn imports after this.
-# pylint: disable=wrong-import-position
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 

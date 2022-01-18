@@ -1,4 +1,10 @@
-"""This module implements samplers for independent-private value auction settings."""
+"""This module implements samplers for independent-private value auction settings.
+
+Note that all samplers in this class should implement the IPVSampler interface
+from .base. Elsewhere in the implementation, we use instancechecks against IPVSampler
+in order to use functionality that is only available in independent settings,
+e.g. when drawing samples from conditional distributions.
+"""
 
 from typing import List, Tuple
 from math import ceil, log
@@ -7,10 +13,10 @@ from functools import reduce
 import torch
 from torch.cuda import _device_t as Device
 from torch.distributions import Distribution
-from .base import PVSampler
+from .base import PVSampler, IPVSampler
 from bnelearn.util.tensor_util import item2bundle
 
-class FixedManualIPVSampler(PVSampler):
+class FixedManualIPVSampler(IPVSampler):
     """For testing purposes:
     A sampler that returns a fixed tensor as valuations/observations.
     """
@@ -38,7 +44,7 @@ class FixedManualIPVSampler(PVSampler):
         return self._profile, self._profile
 
 
-class SymmetricIPVSampler(PVSampler):
+class SymmetricIPVSampler(IPVSampler):
     """A Valuation Oracle that draws valuations independently and symmetrically
     for all players and each entry of their valuation vector according to a specified
     distribution.

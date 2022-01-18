@@ -14,7 +14,7 @@ from abc import ABC
 from functools import partial
 from typing import Iterable, List
 import math
-import warnings
+
 from scipy import optimize
 from tqdm import tqdm
 import numpy as np
@@ -22,7 +22,8 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 
 from bnelearn.mechanism import (LLGAuction, LLGFullAuction, LLLLGGAuction,
-                                FirstPriceSealedBidAuction, VickreyAuction)
+                                FirstPriceSealedBidAuction, VickreyAuction,
+                                LLLLRRGAuction)
 from bnelearn.bidder import Bidder, CombinatorialBidder, CombinatorialItemBidder
 
 from bnelearn.environment import AuctionEnvironment
@@ -34,6 +35,7 @@ from bnelearn.strategy import ClosureStrategy
 import bnelearn.util.logging as logging_utils
 from bnelearn.sampler import (LLGSampler, LLGFullSampler, LLLLGGSampler,
                               CombinatorialItemSampler)
+from bnelearn.sampler import LLGSampler, LLGFullSampler, LLLLGGSampler, LLLLRRGSampler
 
 # maps config correlation_types to LocalGlobalSampler correlation_method arguments
 CORRELATION_METHODS = {
@@ -270,7 +272,7 @@ class LLGExperiment(LocalGlobalExperiment):
         else:
             name += ['independent']
         if self.risk != 1.0:
-            name += ['risk_{}'.format(self.risk)]
+            name += [f'risk_{self.risk}']
         return os.path.join(*name)
 
 
@@ -452,7 +454,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
         else:
             name += ['independent']
         if self.risk != 1.0:
-            name += ['risk_{}'.format(self.risk)]
+            name += [f'risk_{self.risk}']
         return os.path.join(*name)
 
     def _get_model_names(self):
@@ -602,10 +604,6 @@ class CAItemBiddingExperiment(Experiment):
         super().__init__(config=config)
         self.using_bid_language = True
 
-    def _setup_sampler(self):
-        default_batch_size = self.config.learning.batch_size
-        default_device = self.config.hardware.device
-
         self.sampler = CombinatorialItemSampler(
             n_players=self.n_players,
             n_items=self.n_items,
@@ -725,3 +723,114 @@ class CAItemBiddingExperiment(Experiment):
         return self._strat_to_bidder(lambda x: x, batch_size=1) \
             .transformation[:self.n_items, :] \
             .sum(0) == 1
+
+
+class LLLLRRGExperiment(Experiment):
+    """Experiment in an extension of the Local-Global Model with three groups of bidders."""
+
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+
+        # provided by subclass constructors
+        self.n_players = 7
+        assert self.config.setting.n_players == 7, "incorrect number of players supplied."
+
+        self.n_local = 4
+        self.n_regional = 2
+        self.n_global = 1
+        self.valuation_size = 2
+        self.observation_size = 2
+        self.action_size = 2
+
+        self.risk = float(config.setting.risk)
+
+        self._set_valuation_bounds()
+
+        self.positive_output_point = torch.tensor([min(self.u_hi)] * self.observation_size)
+
+        self.model_sharing = self.config.learning.model_sharing
+        if self.model_sharing:
+            self.n_models = 3
+            self._bidder2model: List[int] = \
+                [0] * self.n_local + [1] * self.n_regional + [2] * self.n_global
+        else:
+            self.n_models = self.n_players
+            self._bidder2model: List[int] = list(range(self.n_players))
+
+        super().__init__(config=config)
+
+        self.plot_xmin = min(self.u_lo)
+        self.plot_xmax = max(self.u_hi)
+        self.plot_ymin = self.plot_xmin
+        self.plot_ymax = self.plot_xmax * 1.05
+
+    def _setup_sampler(self):
+        default_batch_size = self.config.learning.batch_size
+        default_device = self.config.hardware.device
+
+        gammas = self.config.setting.correlation_coefficients
+        assert gammas is None or gammas[2] == 0.0
+        local_gamma, regional_gamma = 0.0, 0.0
+        local_corr_method, regional_corr_method = None, None
+        if gammas:
+            local_gamma = gammas[0]
+            regional_gamma = gammas[1]
+            local_corr_method = CORRELATION_METHODS[self.config.setting.correlation_types[0]]
+            regional_corr_method = CORRELATION_METHODS[self.config.setting.correlation_types[1]]
+
+        self.sampler = LLLLRRGSampler(local_gamma, local_corr_method,
+                                      regional_gamma, regional_corr_method,
+                                      default_batch_size, default_device)
+
+    def _setup_mechanism(self):
+        self.mechanism = LLLLRRGAuction(rule = 'first_price', core_solver = self.setting.core_solver,
+                                        parallel = self.hardware.max_cpu_threads, cuda = self.hardware.cuda)
+
+    def _get_logdir_hierarchy(self):
+        name = ['LLLLRRG', self.payment_rule, str(self.n_players) + 'p']
+        return os.path.join(*name)
+
+    def _plot(self, plot_data, writer: SummaryWriter or None, epoch = None, fmts=['o'], **kwargs):
+        super()._plot(plot_data=plot_data, writer = writer, epoch=epoch, fmts=fmts, **kwargs)
+        # TODO: 3d plot for LLLLRRG broken because 2nd dim of global player is singular (always 0.0).
+        #super()._plot_3d(plot_data = plot_data, writer = writer, epoch=epoch,
+        #                 figure_name=kwargs['figure_name'])
+
+    def _set_valuation_bounds(self):
+        """Validates input for uniform valuation bounds and converts
+        them to required type List[float] if necessary.
+        """
+        assert self.config.setting.u_lo is not None, """Missing prior information!"""
+        assert self.config.setting.u_hi is not None, """Missing prior information!"""
+        u_lo = self.config.setting.u_lo
+        # Frontend could either provide single number u_lo that is shared or a list for each player.
+        if isinstance(u_lo, Iterable): # pylint: disable=isinstance-second-argument-not-valid-type
+            assert len(u_lo) == self.n_players
+            u_lo = [float(l) for l in u_lo]
+        else:
+            u_lo = [float(u_lo)] * self.n_players
+        self.u_lo = u_lo
+
+        u_hi = self.config.setting.u_hi
+        assert isinstance(u_hi, Iterable) # pylint: disable=isinstance-second-argument-not-valid-type
+        assert len(u_hi) == self.n_players
+        assert u_hi[1:self.n_local] == \
+               u_hi[:self.n_local - 1], "local bidders should be identical"
+        assert u_hi[self.n_local : self.n_local + self.n_regional - 1] == \
+               u_hi[self.n_local+1 : self.n_local + self.n_regional], "regional bidders should be identical"
+        assert u_hi[0] < u_hi[self.n_local], "local bidders must be weaker than regional bidders"
+        assert u_hi[self.n_local] < u_hi[self.n_local + self.n_regional], "regional bidders must be weaker than global bidders"
+        self.u_hi = [float(h) for h in u_hi]
+
+    def _get_model_names(self):
+        if self.model_sharing:
+            global_name = 'global' if self.n_players - self.n_local - self.n_regional == 1 else 'globals'
+            return ['locals', 'regionals', global_name]
+        else:
+            return super()._get_model_names()
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+        return Bidder(strategy, player_position=player_position, batch_size=batch_size,
+                      valuation_size=self.valuation_size, observation_size=self.observation_size,
+                      bid_size=self.action_size,
+                      risk=self.risk, enable_action_caching=enable_action_caching)

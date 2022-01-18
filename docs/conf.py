@@ -18,7 +18,7 @@
 # -- Project information -----------------------------------------------------
 
 project = 'bnelearn'
-copyright = '2020, Chair for Decision Sciences and Systems, TUM'
+copyright = '2022, Institute for Decision Sciences and Systems, Technical University of Munich'
 author = 'Chair for Decision Sciences and Systems, TUM'
 
 # The full version, including alpha/beta/rc tags
