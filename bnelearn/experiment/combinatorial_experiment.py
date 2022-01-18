@@ -795,7 +795,7 @@ class LLLLRRGExperiment(Experiment):
         return os.path.join(*name)
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch = None, fmts=['o'], **kwargs):
-        super()._plot(plot_data=plot_data, writer = writer, epoch=epoch, fmts=fmts, **kwargs)
+        super()._plot(plot_data=plot_data, writer = writer, fmts=fmts, **kwargs)
         # TODO: 3d plot for LLLLRRG broken because 2nd dim of global player is singular (always 0.0).
         #super()._plot_3d(plot_data = plot_data, writer = writer, epoch=epoch,
         #                 figure_name=kwargs['figure_name'])

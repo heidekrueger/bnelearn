@@ -35,6 +35,7 @@ if __name__ == '__main__':
 
 
     # 1. Individual experiments
+    # 1.1 Single item
     if False:
         # Common parameters #######################################################
         n_epochs = 2000
@@ -148,7 +149,7 @@ if __name__ == '__main__':
         torch.cuda.empty_cache()
 
 
-    # Multi-unit asymmetric setting
+    # 1.2 Multi-unit asymmetric setting
     if False:
         for n_items, util_loss_grid_size in zip([4, 8, 12], [2**14, 2**16, 2**22]):
             print(f'\nminimum_number_of_points {util_loss_grid_size**(1/n_items)}')
@@ -198,8 +199,8 @@ if __name__ == '__main__':
             torch.cuda.empty_cache()
 
 
+    # 1.3 LLLLGG combinatorial experiment
     if False:
-        ### LLLLGG combinatorial experiment ###
         n_runss = [10, 2]
         n_epochss = [5000, 1000]
         payment_rules = ['first_price', 'nearest_vcg']
@@ -246,6 +247,42 @@ if __name__ == '__main__':
             experiment = experiment_class(experiment_config)
             experiment.run()
             torch.cuda.empty_cache()
+
+
+    # 1.4 New large LLLLRRG combinatorial experiment
+    if False:
+        experiment_config, experiment_class = \
+            ConfigurationManager(
+                experiment_type='llllrrg',
+                n_runs=3, n_epochs=5000
+                ) \
+            .set_setting(
+                ) \
+            .set_learning(
+                # batch_size=2**18,
+                learner_hyperparams={
+                    'population_size': 64,
+                    'sigma': sigma,
+                    'scale_sigma_by_model_size': True
+                    },
+                ) \
+            .set_logging(
+                util_loss_batch_size=2**12,
+                util_loss_grid_size=2**10,
+                util_loss_frequency=100,
+                best_response=True,
+                plot_frequency=500,
+                cache_eval_actions=True,
+                log_root_dir=log_root_dir,
+                save_models=True,
+                ) \
+            .set_hardware(
+                specific_gpu=specific_gpu
+                ) \
+            .get_config()
+        experiment = experiment_class(experiment_config)
+        experiment.run()
+        torch.cuda.empty_cache()
 
 
     # 2. Scalability experiment
