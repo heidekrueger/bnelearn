@@ -604,6 +604,10 @@ class CAItemBiddingExperiment(Experiment):
         super().__init__(config=config)
         self.using_bid_language = True
 
+    def _setup_sampler(self):
+        default_batch_size = self.config.learning.batch_size
+        default_device = self.config.hardware.device
+
         self.sampler = CombinatorialItemSampler(
             n_players=self.n_players,
             n_items=self.n_items,

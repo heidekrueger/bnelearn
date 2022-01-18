@@ -19,7 +19,8 @@ from bnelearn.experiment.configurations import (SettingConfig,
 from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
                                                           LLGFullExperiment,
                                                           LLLLGGExperiment,
-                                                          LLLLRRGExperiment)
+                                                          LLLLRRGExperiment,
+                                                          CAItemBiddingExperiment)
 from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
 
 from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSingleItemExperiment,
