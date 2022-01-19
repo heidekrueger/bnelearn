@@ -26,7 +26,7 @@ except ImportError as e:
     GUROBI_IMPORT_ERROR = e
 
 
-from bnelearn.mechanism.data import LLGData, LLLLGGData
+from bnelearn.mechanism.data import LLGData, LLLLGGData, LLLLRRGData
 from bnelearn.util import mpc
 from .mechanism import Mechanism
 
@@ -49,7 +49,7 @@ class _OptNet_for_LLLLGG(nn.Module):
         """
         # TODO Stefan/Paul: Please provide minimal docstring
         # I think there should be a clearer interface between solving and using
-        # it for this specifc problem, e.g., what's the general form of the 
+        # it for this specifc problem, e.g., what's the general form of the
         # problem Anne's solver can tackle?
         self.n_batch, self.n_coalitions, self.n_player = A.shape  # pylint: disable=unused-variable
 
@@ -673,10 +673,10 @@ class LLLLGGAuction(Mechanism):
         self.core_solver = core_solver
         self.parallel = parallel
 
-        # When using cpu-multiprocessing for the solver, self cannot have 
+        # When using cpu-multiprocessing for the solver, self cannot have
         # members allocated on cuda, or multiprocessing will fail.
         # In that case, we initiate members on 'cpu' even when `self.device=='cuda'`.
-        # This will cost us a few copy operations, but we'll be bottlenecked by 
+        # This will cost us a few copy operations, but we'll be bottlenecked by
         # the solver anyway.
         self._solver_device = self.device
         if (parallel > 1 and core_solver == 'gurobi'):
@@ -699,7 +699,7 @@ class LLLLGGAuction(Mechanism):
         """
         Computes allocation and welfare.
 
-        To do so, we enumerate all (possibly efficient) candidate solutions and find 
+        To do so, we enumerate all (possibly efficient) candidate solutions and find
         the one with highest utility.
 
         Args:
@@ -804,7 +804,7 @@ class LLLLGGAuction(Mechanism):
         b: (parameter) bid of winning bidders (0 if non winning)
         """
         n_batch, n_player, n_bundle = bids.shape
-        
+
         # subsolutions might be on solver_device rather than self.device!
         subsolutions = self.legal_allocations.to(self.device)
         n_subsolutions = self.n_legal_allocations # = 66
@@ -867,12 +867,17 @@ class LLLLGGAuction(Mechanism):
         beta_sort, beta_sort_idx = beta.squeeze().sort(descending=True)
         # Sort the A unique indexing (matching unique to original) decreasing by beta -> coalitions with highest bid up
         # And: Add very small number increasing by index to the A_unique_sort to prevent random sorting and keep order in beta
-        A_unique_idx_sorted_by_beta = A_unique_idx[beta_sort_idx] + torch.linspace(0.00001,0.9,n_coalition,device=self.device)
+        A_unique_idx_sorted_by_beta = \
+            A_unique_idx[beta_sort_idx] + torch.linspace(0.00001,0.9,n_coalition,device=self.device)
         # Sort A_unique_idx_sorted_by_beta and beta_sort by groups now in increasing order
-        A_unique_idx_sorted_complete, A_unique_idx_sorted_complete_idx = A_unique_idx_sorted_by_beta.view(n_batch,n_coalition).sort(dim = 1, descending=False)
-        A_unique_idx_sorted_complete = A_unique_idx_sorted_complete.type(torch.int)
-        beta_sort_complete = torch.gather(beta_sort.view(n_batch,n_coalition),1,A_unique_idx_sorted_complete_idx.view(n_batch,n_coalition))
-        
+        A_unique_idx_sorted_complete, A_unique_idx_sorted_complete_idx = \
+            A_unique_idx_sorted_by_beta.view(n_batch,n_coalition).sort(dim = 1, descending=False)
+        A_unique_idx_sorted_complete = \
+            A_unique_idx_sorted_complete.type(torch.int)
+        beta_sort_complete = torch.gather(beta_sort.view(n_batch,n_coalition),
+                                          1,
+                                          A_unique_idx_sorted_complete_idx.view(n_batch,n_coalition))
+
         ## Phase 2: Keep only the coalition duplicate with max bid
         # Create tensor to select only the first of a group
         tmp_select_first = torch.zeros((n_batch,n_coalition), dtype=int, device=self.device)
@@ -935,8 +940,7 @@ class LLLLGGAuction(Mechanism):
                 result = list(tqdm(
                     p.imap(self._run_single_mini_batch_nearest_vcg_core_gurobi, iterable_input, chunksize=chunksize),
                     total=n_chunks, unit='chunks',
-                    desc='Solving mechanism for batch_size {} with {} processes, chunk size of {}'.format(
-                        n_chunks, pool_size, chunksize)
+                    desc=f'Solving mechanism for batch_size {n_chunks}. {pool_size} processes, chunk size {chunksize}'
                 ))
                 p.close()
                 p.join()
@@ -999,7 +1003,7 @@ class LLLLGGAuction(Mechanism):
                 # Consider only coalitions with >0 blocking value
                 if coalition_v <= 0:
                     continue
-                # TODO, Paul: Can add another check whether coalition is already existing and only pick highest value for it
+                # TODO, Paul: Can add another check whether coalition already exists and only pick highest value for it
                 sum_payments = 0
                 for payment_k in range(len(payment[batch_k])):
                     sum_payments += payment[batch_k][payment_k] * A[batch_k, coalition_k, payment_k]
@@ -1100,6 +1104,7 @@ class LLLLGGAuction(Mechanism):
         return model(solver)
 
     def _run_batch_nearest_vcg_core_cvxpy(self, A, beta, payments_vcg, b, min_core_payments=True):
+        # pylint: disable=import-outside-toplevel
         import cvxpy as cp
         from cvxpylayers.torch import CvxpyLayer
         n_batch, n_coalitions, n_player = A.shape
@@ -1170,6 +1175,33 @@ class LLLLGGAuction(Mechanism):
         payments = payments.view(*batch_sizes, self.n_bidders)
 
         return allocation.to(self.device), payments.to(self.device)
+
+
+class LLLLRRGAuction(LLLLGGAuction):
+    """Extended LLLLGG Auction with an additional 'superglobal' bider.
+    Implementation is identical to LLLLGG except we overwrite some settings in
+    the constructor.
+    """
+    def __init__(self, rule='first_price', core_solver='NoCore', parallel: int = 1, cuda: bool = True):
+        super().__init__(rule=rule, core_solver=core_solver, parallel=parallel, cuda=cuda)
+
+
+        self.n_items = 8
+        self.n_bidders = 7
+        # number of bundles that each bidder is interested in
+        self.action_size = 2 # 1 for G player (only first item matters in that case)
+        # total number of bundles
+        self.n_bundles = LLLLRRGData.n_bundles # = 14 (really 13 + 1 pseudobundle for equal action size)
+        assert self.n_bundles == self.n_bidders * self.action_size
+        self.n_legal_allocations = LLLLRRGData.n_legal_allocations # = 67
+
+        self.legal_allocations = LLLLRRGData.legal_allocations_dense(device=self._solver_device)
+        assert len(self.legal_allocations) == self.n_legal_allocations
+        # subset of all feasible allocations that might be efficient (i.e. bidder optimal)
+        self.candidate_solutions = LLLLRRGData.efficient_allocations_dense(device=self._solver_device)
+        self.player_bundles = LLLLRRGData.player_bundles(device=self._solver_device)
+        assert self.player_bundles.shape == torch.Size([self.n_bidders, self.action_size])
+
 
 
 class CombinatorialAuction(Mechanism):

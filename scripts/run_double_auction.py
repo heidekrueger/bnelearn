@@ -17,9 +17,8 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager  # py
 if __name__ == '__main__':
 
     ### EXP-1 BB 1/2-DA & VCG -------------------------------------------------
-    if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-1_experiment')
+    if True:
+        log_root_dir = os.path.join('/home/pieroth/projects/bnelearn/experiments/bargaining_paper_results', 'exp-1_experiment')
         payment_rules = ['k_price', 'vcg']
         for payment_rule in payment_rules:
             experiment_config, experiment_class = \
@@ -40,7 +39,7 @@ if __name__ == '__main__':
                     # dropout=0.1,
                 ) \
                 .set_hardware(
-                    specific_gpu=7,
+                    specific_gpu=4,
                 ) \
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
@@ -645,7 +644,7 @@ if __name__ == '__main__':
             torch.cuda.empty_cache()
     
     ### EXP-7-3 four buyers and sellers -------------------------------------------
-    if True:
+    if False:
         log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
             'experiments', 'debug', 'exp-7-3_experiment')
         payment_rules = ['k_price', 'vcg']
