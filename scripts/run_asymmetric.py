@@ -200,6 +200,7 @@ if __name__ == '__main__':
 
 
     # 1.3 LLLLGG combinatorial experiment
+    # 1.3.1 All
     if False:
         n_runss = [10, 2]
         n_epochss = [5000, 1000]
@@ -247,6 +248,44 @@ if __name__ == '__main__':
             experiment = experiment_class(experiment_config)
             experiment.run()
             torch.cuda.empty_cache()
+
+
+    # 1.3.2 FPSB only: for plot
+    if True:
+        log_root_dir = os.path.join(log_root_dir, 'llllgg_plot')
+        experiment_config, experiment_class = \
+            ConfigurationManager(
+                experiment_type='llllgg',
+                n_runs=10, n_epochs=1000
+                ) \
+            .set_setting(
+                payment_rule='first_price'
+                ) \
+            .set_learning(
+                batch_size=2**18,
+                learner_hyperparams={
+                    'population_size': 64,
+                    'sigma': sigma,
+                    'scale_sigma_by_model_size': True
+                    },
+                ) \
+            .set_logging(
+                util_loss_batch_size=2**12,
+                util_loss_grid_size=2**10,
+                util_loss_frequency=50,
+                best_response=True,
+                plot_frequency=500,
+                cache_eval_actions=True,
+                log_root_dir=log_root_dir,
+                save_models=True,
+                ) \
+            .set_hardware(
+                specific_gpu=specific_gpu
+                ) \
+            .get_config()
+        experiment = experiment_class(experiment_config)
+        experiment.run()
+        torch.cuda.empty_cache()
 
 
     # 1.4 New large LLLLRRG combinatorial experiment

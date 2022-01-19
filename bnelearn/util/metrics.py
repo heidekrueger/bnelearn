@@ -42,7 +42,7 @@ ALIASES_LATEX = {
 
     'eval/util_loss_ex_ante':    '$\hat \ell$',
     'eval/util_loss_ex_interim': '$\hat \epsilon$',
-    'eval/estimated_relative_ex_ante_util_loss': '$\hat{\mathcal{L}}$',
+    'eval/estimated_relative_ex_ante_util_loss': 'relative utility loss $\hat{\mathcal{L}}$',
 
     'eval_vs_bne/L_2':                  '$L_2$',
     'eval_vs_bne/L_inf':                '$L_\infty$',

@@ -324,7 +324,7 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
                    'eval/estimated_relative_ex_ante_util_loss'],
                    varied_param="['learning']['learner_hyperparams']['population_size']",
                    name='llllgg_analysis_batchsize', title=None, max_iter: int=None,
-                   markevery=[50, 1], labels='agent_names'):
+                   markevery=[50, 1], labels='agent_names', std_or_minmax: bool=True):
     """Create side-by-side plots that display the learning for multiple
     configurations of the same (possibly asymmetric) auction. Only tested for
     LLLLGG setting.
@@ -341,8 +341,10 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
                 configs.append(root + '/' + file)           
 
     # sort
-    aggregate_logs = natural_sort(aggregate_logs)
-    configs = natural_sort(configs)
+    # aggregate_logs = natural_sort(aggregate_logs)  # for llllgg_util(loss) plot change to: `[natural_sort(aggregate_logs)[0]]`
+    # configs = natural_sort(configs)  # for llllgg_util(loss) plot change to: `[natural_sort(configs)[0]]`
+    aggregate_logs = [natural_sort(aggregate_logs)[0]]  # for llllgg_util(loss) plot change to: `[natural_sort(aggregate_logs)[0]]`
+    configs = [natural_sort(configs)[0]]  # for llllgg_util(loss) plot change to: `[natural_sort(configs)[0]]`
 
     fig, axs = plt.subplots(nrows=1, ncols=len(metrics), figsize=(10, 4))
     for aggregate_log_path, config_path, c, m in zip(aggregate_logs, configs, colors, markers):
@@ -358,24 +360,30 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
                 df = df[df.epoch <= max_iter]
 
             df = df.groupby(['subrun', 'epoch', 'tag'], as_index=False) \
-                .agg({'value': ['mean', 'std']})
-            df.columns = ['subrun', 'epoch', 'tag', 'mean','std']
+                .agg({'value': ['mean', 'std', 'min', 'max']})
+            df.columns = ['subrun', 'epoch', 'tag', 'mean', 'std', 'min', 'max']
 
             for i, (metric, ax) in enumerate(zip(metrics, axs)):
-                for agent in df['subrun'].unique():
+                for j, agent in enumerate(reversed(df['subrun'].unique())):
                     temp_df = df[df['tag'] == metric][df['subrun'] == agent]
                     epoch = temp_df.epoch.to_numpy()
                     mean = temp_df['mean'].to_numpy()
-                    std = temp_df['std'].to_numpy()
                     if labels == 'agent_names':
                         run_label = f'{agent}: {label}'
                     elif labels == 'n_items':
                         run_label = f'$m = {label}$'
+                    elif labels == 'agent_names_only':
+                        run_label = f'{agent}'
+                        c = colors[j]
                     ax.plot(epoch, mean, '-' if agent=='locals' else '--',
                             marker=m, markevery=markevery[0] if i==0 else markevery[1],
                             label=run_label, color=c)
-                    ax.fill_between(epoch, mean - std, mean + std, alpha=.3,
-                                    color=c)
+                    if std_or_minmax:
+                        std = temp_df['std'].to_numpy()
+                        y_low, y_max = mean - std, mean + std
+                    else:
+                        y_low, y_max = temp_df['min'].to_numpy(), temp_df['max'].to_numpy()
+                    ax.fill_between(epoch, y_low, y_max, alpha=.3, color=c)
                 ax.set_xlabel('epoch')
                 ax.set_ylabel(ALIASES_LATEX[metric] if metric in ALIASES_LATEX.keys() else metric)
                 if metric == 'eval/estimated_relative_ex_ante_util_loss':
@@ -383,11 +391,12 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
                 ax.grid(visible=True, linestyle='--')
                 # ax.set_xlim(0, max(epoch))
         except Exception as e:
-            pass
+            print(e)
     axs[1].legend(title=title)
     plt.tight_layout()
     plt.savefig(f'{name}.pdf')
     return
+
 
 def natural_sort(l: list): 
     convert = lambda text: int(text) if text.isdigit() else text.lower()
@@ -479,11 +488,17 @@ if __name__ == '__main__':
 
 
     # # Scalability experiments
-    # path = '/home/kohring/bnelearn/experiments/asymmmetric-debug/varied-population_size/LLLLGG/first_price/6p'
+    # path = '/home/kohring/bnelearn/experiments/asymmetric-performance-analysis/varied-population_size/LLLLGG/first_price/6p'
     # multi_run_plot(path, varied_param="['learning']['learner_hyperparams']['population_size']",
     #                title='bidder and corresponding\npopulation size', labels='agent_names',
-    #                name='llllgg_analysis_popsize')
-    # path = '/home/kohring/bnelearn/experiments/asymmmetric-debug/varied-batch_size/LLLLGG/first_price/6p'
+    #                name=f'{experiments_dir}/llllgg_analysis_popsize')
+    # path = '/home/kohring/bnelearn/experiments/asymmetric-performance-analysis/varied-batch_size/LLLLGG/first_price/6p'
     # multi_run_plot(path, varied_param="['learning']['batch_size']",
     #                title='bidder and corre-\nsponding batch size', labels='agent_names',
-    #                name='llllgg_analysis_batchsize')
+    #                name=f'{experiments_dir}/llllgg_analysis_batchsize')
+
+    # # Default params plot for main paper
+    # path = '/home/kohring/bnelearn/experiments/asymmetric/llllgg_plot/LLLLGG/first_price/6p'
+    # multi_run_plot(path, varied_param="['learning']['learner_hyperparams']['population_size']",
+    #                title='bidder type', labels='agent_names_only',
+    #                name=f'{experiments_dir}/llllgg_util(loss)', std_or_minmax=False)
