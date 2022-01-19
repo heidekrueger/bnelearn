@@ -441,6 +441,32 @@ def bne_bilateral_bargaining_uniform_linear(config: ExperimentConfig,
 
     return _linear_bne
 
+
+def bne_bilateral_bargaining_uniform_risk(config: ExperimentConfig,
+                                          u_lo: float, u_hi: float) -> Callable:
+    """BNE for bilateral bargaining with uniform priors and risk aversion.
+    See See Chatterjee and Samuelson (1983).
+    """
+
+    k = config.setting.k
+    risk = config.setting.risk
+    n_buyers = config.setting.n_buyers
+
+    beta = 2.0**(1.0/risk) - 0.5
+
+    def bne_bid_buyer(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
+        return (1.0 - 1.0/(2.0*beta))/(4.0*(beta**2.0) - 1.0) + (1.0 - (1.0/(2.0*beta)))*valuation
+    def bne_ask_seller(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
+        return (beta - 0.5)/(2.0*(beta**2.0) - 0.5) + (1.0 - (1.0/(2*beta)))*valuation
+
+    def _risk_bne(valuation, player_position):
+        if player_position > n_buyers - 1:
+            return bne_ask_seller(valuation).clip_(0, 100)
+        else:
+            return bne_bid_buyer(valuation).clip_(0, 100)
+
+    return _risk_bne
+
 def _bilateral_bargaining_uniform_symmetric_helper(g_05: float):
     """Helper function that approximates BNE or loads it from disk."""
     path = os.path.dirname(os.path.abspath(__file__)) \
