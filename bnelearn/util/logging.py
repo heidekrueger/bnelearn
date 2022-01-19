@@ -3,7 +3,7 @@ import os
 import pickle
 import subprocess
 import time
-from typing import List
+from typing import List, Type
 import warnings
 
 import matplotlib.pyplot as plt
@@ -17,6 +17,10 @@ import pkg_resources
 from bnelearn.bidder import Bidder
 from bnelearn.experiment.configurations import *
 
+
+#To avoid circular inputs, we'll use the literal in type hints rather than
+# importing bnelearn.experiment.Experiment
+Experiment: type = 'Experiment'
 
 _full_log_file_name = 'full_results'
 _aggregate_log_file_name = 'aggregate_log'
@@ -289,7 +293,7 @@ class CustomSummaryWriter(SummaryWriter):
                 raise ValueError('Got list of invalid length.')
 
 
-def read_bne_utility_database(exp: 'Experiment'):
+def read_bne_utility_database(exp: Experiment):
     """Check if this setting's BNE has been saved to disk before.
 
     Args:
@@ -321,7 +325,7 @@ def read_bne_utility_database(exp: 'Experiment'):
         return setting_database['batch_size'].tolist()[0], setting_database.bne_utilities.tolist()
 
 
-def write_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
+def write_bne_utility_database(exp: Experiment, bne_utilities_sampled: list):
     """Write the sampled BNE utilities to disk.
 
     Args:
