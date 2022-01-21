@@ -102,8 +102,8 @@ def apply_with_dynamic_mini_batching(
                 print("\t ... success!")
 
         except RuntimeError as e:
-            if not str(e).startswith(_CUDA_OOM_ERR_MSG_START):
-                raise e
+            # if not str(e).startswith(_CUDA_OOM_ERR_MSG_START):
+            #     raise e
             if mini_batch_size <= 1:
                 traceback.print_exc()
                 # pylint: disable = raise-missing-from

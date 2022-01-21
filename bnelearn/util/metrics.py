@@ -269,7 +269,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     """
 
     mechanism = env.mechanism
-    device = mechanism.device
+    device = agent_observations.device
     agent: Bidder = env.agents[player_position]
     # ensure we are not propagating any gradients (may cause memory leaks)
     agent_observations = agent_observations.detach().clone()
