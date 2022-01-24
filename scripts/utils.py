@@ -5,6 +5,7 @@ import torch
 import pandas as pd
 import numpy as np
 import json
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
 import matplotlib.pyplot as plt
 markers = ['o', '^', 's', 'p', '.', '+']
@@ -367,7 +368,7 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
 
             for i, (metric, ax) in enumerate(zip(metrics, axs)):
                 for j, agent in enumerate(reversed(df['subrun'].unique())):
-                    temp_df = df[df['tag'] == metric][df['subrun'] == agent]
+                    temp_df = df[df['tag'] == metric][df['subrun'] == agent].dropna()
                     epoch = temp_df.epoch.to_numpy()
                     mean = temp_df['mean'].to_numpy()
                     if labels == 'agent_names':
@@ -390,6 +391,7 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
                 ax.set_ylabel(ALIASES_LATEX[metric] if metric in ALIASES_LATEX.keys() else metric)
                 if metric == 'eval/estimated_relative_ex_ante_util_loss':
                     ax.set_yscale("log")
+                    ax.set_ylim([.8e-2, 1.2])
                 ax.grid(visible=True, linestyle='--')
                 # ax.set_xlim(0, max(epoch))
         except Exception as e:
@@ -404,6 +406,48 @@ def natural_sort(l: list):
     convert = lambda text: int(text) if text.isdigit() else text.lower()
     alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)]
     return sorted(l, key=alphanum_key)
+
+
+def create_full_results_from_tb(path: str):
+    """Takes TB logs from one experiment (with possibly multiple runs and
+    different bidder types) and creates the `full_results.csv` if that was not
+    created during execution.
+    """
+    runs = list(next(os.walk(path))[1])
+    agents = ['globals', 'locals']
+
+    full_logs = pd.DataFrame()
+    for run in runs:
+        for agent in agents:
+            run_dir = path + '/' + run + '/' + agent
+            run_dir += '/' + list(os.walk(run_dir))[0][2][0]
+
+            event_acc = EventAccumulator(run_dir)
+            event_acc.Reload()
+            dframes = {}
+            mnames = event_acc.Tags()['scalars']
+            for n in mnames:
+                dframes[n] = pd.DataFrame(event_acc.Scalars(n), columns=["wall_time", "epoch", n])
+                dframes[n] = dframes[n].set_index("epoch")
+            df = pd.concat([v for k, v in dframes.items()], axis=1)
+            df['run'] = run
+            df['subrun'] = agent
+            df['epoch'] = df.index
+
+            full_logs = pd.concat([full_logs, df], axis=0)
+
+    full_logs = full_logs.melt(
+        id_vars=['run', 'subrun', 'epoch'],
+        value_vars=[
+            'market/utilities',
+            'learner_info/update_norm', 'learner_info/gradient_norm',
+            'eval/util_loss_ex_ante', 'eval/util_loss_ex_interim', 
+            'eval/estimated_relative_ex_ante_util_loss'
+        ],
+        var_name='tag'
+    )
+
+    full_logs.to_csv(path + '/full_results.csv')
 
 
 if __name__ == '__main__':
@@ -493,7 +537,9 @@ if __name__ == '__main__':
     #           index_names=True,
     #           caption='Results of NPGA after 5{,}000 (1{,}000) iterations in the LLLLGG first-price (nearest-vcg) auction. Results are averages over 10 (2) replications and the standard deviation displayed in brackets.',)
 
-    # # Default params plot for main paper
+    # Default params plot for main paper
+    # # path = '/home/kohring/bnelearn/experiments/asymmetric/llllgg_plot/LLLLGG/first_price/6p/2022-01-19 Wed 14.14/'
+    # # df = create_full_results_from_tb(path)
     # path = '/home/kohring/bnelearn/experiments/asymmetric/llllgg_plot/LLLLGG/first_price/6p'
     # multi_run_plot(path, varied_param="['learning']['learner_hyperparams']['population_size']",
     #                title='bidder type', labels='agent_names_only',
