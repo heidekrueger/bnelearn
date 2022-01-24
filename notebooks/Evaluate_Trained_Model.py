@@ -26,7 +26,13 @@ plt.rcParams['figure.figsize'] = [10, 7]
 device = 'cuda:3'
 
 # %%
-path = '/home/kohring/bnelearn/experiments/debug/nearest_vcg/6p/2022-01-14 Fri 09.23'
+
+# path of experiment and models to be loaded
+path = f'/home/kohring/bnelearn/experiments/debug/nearest_vcg/6p/2022-01-14 Fri 09.23'
+model_path = f'/home/kohring/bnelearn/experiments/debug/nearest_vcg/6p/2022-01-14 Fri 09.23/00 09:23:53 0/models/'
+## cannot write in same place if different user -- define temporary output dir (needed in experiment.run())
+user = 'heidekrueger'
+write_path = f'/home/{user}/bnelearn/experiments/debug/nearest_vcg/6p/temp'
 
 experiment_config = ConfigurationManager.load_experiment_config(path)
 experiment_class = ConfigurationManager \
@@ -44,12 +50,14 @@ experiment.config.hardware.specific_gpu = device
 experiment.hardware.device = device
 experiment.sampler.default_device = device
 experiment.epoch = -1
+experiment.experiment_log_dir = write_path
+
 
 experiment.run()
 experiment.env.mechanism.device = device
 
 # models have to be set after `run()`
-model_path = '/home/kohring/bnelearn/experiments/debug/nearest_vcg/6p/2022-01-14 Fri 09.23/00 09:23:53 0/models/'
+
 model_paths = [f'{model_path}model_{i}.pt' for i in [0, 4]]
 models = [NeuralNetStrategy.load(mp, device=device).to(device) for mp in model_paths]
 experiment.models = models
