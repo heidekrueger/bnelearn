@@ -948,6 +948,6 @@ class Experiment(ABC):
     def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to
         # use it to make nicer plots for a publication? --> will be done elsewhere. Logging. Assigned to @Hlib/@Stefan
-        for model, player_position in zip(self.models, self._model2bidder):
-            name = 'model_' + self._get_model_names()[player_position[0]] + '.pt'
+        for i, model in enumerate(self.models):
+            name = 'model_' + self._get_model_names()[i] + '.pt'
             torch.save(model.state_dict(), os.path.join(directory, 'models', name))
