@@ -53,7 +53,7 @@ class SymmetricIPVSampler(IPVSampler):
 
     """
 
-    UPPER_BOUND_QUARTILE_IF_UNBOUNDED = .999
+    UPPER_BOUND_QUANTILE_IF_UNBOUNDED = .999
 
     def __init__(self, distribution: Distribution,
                  n_players: int, valuation_size: int = 1,
@@ -76,7 +76,7 @@ class SymmetricIPVSampler(IPVSampler):
         upper_bound = self.base_distribution.icdf(torch.tensor(1.))
         if upper_bound.isinf().item():
             upper_bound = self.base_distribution.icdf(
-                torch.tensor(self.UPPER_BOUND_QUARTILE_IF_UNBOUNDED))
+                torch.tensor(self.UPPER_BOUND_QUANTILE_IF_UNBOUNDED))
 
         assert upper_bound >= lower_bound
 

@@ -280,3 +280,10 @@ def test_ex_interim_util_loss_estimator_splitaward_bne():
     #     + "but is {}!".format(mean_util_loss)
     # assert max_util_loss < 0.07, "util_loss in BNE should be (close to) zero " \
     #     + "but is {}!".format(max_util_loss)
+
+
+def test_util_loss_LLLLGG():
+    """Test Util loss estimator in high-dimensional setting. We know that 
+    Truthful bidding is BNE in VCG."""
+
+    pass
