@@ -371,10 +371,11 @@ class Experiment(ABC):
 
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
-        tic = timer()
         # save current params to calculate update norm
         prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
                        for model in self.models]
+
+        tic = timer()  # time learning
 
         # update model
         utilities = torch.tensor([
@@ -382,11 +383,14 @@ class Experiment(ABC):
             for learner in self.learners
         ])
 
+        toc = timer() - tic
+
         if self.logging.enable_logging:
             # pylint: disable=attribute-defined-outside-init
             self._cur_epoch_log_params = {
-                'utilities': utilities.detach(),
-                'prev_params': prev_params
+                'utilities':   utilities.detach(),
+                'prev_params': prev_params,
+                'iter_time':   toc
             }
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
             print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),
@@ -948,6 +952,6 @@ class Experiment(ABC):
     def _save_models(self, directory):
         # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to
         # use it to make nicer plots for a publication? --> will be done elsewhere. Logging. Assigned to @Hlib/@Stefan
-        for model, player_position in zip(self.models, self._model2bidder):
-            name = 'model_' + self._get_model_names()[player_position[0]] + '.pt'
+        for i, model in enumerate(self.models):
+            name = 'model_' + self._get_model_names()[i] + '.pt'
             torch.save(model.state_dict(), os.path.join(directory, 'models', name))

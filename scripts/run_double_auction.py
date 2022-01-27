@@ -236,6 +236,11 @@ if __name__ == '__main__':
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
 
+                    log_metrics={
+                        'opt': True,
+                        'util_loss': True,
+                    },
+
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
                     util_loss_batch_size=2**10,  # default value -> may needs to be decreased for larger markets
                     util_loss_grid_size=2**10,  # default value -> may needs to be decreased for larger markets
@@ -284,6 +289,11 @@ if __name__ == '__main__':
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
+
+                    log_metrics={
+                        'opt': True,
+                        'util_loss': True,
+                    },
 
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
                     util_loss_batch_size=2**10,  # default value -> may needs to be decreased for larger markets
@@ -334,6 +344,11 @@ if __name__ == '__main__':
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
 
+                    log_metrics={
+                        'opt': True,
+                        'util_loss': True,
+                    },
+
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
                     util_loss_batch_size=2**10,  # default value -> may needs to be decreased for larger markets
                     util_loss_grid_size=2**10,  # default value -> may needs to be decreased for larger markets
@@ -382,6 +397,11 @@ if __name__ == '__main__':
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
+
+                    log_metrics={
+                        'opt': True,
+                        'util_loss': True,
+                    },
 
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
                     util_loss_batch_size=2**10,  # default value -> may needs to be decreased for larger markets
@@ -432,6 +452,11 @@ if __name__ == '__main__':
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
 
+                    log_metrics={
+                        'opt': True,
+                        'util_loss': True,
+                    },
+
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
                     util_loss_batch_size=2**10,  # default value -> may needs to be decreased for larger markets
                     util_loss_grid_size=2**10,  # default value -> may needs to be decreased for larger markets
@@ -480,6 +505,11 @@ if __name__ == '__main__':
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
+
+                    log_metrics={
+                        'opt': True,
+                        'util_loss': True,
+                    },
 
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
                     util_loss_batch_size=2**10,  # default value -> may needs to be decreased for larger markets
@@ -530,6 +560,11 @@ if __name__ == '__main__':
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
 
+                    log_metrics={
+                        'opt': True,
+                        'util_loss': True,
+                    },
+
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
                     util_loss_batch_size=2**10,  # default value -> may needs to be decreased for larger markets
                     util_loss_grid_size=2**10,  # default value -> may needs to be decreased for larger markets
@@ -578,6 +613,11 @@ if __name__ == '__main__':
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
+
+                    log_metrics={
+                        'opt': True,
+                        'util_loss': True,
+                    },
 
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
                     util_loss_batch_size=2**10,  # default value -> may needs to be decreased for larger markets
@@ -628,6 +668,11 @@ if __name__ == '__main__':
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
 
+                    log_metrics={
+                        'opt': True,
+                        'util_loss': True,
+                    },
+
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
                     util_loss_batch_size=2**10,  # default value -> may needs to be decreased for larger markets
                     util_loss_grid_size=2**10,  # default value -> may needs to be decreased for larger markets
@@ -677,6 +722,11 @@ if __name__ == '__main__':
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
                     cache_eval_actions=True,
 
+                    log_metrics={
+                        'opt': True,
+                        'util_loss': True,
+                    },
+
                     # needed for estimated utility-loss (estimated_relative_ex_ante_util_loss)
                     util_loss_batch_size=2**10,  # default value -> may needs to be decreased for larger markets
                     util_loss_grid_size=2**10,  # default value -> may needs to be decreased for larger markets
@@ -693,10 +743,10 @@ if __name__ == '__main__':
             experiment.run()
             torch.cuda.empty_cache()
 
-    ### EXP-8 known BNE for risk -------------------------------------------
-    if True:
+    ### EXP-9 known BNE for risk -------------------------------------------
+    if False:
         log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-8_experiment')
+            'experiments', 'debug', 'exp-9_experiment')
         risks = [i/10. for i in range(1, 11)]
         for risk in risks:
             experiment_config, experiment_class = \

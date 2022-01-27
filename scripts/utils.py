@@ -202,8 +202,8 @@ def single_exp_logs_to_df(
             columns correspond to the logged metrics (from the last iter).
 
     """
-    df = pd.read_csv(path)
-    end_epoch = df.epoch.max()
+    df = pd.read_csv([y for x in os.walk(path) for y in glob.glob(os.path.join(x[0], 'aggregate_log.csv'))][0])
+    end_epoch = df.epoch.max() - 1  # TODO: there seem to be inconsistencies here
     df = df[df.epoch == end_epoch]
 
     df = df.groupby(
@@ -265,7 +265,8 @@ def csv_to_tex(
                          'eval/estimated_relative_ex_ante_util_loss'],
         precision: int = 3,
         label: float = 'tab:full_results',
-        symmetric: bool = True
+        symmetric: bool = True,
+        experiment_names_map = None,
     ):
     """Creates a tex file with the csv at `path` as a LaTeX table."""
 
@@ -273,11 +274,18 @@ def csv_to_tex(
         aggregate_df = logs_to_df(path=experiments, metrics=metrics,
                                   precision=precision, with_stddev=True,
                                   with_setting_parameters=False, save=False)
-        column_format='l'+'r'*len(metrics)
+        column_format = 'l'+'r'*len(metrics)
 
     else:
-        experiments_list = list(experiments.values())
-        experiments_names_list = list(experiments.keys())
+        if isinstance(experiments, dict):
+            experiments_list = list(experiments.values())
+            experiments_names_list = list(experiments.keys())
+        else:
+            experiments_list = experiments
+            experiments_names_list = [os.path.basename(e) for e in experiments]
+            if experiment_names_map is not None:
+                experiments_names_list = [experiment_names_map(s) for s in experiments_names_list]
+
         aggregate_df = single_exp_logs_to_df(path=experiments_list[0], metrics=metrics,
                                              precision=precision, with_stddev=True)
         experiments_names = [experiments_names_list[0]] * aggregate_df.shape[0]
@@ -289,7 +297,8 @@ def csv_to_tex(
 
         # name of different experiments
         aggregate_df.insert(0, 'auction', experiments_names)
-        column_format='ll'+'r'*len(metrics)
+        aggregate_df.sort_values('auction', inplace=True)
+        column_format = 'll'+'r'*len(metrics)
 
     # write to file
     aggregate_df.to_latex(name, #float_format="%.4f",
@@ -443,7 +452,8 @@ def get_data_frames_from_multiple_experiments(path_experiments: str,
     data_frames_dict = {}
     for experiment_path in experiment_folder_list:
         experiment_name = os.path.basename(experiment_path)
-        data_frames_dict[experiment_name] = pd.read_csv(experiment_path + '/' + csv_name)
+        file_path = [y for x in os.walk(experiment_path) for y in glob.glob(os.path.join(x[0], csv_name))][0]
+        data_frames_dict[experiment_name] = pd.read_csv(file_path)
     return data_frames_dict
 
 
