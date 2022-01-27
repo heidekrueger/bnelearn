@@ -744,7 +744,7 @@ if __name__ == '__main__':
             torch.cuda.empty_cache()
 
     ### EXP-9 known BNE for risk -------------------------------------------
-    if True:
+    if False:
         log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
             'experiments', 'debug', 'exp-9_experiment')
         risks = [i/10. for i in range(1, 11)]

@@ -371,10 +371,11 @@ class Experiment(ABC):
 
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
-        tic = timer()
         # save current params to calculate update norm
         prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
                        for model in self.models]
+
+        tic = timer()  # time learning
 
         # update model
         utilities = torch.tensor([
@@ -382,11 +383,14 @@ class Experiment(ABC):
             for learner in self.learners
         ])
 
+        toc = timer() - tic
+
         if self.logging.enable_logging:
             # pylint: disable=attribute-defined-outside-init
             self._cur_epoch_log_params = {
-                'utilities': utilities.detach(),
-                'prev_params': prev_params
+                'utilities':   utilities.detach(),
+                'prev_params': prev_params,
+                'iter_time':   toc
             }
             elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
             print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),

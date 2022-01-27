@@ -39,6 +39,7 @@ MAPPING_METRICS_TAGS = {
     'L_2':                     'eval_vs_bne/L_2',
     'L_inf':                   'eval_vs_bne/L_inf',
     'overhead_hours':          'meta/overhead_hours',
+    'iter_time':               'meta/iter_time',
 
     # won't actually be logged
     'prev_params':             'learner_info/prev_params'
