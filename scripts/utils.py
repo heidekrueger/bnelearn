@@ -202,8 +202,8 @@ def single_exp_logs_to_df(
             columns correspond to the logged metrics (from the last iter).
 
     """
-    df = pd.read_csv([y for x in os.walk(path) for y in glob.glob(os.path.join(x[0], 'aggregate_log.csv'))][0])
-    end_epoch = df.epoch.max() - 1  # TODO: there seem to be inconsistencies here
+    df = pd.read_csv(path) # pd.read_csv([y for x in os.walk(path) for y in glob.glob(os.path.join(x[0], 'aggregate_log.csv'))][0])
+    end_epoch = df.epoch.max() # - 1  # TODO: there seem to be inconsistencies here --> Needed for risk-plots!
     df = df[df.epoch == end_epoch]
 
     df = df.groupby(
