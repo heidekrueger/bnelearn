@@ -4,6 +4,7 @@ Runs predefined double auction experiments with individual parameters
 import os
 import sys
 from itertools import product
+from xml.sax.handler import property_declaration_handler
 import numpy as np
 import torch
 import torch.nn as nn
@@ -16,15 +17,22 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager  # py
 
 if __name__ == '__main__':
 
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn','experiments','bargaining_paper_results')
+
     ### EXP-1 BB 1/2-DA & VCG -------------------------------------------------
     if False:
-        log_root_dir = os.path.join('/home/pieroth/projects/bnelearn/experiments/bargaining_paper_results', 'exp-1_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-1_k-da-truthful-vcg-random')
         payment_rules = ['k_price', 'vcg']
+        pretrain_iters = 500
+        n_runs = 10
         for payment_rule in payment_rules:
+            if payment_rule == 'vcg':
+                pretrain_iters = 0
+                n_runs = 20
             experiment_config, experiment_class = \
                 ConfigurationManager(
                     experiment_type='double_auction_single_item_uniform_symmetric',
-                    n_runs=10,  # repeat exp. for different random seeds
+                    n_runs=n_runs,  # repeat exp. for different random seeds
                     n_epochs=2000,
                 ) \
                 .set_setting(
@@ -37,6 +45,7 @@ if __name__ == '__main__':
                     # hidden_nodes=[100],
                     # hidden_activations=[nn.SELU()],
                     # dropout=0.1,
+                    pretrain_iters=pretrain_iters,
                 ) \
                 .set_hardware(
                     specific_gpu=4,
@@ -51,7 +60,7 @@ if __name__ == '__main__':
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=500,  # don't want to waste much disk space
@@ -63,8 +72,7 @@ if __name__ == '__main__':
 
     ### EXP-2 risk experiments ------------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-2_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-2_experiment')
         risks = [i/10. for i in range(1, 11)]
         payment_rules = ['vcg', 'k_price']
         for risk in risks:
@@ -85,7 +93,7 @@ if __name__ == '__main__':
                         model_sharing=True,
                     ) \
                     .set_hardware(
-                        specific_gpu=5,
+                        specific_gpu=4,
                     ) \
                     .set_logging(
                         eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
@@ -97,7 +105,7 @@ if __name__ == '__main__':
                         util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                         best_response=True,  # only needed for best response plots
-                        log_root_dir=log_root_dir,
+                        log_root_dir=log_exp_dir,
                         save_tb_events_to_csv_detailed=True,
                         save_models=True,  # needed if you want to plot bid functions afterward
                         plot_frequency=500,  # don't want to waste much disk space
@@ -109,10 +117,9 @@ if __name__ == '__main__':
 
     ### EXP-3 different pretraining -------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-3_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-3_sym_BNE')
         pretrainings = np.linspace(0.01, 0.49, 12)
-        for pretraining in pretrainings[6:]:
+        for pretraining in pretrainings:
             experiment_config, experiment_class = \
                 ConfigurationManager(
                     experiment_type='double_auction_single_item_uniform_symmetric',
@@ -132,7 +139,7 @@ if __name__ == '__main__':
                     # hidden_activations=[nn.SELU()]
                 ) \
                 .set_hardware(
-                    specific_gpu=2,
+                    specific_gpu=4,
                 ) \
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
@@ -144,7 +151,7 @@ if __name__ == '__main__':
                     util_loss_frequency=5000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=500,  # don't want to waste much disk space
@@ -156,8 +163,7 @@ if __name__ == '__main__':
     
     ### EXP-4 normal distributed prior -------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-4_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-4_experiment')
         payment_rules = ['k_price', 'vcg']
         for payment_rule in payment_rules:
             experiment_config, experiment_class = \
@@ -181,7 +187,7 @@ if __name__ == '__main__':
                     # dropout=0.1,
                 ) \
                 .set_hardware(
-                    specific_gpu=2,
+                    specific_gpu=4,
                 ) \
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
@@ -193,7 +199,7 @@ if __name__ == '__main__':
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=500,  # don't want to waste much disk space
@@ -205,8 +211,7 @@ if __name__ == '__main__':
 
     ### EXP-5 two buyers and one seller -------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-5_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-5_experiment')
         payment_rules = ['k_price', 'vcg']
         for payment_rule in payment_rules:
             experiment_config, experiment_class = \
@@ -230,7 +235,7 @@ if __name__ == '__main__':
                     # dropout=0.1,
                 ) \
                 .set_hardware(
-                    specific_gpu=2,
+                    specific_gpu=4,
                 ) \
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
@@ -247,7 +252,7 @@ if __name__ == '__main__':
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=500,  # don't want to waste much disk space
@@ -259,8 +264,7 @@ if __name__ == '__main__':
 
     ### EXP-5-2 three buyers and one seller -------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-5-2_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-5-2_experiment')
         payment_rules = ['k_price', 'vcg']
         for payment_rule in payment_rules:
             experiment_config, experiment_class = \
@@ -301,7 +305,7 @@ if __name__ == '__main__':
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=500,  # don't want to waste much disk space
@@ -313,8 +317,7 @@ if __name__ == '__main__':
 
     ### EXP-5-3 four buyers and one seller -------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-5-3_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-5-3_experiment')
         payment_rules = ['k_price', 'vcg']
         for payment_rule in payment_rules:
             experiment_config, experiment_class = \
@@ -338,7 +341,7 @@ if __name__ == '__main__':
                     # dropout=0.1,
                 ) \
                 .set_hardware(
-                    specific_gpu=5,
+                    specific_gpu=4,
                 ) \
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
@@ -355,7 +358,7 @@ if __name__ == '__main__':
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=500,  # don't want to waste much disk space
@@ -367,8 +370,7 @@ if __name__ == '__main__':
 
     ### EXP-6 one buyer and two sellers -------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-6_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-6_experiment')
         payment_rules = ['k_price', 'vcg']
         for payment_rule in payment_rules:
             experiment_config, experiment_class = \
@@ -392,7 +394,7 @@ if __name__ == '__main__':
                     # dropout=0.1,
                 ) \
                 .set_hardware(
-                    specific_gpu=6,
+                    specific_gpu=4,
                 ) \
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
@@ -409,7 +411,7 @@ if __name__ == '__main__':
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=500,  # don't want to waste much disk space
@@ -421,8 +423,7 @@ if __name__ == '__main__':
     
     ### EXP-6-no-model-sharing one buyer and two sellers -------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-6-no-model-sharing_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-6-no-model-sharing_experiment')
         payment_rules = ['k_price', 'vcg']
         for payment_rule in payment_rules:
             experiment_config, experiment_class = \
@@ -446,7 +447,7 @@ if __name__ == '__main__':
                     # dropout=0.1,
                 ) \
                 .set_hardware(
-                    specific_gpu=6,
+                    specific_gpu=4,
                 ) \
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
@@ -463,7 +464,7 @@ if __name__ == '__main__':
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=500,  # don't want to waste much disk space
@@ -475,8 +476,7 @@ if __name__ == '__main__':
     
     ### EXP-6-2 one buyer and three sellers -------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-6-2_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-6-2_experiment')
         payment_rules = ['k_price', 'vcg']
         for payment_rule in payment_rules:
             experiment_config, experiment_class = \
@@ -517,7 +517,7 @@ if __name__ == '__main__':
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=500,  # don't want to waste much disk space
@@ -529,8 +529,7 @@ if __name__ == '__main__':
     
     ### EXP-6-3 one buyer and four sellers -------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-6-3_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-6-3_experiment')
         payment_rules = ['k_price', 'vcg']
         for payment_rule in payment_rules:
             experiment_config, experiment_class = \
@@ -554,7 +553,7 @@ if __name__ == '__main__':
                     # dropout=0.1,
                 ) \
                 .set_hardware(
-                    specific_gpu=5,
+                    specific_gpu=4,
                 ) \
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
@@ -571,7 +570,7 @@ if __name__ == '__main__':
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=500,  # don't want to waste much disk space
@@ -583,8 +582,7 @@ if __name__ == '__main__':
     
     ### EXP-7 two buyers and sellers -------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-7_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-7_experiment')
         payment_rules = ['k_price', 'vcg']
         for payment_rule in payment_rules:
             experiment_config, experiment_class = \
@@ -608,7 +606,7 @@ if __name__ == '__main__':
                     # dropout=0.1,
                 ) \
                 .set_hardware(
-                    specific_gpu=7,
+                    specific_gpu=4,
                 ) \
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
@@ -625,7 +623,7 @@ if __name__ == '__main__':
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=500,  # don't want to waste much disk space
@@ -637,8 +635,7 @@ if __name__ == '__main__':
 
     ### EXP-7-2 three buyers and sellers -------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-7-2_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-7-2_experiment')
         payment_rules = ['k_price', 'vcg']
         for payment_rule in payment_rules:
             experiment_config, experiment_class = \
@@ -662,7 +659,7 @@ if __name__ == '__main__':
                     # dropout=0.1,
                 ) \
                 .set_hardware(
-                    specific_gpu=6,
+                    specific_gpu=4,
                 ) \
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
@@ -679,7 +676,7 @@ if __name__ == '__main__':
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=500,  # don't want to waste much disk space
@@ -691,8 +688,7 @@ if __name__ == '__main__':
     
     ### EXP-7-3 four buyers and sellers -------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-7-3_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-7-3_experiment')
         payment_rules = ['k_price', 'vcg']
         for payment_rule in payment_rules:
             experiment_config, experiment_class = \
@@ -716,7 +712,7 @@ if __name__ == '__main__':
                     # dropout=0.1,
                 ) \
                 .set_hardware(
-                    specific_gpu=7,
+                    specific_gpu=4,
                 ) \
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
@@ -733,7 +729,7 @@ if __name__ == '__main__':
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=500,  # don't want to waste much disk space
@@ -745,8 +741,7 @@ if __name__ == '__main__':
 
     ### EXP-9 known BNE for risk -------------------------------------------
     if False:
-        log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', \
-            'experiments', 'debug', 'exp-9_experiment')
+        log_exp_dir = os.path.join(log_root_dir, 'exp-9_experiment')
         risks = [i/10. for i in range(1, 11)]
         for risk in risks:
             experiment_config, experiment_class = \
@@ -765,7 +760,7 @@ if __name__ == '__main__':
                     model_sharing=True,
                 ) \
                 .set_hardware(
-                    specific_gpu=6,
+                    specific_gpu=4,
                 ) \
                 .set_logging(
                     eval_batch_size=2**22,  # needed for exact utility-loss (epsilon_relative)
@@ -777,7 +772,7 @@ if __name__ == '__main__':
                     util_loss_frequency=2000,  # don't want to calculate that often as it takes long
 
                     best_response=True,  # only needed for best response plots
-                    log_root_dir=log_root_dir,
+                    log_root_dir=log_exp_dir,
                     save_tb_events_to_csv_detailed=True,
                     save_models=True,  # needed if you want to plot bid functions afterward
                     plot_frequency=200,  # don't want to waste much disk space
