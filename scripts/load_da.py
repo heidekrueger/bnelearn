@@ -23,7 +23,7 @@ if is_ipython:
     from IPython import display
 plt.rcParams['figure.figsize'] = [10, 7]
 
-device = 'cuda:1'
+device = 'cuda:0'
 save_path = root_path + '/experiments/eff'
 
 def childs(path):
@@ -63,7 +63,7 @@ for pricing_rule in pricing_rules:
         experiment.hardware.device = device
         experiment.sampler.default_device = device
         experiment.epoch = -1
-        experiment.learning.batch_size = 2**18
+        experiment.learning.batch_size = 2**22
         experiment.experiment_log_dir = save_path
 
         try:

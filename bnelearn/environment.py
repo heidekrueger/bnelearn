@@ -687,10 +687,19 @@ class AuctionEnvironment(Environment):
         actual_allocations, actual_payments = self.mechanism.play(bid_profile)
         truthful_allocations, truthful_payments = self.mechanism.play(valuations)
 
+        # TODO
+        # Calculate efficiency
+        b = 0; s = 1
+        v_minus_c = valuations[..., b, :] - valuations[..., s, :]
+        actual_trade = torch.gt(bid_profile[..., b, :], bid_profile[..., s, :])
+        truthful_trade = torch.gt(valuations[..., b, :], valuations[..., s, :])  # Should be 50% for symmetric priors
+        efficiency_from_trade = (actual_trade * v_minus_c).mean() / (truthful_trade * v_minus_c).mean()
+        efficiency_from_trade = efficiency_from_trade.cpu().item()
+
         expected_utility_metrics = self._get_strategy_utility_metrics(
             valuations, actual_allocations, actual_payments,
             truthful_allocations, truthful_payments
-            )
+            ) + (efficiency_from_trade,)
 
         if self._all_agents_risk_neutral():  # -> profit = utility
             expected_profits_metrics = expected_utility_metrics
@@ -698,7 +707,7 @@ class AuctionEnvironment(Environment):
             expected_profits_metrics = self._get_strategy_utility_metrics(
                 valuations, actual_allocations, actual_payments,
                 truthful_allocations, truthful_payments, force_risk_neutral=True
-                )
+                ) + (efficiency_from_trade,)
 
         return expected_utility_metrics + expected_profits_metrics
 
@@ -729,12 +738,15 @@ class AuctionEnvironment(Environment):
         exp_truthful_utilities = self._get_expected_utilities(
             truthful_allocations, truthful_payments, valuations, force_risk_neutral=force_risk_neutral)
         gains_from_trade = expected_utility_buyers + expected_utility_sellers
-        efficiency_from_trade = gains_from_trade / sum(exp_truthful_utilities)
+
+        # TODO Nils & Fabian: Buggy in the sense that it can be above 100%
+        # efficiency_from_trade = gains_from_trade / sum(exp_truthful_utilities)
+
         return (
             expected_utility_buyers,
             expected_utility_sellers,
             gains_from_trade,
-            efficiency_from_trade
+            # efficiency_from_trade
         )
 
     def _all_agents_risk_neutral(self) -> bool:
