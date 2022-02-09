@@ -44,10 +44,11 @@ if __name__ == '__main__':
                 payment_rule='first_price',
                 ) \
             .set_learning(
+                learner_type='PGLearner',
+                smooth_market=True,
+                model_sharing=True,
                 batch_size=batch_size,
                 pretrain_iters=pretrain_iters,
-                model_sharing=False,
-                smooth_market=True,
                 ) \
             .set_logging(
                 log_root_dir=log_root_dir,

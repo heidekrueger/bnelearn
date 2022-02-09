@@ -389,14 +389,14 @@ class Experiment(ABC):
             learner.update_strategy_and_evaluate_utility()
             for learner in self.learners
         ])
-        elapsed_training = timer() - tic_training
+        iter_time = timer() - tic_training
 
         if self.logging.enable_logging:
             # pylint: disable=attribute-defined-outside-init
             self._cur_epoch_log_params = {
                 'utilities': utilities.detach(),
                 'prev_params': prev_params,
-                'elapsed_training': elapsed_training
+                'iter_time': iter_time
             }
             elapsed_overhead = self._evaluate_and_log_epoch()
             print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(self.epoch, timer() - tic, elapsed_overhead),

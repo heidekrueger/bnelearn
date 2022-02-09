@@ -304,7 +304,7 @@ class AuctionEnvironment(Environment):
                 # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
                 if opponent_pos is None:
                     opponent_pos = counter
-                bid_profile[:, opponent_pos, :] = opponent_bid
+                bid_profile[:, opponent_pos, :] = opponent_bid.detach()
                 counter = counter + 1
 
             allocations, payments = self.mechanism.play(bid_profile, smooth_market=smooth_market)
