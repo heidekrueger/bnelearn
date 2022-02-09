@@ -68,7 +68,6 @@ if __name__ == '__main__':
                 log_metrics = {
                     'opt': True,
                     'util_loss': True,
-                    'epsilon': True,
                     },
                 save_models=True
                 ) \
@@ -111,7 +110,6 @@ if __name__ == '__main__':
             log_metrics = {
                 'opt': True,
                 'util_loss': True,
-                'epsilon': True,
                 },
             ) \
         .set_hardware(
@@ -146,7 +144,6 @@ if __name__ == '__main__':
             log_metrics = {
                 'opt': True,
                 'util_loss': True,
-                'epsilon': True,
                 },
             ) \
         .set_hardware(
@@ -186,7 +183,6 @@ if __name__ == '__main__':
             cache_eval_actions=True,
             log_metrics = {
                 'util_loss': True,
-                'epsilon': True,
                 },
             ) \
         .set_hardware(

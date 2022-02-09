@@ -15,7 +15,6 @@ from bnelearn.util import logging
 
 #pylint: disable=anomalous-backslash-in-string
 ALIASES = {
-    'eval/epsilon':       '$\epsilon$',
     'eval_vs_bne/L_2':           '$L_2$',
     'eval_vs_bne/L_inf':         '$L_\infty$',
     'eval/epsilon_absolute':     '$\epsilon_\text{abs}$',

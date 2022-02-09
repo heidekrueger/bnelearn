@@ -729,12 +729,6 @@ class Experiment(ABC):
         if self.logging.log_metrics['PoA']:
             self._cur_epoch_log_params['PoA'] = self._calculate_metrics_PoA()
 
-        if self.logging.log_metrics['epsilon'] and (self.epoch % self.logging.util_loss_frequency) == 0:
-            with torch.no_grad():
-                self._cur_epoch_log_params['epsilon'] = metrics.verify_epsilon_bne(
-                    exp=self, grid_size=self.logging.util_loss_grid_size,
-                    opponent_batch_size=min(self.logging.util_loss_batch_size, self.learning.batch_size))
-
         if self.logging.log_metrics['efficiency'] and (self.epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['efficiency'] = \
                 self.env.get_efficiency(self.env)

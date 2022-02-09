@@ -175,7 +175,6 @@ class ConfigurationManager:
         self.setting.payment_rule = 'second_price'
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
-                                    'epsilon': True,
                                     'efficiency': True,
                                     'revenue': True}
 
@@ -189,7 +188,6 @@ class ConfigurationManager:
         self.setting.payment_rule = 'first_price'
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
-                                    'epsilon': True,
                                     'efficiency': True,
                                     'revenue': True}
 
@@ -205,8 +203,7 @@ class ConfigurationManager:
         self.logging.log_metrics = {'opt': True,
                                     'efficiency': True,
                                     'revenue': True,
-                                    'util_loss': True,
-                                    'epsilon': True}
+                                    'util_loss': True}
 
     #     self.setting.correlation_types = 'independent'
     #
@@ -233,7 +230,6 @@ class ConfigurationManager:
         self.setting.gamma = 0.0
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
-                                    'epsilon': True,
                                     'efficiency': False,
                                     'revenue': False}
 
@@ -247,8 +243,7 @@ class ConfigurationManager:
         self.setting.n_players = 6
         self.logging.util_loss_frequency = 1000  # Or 100?
         self.logging.log_metrics = {'opt': False,
-                                    'util_loss': True,
-                                    'epsilon': True}
+                                    'util_loss': True}
 
     def _init_llllrrg(self):
         self.logging.util_loss_batch_size = 2 ** 12
@@ -275,7 +270,6 @@ class ConfigurationManager:
         self.logging.plot_points = 1000
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
-                                    'epsilon': True,
                                     'efficiency': True,
                                     'revenue': True}
 
@@ -298,7 +292,6 @@ class ConfigurationManager:
         self.setting.risk = 1.0
         self.logging.log_metrics = {'opt': True,
                                     'util_loss': True,
-                                    'epsilon': True,
                                     'efficiency': True,
                                     'PoA': True}
 
@@ -318,7 +311,7 @@ class ConfigurationManager:
         if self.logging.experiment_name:
             self.logging.experiment_dir += ' ' + str(self.logging.experiment_name)
 
-        valid_log_metrics = ['opt', 'util_loss', 'epsilon', 'efficiency', 'revenue', 'PoA']
+        valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue', 'PoA']
         if self.logging.log_metrics is not None:
             for metric in self.logging.log_metrics:
                 assert metric in valid_log_metrics, "Metric not known."
@@ -613,8 +606,7 @@ class ConfigurationManager:
             plot_points=100,
             plot_show_inline=True,
             log_metrics={'opt': True,
-                         'util_loss': True,
-                         'epsilon': True},
+                         'util_loss': True},
             log_componentwise_norm=False,
             save_tb_events_to_csv_aggregate=True,
             save_tb_events_to_csv_detailed=False,
