@@ -35,7 +35,10 @@ class Mechanism(Game, ABC):
     """
 
     def play(self, action_profile, smooth_market: bool=False) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.run(bids=action_profile, smooth_market=smooth_market)
+        if smooth_market:
+            return self.run(bids=action_profile, smooth_market=True)
+        else:  # some mechanisms do not support smooth markets yet
+            return self.run(bids=action_profile)
 
     @abstractmethod
     def run(self, bids) -> Tuple[torch.Tensor, torch.Tensor]:

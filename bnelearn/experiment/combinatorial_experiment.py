@@ -14,17 +14,17 @@ from abc import ABC
 from functools import partial
 from typing import Iterable, List
 import math
-import warnings
+
 from scipy import optimize
 from tqdm import tqdm
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
 
-from bnelearn.mechanism import (LLGAuction, LLGFullAuction, LLLLGGAuction,
-                                FirstPriceSealedBidAuction, VickreyAuction)
-from bnelearn.bidder import Bidder, CombinatorialBidder, CombinatorialItemBidder
-
+from bnelearn.mechanism import (
+    LLGAuction, LLGFullAuction, LLLLGGAuction, LLLLRRGAuction
+)
+from bnelearn.bidder import Bidder, CombinatorialBidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.experiment.equilibria import truthful_bid
@@ -32,8 +32,7 @@ from bnelearn.experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
 
 import bnelearn.util.logging as logging_utils
-from bnelearn.sampler import (LLGSampler, LLGFullSampler, LLLLGGSampler,
-                              CombinatorialItemSampler)
+from bnelearn.sampler import LLGSampler, LLGFullSampler, LLLLGGSampler, LLLLRRGSampler
 
 # maps config correlation_types to LocalGlobalSampler correlation_method arguments
 CORRELATION_METHODS = {
@@ -270,7 +269,7 @@ class LLGExperiment(LocalGlobalExperiment):
         else:
             name += ['independent']
         if self.risk != 1.0:
-            name += ['risk_{}'.format(self.risk)]
+            name += [f'risk_{self.risk}']
         return os.path.join(*name)
 
 
@@ -452,7 +451,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
         else:
             name += ['independent']
         if self.risk != 1.0:
-            name += ['risk_{}'.format(self.risk)]
+            name += [f'risk_{self.risk}']
         return os.path.join(*name)
 
     def _get_model_names(self):
@@ -546,182 +545,114 @@ class LLLLGGExperiment(LocalGlobalExperiment):
                          figure_name=kwargs['figure_name'])
 
 
-class CAItemBiddingExperiment(Experiment):
-    """
-    A combinatorial Experiment where items are sold simultaneously but bidders
-    might have complex preferences.
-    """
+class LLLLRRGExperiment(Experiment):
+    """Experiment in an extension of the Local-Global Model with three groups of bidders."""
+
+
     def __init__(self, config: ExperimentConfig):
-
         self.config = config
-        self.n_players = config.setting.n_players
 
-        self.n_items = self.action_size = config.setting.n_items
-        self.n_bundles = self.observation_size = self.valuation_size = (2 ** self.n_items) - 1
-        self.payment_rule = config.setting.payment_rule
+        # provided by subclass constructors
+        self.n_players = 7
+        assert self.config.setting.n_players == 7, "incorrect number of players supplied."
 
-        self.exp_type = config.setting.exp_type
-        self.exp_params = config.setting.exp_params
-
-        self.u_lo = config.setting.u_lo
-        self.u_hi = config.setting.u_hi
+        self.n_local = 4
+        self.n_regional = 2
+        self.n_global = 1
+        self.valuation_size = 2
+        self.observation_size = 2
+        self.action_size = 2
 
         self.risk = float(config.setting.risk)
 
-        if 'n_collections' in self.exp_params.keys():
-            self.n_collections = self.exp_params['n_collections']
-        else:
-            self.n_collections = None
+        self._set_valuation_bounds()
 
-        self.model_sharing = config.learning.model_sharing
-        if 'one_player_with_unit_demand' in self.exp_params.keys():
-            self.unit_demand = self.exp_params['one_player_with_unit_demand']
-            if self.model_sharing and self.unit_demand:
-                print('No model sharing possible!')
-                self.model_sharing = False
-                config.learning.model_sharing = False
-        else:
-            self.unit_demand = False
+        self.positive_output_point = torch.tensor([min(self.u_hi)] * self.observation_size)
 
+        self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
-            self.n_models = 1
-            self._bidder2model = [0] * self.n_players
+            self.n_models = 3
+            self._bidder2model: List[int] = \
+                [0] * self.n_local + [1] * self.n_regional + [2] * self.n_global
         else:
             self.n_models = self.n_players
-            self._bidder2model = list(range(self.n_players))
-
-        if not hasattr(self, 'positive_output_point'):
-            self.positive_output_point = torch.tensor([[self.u_hi[0]] * self.n_bundles],
-                                                      dtype=torch.float)
-
-        self.input_length = self.n_bundles
-
-        self.plot_xmin = self.plot_ymin = min(self.u_lo)
-        self.plot_xmax = self.plot_ymax = max(self.u_hi) * self.n_items
+            self._bidder2model: List[int] = list(range(self.n_players))
 
         super().__init__(config=config)
-        self.using_bid_language = True
+
+        self.plot_xmin = min(self.u_lo)
+        self.plot_xmax = max(self.u_hi)
+        self.plot_ymin = self.plot_xmin
+        self.plot_ymax = self.plot_xmax * 1.05
 
     def _setup_sampler(self):
         default_batch_size = self.config.learning.batch_size
         default_device = self.config.hardware.device
 
-        self.sampler = CombinatorialItemSampler(
-            n_players=self.n_players,
-            n_items=self.n_items,
-            valuation_type=self.exp_type,
-            valuation_dict=self.exp_params,
-            default_batch_size=default_batch_size,
-            default_device=default_device
-        )
+        gammas = self.config.setting.correlation_coefficients
+        assert gammas is None or gammas[2] == 0.0
+        local_gamma, regional_gamma = 0.0, 0.0
+        local_corr_method, regional_corr_method = None, None
+        if gammas:
+            local_gamma = gammas[0]
+            regional_gamma = gammas[1]
+            local_corr_method = CORRELATION_METHODS[self.config.setting.correlation_types[0]]
+            regional_corr_method = CORRELATION_METHODS[self.config.setting.correlation_types[1]]
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0,
-                         enable_action_caching=False) -> CombinatorialItemBidder:
-        return CombinatorialItemBidder(
-            valuation_type=self.exp_type, valuation_dict=self.exp_params,
-            strategy=strategy, player_position=player_position,
-            batch_size=batch_size, valuation_size=self.valuation_size,
-            risk=self.risk, enable_action_caching=enable_action_caching
-        )
+        self.sampler = LLLLRRGSampler(local_gamma, local_corr_method,
+                                      regional_gamma, regional_corr_method,
+                                      default_batch_size, default_device)
 
     def _setup_mechanism(self):
-        """Setup the mechanism"""
-        if self.payment_rule == 'first_price':
-            self.mechanism_type = FirstPriceSealedBidAuction
-        elif self.payment_rule in ('vcg', 'second_price'):
-            self.mechanism_type = VickreyAuction
-        else:
-            raise ValueError('payment rule unknown')
+        self.mechanism = LLLLRRGAuction(rule = 'first_price', core_solver = self.setting.core_solver,
+                                        parallel = self.hardware.max_cpu_threads, cuda = self.hardware.cuda)
 
-        self.mechanism = self.mechanism_type(cuda=self.hardware.cuda)
-
-    def _check_and_set_known_bne(self):
-        if self.payment_rule == 'vcg' \
-            and self.config.setting.correlation_types in ['independent', None] \
-            and self.risk == 1.0 \
-            and self.exp_type == 'XOS' \
-            and self.n_collections == 1:
-
-            def _optimal_bid(valuation, **kwargs):
-                if valuation.shape[-1] == self.n_items:
-                    return valuation
-                return valuation[..., self.single_item_bundles()]
-
-            self._optimal_bid = _optimal_bid
-            return True
-
-        return super()._check_and_set_known_bne()
-
-    def _setup_eval_environment(self):
-        assert self.known_bne
-        assert hasattr(self, '_optimal_bid')
-
-        bne_strategies = [
-            ClosureStrategy(partial(self._optimal_bid, player_position=i))  # pylint: disable=no-member
-            for i in range(self.n_players)]
-
-        self.bne_env = AuctionEnvironment(
-            mechanism=self.mechanism,
-            agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                          batch_size=self.config.logging.eval_batch_size,
-                                          enable_action_caching=self.config.logging.cache_eval_actions)
-                    for i in range(self.n_players)],
-            valuation_observation_sampler=self.sampler,
-            n_players=self.n_players,
-            batch_size=self.config.logging.eval_batch_size,
-            strategy_to_player_closure=self._strat_to_bidder
-        )
-        self.bne_utilities = torch.tensor(
-            [self.bne_env.get_reward(a, redraw_valuations=True)
-            for a in self.bne_env.agents])
-       
     def _get_logdir_hierarchy(self):
-        name = ['CAItemBidding', self.payment_rule,
-                str(self.n_players) + 'players_' +
-                str(self.n_items) + 'items_' +
-                str(self.exp_type)]
-        if self.n_collections == 1:
-            name.append('additive')
-        if self.n_collections is not None and self.n_collections > 1:
-            name.append(str(self.n_collections) + 'collections')
-        if self.unit_demand:
-            name.append('unit_demand')
-
+        name = ['LLLLRRG', self.payment_rule, str(self.n_players) + 'p']
         return os.path.join(*name)
 
-    def _plot(self, plot_data, writer: SummaryWriter or None,
-              xlim: list=None, ylim: list=None, labels: list=None,
-              x_label="valuation", y_label="item bid", fmts=['o'],
-              figure_name: str='bid_function', plot_points=300,
-              ):
-        plot_data = list(plot_data)
+    def _plot(self, plot_data, writer: SummaryWriter or None, epoch = None, fmts=['o'], **kwargs):
+        super()._plot(plot_data=plot_data, writer = writer, epoch=epoch, fmts=fmts, **kwargs)
+        # TODO: 3d plot for LLLLRRG broken because 2nd dim of global player is singular (always 0.0).
+        #super()._plot_3d(plot_data = plot_data, writer = writer, epoch=epoch,
+        #                 figure_name=kwargs['figure_name'])
 
-        extensive_plot = True # TODO Nils
-        if extensive_plot and plot_data[1].shape[-1] == self.n_items:
-            plot_data[0] = plot_data[0].repeat(1, 1, self.n_items)
-            plot_data[1] = torch.repeat_interleave(plot_data[1], self.n_bundles, 2)
-            subplot_order = [self.n_items, self.n_bundles]
-        else:
-            # subselection of single-item valuations
-            plot_data[0] = plot_data[0][..., self.single_item_bundles()]
-            subplot_order = None
 
-        super()._plot(plot_data=plot_data, writer=writer, xlim=xlim, ylim=ylim,
-                      labels=labels, x_label=x_label, y_label=y_label, fmts=fmts,
-                      figure_name=figure_name, plot_points=plot_points,
-                      subplot_order=subplot_order)
-
-        if self.n_bundles == 2:
-            super()._plot_3d(plot_data, writer, figure_name)
-
-    def pretrain_transform(self, player_position: int) -> callable:
-        """Transformation during pretraining: Truthful bidding for this specific
-        setting with combinatorial valuations.
+    def _set_valuation_bounds(self):
+        """Validates input for uniform valuation bounds and converts
+        them to required type List[float] if necessary.
         """
-        return lambda valuation: valuation[..., self.single_item_bundles()]
+        assert self.config.setting.u_lo is not None, """Missing prior information!"""
+        assert self.config.setting.u_hi is not None, """Missing prior information!"""
+        u_lo = self.config.setting.u_lo
+        # Frontend could either provide single number u_lo that is shared or a list for each player.
+        if isinstance(u_lo, Iterable): # pylint: disable=isinstance-second-argument-not-valid-type
+            assert len(u_lo) == self.n_players
+            u_lo = [float(l) for l in u_lo]
+        else:
+            u_lo = [float(u_lo)] * self.n_players
+        self.u_lo = u_lo
 
-    def single_item_bundles(self):
-        """Return indecies of single item bundles"""
-        return self._strat_to_bidder(lambda x: x, batch_size=1) \
-            .transformation[:self.n_items, :] \
-            .sum(0) == 1
+        u_hi = self.config.setting.u_hi
+        assert isinstance(u_hi, Iterable) # pylint: disable=isinstance-second-argument-not-valid-type
+        assert len(u_hi) == self.n_players
+        assert u_hi[1:self.n_local] == \
+               u_hi[:self.n_local - 1], "local bidders should be identical"
+        assert u_hi[self.n_local : self.n_local + self.n_regional - 1] == \
+               u_hi[self.n_local+1 : self.n_local + self.n_regional], "regional bidders should be identical"
+        assert u_hi[0] < u_hi[self.n_local], "local bidders must be weaker than regional bidders"
+        assert u_hi[self.n_local] < u_hi[self.n_local + self.n_regional], "regional bidders must be weaker than global bidders"
+        self.u_hi = [float(h) for h in u_hi]
+
+    def _get_model_names(self):
+        if self.model_sharing:
+            global_name = 'global' if self.n_players - self.n_local - self.n_regional == 1 else 'globals'
+            return ['locals', 'regionals', global_name]
+        else:
+            return super()._get_model_names()
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+        return Bidder(strategy, player_position=player_position, batch_size=batch_size,
+                      valuation_size=self.valuation_size, observation_size=self.observation_size,
+                      bid_size=self.action_size,
+                      risk=self.risk, enable_action_caching=enable_action_caching)

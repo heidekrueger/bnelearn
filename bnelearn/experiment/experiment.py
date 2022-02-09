@@ -359,7 +359,7 @@ class Experiment(ABC):
         if self.logging.save_models:
             os.mkdir(os.path.join(output_dir, 'models'))
         self.writer = logging_utils.CustomSummaryWriter(output_dir, flush_secs=30)
-        print('\tLogging to {}.'.format(output_dir))
+        print(f'\tLogging to {output_dir}.')
 
     def _exit_run(self, global_step=None):
         """Cleans up a run after it is completed"""

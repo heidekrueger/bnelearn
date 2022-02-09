@@ -36,7 +36,8 @@ def test_auction_environment():
         for i in range(n_players)]
 
     env = AuctionEnvironment(
-        FirstPriceSealedBidAuction(cuda), bidders, sampler, batch_size, n_players, strat_to_bidder
+        FirstPriceSealedBidAuction(cuda=cuda), bidders, sampler, batch_size,
+        n_players, strat_to_bidder
     )
 
     reward_0 = env.get_reward(bidders[0])

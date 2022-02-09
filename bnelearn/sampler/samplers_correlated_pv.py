@@ -6,7 +6,7 @@ import warnings
 from typing import List, Tuple
 import torch
 from torch.cuda import _device_t as Device
-from .base import PVSampler, CompositeValuationObservationSampler
+from .base import PVSampler, CompositeValuationObservationSampler, FlushedWrappedSampler
 from .samplers_ipv import UniformSymmetricIPVSampler
 
 ERR_MSG_INVALID_LOCAL_GLOBAL_CORRELATION_METHOD = \
@@ -303,7 +303,7 @@ class LocalGlobalCompositePVSampler(CompositeValuationObservationSampler):
         super().__init__(n_players, valuation_size, observation_size, subgroup_samplers, default_batch_size, default_device)
 
     def _get_group_sampler(self, n_group_players, correlation, correlation_method,
-                           u_lo, u_hi, 
+                           u_lo, u_hi,
                            valuation_size,  default_batch_size, default_device) -> PVSampler:
         """Returns a sampler of possibly correlated Uniform PV players for a
             symmetric group of players (e.g. the locals or globals)"""
@@ -451,3 +451,83 @@ class LLLLGGSampler(LocalGlobalCompositePVSampler):
                          correlation_locals=correlation_locals, correlation_method_locals=correlation_method_locals,
                          correlation_globals=0.0, correlation_method_globals=None,
                          default_batch_size=default_batch_size, default_device=default_device)
+
+
+
+
+class LLLLRRGSampler(CompositeValuationObservationSampler):
+    """Setting with three groups of players:
+    The local players (L's) have
+    symmetric (possibly correlated) uniform valuations on [0,1].
+    The regional (R) bidders have symmetric (possibly correlated) uniform
+    valuations on [0,2].
+    The global (G) bidder has a valuation
+    """
+
+    def __init__(self,
+                 correlation_locals = 0.0, correlation_method_locals = None,
+                 correlation_regionals = 0.0, correlation_method_regionals = None,
+                 default_batch_size = 1 , default_device = None):
+
+        assert 0 <=correlation_locals  <= 1, "invalid locals correlation"
+        assert 0 <=correlation_regionals <= 1, "invalid regionals correlation"
+
+        valuation_size = 2
+
+        u_lo = 0.0
+        u_hi_locals = 1.0
+        u_hi_regionals = 2.0
+        u_hi_global = 4.0
+
+        n_locals = 4
+        n_regionals = 2
+        n_global = 1
+
+        correlation_global = 0.0
+        correlation_method_global = None
+
+        sampler_locals = self._get_group_sampler(
+            n_locals, correlation_locals, correlation_method_locals,
+            u_lo, u_hi_locals,
+            valuation_size, default_batch_size, default_device)
+
+        sampler_regionals = self._get_group_sampler(
+            n_regionals, correlation_regionals, correlation_method_regionals,
+            u_lo, u_hi_regionals,
+            valuation_size, default_batch_size, default_device)
+
+        # global player sampler: 1st obs/val dim is Univform IPV, second dim is always 0.0
+        sampler_global = FlushedWrappedSampler(
+            UniformSymmetricIPVSampler(u_lo, u_hi_global, 1, 2, default_batch_size, default_device),
+            flush_val_dims=1, flush_obs_dims=1)
+
+        n_players = n_locals + n_regionals + n_global
+        observation_size = valuation_size # this is a PV setting, valuations = observations
+        subgroup_samplers = [sampler_locals, sampler_regionals, sampler_global]
+
+        super().__init__(n_players, valuation_size, observation_size, subgroup_samplers, default_batch_size, default_device)
+
+    def _get_group_sampler(self, n_group_players, correlation, correlation_method,
+                           u_lo, u_hi,
+                           valuation_size,  default_batch_size, default_device) -> PVSampler:
+        """Returns a sampler of possibly correlated Uniform PV players for a
+            symmetric group of players (e.g. the locals or globals)"""
+        if correlation > 0.0:
+            if correlation_method == 'Bernoulli':
+                sampler_class = BernoulliWeightsCorrelatedSymmetricUniformPVSampler
+            elif correlation_method == 'constant':
+                sampler_class = ConstantWeightCorrelatedSymmetricUniformPVSampler
+            else:
+                raise ValueError(ERR_MSG_INVALID_LOCAL_GLOBAL_CORRELATION_METHOD)
+
+            sampler = sampler_class(
+                n_players=n_group_players, valuation_size = valuation_size,
+                correlation = correlation, u_lo = 0.0, u_hi = 1.0,
+                default_batch_size=default_batch_size, default_device=default_device)
+        else:
+            # no correlation players in group
+            if correlation_method is not None:
+                warnings.warn(WRN_MSG_CORRELATED_BUT_CORR_IS_ZERO)
+            sampler = UniformSymmetricIPVSampler(
+                u_lo, u_hi, n_group_players, valuation_size, default_batch_size, default_device)
+        return sampler
