@@ -11,6 +11,7 @@ import torch
 import numpy as np
 from scipy import interpolate, optimize
 from bnelearn.util.integration import cumulatively_integrate
+
 ###############################################################################
 #######   Known equilibrium bid functions                                ######
 ###############################################################################
@@ -209,6 +210,19 @@ def bne_all_pay(valuation: torch.Tensor, n: int, u_lo: int, u_hi: int, player_po
     vals = valuation ** n
     opt = (n-1)/denom * vals 
     return opt
+
+def bne_all_pay_regret(valuation: torch.Tensor, n: int, u_lo: int, u_hi: int, player_position: int = 0, beta: int = 0, gamma: int = 0) -> torch.Tensor:
+    if beta == 0.0 and gamma == 0.0:
+        return (n - 1) / n * torch.pow(valuation,n)
+    elif beta != 0.0 and gamma == 0.0:
+        return torch.pow(valuation,2) / (2+2*beta*(1-valuation))            
+    elif beta == 0.0 and gamma != 0.0:
+        return ((1+gamma)*(1+torch.exp(valuation*gamma)*(valuation*gamma-1))) / gamma**2*torch.exp(valuation*gamma)
+    else:
+        denom = (gamma - 2*beta)*(gamma - beta)                        
+        nom = torch.pow(1+beta-valuation*beta, gamma/beta-1)*(1+gamma)*((1+beta)**(2-gamma/beta)+torch.pow(1+beta-valuation*beta, 1-gamma/beta)*(valuation*gamma-1-(1+valuation)*beta))
+        return nom / denom   
+    return 
 
 
 ###############################################################################
@@ -419,3 +433,25 @@ def bne_splitaward_2x2_2_factory(experiment_config):
     return optimal_bid
 
 ###############################################################################
+
+###############################################################################
+### Contest Theory                                                          ###
+###############################################################################
+
+# taken from contest theory: a survey, corchon and serena
+def common_value_lottery_contest(valuation: torch.Tensor, player_position: int = 0, n_players: int = 2):
+    return (n_players -1)/(n_players ** 2) * valuation
+
+def two_two_symmetric_fixed_blotto(budgets, valuations, player_position):
+    return budgets 
+
+def symmetric_war_of_attrition_uniform(valuation: torch.Tensor, u_lo: int, u_hi: int, player_position: int = 0):
+
+    # shorthand notation for F^(n-1)
+    inner = lambda v: (v * 1/(u_hi-u_lo)) / (1-v/(u_hi-u_lo))
+
+    # calculate numerator integrals
+    numerator = cumulatively_integrate(inner, upper_bounds = valuation)
+
+
+    return numerator

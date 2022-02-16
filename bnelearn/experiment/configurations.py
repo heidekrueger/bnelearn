@@ -69,6 +69,8 @@ class SettingConfig:
     loss: float = None
     risk_function: callable = None
 
+    common_value: float = None
+
 
 @dataclass
 class LearningConfig:

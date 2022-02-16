@@ -19,7 +19,7 @@ from bnelearn.experiment.configurations import (SettingConfig,
 from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
                                                           LLGFullExperiment,
                                                           LLLLGGExperiment,
-                                                          MultiBattleContest)
+                                                          BlottoExperiment)
 
 from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment, MultiUnitSymmetricEqualAllPayExperiment, MultiUnitSymmetricUnequalAllPayExperiment)
 
@@ -30,6 +30,8 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         AffiliatedObservationsExperiment,
                                                         SingleItemSymmetricContestExperiment,
                                                         SingleItemAsymmetricUniformicAllPayExperiment)
+
+from bnelearn.experiment.contest_experiments import (SingleItemConstantPriorContest)
 
 # TODO: server-specific constant hardcoded. We need a more dynamic way to do this.
 # See gitlab issue #218
@@ -307,6 +309,45 @@ class ConfigurationManager:
         self.setting.payment_rule = 'all_pay'
         self.setting.budgets = [1.25]
 
+    def _init_stochastic_blotto(self):
+        self.setting.u_lo = [0, 0]
+        self.setting.u_hi = [1.5, 1.0]
+        self.learning.model_sharing = True
+        self.setting.budgets = [2, 1]
+
+    def _init_blotto_weights(self):
+        self.setting.u_lo = [0, 0]
+        self.setting.u_hi = [1., 1.]
+        self.learning.model_sharing = True
+        self.setting.budgets = [1, 1]
+
+    def _init_war_of_attrition(self):
+        # self.setting.u_lo = [0]
+        # self.setting.u_hi = [1]
+        # self.learning.model_sharing = False
+        self.setting.payment_rule = 'war_of_attrition'
+        self.learning.model_sharing = False
+        self.setting.valuation_mean = 0.5
+        self.setting.valuation_std = 0.15
+
+    def _init_single_item_fist_price_all_pay_common_value_contest(self):
+        self.learning.model_sharing = True
+        self.setting.common_value = 0.5
+        self.setting.payment_rule = "first_price"
+        self.setting.csf = "all_pay"
+
+    def _init_single_item_second_price_all_pay_common_value_contest(self):
+        self.learning.model_sharing = True
+        self.setting.common_value = 0.5
+        self.setting.payment_rule = "second_price"
+        self.setting.csf = "all_pay"
+
+    def _init_single_item_first_price_lottery_common_value_contest(self):
+        self.learning.model_sharing = True
+        self.setting.common_value = 0.5
+        self.setting.payment_rule = "first_price"
+        self.setting.csf = "relative_difference"
+
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
         # Learnings
@@ -427,6 +468,24 @@ class ConfigurationManager:
     def _post_init_symmetric_valuation_symmetric_budget_blotto(self):
         pass
 
+    def _post_init_stochastic_blotto(self):
+        self.setting.csf = "stochastic"
+
+    def _post_init_blotto_weights(self):
+        self.setting.csf = "deterministic"
+    
+    def _post_init_war_of_attrition(self):
+        pass
+
+    def _post_init_single_item_fist_price_all_pay_common_value_contest(self):
+        pass
+
+    def _post_init_single_item_second_price_all_pay_common_value_contest(self):
+        pass
+
+    def _post_init_single_item_first_price_lottery_common_value_contest(self):
+        pass
+
     experiment_types = {
         'single_item_uniform_symmetric':
             (UniformSymmetricPriorSingleItemExperiment, _init_single_item_uniform_symmetric,
@@ -466,8 +525,19 @@ class ConfigurationManager:
         (MultiUnitSymmetricUnequalAllPayExperiment, _init_multi_unit_symmetric_unequal_all_pay, _post_init_multi_unit_symmetric_unequal_all_pay),
         'single_item_symmetric_tullock_contest':
         (SingleItemSymmetricContestExperiment, _init_single_item_symmetric_tullock, _post_init_single_item_symmetric_tullock),
-        'multi_battle_symmetric_all_pay':
-        (MultiBattleContest, _init_multi_battle_symmetric_all_pay, _post_init_multi_battle_symmetric_all_pay)}
+        'stochastic_blotto':
+        (BlottoExperiment, _init_stochastic_blotto, _post_init_stochastic_blotto),
+        'blotto_weights':
+        (BlottoExperiment, _init_blotto_weights, _post_init_blotto_weights),
+        'war_of_attrition':
+        (GaussianSymmetricPriorSingleItemExperiment, _init_war_of_attrition, _post_init_war_of_attrition),
+        'single_item_first_price_all_pay_common_value_contest':
+        (SingleItemConstantPriorContest, _init_single_item_fist_price_all_pay_common_value_contest, _post_init_single_item_fist_price_all_pay_common_value_contest),
+        'single_item_second_price_all_pay_common_value_contest':
+        (SingleItemConstantPriorContest, _init_single_item_second_price_all_pay_common_value_contest, _post_init_single_item_second_price_all_pay_common_value_contest),
+        'single_item_first_price_lottery_common_value_constest':
+        (SingleItemConstantPriorContest, _init_single_item_first_price_lottery_common_value_contest, 
+        _post_init_single_item_first_price_lottery_common_value_contest)}
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
         self.experiment_type = experiment_type

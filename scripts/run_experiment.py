@@ -28,14 +28,12 @@ if __name__ == '__main__':
     # path is user-specific
     log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug')
     
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_symmetric_uniform_all_pay', n_runs=1, n_epochs=3500) \
-        .set_setting(n_players=2) \
-        .set_learning(pretrain_iters = 500, batch_size=2**15) \
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_symmetric_uniform_all_pay', n_runs=1, n_epochs=5000) \
+        .set_setting(n_players=2, regret=[0.23153299,  0.18192447]) \
+        .set_learning(pretrain_iters = 500, batch_size=2**18) \
         .set_logging(log_root_dir=log_root_dir, eval_batch_size=2**15, util_loss_grid_size=2**10, util_loss_batch_size=2**12, 
-                     util_loss_frequency=100000, save_models=False) \
-        .set_hardware(specific_gpu=7).get_config()
-
-   
+                     util_loss_frequency=1000, save_models=False) \
+        .set_hardware(specific_gpu=6).get_config()
 
     experiment = experiment_class(experiment_config)
     experiment.run()

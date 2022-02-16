@@ -3,7 +3,7 @@
 from typing import List, Tuple
 import torch
 from torch.cuda import _device_t as Device
-from .base import ValuationObservationSampler
+from .base import ValuationObservationSampler, PVSampler
 
 class MineralRightsValuationObservationSampler(ValuationObservationSampler):
     """The 'Mineral Rights' model is a common value model:
@@ -256,3 +256,52 @@ class AffiliatedValuationObservationSampler(ValuationObservationSampler):
             .repeat(*([1]*len(outer_batch_sizes)), 1, self.n_players, 1)
 
         return valuations, observations
+
+class CommonValueSampler(PVSampler):
+    
+    def __init__(self, 
+                 n_players, 
+                 valuation_size, 
+                 support_bounds, 
+                 default_batch_size=1, 
+                 default_device=None):  
+
+        self.common_value = support_bounds[0][0][0]
+
+        super().__init__(n_players, valuation_size, support_bounds, default_batch_size, default_device)
+
+    def draw_profiles(self, batch_sizes: List[int] = None, device = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        
+        valuations = torch.ones(*batch_sizes, self.n_players, self.valuation_size, device=device) * self.common_value
+        observations = torch.ones(*batch_sizes, self.n_players, self.valuation_size, device=device) * self.common_value
+
+        return valuations, observations
+
+    def _sample(self, batch_sizes, device) -> torch.Tensor:
+
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
+
+        # create an empty tensor on the output device, then sample in-place
+        return torch.ones([*batch_sizes, self.n_players, self.valuation_size], device=device) * self.common_value
+
+    def draw_conditional_profiles(self,
+                                  conditioned_player: int,
+                                  conditioned_observation: torch.Tensor,
+                                  inner_batch_size: int,
+                                  device: Device = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Due to independence, we can simply draw a full profile and replace the
+        # conditioned_observations by their specified value.
+        # Due to PV, valuations are equal to the observations
+
+        device = device or self.default_device
+        inner_batch_size = inner_batch_size or self.default_batch_size
+        *outer_batch_sizes, observation_size = conditioned_observation.shape
+
+        profile = self._sample([*outer_batch_sizes, inner_batch_size], device)
+
+        profile[..., conditioned_player, :] = \
+            conditioned_observation \
+                .view(*outer_batch_sizes, 1, observation_size) \
+                .repeat(*([1]*len(outer_batch_sizes)), inner_batch_size, 1)
+
+        return profile, profile

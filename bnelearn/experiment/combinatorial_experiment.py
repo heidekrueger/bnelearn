@@ -15,6 +15,7 @@ from functools import partial
 from typing import Iterable, List
 import math
 import warnings
+from matplotlib.pyplot import phase_spectrum
 from scipy import optimize
 from tqdm import tqdm
 import numpy as np
@@ -22,7 +23,7 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 
 from bnelearn.mechanism import (
-    LLGAuction, LLGFullAuction, LLLLGGAuction, MultiBattleAllPayAuction
+    LLGAuction, LLGFullAuction, LLLLGGAuction, MultiBattleAllPayAuction, Blotto, StochasticBlotto
 )
 from bnelearn.bidder import Bidder, CombinatorialBidder
 from bnelearn.environment import AuctionEnvironment
@@ -31,7 +32,7 @@ from bnelearn.experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
 
 import bnelearn.util.logging as logging_utils
-from bnelearn.sampler import LLGSampler, LLGFullSampler, LLLLGGSampler
+from bnelearn.sampler import LLGSampler, LLGFullSampler, LLLLGGSampler, UniformSymmetricIPVSampler, BlottoUniformWeightSampler
 
 # maps config correlation_types to LocalGlobalSampler correlation_method arguments
 CORRELATION_METHODS = {
@@ -662,3 +663,69 @@ class MultiBattleContest(Experiment):
     def _get_logdir_hierarchy(self):
         name = [self.payment_rule, 'multi-battle', str(self.n_players) + "p_" + str(self.n_items) + "i"]
         return os.path.join(*name)
+
+class BlottoExperiment(Experiment):
+
+    def __init__(self, config: ExperimentConfig):
+        self.config = config
+
+        self.n_players = config.setting.n_players
+        self.u_lo = config.setting.u_lo[0]
+        self.u_hi = config.setting.u_hi[0]
+
+        self.device = self.config.hardware.device
+
+        self.observation_size = self.action_size = self.valuation_size =  config.setting.n_units
+
+        self.positive_output_point = torch.tensor([self.u_hi] * self.observation_size)
+
+        self.model_sharing = self.config.learning.model_sharing
+        if self.model_sharing:
+            self.n_models = 1
+            self._bidder2model = [0] * self.n_players
+        else:
+            self.n_models = self.n_players
+            self._bidder2model = list(range(self.n_players))
+        
+
+        self.csf = config.setting.csf
+
+        self.budgets = self.config.setting.budgets
+
+        super().__init__(config=config)
+
+    def _setup_mechanism(self):
+
+        if self.csf == "deterministic":
+            self.mechanism = Blotto()
+        elif self.csf == "stochastic":
+            self.mechanism = StochasticBlotto()
+        else:
+            raise NotImplementedError
+
+    def _get_logdir_hierarchy(self):
+        if self.csf == "deterministic":
+            name = ['blotto']
+        elif self.csf == "stochastic":
+            name = ['stochastic_blotto']
+        else:
+            raise NotImplementedError
+
+        return os.path.join(*name)
+
+    def _setup_sampler(self):
+
+        default_batch_size = self.config.learning.batch_size
+        default_device = self.config.hardware.device
+
+        self.sampler = BlottoUniformWeightSampler(lo=self.u_lo, 
+                                                  hi=self.u_hi, 
+                                                  n_players=self.n_players,
+                                                  valuation_size=self.valuation_size, 
+                                                  default_batch_size=default_batch_size, 
+                                                  default_device=default_device)
+
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+        return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching, 
+                      observation_size=self.observation_size, valuation_size=self.valuation_size,
+                      budget=self.budgets[player_position], blotto_welfare=True)

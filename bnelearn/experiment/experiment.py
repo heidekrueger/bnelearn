@@ -704,6 +704,20 @@ class Experiment(ABC):
             self._plot(plot_data=(o, b), writer=self.writer, figure_name='bid_function',
                        epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
 
+            # TODO Markus add valuation in relation to overall valuations
+            # if self.env._observations.shape[-1] == 2:
+            #     value_ratios = torch.stack([self.env._observations[:self.plot_points, b, ...]/self.env._observations[:self.plot_points, b, ...].sum(dim=1, keepdim=True) for b in unique_bidders], dim=1)
+            # elif self.env._observations.shape[-1] == 3:
+            #     value_ratios = torch.stack([self.env._observations[:self.plot_points, b, ...]**2/(self.env._observations[:self.plot_points, b, ...]**2).sum(dim=1, keepdim=True) for b in unique_bidders], dim=1)
+            # else:
+            #     m = self.env._observations.shape[-1]
+            #     value_ratios = torch.stack([self.env._observations[:self.plot_points, b, ...]**((m-1)/(m-2))/(self.env._observations[:self.plot_points, b, ...]**((m-1)/(m-2))).sum(dim=1, keepdim=True) for b in unique_bidders], dim=1)
+
+            # self._plot(plot_data=(value_ratios, b), writer=self.writer, figure_name='bid_function_relative',
+            #            epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
+
+
+
         self.overhead = self.overhead + timer() - start_time
         self._cur_epoch_log_params['overhead_hours'] = self.overhead / 3600
         if self.writer:

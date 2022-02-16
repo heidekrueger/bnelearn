@@ -20,8 +20,8 @@ from bnelearn.experiment.equilibria import (
     bne_fpsb_ipv_symmetric_uniform_prior,
     bne_2p_affiliated_values,
     bne_3p_mineral_rights,
-    bne_fpsb_ipv_symmetric_generic_prior_risk_neutral, truthful_bid, bne_all_pay)
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, SingleItemAllPayAuction, SingleItemTullockContest
+    bne_fpsb_ipv_symmetric_generic_prior_risk_neutral, truthful_bid, bne_all_pay, symmetric_war_of_attrition_uniform, bne_all_pay_regret)
+from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, SingleItemAllPayAuction, SingleItemTullockContest, SingleItemWarOfAttrition
 from bnelearn.sampler import (AffiliatedValuationObservationSampler,
                               CompositeValuationObservationSampler,
                               MineralRightsValuationObservationSampler,
@@ -63,6 +63,9 @@ class SingleItemExperiment(Experiment, ABC):
             self.mechanism = SingleItemAllPayAuction(random_tie_break=False, cuda=self.hardware.cuda)
         elif self.payment_rule == "tullock":
             self.mechanism = SingleItemTullockContest(cuda=self.hardware.cuda)
+        elif self.payment_rule == "war_of_attrition":
+            self.mechanism = SingleItemWarOfAttrition(cuda=self.hardware.cuda)
+            self.risk = None
         else:
             raise ValueError('Invalid Mechanism type!')
 
@@ -124,6 +127,8 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         elif self.payment_rule == 'second_price':
             self._optimal_bid = truthful_bid
             return True
+        elif self.payment_rule == 'war_of_attrition':
+            return False
         else:
             # no bne found, defer to parent
             return super()._check_and_set_known_bne()
@@ -252,6 +257,9 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         elif self.payment_rule == "all_pay":
             self._optimal_bid = partial(bne_all_pay, n=self.n_players, u_lo=self.u_lo, u_hi=self.u_hi)
             return True
+        elif self.payment_rule == "war_of_attrition":
+            self._optimal_bid = partial(symmetric_war_of_attrition_uniform, u_lo=self.u_lo, u_hi=self.u_hi)
+            return True
         else: # no bne found, defer to parent
             return super()._check_and_set_known_bne()
 
@@ -301,6 +309,11 @@ class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperim
         self.plot_xmax = int(self.valuation_mean + 3 * self.valuation_std)
         self.plot_ymin = 0
         self.plot_ymax = 20 if self.config.setting.payment_rule == 'first_price' else self.plot_xmax
+
+        self.plot_xmin = 0
+        self.plot_xmax = 1
+        self.plot_ymin = 0
+        self.plot_ymax = 1
 
         super().__init__(config=config)
 
@@ -692,6 +705,10 @@ class SingleItemSymmetricContestExperiment(UniformSymmetricPriorSingleItemExperi
         self.risk_function = self.config.setting.risk_function if self.config.setting.risk < 1.0 else None
 
         super().__init__(config)
+
+        # update bne strategy
+        if self.regret_coefficients is not None:
+            self._optimal_bid = partial(bne_all_pay_regret, n=self.n_players, u_lo=self.u_lo, u_hi=self.u_hi, beta=self.regret_coefficients[0], gamma=self.regret_coefficients[1])
 
 
     def _get_logdir_hierarchy(self):

@@ -14,18 +14,17 @@ class FixedManualIPVSampler(PVSampler):
     """
     def __init__(self, valuation_tensor: torch.Tensor):
 
-        assert valuation_tensor.dim() == 3, "invalid input tensor"
+        assert valuation_tensor.dim() >= 3, "invalid input tensor"
 
         self._profile = valuation_tensor
 
-        batch_size, n_players, valuation_size = valuation_tensor.shape
+        *batch_size, n_players, valuation_size = valuation_tensor.shape
         device = valuation_tensor.device
 
         support_low = valuation_tensor.min(dim=0).values
         support_hi = valuation_tensor.max(dim=0).values
 
         support_bounds = torch.stack([support_low, support_hi], dim=-1)
-
 
         super.__init__(n_players, valuation_size, support_bounds,
                        batch_size, device)
@@ -115,6 +114,7 @@ class UniformSymmetricIPVSampler(SymmetricIPVSampler):
     def __init__(self, lo, hi,
                  n_players, valuation_size,
                  default_batch_size, default_device: Device = None):
+                 
         distribution = torch.distributions.uniform.Uniform(low=lo, high=hi)
         super().__init__(distribution,
                          n_players, valuation_size,
@@ -127,7 +127,6 @@ class UniformSymmetricIPVSampler(SymmetricIPVSampler):
         return torch.empty(
             [*batch_sizes, self.n_players, self.valuation_size],
             device=device).uniform_(self.base_distribution.low, self.base_distribution.high)
-
 
 class GaussianSymmetricIPVSampler(SymmetricIPVSampler):
     """An IPV sampler with symmetric Gaussian priors."""
@@ -268,3 +267,28 @@ class SplitAwardtValuationObservationSampler(UniformSymmetricIPVSampler):
             .view(-1, dims)
 
         return grid
+
+class BlottoUniformWeightSampler(SymmetricIPVSampler):
+
+    def __init__(self, lo, hi, n_players, valuation_size, default_batch_size, default_device: Device = None):
+        distribution = torch.distributions.uniform.Uniform(low=lo, high=hi)
+        super().__init__(distribution,
+                         n_players, valuation_size,
+                         default_batch_size, default_device)
+
+    def _sample(self, batch_sizes, device) -> torch.Tensor:
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
+
+        # create an empty tensor on the output device, then sample in-place
+        base = torch.empty([*batch_sizes, self.n_players, self.valuation_size], device=device)
+
+        base[..., 0].uniform_(self.base_distribution.low, self.base_distribution.high)
+        base[..., 1] = torch.distributions.uniform.Uniform(0, self.base_distribution.high - base[..., 0]).sample()
+        base[..., 2] = self.base_distribution.high - base[..., 0] - base[..., 1]
+
+        #assert base.sum(dim=-1) == 1
+
+        return base
+
+
+        

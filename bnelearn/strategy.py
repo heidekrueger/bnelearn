@@ -342,6 +342,9 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
         self.layers[str(nn.ReLU()) + '_out'] = nn.ReLU()
         self.activations.append(self.layers[str(nn.ReLU()) + '_out'])
+                # TODO softmax layer here 
+        #self.layers[str(nn.Softmax()) + '_out'] = nn.Softmax(dim=-1)
+        #self.activations.append(self.layers[str(nn.Softmax()) + '_out'])
 
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization

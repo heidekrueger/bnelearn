@@ -6,6 +6,7 @@ This module implements players / bidders / agents in games.
 """
 
 from abc import ABC, abstractmethod
+from typing import Callable
 import warnings
 import torch
 from bnelearn.strategy import (Strategy, MatrixGameStrategy,
@@ -79,9 +80,11 @@ class Bidder(Player):
                  bid_size: int = 1,
                  cuda: str = True,
                  enable_action_caching: bool = False,
-                 risk: float = 1.0,
+                 risk: Callable = None,
                  regret = None,
-                 loss = None
+                 loss = None,
+                 budget: float = None,
+                 blotto_welfare: bool = False
                 ):
 
         super().__init__(strategy, player_position, batch_size, cuda)
@@ -93,6 +96,9 @@ class Bidder(Player):
         self.risk = risk
         self.regret = regret
         self.loss = loss
+
+        self.budget = budget
+        self.blotto_welfare = blotto_welfare
 
         self._enable_action_caching = enable_action_caching
         self._cached_observations_changed = False # true if new observations drawn since actions calculated
@@ -158,7 +164,10 @@ class Bidder(Player):
             valuations = self._cached_valuations
 
         welfare = self.get_welfare(allocations, valuations)
-        payoff = welfare - payments
+        try:
+            payoff = welfare - payments
+        except:
+            print("a")
 
         # check for regret 
             #if self.regret != None:
@@ -194,7 +203,10 @@ class Bidder(Player):
         (..., batch_size, n_items). These batch dimensions are kept in returned
         welfare.
         """
+    
         assert allocations.dim() >= 2 # [batch_sizes] x items
+
+        
         if valuations is None:
             valuations = self._cached_valuations
 
@@ -229,6 +241,9 @@ class Bidder(Player):
             inputs = inputs[:,:dim]
 
         actions = self.strategy.play(inputs)
+
+        if self.budget != None:
+            actions = actions * self.budget
 
         if self._enable_action_caching:
             self.cached_observations = observations

@@ -4,6 +4,8 @@ in bundles of items).
 import os
 import sys
 from typing import Tuple
+from numpy.core.numeric import zeros_like
+from pkg_resources import BINARY_DIST
 #from time import perf_counter as timer
 
 # pylint: disable=E1102
@@ -1417,4 +1419,122 @@ class MultiBattleAllPayAuction(Mechanism):
         payments_per_item = payments.reshape((payments.shape[0], payments.shape[1], 1))
         allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
+        return allocations, payments
+
+class Blotto(Mechanism):
+    def __init__(self, cuda: bool = True, only_return_probs: bool = True):
+
+        only_return_probs = False
+        self.only_return_probs = only_return_probs
+        
+        super().__init__(cuda)
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        
+        Runs a (batch of) the stochastic blotto game
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, n_items)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches x n_players x n_items),
+                        1 indicating item is allocated to corresponding player
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (n_batches x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+
+        assert bids.dim() >= 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # name dimensions for readibility
+        # pylint: disable=unused-variable
+        *batch_dims, player_dim, item_dim = range(bids.dim())  # pylint: disable=unused-variable
+        *batch_sizes, n_players, n_items = bids.shape
+
+        payments = bids.sum(dim=item_dim) # pay as bid
+
+        # For test reasons, set payments to 0 
+        payments = torch.zeros(*batch_sizes, n_players, device=bids.device)
+
+        allocations = torch.zeros(*batch_sizes, n_players, n_items, device=bids.device)
+
+        _, winning_bids = bids.transpose(item_dim, player_dim).max(dim=item_dim, keepdim=True)
+        winning_bids = winning_bids.transpose(player_dim, item_dim)
+
+        allocations.scatter_(player_dim, winning_bids, 1)
+            
+        return allocations, payments
+
+class StochasticBlotto(Mechanism):
+    def __init__(self, cuda: bool = True, only_return_probs: bool = True):
+
+        only_return_probs = False
+        self.only_return_probs = only_return_probs
+        
+        super().__init__(cuda)
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        
+        Runs a (batch of) the stochastic blotto game
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (batch_size, n_players, n_items)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (n_batches x n_players x n_items),
+                        1 indicating item is allocated to corresponding player
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (n_batches x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+
+        assert bids.dim() >= 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # name dimensions for readibility
+        # pylint: disable=unused-variable
+        *batch_dims, player_dim, item_dim = range(bids.dim())  # pylint: disable=unused-variable
+        *batch_sizes, n_players, n_items = bids.shape
+
+        payments = bids.sum(dim=item_dim) # pay as bid
+
+
+
+        allocations = torch.zeros(*batch_sizes, n_players, n_items, device=bids.device)
+
+        winning_probs = bids.transpose(item_dim, player_dim) / bids.transpose(item_dim, player_dim).sum(dim=item_dim).reshape(*batch_sizes, n_items, 1)
+
+        if self.only_return_probs:
+            winning_probs = winning_probs.transpose(player_dim, item_dim)
+            winning_probs[winning_probs.isnan()] = 0.5 # draws
+            allocations = winning_probs
+        else:
+            winning_probs = winning_probs[..., 0]
+            winning_probs[winning_probs.isnan()] = 0.5 # draws
+            
+            draws = torch.bernoulli(winning_probs)
+            draws = draws.reshape((*batch_sizes, 1, 3)).long()
+
+            allocations.scatter_(player_dim, draws, 1)
+
+            
         return allocations, payments

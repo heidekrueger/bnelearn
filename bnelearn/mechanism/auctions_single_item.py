@@ -253,6 +253,71 @@ class SingleItemAllPayAuction(Mechanism):
 
         return allocations, payments # payments: batches x players, allocation: batch x players x items
 
+class SingleItemWarOfAttrition(Mechanism):
+
+    def __init__(self, cuda: bool):
+        super().__init__(cuda=cuda)
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs a (batch of) First Price Sealed Bid All-Pay Auction.
+
+        This function is meant for single-item auctions.
+        If a bid tensor for multiple items is submitted, each item is auctioned
+        independently of one another.
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (*batch_sizes, n_players, n_items)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (*batch_sizes x n_players x n_items),
+                        1 indicating item is allocated to corresponding player
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (*batch_sizes x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+
+        assert bids.dim() >= 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # name dimensions for readibility
+        # pylint: disable=unused-variable
+        *batch_dims, player_dim, item_dim = range(bids.dim())  # pylint: disable=unused-variable
+        *batch_sizes, n_players, n_items = bids.shape
+ 
+        # allocate return variables
+        allocations = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
+        payments = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
+
+        if player_dim == 2:
+            print("x")
+
+        # Assign item to the bidder with the highest bid, in case of a tie assign it randomly to one of the winning bidderss
+        highest_bids, winning_bidders = bids.max(dim=player_dim, keepdim=True) 
+
+        allocations.scatter_(player_dim, winning_bidders, 1)
+        allocations.masked_fill_(mask=bids == 0, value=0)
+
+        # calculate payments
+        if n_players == 2:
+            lowest_bids, losing_bidders = bids.min(dim=player_dim, keepdim=True)
+            payments.scatter_(player_dim, winning_bidders, lowest_bids) # assign second highest bid to winner
+            payments.scatter_(player_dim, losing_bidders, lowest_bids) # assign second bidder his own bid
+            payments.squeeze_()
+        else:
+            raise NotImplementedError
+        #payments = bids.reshape(*batch_sizes, n_players) # pay as bid
+
+        return allocations, payments # payments: batches x players, allocation: batch x players x items
+
 
 class SingleItemTullockContest(Mechanism):
 
