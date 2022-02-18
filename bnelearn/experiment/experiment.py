@@ -737,6 +737,17 @@ class Experiment(ABC):
             self._cur_epoch_log_params['revenue'] = \
                 self.env.get_revenue(self.env)
 
+        if self.learning.smooth_market:
+            self._cur_epoch_log_params['smoothing_factor'] = \
+                self.env.mechanism.smoothing
+
+        self._cur_epoch_log_params['utility_variance'] = [
+            self.env.get_reward(
+                self.env.agents[self._model2bidder[m][0]],
+                aggregate=False
+                ).std()**2
+            for m in range(len(self.models))]
+
         # plotting
         if self.epoch % self.logging.plot_frequency == 0 and self.epoch > 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))

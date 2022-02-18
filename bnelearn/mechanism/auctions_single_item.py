@@ -84,7 +84,7 @@ class FirstPriceSealedBidAuction(Mechanism):
     """First Price Sealed Bid auction"""
 
     def __init__(self, **kwargs):
-        self.smoothing = .05
+        self.smoothing = .01
         super().__init__(**kwargs)
 
     # TODO: If multiple players submit the highest bid, the implementation chooses the first rather than at random
@@ -141,7 +141,7 @@ class FirstPriceSealedBidAuction(Mechanism):
             payments = payments_per_item.sum(item_dim)
             allocations.scatter_(player_dim, winning_bidders, 1)
 
-            # Don't allocate items that have a winnign bid of zero.
+            # Don't allocate items that have a winning bid of zero.
             allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
         else:
@@ -150,7 +150,7 @@ class FirstPriceSealedBidAuction(Mechanism):
             # Use stop_gradient for other agents?
 
             # annealing of smoothing
-            self.smoothing = max(0.9995*self.smoothing, 0.002)
+            # self.smoothing = max(0.999*self.smoothing, 0.002)
 
             allocations = torch.nn.Softmax(dim=-2)(bids / self.smoothing)
 

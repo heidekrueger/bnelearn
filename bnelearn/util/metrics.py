@@ -17,8 +17,12 @@ MAPPING_METRICS_TAGS = {
     'efficiency':           'market/efficiency',
     'revenue':              'market/revenue',
     'PoA':                  'market/PoA',
+
     'update_norm':          'learner_info/update_norm',
     'gradient_norm':        'learner_info/gradient_norm',
+    'smoothing_factor':     'learner_info/smoothing_factor',
+    'utility_variance':     'learner_info/utility_variance',
+
     'util_loss_ex_ante':    'eval/util_loss_ex_ante',
     'util_loss_ex_interim': 'eval/util_loss_ex_interim',
     'estimated_relative_ex_ante_util_loss': 'eval/estimated_relative_ex_ante_util_loss',
@@ -27,8 +31,9 @@ MAPPING_METRICS_TAGS = {
     'epsilon_absolute':     'eval_vs_bne/epsilon_absolute',
     'L_2':                  'eval_vs_bne/L_2',
     'L_inf':                'eval_vs_bne/L_inf',
+
     'overhead_hours':       'meta/overhead_hours',
-    'iter_time':     'meta/iter_time',
+    'iter_time':            'meta/iter_time',
 
     # won't actually be logged
     'prev_params':          'learner_info/prev_params'

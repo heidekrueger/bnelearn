@@ -24,11 +24,11 @@ if __name__ == '__main__':
     # model_sharing = True
     pretrain_iters = 50
 
-    batch_size = 2**17
+    batch_size = 2**10
     eval_batch_size = 2**22
-    util_loss_frequency = 50
+    util_loss_frequency = n_epochs
     util_loss_batch_size = 2**10
-    util_loss_grid_size = 2**10
+    util_loss_grid_size = 2**11
 
     # Run LLG nearest-vcg for different risks / correlations ################
     log_root_dir = os.path.join(
@@ -39,7 +39,9 @@ if __name__ == '__main__':
         ConfigurationManager(
             experiment_type='single_item_uniform_symmetric',
             n_runs=n_runs,
-            n_epochs=n_epochs) \
+            seeds=[69],
+            n_epochs=n_epochs,
+            ) \
             .set_setting(
                 payment_rule='first_price',
                 ) \
@@ -55,7 +57,10 @@ if __name__ == '__main__':
                 util_loss_frequency=util_loss_frequency,
                 util_loss_batch_size=util_loss_batch_size,
                 util_loss_grid_size=util_loss_grid_size,
-                eval_batch_size=eval_batch_size) \
+                eval_batch_size=eval_batch_size,
+                best_response=True,
+                cache_eval_actions=True,
+                ) \
             .set_hardware(specific_gpu=specific_gpu) \
             .get_config()
     experiment = experiment_class(experiment_config)
