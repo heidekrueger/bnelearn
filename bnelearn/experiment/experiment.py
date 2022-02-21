@@ -24,6 +24,7 @@ from matplotlib.ticker import FormatStrFormatter, LinearLocator
 from mpl_toolkits.mplot3d import Axes3D  # pylint: disable=unused-import
 
 from torch.utils.tensorboard import SummaryWriter
+import torchviz
 
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
@@ -747,6 +748,16 @@ class Experiment(ABC):
                 aggregate=False
                 ).std()**2
             for m in range(len(self.models))]
+
+        # plot computational graph
+        if self.epoch == 0:
+            for i, model in enumerate(self.models):
+                o = self.env._observations[:, i, :]
+                graph = torchviz.make_dot(model(o), params=dict(model.named_parameters()),
+                                          show_attrs=True, show_saved=True)
+                graph.render(
+                    filename=f'computational graph {self._get_model_names()[i]}',
+                    format='png', directory=self.run_log_dir)
 
         # plotting
         if self.epoch % self.logging.plot_frequency == 0 and self.epoch > 0:
