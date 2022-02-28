@@ -10,3 +10,4 @@ pylint
 scipy
 tqdm
 tabulate
+sympy

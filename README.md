@@ -43,7 +43,7 @@ Everything should likewise run on Windows, but you may need to change the output
 
 ### Running the experiments
 
-You can then run the experiments underlying the tables and figures in the main paper via `python run_experiments.py`. The standard configuration of the file reruns the experiments behind Figure 3, i.e. one run each for all combinations of the correlation strength and the risk parameter. To run the other experiments reported in the paper, make the following changes in lines 17 to 34:
+You can then run the experiments underlying the tables and figures in the main paper via `python run_experiments_npga.py`. The standard configuration of the file reruns the experiments behind Figure 3, i.e. one run each for all combinations of the correlation strength and the risk parameter. To run the other experiments reported in the paper, make the following changes in lines 17 to 34:
 
 * For the experiments underlying Figure 2, set `n_runs = 10`, `gammas = [0.5]`, `payment_rules = ['nearest_vcg']`.
 * For the experiments underlying Table 1, set `n_runs = 10`, `risks = [1.0]`, `gammas = [0.5]`, `payment_rules = ['vcg', 'nearest_bid', 'nearest_zero', 'nearest_vcg', 'first_price']`.
@@ -58,3 +58,21 @@ To run the other experiments reported in the Supplementary Information, make the
 * For the experiments underlying Figure S.2, make the corresponding changes to the previous experiments.
 
 Logs will be written into the `experiments` subdirectory. While the experiments are running, you can examine the training progress via `tensorboard --logdir experiments`.
+
+
+## Alternative Algorithm
+in a follow up article, we have introduced using gradient-free particle swarm optimization for computing BNE. You can then run a comparison between the two approaches via `python run_experiments_pso.py`.
+
+![image info](./figures/eval_epsilon_relative.svg)
+The figure depicts the relative loss of NPGA (orange) and PSO (red).
+
+More on the PSO algorithm can be found in the following paper:
+
+```
+@inproceedings{Kohring2022,
+  title={Equilibrium Computation for Auction Games via Multi-Swarm Optimization},
+  author={Kohring, Nils and Fr{\"o}hlich, Carina and Heidekr{\"u}ger, Stefan and Bichler, Martin},
+  booktitle={AAAI RLG Workshop},
+  year={2022}
+}
+```
