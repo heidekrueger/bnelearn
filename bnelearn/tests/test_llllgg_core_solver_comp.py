@@ -1,8 +1,10 @@
+"""Testing for identical results from solvers for the LLLLGG combinatorial auction implementations."""
 import pytest
 import torch
 from bnelearn.mechanism import LLLLGGAuction
+import warnings
 
-"""Testing for identical results from solvers for the LLLLGG combinatorial auction implementations."""
+
 torch.manual_seed(1)
 torch.cuda.manual_seed(1)
 bids_1 = torch.rand([2**9,6,2], dtype = torch.float)
@@ -35,7 +37,7 @@ def run_LLLLGG_test(parallel, rule, bids, device, solver_1, solver_2):
         "Payments gap between {} and {}".format(solver_1,solver_2)
 
 @pytest.mark.parametrize("parallel, rule, bids, device", testdata, ids=ids)
-def test_LLLLGG(parallel,rule,bids, device):
+def test_LLLLGG_solver_identical_results(parallel,rule,bids, device, check_gurobi):
     """
     Testing batch_size > 1, VCG 0 prices, FP, global/local winning
     """

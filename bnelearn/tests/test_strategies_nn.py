@@ -5,7 +5,7 @@ import time
 import pytest
 import torch
 
-from bnelearn.strategy import NeuralNetStrategy, ClosureStrategy
+from bnelearn.strategy import NeuralNetStrategy
 
 batch_size = 8
 

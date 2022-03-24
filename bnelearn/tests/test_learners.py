@@ -8,6 +8,7 @@ from bnelearn.mechanism import StaticMechanism, StaticFunctionMechanism
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.learner import ESPGLearner, PGLearner, AESPGLearner
+from bnelearn.sampler import UniformSymmetricIPVSampler
 
 # Shared objects
 cuda = torch.cuda.is_available()
@@ -16,13 +17,12 @@ device = 'cuda' if cuda else 'cpu'
 hidden_nodes = [5,5]
 hidden_activations = [nn.SELU(), nn.SELU()]
 input_length = 1
-u_lo = 0
-u_hi = 10
+u_lo = 0.0
+u_hi = 10.0
 
 def strat_to_bidder(strategy, batch_size, player_position=0):
     """creates a bidder from a strategy"""
-    return Bidder.uniform(u_lo,u_hi, strategy, batch_size = batch_size, player_position=player_position)
-
+    return Bidder(strategy, player_position, batch_size)
 mechanism_auction = StaticMechanism(cuda=cuda)
 mechanism_function = StaticFunctionMechanism(cuda=cuda)
 
@@ -43,13 +43,14 @@ def test_static_mechanism():
 
     bidder = strat_to_bidder(model, BATCH_SIZE)
 
-    bidder.valuations.zero_().add_(10)
-    bids = bidder.valuations.clone().detach().view(-1,1,1)
+    valuations = torch.zeros(BATCH_SIZE, 1, device=device).add_(10)
+    bids = valuations.clone().detach().view(-1,1,1)
     bids.zero_().add_(10)
 
     allocations, payments = mechanism_auction.run(bids)
     # subset for single player
-    utilities = bidder.get_utility(allocations=allocations, payments=payments, bids=bids)
+    utilities = bidder.get_utility(
+        allocations=allocations[:,0,:], payments=payments[:,0], valuations=valuations)
 
     assert torch.isclose(utilities.mean(), torch.tensor(5., device=device), atol=1e-2), \
         "StaticMechanism returned unexpected rewards."
@@ -57,7 +58,8 @@ def test_static_mechanism():
     bids.add_(-5)
     allocations, payments = mechanism_auction.run(bids)
     # subset for single player
-    utilities = bidder.get_utility(allocations=allocations, payments=payments, bids=bids)
+    utilities = bidder.get_utility(
+        allocations=allocations[:,0,:], payments=payments[:,0], valuations=valuations)
     assert torch.isclose(utilities.mean(), torch.tensor(3.75, device=device), atol=3e-2), \
         "StaticMechanism returned unexpected rewards."
 
@@ -65,11 +67,11 @@ def test_ES_learner_SGD():
     """Tests ES PG learner with SGD optimizer in static environment.
        This does not test complete convergence but 'running in the right direction'.
     """
-    BATCH_SIZE = 2**12
+    BATCH_SIZE = 2**16
     epoch = 100
 
     optimizer_type = torch.optim.SGD
-    optimizer_hyperparams = {'lr': 1e-1, 'momentum': 0.5}
+    optimizer_hyperparams = {'lr': 1e-1, 'momentum': 0.3}
     learner_hyperparams = {'sigma': .1, 'population_size': 32, 'scale_sigma_by_model_size': False}
 
     model = NeuralNetStrategy(
@@ -80,10 +82,15 @@ def test_ES_learner_SGD():
         ).to(device)
 
     bidder = strat_to_bidder(model, BATCH_SIZE, 0)
+
+
     env = AuctionEnvironment(
         mechanism_auction, agents = [bidder],
+        valuation_observation_sampler= UniformSymmetricIPVSampler(u_lo, u_hi, 1, 1, BATCH_SIZE, device),
         strategy_to_player_closure=strat_to_bidder,
         batch_size = BATCH_SIZE, n_players=1)
+    
+    env.draw_valuations()
 
     learner = ESPGLearner(
         model = model,
@@ -93,7 +100,7 @@ def test_ES_learner_SGD():
         optimizer_hyperparams=optimizer_hyperparams
     )
 
-    for _ in range(epoch+1):
+    for e in range(epoch+1):
         utility = learner.update_strategy_and_evaluate_utility()
 
     assert utility > 1.34, "optimizer did not learn sufficiently (1.34), got {:.2f}".format(utility)
@@ -119,6 +126,7 @@ def test_PG_learner_SGD():
     bidder = strat_to_bidder(model, BATCH_SIZE, 0)
     env = AuctionEnvironment(
         mechanism_function, agents = [bidder],
+        valuation_observation_sampler= UniformSymmetricIPVSampler(u_lo, u_hi, 1, 1, BATCH_SIZE, device),
         strategy_to_player_closure=strat_to_bidder,
         batch_size = BATCH_SIZE, n_players=1)
 
@@ -136,11 +144,11 @@ def test_PG_learner_SGD():
     assert utility > 2.3, "optimizer did not learn sufficiently (2.2), got {:.2f}".format(utility)
 
 
+@pytest.mark.xfail(reason="AESP is still experimental.")
 def test_AESPG_learner_SGD():
     """Tests the standard policy gradient learner in static env.
     This does not test complete convergence but 'running in the right direction'.
     """
-    pytest.skip("AESPG is still experimental")
     BATCH_SIZE = 2**10
     epoch = 100
 

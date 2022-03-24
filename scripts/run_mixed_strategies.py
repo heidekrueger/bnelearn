@@ -23,38 +23,40 @@ if __name__ == '__main__':
     # Set up experiment
     experiment_config, experiment_class = \
         ConfigurationManager(
+            experiment_type="single_item_uniform_symmetric",
             # experiment_type='single_item_asymmetric_uniform_overlapping',
-            experiment_type='single_item_asymmetric_uniform_disjunct',
+            # experiment_type='single_item_asymmetric_uniform_disjunct',
             # experiment_type='llg_full',
             seeds=[69],
             n_runs=1,
             n_epochs=2000,
             ) \
         .set_setting(
-            payment_rule='mrcs_favored',
+            # payment_rule='mrcs_favored',
             # risk=1.1
             ) \
         .set_learning(
+            # learner_type='PGLearner',
             batch_size=2**17,
-            pretrain_to_bne=0,
+            # pretrain_to_bne=0,
             pretrain_iters=500,
             learner_hyperparams={
                 'population_size': 64,
-                'sigma': 1.,
+                'sigma': .1,
                 'scale_sigma_by_model_size': True,
                 # 'regularization': {
                 #     'inital_strength': .05,
                 #     'regularize_decay': .999
                 #     }
             },
-            mixed_strategy='normal'
+            # mixed_strategy='normal'
             ) \
         .set_hardware(
-            specific_gpu=2,
+            specific_gpu=1,
             ) \
         .set_logging(
             eval_batch_size=2**17,
-            cache_eval_actions=False,
+            cache_eval_actions=True,
             util_loss_batch_size=2**8,
             util_loss_grid_size=2**14,
             util_loss_frequency=100,

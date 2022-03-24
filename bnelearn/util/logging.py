@@ -3,7 +3,8 @@ import os
 import pickle
 import subprocess
 import time
-from typing import List
+from typing import List, Type
+import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,9 +15,12 @@ from torch.utils.tensorboard.writer import FileWriter, SummaryWriter, scalar
 import pkg_resources
 
 from bnelearn.bidder import Bidder
-from bnelearn import util
 from bnelearn.experiment.configurations import *
 
+
+#To avoid circular inputs, we'll use the literal in type hints rather than
+# importing bnelearn.experiment.Experiment
+Experiment: type = 'Experiment'
 
 _full_log_file_name = 'full_results'
 _aggregate_log_file_name = 'aggregate_log'
@@ -118,15 +122,18 @@ def print_aggregate_tensorboard_logs(experiment_dir):
 
 
 def log_git_commit_hash(experiment_dir):
-    """Saves the hash of the current git commit"""
+    """Saves the hash of the current git commit into experiment_dir."""
 
     # Will leave it here as a comment in case we'll ever need to log the full dependency tree or the environment.
     # os.system('pipdeptree --json-tree > dependencies.json')
     # os.system('conda env export > environment.yml')
 
-    commit_hash = str(subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip())[2:-1]
-    with open(os.path.join(experiment_dir, f'{_git_commit_hash_file_name}.txt'), "w") as text_file:
-        text_file.write(commit_hash)
+    try:
+        commit_hash = str(subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip())[2:-1]
+        with open(os.path.join(experiment_dir, f'{_git_commit_hash_file_name}.txt'), "w") as text_file:
+            text_file.write(commit_hash)
+    except Exception as e:
+        warnings.warn("Failed to retrieve and log the git commit hash.")
 
 
 def save_experiment_config(experiment_log_dir, experiment_configuration: ExperimentConfig):
@@ -225,7 +232,7 @@ class CustomSummaryWriter(SummaryWriter):
 
     def add_metrics_dict(self, metrics_dict: dict, run_suffices: List[str],
                          global_step=None, walltime=None,
-                         group_prefix: str = None):
+                         group_prefix: str = None, metric_tag_mapping: dict = None):
         """
         Args:
             metric_dict (dict): A dict of metrics. Keys are tag names, values are values.
@@ -234,6 +241,14 @@ class CustomSummaryWriter(SummaryWriter):
             run_suffices (List[str]): if each value in metrics_dict is scalar, doesn't need to be supplied.
                 When metrics_dict contains lists/iterables, they must all have the same length which should be equal to
                 the length of run_suffices
+            global_step (int, optional): The step/iteration at which the metrics are being logged.
+            walltime
+            group_prefix (str, optional): If given each metric name will be prepended with this prefix (and a '/'), 
+                which will group tags in tensorboard into categories.
+            metric_tag_mapping (dict, optional): A dactionary that provides a mapping between the metrics (keys of metrics_dict)
+                and the desired tag names in tensorboard. If given, each metric name will be converted to the corresponding tag name.
+                NOTE: bnelearn.util.metrics.MAPPING_METRICS_TAGS contains a standard mapping for common metrics. 
+                These already include (metric-specific) prefixes.
         """
         torch._C._log_api_usage_once("tensorboard.logging.add_scalar")
         walltime = time.time() if walltime is None else walltime
@@ -245,6 +260,11 @@ class CustomSummaryWriter(SummaryWriter):
         l = len(run_suffices)
 
         for key, vals in metrics_dict.items():
+            if metric_tag_mapping:
+                # check if key matches any of the names in the dictionary
+                matches = [k for k in metric_tag_mapping if key.startswith(k)]
+                if matches:
+                    key = key.replace(matches[0], metric_tag_mapping[matches[0]])
             tag = key if not group_prefix else group_prefix + '/' + key
 
             if isinstance(vals, float) or isinstance(vals, int) or (
@@ -273,9 +293,46 @@ class CustomSummaryWriter(SummaryWriter):
                 raise ValueError('Got list of invalid length.')
 
 
-def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
-    """Write the sampled BNE utilities to disk."""
+def read_bne_utility_database(exp: Experiment):
+    """Check if this setting's BNE has been saved to disk before.
 
+    Args:
+        exp: Experiment
+
+    Returns:
+        db_batch_size: int
+            sample size of a DB entry if found, else -1
+        db_bne_utility: List[n_players]
+            list of the saved BNE utilites
+    """
+    file_path = pkg_resources.resource_filename(__name__, 'bne_database.csv')
+    bne_database = pd.read_csv(file_path)
+
+    # see if we already have a sample
+    setting_database = bne_database[
+        (bne_database.experiment_class == str(type(exp))) &
+        (bne_database.payment_rule == exp.payment_rule) &
+        (bne_database.correlation == exp.correlation) &
+        (bne_database.risk == exp.risk)
+    ]
+
+    # 1. no entry found for this exp
+    if len(setting_database) == 0:
+        return -1, None
+
+    # 2. found entry
+    else:
+        return setting_database['batch_size'].tolist()[0], setting_database.bne_utilities.tolist()
+
+
+def write_bne_utility_database(exp: Experiment, bne_utilities_sampled: list):
+    """Write the sampled BNE utilities to disk.
+
+    Args:
+        exp: Experiment
+        bne_utilities_sampled: list
+            BNE utilites that are to be writen to disk
+    """
     file_path = pkg_resources.resource_filename(__name__, 'bne_database.csv')
     bne_database = pd.read_csv(file_path)
 
@@ -290,7 +347,7 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
         (bne_database.risk == exp.risk)
     ]
 
-    # 1. no entry found: make new db entry
+    # No entry found: make new db entry
     if len(setting_database) == 0:
         for player_position in [agent.player_position for agent in exp.bne_env.agents]:
             bne_database = bne_database.append(
@@ -306,12 +363,7 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
                 ignore_index=True
             )
 
-    # 2. found entry: 2.1 smaller batch size
-    elif setting_database['batch_size'].tolist()[0] > bne_env.batch_size:
-        print('Reading high precision utilities in BNE from database.')
-        return setting_database.bne_utilities.tolist()
-
-    # 2.2 overwrite database entry
+    # Overwrite database entry
     else:
         for player_position in [agent.player_position for agent in exp.bne_env.agents]:
             bne_database.loc[
@@ -324,8 +376,4 @@ def access_bne_utility_database(exp: 'Experiment', bne_utilities_sampled: list):
                   player_position, bne_env.batch_size,
                   bne_utilities_sampled[player_position].item()]]
 
-    print('Writing high precision utilities in BNE to database.')
     bne_database.to_csv(file_path, index=False)
-    return None
-
-

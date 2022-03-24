@@ -1,0 +1,110 @@
+---
+title: "Conditional Sampling in Mineral Rights Model"
+output: html_notebook
+author: "Stefan Heidekrüger"
+date: 2021-04-28
+---
+
+In this notebook, we'll derive the conditional distribution $v_i|o_i$ in the 
+generalizaiton of the "Mineral Rights" Model (Example 6.1 in Krishna, 2009).
+
+Rather than drawing the common value standard-uniformly, we allow a slightly more
+general 
+$$v \sim U[lo, hi] $$ with arbitraty bounds $hi>lo\geq 0$.
+
+Each players' individual observation is then given by $o_i = 2*v*x_i$ where $x_i$ are 
+i.i.d. standard uniform variables. As such, observations take values in $[0,2v]$.
+
+As the $x_i$ are independent, the $o_i|v$ are conditionally independent, and given
+$v$, we can easily sample all players profiles. The main difficulty will therefore be
+deriving a method to sample $v|o_i$. As this only concerns a single player,
+we will drop all indices in the following.
+
+Let's begin by doing some vizualisations
+
+## Joint distribution of v and o.
+
+```{r}
+library(tidyverse)
+theme_set(theme_minimal())
+# let's use boundaries that are scaled and shifted, rather than 0,1
+
+lo = 1
+hi = 3
+
+n = 2e6
+
+v = runif(n, lo, hi)
+x = runif(n)
+
+o = 2*v*x
+
+df = tibble(v=v, x=x, o=o)
+df %>% head(200000) %>%  ggplot(aes(o,v)) + geom_bin2d() + scale_fill_viridis_c()
+```
+
+## Marginal distribution of $o$
+
+With $v\sim U[lo,hi]$, we get that $o|v \sim U[0, 2v]$. As such we get the conditional density
+$$f(o|v) = \frac{1}{2v}$$
+on $[0,2v]$ and $0$ elsewhere.
+
+We can than calculate the marginal pdf of $o$ via $f(o) = f(o|v)f(v)$. Note that the conditional density above implies
+that $v\geq \frac o 2$ whenever $f(o|v)>0$. Any $v$ corresponding to an observation $o$ must therefore by larger than the "new low"
+$$nl := max(lo, \frac o 2). $$
+
+(We will use this term extensively, so let's give it a name.) With this, we get
+
+$$f(o) = \int_{nl}^{hi} \frac{1}{2v} dv = \frac{log(hi) - log(nl)}{2(hi-lo)},$$
+on $[nl, 2\cdot hi]$ and $0$ elsewhere. Note that this term only depends on $o$ via $nl$ (and the boundary).
+
+
+```{r}
+o_marginal_pdf = function(o) {
+  if_else(0.5*o>lo,
+          (log(hi)-log(0.5*o))/(2*(hi-lo)), 
+          (log(hi) - log(lo))/(2*(hi-lo)))
+  }
+df %>% ggplot(aes(o)) + stat_density() + stat_function(fun=o_marginal_pdf, col='red', size=1)
+```
+
+## Conditional density of $v|o$
+
+With $f(v), f(o), f(o|v)$ in place, we can calculate $f(v|o)$ via Bayes's thm:
+
+$$f(v|o) = f(o|v)f(v)\frac{1}{f(o)} = \frac{1}{2v} \cdot \frac{1}{hi-lo}\cdot \frac{2(hi-lo)}{log(hi) - log(nl)} = \frac{1}{v \cdot (log(hi) - log(nl))}$$
+restricted to $[nl, hi]$.
+
+```{r}
+my_o = 2.5
+new_lo = pmax(my_o/ 2, lo)
+c = log(hi) - log(new_lo)
+
+pdf_v_given_o = function(v){1/(c*v)*(v>new_lo)*(v<hi)}
+
+
+df %>% filter(my_o-0.02<o, o<my_o+0.02) %>% ggplot(aes(v)) + 
+  stat_density(adjust=0.7, alpha=0.5) + 
+  stat_function(fun=pdf_v_given_o, col='red') +
+  ggtitle("Directly observed vs analytical conditional density of v|o for fixed/sliced o.")
+```
+## Sampling via icdf method
+
+Given the pdf $f(v|o)$, we can derive its cdf
+
+$$F(v|o) = \frac{1}{\log(hi) - \log(nl)} \int_{nl}^{hi} \frac{1}{v}dv = \frac{\log(v) - \log(nl)}{\log(hi) - \log(nl)}$$
+
+Identifying the output with $u$ and inverting, we get the icdf
+
+$$v|o = F^{-1}(u) = \exp\left(u\log(hi) - (1-u)\log(nl)\right) = hi^u \cdot nl^{1-u} $$
+We can therefore sample $v|o$ via transforming a std-uniform RV $u$:
+
+```{r}
+u = runif(100000)
+sampled_v_given_u = exp(u*log(hi) + (1-u)*log(new_lo))
+tibble(v = sampled_v_given_u) %>% ggplot(aes(v)) + 
+  stat_density(adjust=0.5) +
+  stat_function(fun=pdf_v_given_o, col='red') +
+  ggtitle("Observed kernel density estimate of v|o sampled via icdf vs analytical density.")
+```
+
