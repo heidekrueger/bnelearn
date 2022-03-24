@@ -777,7 +777,7 @@ class Experiment(ABC):
             L_2[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
                     strategy=model,
-                    actions=m2a(i).get_action(),
+                    actions=m2a(i).get_action(m2o(i)),
                     valuations=m2o(i),
                     p=2,
                     componentwise=self.logging.log_componentwise_norm
@@ -787,7 +787,7 @@ class Experiment(ABC):
             L_inf[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
                     strategy=model,
-                    actions=m2a(i).get_action(),
+                    actions=m2a(i).get_action(m2o(i)),
                     valuations=m2o(i),
                     p=float('inf'),
                     componentwise=self.logging.log_componentwise_norm

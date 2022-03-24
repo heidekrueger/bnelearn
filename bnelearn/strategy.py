@@ -334,20 +334,23 @@ class NeuralNetStrategy(Strategy, nn.Module):
                 self.mixed_strategy = True
                 super(GaussLayer, self).__init__(**kwargs)
 
-            def forward(self, x, pretrain=False):
+            def forward(self, x, deterministic=False, pretrain=False):
                 if x.dim() == 1:
                     x = x.view(-1, 1)
                 m = x.shape[-1] // 2
 
+                if deterministic:
+                    return x[..., :m]
+
                 if pretrain:
                     return torch.cat(
                         [
-                            x[..., :m] - 1.96*(x[..., m:].abs() + 1e-8),
-                            x[..., :m] + 1.96*(x[..., m:].abs() + 1e-8)
+                            x[..., :m] - 1.96*(x[..., m:].abs() + 1e-5),
+                            x[..., :m] + 1.96*(x[..., m:].abs() + 1e-5)
                         ],
                         axis=0)
 
-                normal = torch.distributions.normal.Normal(x[..., :m], x[..., m:].abs() + 1e-8)
+                normal = torch.distributions.normal.Normal(x[..., :m], x[..., m:].abs() + 1e-5)
                 return normal.rsample()
 
         class UniformLayer(nn.Module):
@@ -360,10 +363,13 @@ class NeuralNetStrategy(Strategy, nn.Module):
                 self.mixed_strategy = True
                 super(UniformLayer, self).__init__(**kwargs)
 
-            def forward(self, x, pretrain=False):
+            def forward(self, x, deterministic=False, pretrain=False):
                 if x.dim() == 1:
                     x = x.view(-1, 1)
                 m = x.shape[-1] // 2
+
+                if deterministic:
+                    return x[..., :m]
 
                 # enforce non-negative width of boundaries
                 err = (x[:, :m] - x[:, m:] + 1e-4).detach().relu()
@@ -514,11 +520,13 @@ class NeuralNetStrategy(Strategy, nn.Module):
             mixed_strategy=self.mixed_strategy,
         )
 
-    def forward(self, x, pretrain=False):
+    def forward(self, x, deterministic=False, pretrain=False):
         for layer in self.layers.values():
             if pretrain and hasattr(layer, 'mixed_strategy'):
                 # ignore last ReLU layer if existend (no fails due to negative values)
-                return layer.forward(x, pretrain=pretrain)
+                return layer.forward(x, deterministic=deterministic, pretrain=pretrain)
+            if hasattr(layer, 'mixed_strategy'):
+                x = layer.forward(x, deterministic=deterministic)
             else:
                 x = layer(x)
         return x

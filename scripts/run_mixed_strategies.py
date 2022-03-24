@@ -49,14 +49,14 @@ if __name__ == '__main__':
                 #     'regularize_decay': .999
                 #     }
             },
-            # mixed_strategy='normal'
+            mixed_strategy='normal'
             ) \
         .set_hardware(
             specific_gpu=1,
             ) \
         .set_logging(
             eval_batch_size=2**17,
-            cache_eval_actions=True,
+            cache_eval_actions=False,
             util_loss_batch_size=2**8,
             util_loss_grid_size=2**14,
             util_loss_frequency=100,

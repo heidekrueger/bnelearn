@@ -390,14 +390,14 @@ class LLGFullAuction(Mechanism):
     def _solve_allocation_problem(
             self,
             bids: torch.Tensor,
-            allocate_to_zero_bid: bool = True  # Beck & Ott always allocate all
+            dont_allocate_to_zero_bid: bool = True
         ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Compute allocation and welfare
 
         Args:
             bids: torch.Tensor of bids with dimensions (batch_size, n_players,
                 n_bids), values = [0, Inf].
-            allocate_to_zero_bid: bool, whether to allocate items to zero
+            dont_allocate_to_zero_bid: bool, whether to allocate items to zero
                 bids or not.
 
         Returns:
@@ -695,7 +695,7 @@ class LLLLGGAuction(Mechanism):
         (e.g. avoid gurobi startup licence message clutter)"""
         sys.stdout = open(os.devnull, 'w')
 
-    def _solve_allocation_problem(self, bids: torch.Tensor, allocate_to_zero_bid=False):
+    def _solve_allocation_problem(self, bids: torch.Tensor, dont_allocate_to_zero_bid=True):
         """
         Computes allocation and welfare.
 
@@ -721,8 +721,8 @@ class LLLLGGAuction(Mechanism):
         solutions_welfare = torch.mm(bids_flat, torch.transpose(solutions, 0, 1))
         welfare, solution = torch.max(solutions_welfare, dim=1)  # maximizes over all possible allocations
         winning_bundles = solutions.index_select(0, solution)
-        if not allocate_to_zero_bid:
-            winning_bundles *= bids_flat > 0
+        if dont_allocate_to_zero_bid:
+            winning_bundles = winning_bundles * (bids_flat > 0)
 
         return winning_bundles, welfare
 
