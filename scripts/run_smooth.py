@@ -16,6 +16,7 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager
 
 if __name__ == '__main__':
 
+    # NOTE: n_players changes optimal smoothing factor.
     # User parameters
     specific_gpu = 1
     n_runs = 1
@@ -27,10 +28,9 @@ if __name__ == '__main__':
     batch_size = 2**10
     eval_batch_size = 2**22
     util_loss_frequency = n_epochs
-    util_loss_batch_size = 2**10
-    util_loss_grid_size = 2**11
+    util_loss_batch_size = 2**8
+    util_loss_grid_size = 2**9
 
-    # Run LLG nearest-vcg for different risks / correlations ################
     log_root_dir = os.path.join(
         os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug-smooth'
     )
@@ -39,11 +39,11 @@ if __name__ == '__main__':
         ConfigurationManager(
             experiment_type='single_item_uniform_symmetric',
             n_runs=n_runs,
-            seeds=[69],
             n_epochs=n_epochs,
             ) \
             .set_setting(
                 payment_rule='first_price',
+                n_players=2
                 ) \
             .set_learning(
                 learner_type='PGLearner',
