@@ -55,8 +55,7 @@ class Environment(ABC):
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
                             redraw_valuations=False, aggregate_batch=True,
-                            regularize: float=0, own_batch_size: int=1,
-                            **strat_to_player_kwargs) -> torch.Tensor:
+                            regularize: float=0, **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
 
@@ -70,8 +69,6 @@ class Environment(ABC):
             regularize: paramter that penalizes high action values (e.g. if we
                 get the same utility with different actions, we prefer the lower
                 one). Default value of zero corresponds to no regularization.
-            own_batch_size: additional batch size for multiple evaluations of a
-                stochastic policy for each sample.
         """
         if not self._strategy_to_player:
             raise NotImplementedError('This environment has no strategy_to_player closure!')
@@ -80,8 +77,7 @@ class Environment(ABC):
                                          player_position=player_position, **strat_to_player_kwargs)
         # TODO: this should rally be in AuctionEnv subclass
         return self.get_reward(agent, redraw_valuations=redraw_valuations,
-                               aggregate=aggregate_batch, regularize=regularize,
-                               own_batch_size=own_batch_size)
+                               aggregate=aggregate_batch, regularize=regularize)
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
                                        redraw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
@@ -260,7 +256,6 @@ class AuctionEnvironment(Environment):
             aggregate: bool = True,
             regularize: float = 0.0,
             return_allocation: bool = False,
-            own_batch_size: int = 1,
         ) -> torch.Tensor or Tuple[torch.Tensor, torch.Tensor]: #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment, and optionally additionally the allocation of that player.
            Reward is calculated as average utility for each of the batch_size x env_size games
@@ -278,18 +273,11 @@ class AuctionEnvironment(Environment):
         if redraw_valuations:
             self.draw_valuations()
 
-        agent_observation = self._observations[:, player_position, :] \
-            .repeat(own_batch_size, 1) \
-            .view(own_batch_size, self.batch_size, -1)
-        agent_valuation = self._valuations[:, player_position, :] \
-            .repeat(own_batch_size, 1) \
-            .view(own_batch_size, self.batch_size, -1)
+        agent_observation = self._observations[:, player_position, :] 
+        agent_valuation = self._valuations[:, player_position, :]
 
         # get agent_bid
-        agent_bid = agent.get_action(
-            agent_observation.view(own_batch_size * self.batch_size, -1)
-        ).view(own_batch_size, self.batch_size, -1)
-        # some meechanisms only support a single batch dim
+        agent_bid = agent.get_action(agent_observation)
         action_length = agent_bid.shape[-1]
 
         if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
@@ -298,7 +286,7 @@ class AuctionEnvironment(Environment):
             )
         else: # at least 2 environment agent --> build bid_profile, then play
             # get bid profile
-            bid_profile = torch.empty(own_batch_size, self.batch_size, self.n_players, action_length,
+            bid_profile = torch.empty(self.batch_size, self.n_players, action_length,
                                       dtype=agent_bid.dtype, device=self.mechanism.device)
             bid_profile[..., player_position, :] = agent_bid
 
@@ -313,9 +301,7 @@ class AuctionEnvironment(Environment):
                 # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
                 if opponent_pos is None:
                     opponent_pos = counter
-                bid_profile[..., opponent_pos, :] = opponent_bid.detach() \
-                    .repeat(own_batch_size, 1, 1) \
-                    .view(own_batch_size, self.batch_size, action_length)
+                bid_profile[:, opponent_pos, :] = opponent_bid.detach()
                 counter = counter + 1
 
             allocations, payments = self.mechanism.play(bid_profile)
@@ -330,7 +316,7 @@ class AuctionEnvironment(Environment):
         agent_utility -= regularize * agent_bid.mean()
 
         if aggregate:
-            agent_utility = agent_utility.mean(axis=[0, 1])
+            agent_utility = agent_utility.mean()
 
             if return_allocation:
                 # Returns flat tensor with int entries `i` for an allocation of `i`th item

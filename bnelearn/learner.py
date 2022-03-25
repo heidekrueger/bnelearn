@@ -340,18 +340,12 @@ class ReinforceLearner(GradientBasedLearner):
 
         self.model.train(False)
 
-        if 'reinforce_batch_size' in hyperparams:
-            self.reinforce_batch_size =  hyperparams['reinforce_batch_size']
-        else:
-            self.reinforce_batch_size = 64
-
     def _set_gradients(self):
         self.environment.prepare_iteration()
         self.model.train(True)
 
         reward = -self.environment.get_strategy_reward(
             self.model, **self.strat_to_player_kwargs,
-            own_batch_size=self.reinforce_batch_size,
             aggregate_batch=False
         )
 
@@ -359,11 +353,11 @@ class ReinforceLearner(GradientBasedLearner):
         last_layer = self.model.layers[last_layer_key]
         if hasattr(last_layer, "mixed_strategy"):
             log_prob = self.model.layers["gauss_stochastic"].log_prob \
-                .view(self.reinforce_batch_size, self.environment.batch_size, 1)[:, :, 0]
+                .view(self.environment.batch_size, 1)[:, 0]
         else:
             raise ValueError("REINFORCE requires mixed policies!")
 
-        loss = (reward * log_prob).mean(axis=[0, 1])
+        loss = (reward * log_prob).mean()
         loss.backward()
         self.model.train(False)
 
