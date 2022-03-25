@@ -322,8 +322,51 @@ class PGLearner(GradientBasedLearner):
         loss = -self.environment.get_strategy_reward(
             self.model,**self.strat_to_player_kwargs
         )
-
         loss.backward()
+
+
+class ReinforceLearner(GradientBasedLearner):
+    """REINFORCE Learner. Also known as Score function estimator.
+
+    See https://link.springer.com/article/10.1007/BF00992696 and
+    https://pytorch.org/docs/stable/distributions.html.
+    """
+
+    def __init__(self, model: torch.nn.Module, environment: Environment,
+                 hyperparams: dict, optimizer_type: Type[torch.optim.Optimizer],
+                 optimizer_hyperparams: dict, strat_to_player_kwargs: dict = None):
+        super().__init__(model, environment, optimizer_type, optimizer_hyperparams,
+                         strat_to_player_kwargs)
+
+        self.model.train(False)
+
+        if 'reinforce_batch_size' in hyperparams:
+            self.reinforce_batch_size =  hyperparams['reinforce_batch_size']
+        else:
+            self.reinforce_batch_size = 64
+
+    def _set_gradients(self):
+        self.environment.prepare_iteration()
+        self.model.train(True)
+
+        reward = -self.environment.get_strategy_reward(
+            self.model, **self.strat_to_player_kwargs,
+            own_batch_size=self.reinforce_batch_size,
+            aggregate_batch=False
+        )
+
+        last_layer_key = list(self.model.layers)[-2]
+        last_layer = self.model.layers[last_layer_key]
+        if hasattr(last_layer, "mixed_strategy"):
+            log_prob = self.model.layers["gauss_stochastic"].log_prob \
+                .view(self.reinforce_batch_size, self.environment.batch_size, 1)[:, :, 0]
+        else:
+            raise ValueError("REINFORCE requires mixed policies!")
+
+        loss = (reward * log_prob).mean(axis=[0, 1])
+        loss.backward()
+        self.model.train(False)
+
 
 class DPGLearner(GradientBasedLearner):
     """Implements Deterministic Policy Gradients

@@ -242,6 +242,10 @@ class Experiment(ABC):
             _, obs = self.sampler.draw_profiles()
 
             for i, model in enumerate(self.models):
+
+                # set mode: disregrad `log_prob`
+                model.train(False)
+
                 pos = self._model2bidder[i][0]
                 model.pretrain(obs[:, pos, :], self.learning.pretrain_iters,
                                # bidder specific pretraining (e.g. for LLGFull)

@@ -331,8 +331,9 @@ class NeuralNetStrategy(Strategy, nn.Module):
             Has no trainable parameters.
             """
             def __init__(self, **kwargs):
-                self.mixed_strategy = True
                 super(GaussLayer, self).__init__(**kwargs)
+                self.mixed_strategy = True
+                self.log_prob = None
 
             def forward(self, x, deterministic=False, pretrain=False):
                 if x.dim() == 1:
@@ -351,7 +352,12 @@ class NeuralNetStrategy(Strategy, nn.Module):
                         axis=0)
 
                 normal = torch.distributions.normal.Normal(x[..., :m], x[..., m:].abs() + 1e-5)
-                return normal.rsample()
+                out = normal.sample()
+
+                if self.training:
+                    self.log_prob = normal.log_prob(out)
+
+                return out
 
         class UniformLayer(nn.Module):
             """
@@ -360,8 +366,9 @@ class NeuralNetStrategy(Strategy, nn.Module):
             Has no trainable parameters.
             """
             def __init__(self, **kwargs):
-                self.mixed_strategy = True
                 super(UniformLayer, self).__init__(**kwargs)
+                self.mixed_strategy = True
+                self.log_prob = None
 
             def forward(self, x, deterministic=False, pretrain=False):
                 if x.dim() == 1:
@@ -378,7 +385,12 @@ class NeuralNetStrategy(Strategy, nn.Module):
                     return torch.cat([x[:, :m], x[:, m:] + err], axis=0)
 
                 uniform = torch.distributions.uniform.Uniform(x[:, :m], x[:, m:] + err)
-                return uniform.rsample()
+                out = uniform.sample()
+
+                if self.training:
+                    self.log_prob = uniform.log_prob(out)
+
+                return out
 
         if len(hidden_nodes) > 0:
             ## create hdiden layers
@@ -416,6 +428,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         if ensure_positive_output is not None:
             current_device = torch.nn.utils.parameters_to_vector(self.parameters()).device
             ensure_positive_output = ensure_positive_output.to(current_device)
+            self.train(False)  # disregard `log_prob` if mixed-strat
             if not torch.all(self.forward(ensure_positive_output).gt(0)):
                 self.reset(ensure_positive_output)
 
