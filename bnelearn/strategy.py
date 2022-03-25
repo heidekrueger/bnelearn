@@ -351,7 +351,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
                         ],
                         axis=0)
 
-                normal = torch.distributions.normal.Normal(x[..., :m], x[..., m:].abs() + 1e-5)
+                normal = torch.distributions.normal.Normal(x[..., :m], x[..., m:].exp() + 1e-5)
                 out = normal.sample()
 
                 if self.training:
