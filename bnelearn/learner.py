@@ -342,6 +342,8 @@ class ReinforceLearner(GradientBasedLearner):
 
     def _set_gradients(self):
         self.environment.prepare_iteration()
+
+        # set switch to set `log_prob`
         self.model.train(True)
 
         reward = -self.environment.get_strategy_reward(
@@ -353,12 +355,15 @@ class ReinforceLearner(GradientBasedLearner):
         last_layer = self.model.layers[last_layer_key]
         if hasattr(last_layer, "mixed_strategy"):
             log_prob = self.model.layers["gauss_stochastic"].log_prob \
-                .view(self.environment.batch_size, 1)[:, 0]
+                .view_as(reward)
         else:
             raise ValueError("REINFORCE requires mixed policies!")
 
         loss = (reward * log_prob).mean()
+        # NOTE: gradient "flows" through `log_prob` not `reward`
+
         loss.backward()
+
         self.model.train(False)
 
 

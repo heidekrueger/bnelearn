@@ -344,16 +344,12 @@ class NeuralNetStrategy(Strategy, nn.Module):
                 if deterministic:
                     return x[..., :m]
 
+                normal = torch.distributions.normal.Normal(x[..., :m], x[..., m:].exp())
+                
                 if pretrain:
-                    return torch.cat(
-                        [
-                            x[..., :m] - 1.96*(x[..., m:].abs() + 1e-5),
-                            x[..., :m] + 1.96*(x[..., m:].abs() + 1e-5)
-                        ],
-                        axis=0)
-
-                normal = torch.distributions.normal.Normal(x[..., :m], x[..., m:].exp() + 1e-5)
-                out = normal.sample()
+                    return normal.rsample()
+                else:
+                    out = normal.sample()
 
                 if self.training:
                     self.log_prob = normal.log_prob(out)
@@ -503,24 +499,15 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         optimizer = torch.optim.Adam(self.parameters())
 
-        # For mixed strategy: pretreain on zero to desired_output
-        if self.mixed_strategy is not None:
-            desired_output = torch.cat(
-                [torch.zeros_like(desired_output), desired_output])
-            for _ in range(iters):
-                self.zero_grad()
+        for _ in range(iters):
+            self.zero_grad()
+            if self.mixed_strategy is not None:
                 diff = (self.forward(input_tensor, pretrain=True) - desired_output)
-                loss = (diff * diff).sum()
-                loss.backward()
-                optimizer.step()
-
-        else:
-            for _ in range(iters):
-                self.zero_grad()
+            else:
                 diff = (self.forward(input_tensor) - desired_output)
-                loss = (diff * diff).sum()
-                loss.backward()
-                optimizer.step()
+            loss = (diff * diff).sum()
+            loss.backward()
+            optimizer.step()
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""

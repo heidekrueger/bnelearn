@@ -29,13 +29,13 @@ if __name__ == '__main__':
             ConfigurationManager(
                 experiment_type="single_item_uniform_symmetric",
                 n_runs=1,
-                n_epochs=2000,
+                n_epochs=500,
                 ) \
             .set_learning(
                 learner_type=learner_type,
                 mixed_strategy=mixed_strategy,
                 batch_size=2**18,
-                pretrain_iters=0,
+                pretrain_iters=2000,
                 # model_sharing=model_sharing,
                 ) \
             .set_hardware(
@@ -50,10 +50,10 @@ if __name__ == '__main__':
                 best_response=True,
                 log_root_dir=log_root_dir,
                 save_tb_events_to_csv_detailed=True,
-                plot_frequency=20,
+                plot_frequency=50,
                 ) \
             .get_config()
         experiment = experiment_class(experiment_config)
         experiment.run()
 
-    torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
