@@ -20,37 +20,40 @@ if __name__ == '__main__':
     log_root_dir = os.path.join(
         os.path.expanduser('~'), 'bnelearn', 'experiments', 'mixed-strategies')
 
-    # Set up experiment
-    experiment_config, experiment_class = \
-        ConfigurationManager(
-            experiment_type="single_item_uniform_symmetric",
-            n_runs=1,
-            n_epochs=500,
-            ) \
-        .set_learning(
-            learner_type="ReinforceLearner",
-            learner_hyperparams={"reinforce_batch_size": 1},
-            batch_size=2**17,
-            pretrain_iters=50,
-            mixed_strategy='normal',
-            # model_sharing=model_sharing,
-            ) \
-        .set_hardware(
-            specific_gpu=1,
-            ) \
-        .set_logging(
-            eval_batch_size=2**22,
-            cache_eval_actions=False,
-            util_loss_batch_size=2**10,
-            util_loss_grid_size=2**12,
-            util_loss_frequency=100,
-            best_response=True,
-            log_root_dir=log_root_dir,
-            save_tb_events_to_csv_detailed=True,
-            plot_frequency=20,
-            ) \
-        .get_config()
-    experiment = experiment_class(experiment_config)
-    experiment.run()
+    # TODO: self.deterministic does not work! Get's changed for some reason!
+    for learner_type, mixed_strategy in zip(
+        ["ReinforceLearner", "ESPGLearner", "ESPGLearner"], ["normal", "normal", None]
+    ):
+        # Set up experiment
+        experiment_config, experiment_class = \
+            ConfigurationManager(
+                experiment_type="single_item_uniform_symmetric",
+                n_runs=1,
+                n_epochs=2000,
+                ) \
+            .set_learning(
+                learner_type=learner_type,
+                mixed_strategy=mixed_strategy,
+                batch_size=2**18,
+                pretrain_iters=0,
+                # model_sharing=model_sharing,
+                ) \
+            .set_hardware(
+                specific_gpu=1,
+                ) \
+            .set_logging(
+                eval_batch_size=2**22,
+                cache_eval_actions=False,
+                util_loss_batch_size=2**10,
+                util_loss_grid_size=2**12,
+                util_loss_frequency=2000,
+                best_response=True,
+                log_root_dir=log_root_dir,
+                save_tb_events_to_csv_detailed=True,
+                plot_frequency=20,
+                ) \
+            .get_config()
+        experiment = experiment_class(experiment_config)
+        experiment.run()
 
     torch.cuda.empty_cache()

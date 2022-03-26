@@ -111,7 +111,7 @@ def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: fl
     Returns:
         norm: (scalar Tensor)
     """
-    s_actions = strategy.forward(valuations, deterministic=True)
+    s_actions = strategy.forward(valuations)
 
     if componentwise:
         component_norms = [norm_actions(s_actions[..., d], actions[..., d], p)

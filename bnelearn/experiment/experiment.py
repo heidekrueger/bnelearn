@@ -743,7 +743,8 @@ class Experiment(ABC):
                 bne_env.get_strategy_reward(
                     strategy=model,
                     player_position=m2b(m),
-                    redraw_valuations=redraw_bne_vals
+                    redraw_valuations=redraw_bne_vals,
+                    deterministic=True,
                 ) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(

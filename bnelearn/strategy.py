@@ -56,7 +56,7 @@ class ClosureStrategy(Strategy):
         if self._mute:
             sys.stderr = open(os.devnull, 'w')
 
-    def play(self, inputs):
+    def play(self, inputs, deterministic: bool = False):
         pool_size = 1
 
         if self.parallel:
@@ -340,6 +340,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
                     x = x.view(-1, 1)
                 m = x.shape[-1] // 2
 
+                # return mean actions
                 if deterministic:
                     return x[..., :m]
 
@@ -375,6 +376,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
                     x = x.view(-1, 1)
                 m = x.shape[-1] // 2
 
+                # return mean actions
                 if deterministic:
                     return x[..., :m]
 
@@ -544,8 +546,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
                 x = layer(x)
         return x
 
-    def play(self, inputs):
-        return self.forward(inputs)
+    def play(self, inputs, deterministic: bool=False):
+        return self.forward(inputs, deterministic)
 
 class TruthfulStrategy(Strategy, nn.Module):
     """A strategy that plays truthful valuations."""
@@ -556,5 +558,5 @@ class TruthfulStrategy(Strategy, nn.Module):
     def forward(self, x):
         return x
 
-    def play(self, inputs):
+    def play(self, inputs, deterministic: bool = False):
         return self.forward(inputs)

@@ -182,7 +182,7 @@ class Bidder(Player):
 
         return welfare
 
-    def get_action(self, observations = None):
+    def get_action(self, observations = None, deterministic: bool = False):
         """Calculate action from given observations, or retrieve from cache"""
 
         if self._enable_action_caching and not self._cached_observations_changed and \
@@ -207,7 +207,7 @@ class Bidder(Player):
             dim = self.strategy.input_length
             inputs = inputs[:,:dim]
 
-        actions = self.strategy.play(inputs)
+        actions = self.strategy.play(inputs, deterministic=deterministic)
 
         if self._enable_action_caching:
             self.cached_observations = observations

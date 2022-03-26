@@ -55,7 +55,8 @@ class Environment(ABC):
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
                             redraw_valuations=False, aggregate_batch=True,
-                            regularize: float=0, **strat_to_player_kwargs) -> torch.Tensor:
+                            regularize: float=0, deterministic: bool=False,
+                            **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
 
@@ -77,7 +78,8 @@ class Environment(ABC):
                                          player_position=player_position, **strat_to_player_kwargs)
         # TODO: this should rally be in AuctionEnv subclass
         return self.get_reward(agent, redraw_valuations=redraw_valuations,
-                               aggregate=aggregate_batch, regularize=regularize)
+                               aggregate=aggregate_batch, regularize=regularize,
+                               deterministic=deterministic)
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
                                        redraw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
@@ -256,6 +258,7 @@ class AuctionEnvironment(Environment):
             aggregate: bool = True,
             regularize: float = 0.0,
             return_allocation: bool = False,
+            deterministic: bool = False,
         ) -> torch.Tensor or Tuple[torch.Tensor, torch.Tensor]: #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment, and optionally additionally the allocation of that player.
            Reward is calculated as average utility for each of the batch_size x env_size games
@@ -277,7 +280,7 @@ class AuctionEnvironment(Environment):
         agent_valuation = self._valuations[:, player_position, :]
 
         # get agent_bid
-        agent_bid = agent.get_action(agent_observation)
+        agent_bid = agent.get_action(agent_observation, deterministic=deterministic)
         action_length = agent_bid.shape[-1]
 
         if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
