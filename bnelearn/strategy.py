@@ -347,12 +347,19 @@ class NeuralNetStrategy(Strategy, nn.Module):
             hidden_nodes[-1],
             2 * self.output_length if self.mixed_strategy else self.output_length
         )
+
+        # add probabilistic layer
         if self.mixed_strategy == 'normal':
             self.layers['gauss_stochastic'] = GaussLayer()
             self.activations.append(self.layers['gauss_stochastic'])
         elif self.mixed_strategy == 'uniform':
             self.layers['uniform_stochastic'] = UniformLayer()
             self.activations.append(self.layers['uniform_stochastic'])
+        elif self.mixed_strategy is None:
+            pass
+        else:
+            raise ValueError("requested unknown probabilistic layer.")
+
         self.layers[str(nn.ReLU()) + '_out'] = nn.ReLU()
         self.activations.append(self.layers[str(nn.ReLU()) + '_out'])
 
