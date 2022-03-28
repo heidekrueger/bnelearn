@@ -143,6 +143,7 @@ class Experiment(ABC):
             self.logging.log_metrics['opt'] = False
 
         self.mixed_strategy = self.learning.mixed_strategy
+        self.bias = self.learning.bias
 
     @abstractmethod
     def _setup_mechanism(self):
@@ -225,6 +226,7 @@ class Experiment(ABC):
                 ensure_positive_output=self.positive_output_point,
                 output_length=self.action_size,
                 mixed_strategy=self.mixed_strategy,
+                bias=self.bias,
             ).to(self.hardware.device)
 
         self.bidders = [

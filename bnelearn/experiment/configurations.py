@@ -76,6 +76,7 @@ class LearningConfig:
     pretrain_to_bne: None or int
     batch_size: int
     mixed_strategy: str
+    bias: bool
     hidden_activations: List[nn.Module] = None
 
 

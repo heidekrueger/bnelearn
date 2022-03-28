@@ -477,7 +477,7 @@ class ConfigurationManager:
     def set_learning(self, model_sharing: bool = 'None', learner_type: str = 'None',
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
-                     pretrain_iters: int = 'None',
+                     pretrain_iters: int = 'None', bias: bool = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
                      mixed_strategy: str = 'None', pretrain_to_bne: None or int = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
@@ -562,7 +562,8 @@ class ConfigurationManager:
             pretrain_to_bne=None,
             batch_size=2 ** 18,
             hidden_activations=[nn.SELU(), nn.SELU()],
-            mixed_strategy=None)
+            mixed_strategy=None,
+            bias=True)
         logging = LoggingConfig(
             enable_logging=True,
             log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),

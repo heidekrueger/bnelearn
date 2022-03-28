@@ -309,6 +309,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
                  output_length: int = 1, # currently last argument for backwards-compatibility
                  dropout: float = 0.0,
                  mixed_strategy: str = None,
+                 bias: bool = True
                  ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
@@ -322,20 +323,23 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.activations = copy(hidden_activations) # do not write to list outside!
         self.dropout = dropout
         self.mixed_strategy = mixed_strategy
+        self.bias = bias
 
         self.layers = nn.ModuleDict()
 
         if len(hidden_nodes) > 0:
             ## create hdiden layers
             # first hidden layer (from input)
-            self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
-            self.layers[str(self.activations[0]) + '_0'] = self.activations[0]
+            self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0], bias=self.bias)
+            if self.activations[0] is not None:
+                self.layers[str(self.activations[0]) + '_0'] = self.activations[0]
             if self.dropout:
                 self.layers['dropout_0'] = nn.AlphaDropout(p=self.dropout)
             # hidden-to-hidden-layers
             for i in range (1, len(hidden_nodes)):
-                self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
-                self.layers[str(self.activations[i]) + '_' + str(i)] = self.activations[i]
+                self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i], bias=self.bias)
+                if self.activations[i] is not None:
+                    self.layers[str(self.activations[i]) + '_' + str(i)] = self.activations[i]
                 if self.dropout:
                     self.layers['dropout_' + str(i)] = nn.AlphaDropout(p=self.dropout)
         else:
@@ -345,7 +349,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
         # create output layer
         self.layers['fc_out'] = nn.Linear(
             hidden_nodes[-1],
-            2 * self.output_length if self.mixed_strategy else self.output_length
+            2 * self.output_length if self.mixed_strategy else self.output_length,
+            bias=self.bias
         )
 
         # add probabilistic layer
@@ -358,7 +363,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         elif self.mixed_strategy is None:
             pass
         else:
-            raise ValueError("requested unknown probabilistic layer.")
+            raise ValueError("Requested unknown probabilistic layer.")
 
         self.layers[str(nn.ReLU()) + '_out'] = nn.ReLU()
         self.activations.append(self.layers[str(nn.ReLU()) + '_out'])
@@ -462,6 +467,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
             output_length=self.output_length,
             dropout=self.dropout,
             mixed_strategy=self.mixed_strategy,
+            bias=self.bias,
         )
 
     def forward(self, x, deterministic=False, pretrain=False):
