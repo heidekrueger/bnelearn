@@ -16,6 +16,7 @@ from torch.distributions.categorical import Categorical
 from tqdm import tqdm
 
 from bnelearn.mechanism import Game, MatrixGame
+from bnelearn.util.tensor_util import GaussLayer, UniformLayer
 
 ## E1102: false positive on torch.tensor()
 ## false positive 'arguments-differ' warnings for forward() overrides
@@ -324,72 +325,6 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         self.layers = nn.ModuleDict()
 
-        class GaussLayer(nn.Module):
-            """
-            Custom layer for normally distributed predictions (non-negative).
-
-            Has no trainable parameters.
-            """
-            def __init__(self, **kwargs):
-                super(GaussLayer, self).__init__(**kwargs)
-                self.mixed_strategy = True
-                self.log_prob = None
-
-            def forward(self, x, deterministic=False, pretrain=False):
-                if x.dim() == 1:
-                    x = x.view(-1, 1)
-                m = x.shape[-1] // 2
-
-                # return mean actions
-                if deterministic:
-                    return x[..., :m]
-
-                normal = torch.distributions.normal.Normal(x[..., :m], x[..., m:].exp())
-                
-                if pretrain:
-                    return normal.rsample()
-                else:
-                    out = normal.sample()
-
-                if self.training:
-                    self.log_prob = normal.log_prob(out)
-
-                return out
-
-        class UniformLayer(nn.Module):
-            """
-            Custom layer for predictions following a uniform distribution.
-
-            Has no trainable parameters.
-            """
-            def __init__(self, **kwargs):
-                super(UniformLayer, self).__init__(**kwargs)
-                self.mixed_strategy = True
-                self.log_prob = None
-
-            def forward(self, x, deterministic=False, pretrain=False):
-                if x.dim() == 1:
-                    x = x.view(-1, 1)
-                m = x.shape[-1] // 2
-
-                # return mean actions
-                if deterministic:
-                    return x[..., :m]
-
-                # enforce non-negative width of boundaries
-                err = (x[:, :m] - x[:, m:] + 1e-4).detach().relu()
-
-                if pretrain:
-                    return torch.cat([x[:, :m], x[:, m:] + err], axis=0)
-
-                uniform = torch.distributions.uniform.Uniform(x[:, :m], x[:, m:] + err)
-                out = uniform.sample()
-
-                if self.training:
-                    self.log_prob = uniform.log_prob(out)
-
-                return out
-
         if len(hidden_nodes) > 0:
             ## create hdiden layers
             # first hidden layer (from input)
@@ -476,7 +411,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         return strategy
 
-    def pretrain(self, input_tensor: torch.Tensor, iters: int, transformation: Callable = None):
+    def pretrain(self, input_tensor: torch.Tensor, iterations: int, transformation: Callable = None):
         """Performs `iters` steps of supervised learning on `input` tensor,
            in order to find an initial bid function that is suitable for learning.
 
@@ -499,7 +434,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         optimizer = torch.optim.Adam(self.parameters())
 
-        for _ in range(iters):
+        for _ in range(iterations):
             self.zero_grad()
             if self.mixed_strategy is not None:
                 diff = (self.forward(input_tensor, pretrain=True) - desired_output)

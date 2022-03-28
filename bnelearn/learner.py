@@ -354,8 +354,7 @@ class ReinforceLearner(GradientBasedLearner):
         last_layer_key = list(self.model.layers)[-2]
         last_layer = self.model.layers[last_layer_key]
         if hasattr(last_layer, "mixed_strategy"):
-            log_prob = self.model.layers["gauss_stochastic"].log_prob \
-                .view_as(reward)
+            log_prob = last_layer.log_prob.view_as(reward)
         else:
             raise ValueError("REINFORCE requires mixed policies!")
 
