@@ -8,7 +8,7 @@ from typing import List
 
 import torch
 from scipy import integrate
-from bnelearn.bidder import Bidder
+from bnelearn.bidder import Bidder, Contestant, CrowdsourcingContestant
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
@@ -20,8 +20,8 @@ from bnelearn.experiment.equilibria import (
     bne_fpsb_ipv_symmetric_uniform_prior,
     bne_2p_affiliated_values,
     bne_3p_mineral_rights,
-    bne_fpsb_ipv_symmetric_generic_prior_risk_neutral, truthful_bid)
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction
+    bne_fpsb_ipv_symmetric_generic_prior_risk_neutral, truthful_bid, loss_equilibrium, bne_crowdsourcing, bne_crowdsourcing_valuations, bne_all_pay, bne_all_pay_cost)
+from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, TullockContest, SingleItemAllPayAuction, CrowdsourcingContest
 from bnelearn.sampler import (AffiliatedValuationObservationSampler,
                               CompositeValuationObservationSampler,
                               MineralRightsValuationObservationSampler,
@@ -58,6 +58,8 @@ class SingleItemExperiment(Experiment, ABC):
             self.mechanism = FirstPriceSealedBidAuction(cuda=self.hardware.cuda)
         elif self.payment_rule == 'second_price':
             self.mechanism = VickreyAuction(cuda=self.hardware.cuda)
+        elif self.payment_rule == "loss_aversion" or self.payment_rule == "all_pay":
+            self.mechanism = SingleItemAllPayAuction(cuda=self.hardware.cuda)
         else:
             raise ValueError('Invalid Mechanism type!')
 
@@ -90,6 +92,11 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
 
         self.risk = float(self.config.setting.risk)
         self.risk_profile = self.get_risk_profile(self.risk)
+
+        if self.config.setting.payment_rule == "loss_aversion":
+            self.lamb = self.config.setting.lamb
+        else:
+            self.lamb = 1
 
         self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
@@ -197,8 +204,11 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.bne_utilities = [self.bne_utility] * self.n_models
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
-        return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
-                      risk=self.risk)
+        if self.use_valuation:
+            return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
+                        risk=self.risk, lamb=self.lamb)
+        else:
+            return Contestant(strategy=strategy, batch_size=batch_size, player_position=player_position, enable_action_caching=enable_action_caching)
 
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, self.valuation_prior,
@@ -213,6 +223,11 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
         u_lo = self.config.setting.u_lo
         u_hi = self.config.setting.u_hi
+
+        if not hasattr(self.config.learning, 'use_valuation'):
+            self.use_valuation = True
+        else:
+            self.use_valuation = self.config.learning.use_valuation
 
         assert u_lo is not None and len(set(u_lo)) == 1, "Invalid prior boundaries. u_lo should be a list of length 1."
         assert u_hi is not None and len(set(u_hi)) == 1, "Invalid prior boundaries. u_hi should be a list of length 1."
@@ -241,12 +256,21 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
         elif self.payment_rule == 'second_price':
             self._optimal_bid = truthful_bid
             return True
+        elif self.payment_rule == "loss_aversion":
+            self._optimal_bid = partial(loss_equilibrium, lamb=self.lamb)
+            return True
+        elif self.payment_rule == 'all_pay' and not self.use_valuation:
+            self._optimal_bid = partial(bne_all_pay_cost)
+            return True
+        elif self.payment_rule == 'all_pay':
+            self._optimal_bid = partial(bne_all_pay, n=self.n_players)
+            return True
         else: # no bne found, defer to parent
             return super()._check_and_set_known_bne()
 
     def _get_analytical_bne_utility(self):
         """Get bne utility from known closed-form solution for higher precision."""
-        if self.payment_rule == 'first_price':
+        if self.payment_rule == 'first_price' or self.payment_rule == "loss_aversion" or self.payment_rule == "all_pay":
             bne_utility = torch.tensor(
                 (self.risk * (self.u_hi - self.u_lo) / (self.n_players - 1 + self.risk)) **
                 self.risk / (self.n_players + self.risk),
@@ -269,6 +293,13 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
             raise ValueError("Invalid auction mechanism.")
 
         return bne_utility
+
+    def pretrain_transform(self, player_position: int) -> callable:
+        if self.use_valuation:
+            return lambda x: x
+        else:
+            return lambda x: self.u_hi - x 
+    
 
 
 class GaussianSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperiment):
@@ -661,3 +692,237 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
         name = ['single_item', self.payment_rule, 'interdependent', self.valuation_prior,
                 'symmetric', str(self.risk) + 'risk', str(self.n_players) + 'players']
         return os.path.join(*name)
+
+
+class ContestExperiment(SingleItemExperiment):
+    """tbd description
+    """
+    def __init__(self,  config: ExperimentConfig):
+
+        self.n_players = config.setting.n_players
+
+        u_lo = config.setting.u_lo
+        u_hi = config.setting.u_hi
+
+        self.use_valuation = config.learning.use_valuation
+        self.n_items = 1
+
+        self.valuation_prior = 'uniform'
+
+        self.correlation_groups = config.setting.correlation_groups
+        self.cost_param = config.setting.cost_param
+        self.cost_type = config.setting.cost_type
+
+        self.bimodal = False
+
+        if len(u_lo) > 1 and  config.setting.common_prior !=  torch.distributions.normal:
+
+            assert self.correlation_groups is None, "We only support correlation in symmetric settings"
+
+            self.u_lo: List[float] = [float(u_lo[i]) for i in range(self.n_players)]
+            self.u_hi: List[float] = [float(u_hi[i]) for i in range(self.n_players)]
+            assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
+            self.positive_output_point = torch.tensor([min(self.u_hi)] * self.n_items)
+            self.symmetric = False
+            self.model_sharing = False
+            self.correlation = False
+        elif config.setting.common_prior ==  torch.distributions.normal:
+            # quick hack -> implement bimodal gaussian prior here
+            self.u_lo: List[float] = [float(u_lo[i]) for i in range(self.n_players)]
+            self.u_hi: List[float] = [float(u_hi[i]) for i in range(self.n_players)]
+            self.common_prior = torch.distributions.normal.Normal(self.u_lo[0], self.u_hi[0])
+            self.positive_output_point = torch.stack([self.common_prior.mean] * self.n_items)
+            self.symmetric = True
+
+            self.model_sharing = config.learning.model_sharing
+            self.bimodal = True
+        else:
+            self.u_lo = float(u_lo[0])
+            self.u_hi = float(u_hi[0])
+            self.common_prior = torch.distributions.uniform.Uniform(low=self.u_lo, high=self.u_hi)
+            self.positive_output_point = torch.stack([self.common_prior.mean] * self.n_items)
+            self.symmetric = True
+
+            self.model_sharing = config.learning.model_sharing
+
+            if self.correlation_groups is not None:
+                assert self.correlation_groups == [[0, 1]], \
+                "other settings not implemented properly yet"
+                assert len(config.setting.correlation_coefficients) == 1
+                self.correlation = True
+
+        if self.model_sharing:
+            self.n_models = 1
+            self._bidder2model = [0] * self.n_players
+        else:
+            self.n_models = self.n_players
+            self._bidder2model = list(range(self.n_players))
+
+        # plot limits
+        self.plot_xmin = min(u_lo)
+        self.plot_xmax = max(u_hi)
+        self.plot_ymin = 0
+        self.plot_ymax = max(u_hi)
+
+        # Define impact function
+        if config.setting.impact_function == "tullock_contest":
+            self.impact_fun = lambda x: x ** config.setting.impact_factor
+            self.plot_xmin = min(u_lo)
+            self.plot_xmax = max(u_hi)
+            self.plot_ymin = 0
+            if config.setting.impact_factor == 0.5:
+                self.plot_ymax = 0.5
+            else:
+                self.plot_ymax = 1.7
+        elif config.setting.impact_function == "tullock_lottery":
+            self.impact_fun = lambda x: x
+            self.plot_xmin = min(u_lo)
+            self.plot_xmax = max(u_hi)
+            self.plot_ymin = 0
+            self.plot_ymax = 1.6
+        elif config.setting.impact_function == "diff_form":
+            self.impact_fun = lambda x: torch.exp(x * config.setting.impact_factor)
+            self.plot_xmin = min(u_lo)
+            self.plot_xmax = max(u_hi)
+            self.plot_ymin = 0
+            self.plot_ymax = 2
+        elif config.setting.impact_function == "crowdsourcing":
+            self.valuations = config.setting.valuations.to("cuda")
+            self.plot_xmin = min(u_lo)
+            self.plot_xmax = max(u_hi)
+            self.plot_ymin = 0
+            self.plot_ymax = 1
+        else:
+            raise ValueError("Impact function not defined")
+
+        super().__init__(config)
+
+    def pretrain_transform(self, player_position: int) -> callable:
+        if self.use_valuation:
+            #return partial(bne_crowdsourcing_valuations, v1=self.valuations[0], v2=self.valuations[1])
+            #return partial(bne_crowdsourcing_valuations, v1=self.valuations[0], v2=self.valuations[1], m=self.u_lo)
+            return lambda x: x
+        else:
+            return lambda x: self.u_hi - x 
+
+    def _setup_sampler(self):
+        default_batch_size = self.config.learning.batch_size
+        device = self.config.hardware.device
+        if self.symmetric:
+            self.sampler = SymmetricIPVSampler(
+                self.common_prior, self.n_players, self.valuation_size,
+                default_batch_size, device
+            )
+        elif self.correlation:
+            # setup individual samplers for each bidder
+            self.sampler = AffiliatedValuationObservationSampler(
+                n_players=self.n_players,
+                valuation_size=self.valuation_size,
+                u_lo=self.u_lo, u_hi=self.u_hi,
+                default_batch_size=default_batch_size,
+                default_device=device
+            )
+        else:
+            # setup individual samplers for each bidder
+            bidder_samplers = [
+                UniformSymmetricIPVSampler(
+                    self.u_lo[i], self.u_hi[i], 1,
+                    self.valuation_size, default_batch_size, device)
+                for i in range(self.n_players)]
+
+            self.sampler = CompositeValuationObservationSampler(
+                self.n_players, self.valuation_size, self.observation_size, bidder_samplers,
+                default_batch_size, device
+                )
+
+    def _setup_mechanism(self):
+        if self.payment_rule == 'first_price':
+            self.mechanism = TullockContest(impact_function = self.impact_fun, 
+                                            cuda=self.hardware.cuda, 
+                                            use_valuation=self.use_valuation, 
+                                            cost_type = self.cost_type,
+                                            cost_param = self.cost_param)
+        elif self.payment_rule == 'crowdsourcing':
+            self.mechanism = CrowdsourcingContest(cuda=self.hardware.cuda)
+        else:
+            raise ValueError('Invalid Mechanism type!')
+
+    def _setup_eval_environment(self):
+        assert self.known_bne
+        assert hasattr(self, '_optimal_bid')
+
+        bne_strategy = ClosureStrategy(self._optimal_bid)
+
+        # define bne agents once then use them in all runs
+        agents = [
+            self._strat_to_bidder(
+                strategy=bne_strategy,
+                player_position=i,
+                batch_size=self.config.logging.eval_batch_size,
+                enable_action_caching=self.config.logging.cache_eval_actions
+            )
+            for i in range(self.n_players)
+        ]
+        for a in agents:
+            a._grid_lb = 0
+            a._grid_ub = 1.5
+
+        self.bne_env = AuctionEnvironment(
+            mechanism=self.mechanism,
+            agents=agents,
+            valuation_observation_sampler=self.sampler,
+            batch_size=self.config.logging.eval_batch_size,
+            n_players=self.n_players,
+            strategy_to_player_closure=self._strat_to_bidder
+        )
+
+        # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
+        self.bne_utilities = torch.zeros((self.n_players,), device=self.config.hardware.device)
+        for i, a in enumerate(self.bne_env.agents):
+            self.bne_utilities[i] = self.bne_env.get_reward(agent=a, redraw_valuations=True)
+
+        print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities.tolist()))
+        self.bne_utility = self.bne_utilities.mean()
+
+    def _strat_to_bidder(self, player_position: int = 0, **kwargs):
+        if player_position == 10:
+            if isinstance(self._optimal_bid, List):
+                kwargs['strategy'] = ClosureStrategy(self._optimal_bid[0])
+            else:
+                kwargs['strategy'] = ClosureStrategy(self._optimal_bid)
+            return CrowdsourcingContestant(valuations=self.valuations, use_valuations=self.use_valuation, player_position=player_position, **kwargs)
+        if self.use_valuation and self.payment_rule != "crowdsourcing":
+            return Bidder(player_position=player_position,**kwargs)
+        elif self.payment_rule == "crowdsourcing":
+            return CrowdsourcingContestant(valuations=self.valuations, use_valuations=self.use_valuation, player_position=player_position, **kwargs)
+        else:
+            return Contestant(player_position=player_position, **kwargs)
+
+    def _get_logdir_hierarchy(self):
+        if self.use_valuation:
+            t = "valuations"
+        else:
+            t = "marginal_costs"
+        name = ['single_item', 'contest', 'tullock_lottery', f'{t}']
+        return os.path.join(*name)
+
+    def run(self):
+        success = super().run()
+
+        if success:
+            return success, self.models
+        else:   
+            return success, None
+    
+    def _check_and_set_known_bne(self):
+        
+        if self.payment_rule == 'crowdsourcing' and not self.use_valuation:
+            self._optimal_bid = partial(bne_crowdsourcing)
+            return True
+        elif self.payment_rule == 'crowdsourcing' and self.use_valuation:
+            self._optimal_bid = lambda x, player_position=0: bne_crowdsourcing_valuations(x, v1=self.valuations[0], v2=self.valuations[1], m=self.u_lo)
+            return True
+        else:
+            return False
+
+    

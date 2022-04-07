@@ -408,7 +408,8 @@ def ex_interim_utility(
     #         payments:    *agent_batches x opponent_batch x n_players
     allocations, payments = mechanism.play(action_profile_actual)
 
-    agent_allocations = allocations[..., player_position, :].type(torch.bool)
+    #agent_allocations = allocations[..., player_position, :].type(torch.bool) # TBD CHANGE ME BACK DEPENDING ON CONTEST OR AUCTION MARKUS
+    agent_allocations = allocations[..., player_position, :]
     agent_payments = payments[..., player_position]
     agent_valuations = cv[..., player_position, :]
     # shape of utility: *agent_batch_sizes x opponent_batch_size

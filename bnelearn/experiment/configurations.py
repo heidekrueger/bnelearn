@@ -63,6 +63,11 @@ class SettingConfig:
     core_solver: str = None
     # parallel: int = 1 in hardware config now
 
+    # Contests
+    impact_factor: float = None
+    cost_param: float = None
+    cost_type: str = None
+
 
 @dataclass
 class LearningConfig:
@@ -75,6 +80,7 @@ class LearningConfig:
     pretrain_iters: int
     batch_size: int
     hidden_activations: List[nn.Module] = None
+    use_valuation: bool = True
 
 
 @dataclass

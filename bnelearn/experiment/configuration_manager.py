@@ -3,6 +3,7 @@ import os
 import time
 import warnings
 from typing import List, Type, Iterable, Tuple
+from xmlrpc.client import Boolean
 from numpy import MAXDIMS
 
 import torch
@@ -26,7 +27,8 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
-                                                        AffiliatedObservationsExperiment
+                                                        AffiliatedObservationsExperiment,
+                                                        ContestExperiment
                                                         )
 
 # TODO: server-specific constant hardcoded. We need a more dynamic way to do this.
@@ -275,6 +277,63 @@ class ConfigurationManager:
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
 
+    def _init_tullock_lottery(self):
+        self.setting.u_lo = [0.1]
+        self.setting.u_hi = [1.1]
+        self.setting.impact_function = "tullock_lottery"
+        self.learning.model_sharing = True
+        # self.setting.correlation_groups = [[0, 1]]
+        # self.setting.correlation_types = 'corr_type'
+        # self.setting.correlation_coefficients = [0.5]
+
+    def _init_tullock_contest(self):
+        self.setting.u_lo = [0.1]
+        self.setting.u_hi = [1.1]
+        self.setting.impact_function = "tullock_contest"
+        self.learning.model_sharing = True
+        self.logging.log_metrics = {'util_loss': True}
+        #self.setting.impact_factor = 1
+        # self.setting.correlation_groups = [[0, 1]]
+        # self.setting.correlation_types = 'corr_type'
+        # self.setting.correlation_coefficients = [0.99]
+
+    def _init_difference_form(self):
+        self.setting.u_lo = [0.1]
+        self.setting.u_hi = [1.1]
+        self.setting.impact_function = "diff_form"
+        self.learning.model_sharing = True
+        self.setting.impact_factor = 10
+        # self.setting.correlation_groups = [[0, 1]]
+        # self.setting.correlation_types = 'corr_type'
+        # self.setting.correlation_coefficients = [0.5]
+
+    def _init_loss_aversion(self):
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1]
+        self.setting.lamb = 1
+        self.learning.model_sharing = True
+        self.setting.payment_rule = "loss_aversion"
+
+    def _init_crowdsourcing_contest(self):
+        self.setting.u_lo = [0.5]
+        self.setting.u_hi = [1.0]
+        self.learning.model_sharing = True
+        self.setting.payment_rule = "crowdsourcing"
+        self.setting.impact_function = "crowdsourcing"
+        self.setting.impact_factor = 1
+        self.setting.valuations = torch.tensor([0.63, 0.37, 0])
+
+    def _init_all_pay(self):
+        self.setting.u_lo = [0.1]
+        self.setting.u_hi = [1.1]
+        self.learning.model_sharing = True
+        self.setting.payment_rule = "all_pay"
+        self.learning.use_valuation = False
+        # mix = torch.distributions.Categorical(torch.ones(2,))
+        # comp = torch.distributions.Normal(torch.tensor([0.25, 0.75]), torch.tensor([0.1, 0.1]))
+        # self.setting.common_prior = torch.distributions.MixtureSameFamily(mix, comp)
+        # print(2)
+
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
         # Learning
@@ -377,6 +436,24 @@ class ConfigurationManager:
     def _post_init_splitaward(self):
         pass
 
+    def _post_init_tullock_lottery(self):
+        pass
+
+    def _post_init_tullock_contest(self):
+        pass
+
+    def _post_init_difference_form(self):
+        pass
+
+    def _post_init_loss_aversion(self):
+        pass
+
+    def _post_init_crowdsourcing(self):
+        pass
+
+    def _post_init_all_pay(self):
+        pass
+
     experiment_types = {
         'single_item_uniform_symmetric':
             (UniformSymmetricPriorSingleItemExperiment, _init_single_item_uniform_symmetric,
@@ -405,7 +482,19 @@ class ConfigurationManager:
         'multiunit':
            (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
-           (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)
+           (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
+        'tullock_lottery':
+            (ContestExperiment, _init_tullock_lottery, _post_init_tullock_lottery),
+        'tullock_contest':
+            (ContestExperiment, _init_tullock_contest, _post_init_tullock_contest),
+        'difference_contest':
+            (ContestExperiment, _init_difference_form, _post_init_difference_form),
+        'loss_aversion':
+            (UniformSymmetricPriorSingleItemExperiment, _init_loss_aversion, _post_init_loss_aversion),
+        'crowdsourcing':
+            (ContestExperiment, _init_crowdsourcing_contest, _post_init_crowdsourcing),
+        'all_pay':
+            (UniformSymmetricPriorSingleItemExperiment, _init_all_pay, _post_init_all_pay)
         }
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
@@ -431,7 +520,8 @@ class ConfigurationManager:
                     correlation_coefficients: List[float] = 'None', n_units: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None', regret: float = 'None',):
+                    core_solver: str = 'None', regret: float = 'None', impact_factor: float = 'None',
+                    cost_type: str=None, cost_param: float = None, valuations: List = None):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
@@ -478,7 +568,7 @@ class ConfigurationManager:
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
-                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
+                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None', use_valuation: bool = True):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.learning, arg):
@@ -559,7 +649,8 @@ class ConfigurationManager:
             hidden_nodes=[10, 10],
             pretrain_iters=500,
             batch_size=2 ** 18,
-            hidden_activations=[nn.SELU(), nn.SELU()])
+            hidden_activations=[nn.SELU(), nn.SELU()],
+            use_valuation=True)
         logging = LoggingConfig(
             enable_logging=True,
             log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),

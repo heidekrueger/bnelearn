@@ -8,8 +8,10 @@ This module implements players / bidders / agents in games.
 from abc import ABC, abstractmethod
 import warnings
 import torch
+import torch.nn.functional as F
 from bnelearn.strategy import (Strategy, MatrixGameStrategy,
                                FictitiousPlayStrategy, FictitiousNeuralPlayStrategy)
+from typing import List
 
 
 class Player(ABC):
@@ -80,7 +82,8 @@ class Bidder(Player):
                  bid_size: int = 1,
                  cuda: str = True,
                  enable_action_caching: bool = False,
-                 risk: float = 1.0
+                 risk: float = 1.0,
+                 lamb: float = 1.0
                  ):
 
         super().__init__(strategy, player_position, batch_size, cuda)
@@ -90,6 +93,7 @@ class Bidder(Player):
         self.bid_size = bid_size
 
         self.risk = risk
+        self.lamb = lamb
         self._enable_action_caching = enable_action_caching
         self._cached_observations_changed = False # true if new observations drawn since actions calculated
         self._cached_observations = None
@@ -152,10 +156,16 @@ class Bidder(Player):
         if valuations is None:
             valuations = self._cached_valuations
 
-        welfare = self.get_welfare(allocations, valuations)
-        payoff = welfare - payments
+        try:
+            welfare = self.get_welfare(allocations, valuations)
+            payoff = welfare - payments
+        except:
+            print(2)
 
-        if self.risk == 1.0:
+        if self.risk == 1.0 and self.lamb == 1.0:
+            return payoff
+        elif self.lamb != 1.0:
+            payoff[payoff < 0] = payoff[payoff < 0] * self.lamb 
             return payoff
 
         # payoff^alpha not well defined in negative domain for risk averse agents
@@ -271,3 +281,82 @@ class CombinatorialBidder(Bidder):
 
         welfare = (valuations * allocations_reduced_dim).sum(dim=item_dimension)
         return welfare
+
+
+class Contestant(Bidder):
+
+    def get_utility(self, winning_probabilities, payments, valuations=None):
+        """
+        For a batch of valuations, allocations, and payments of the bidder,
+        return their utility.
+
+        Can handle multiple batch dimensions, e.g. for allocations a shape of
+        ( outer_batch_size, inner_batch_size, n_items). These batch dimensions are kept in returned
+        payoff.
+        """
+
+        if valuations is None:
+            valuations = self._cached_valuations
+
+        welfare = self.get_welfare(payments, valuations)
+        payoff = winning_probabilities - welfare.unsqueeze(-1)
+
+        return payoff.squeeze()
+
+    def get_welfare(self, payments, valuations=None):
+        """For a batch of allocations return the player's welfare.
+
+        If valuations are not specified, welfare is calculated for
+        `self.valuations`.
+
+        Can handle multiple batch dimensions, e.g. for valuations a shape of
+        (..., batch_size, n_items). These batch dimensions are kept in returned
+        welfare.
+        """
+        #assert payments.dim() >= 2 # [batch_sizes] x items
+        if valuations is None:
+            valuations = self._cached_valuations
+
+        item_dimension = valuations.dim() - 1
+        welfare = (valuations * payments.unsqueeze(-1)).sum(dim=item_dimension)
+
+        return welfare
+
+
+class CrowdsourcingContestant(Bidder):
+
+    def __init__(self, valuations: torch.tensor = None, use_valuations = False, **kwargs):
+        super().__init__(**kwargs)
+
+        self.valuations = valuations
+        self.num_classes = self.valuations.shape[0]
+        self.use_valuations = use_valuations
+
+
+    def get_utility(self, allocations, payments, ability=None):
+        """
+        For a batch of valuations, allocations, and payments of the bidder,
+        return their utility.
+
+        Can handle multiple batch dimensions, e.g. for allocations a shape of
+        ( outer_batch_size, inner_batch_size, n_items). These batch dimensions are kept in returned
+        payoff.
+        """
+
+        if ability is None:
+            ability = self._cached_valuations
+
+        # retrieve valuations
+        ## one hot encoding
+        allocations = F.one_hot(allocations.long(), self.num_classes)
+        allocations = (allocations * self.valuations).sum(-1)
+
+        if self.use_valuations:
+            allocations = allocations * ability
+            disutil = payments.unsqueeze(-1)
+        else:
+            # disutlity
+            disutil = ability * payments.unsqueeze(-1)
+
+        payoff = allocations - disutil
+        return payoff.squeeze(-1)

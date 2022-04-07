@@ -25,7 +25,39 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager  # py
 if __name__ == '__main__':
 
     # path is user-specific
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments')
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'crowdsourcing_plots')
+
+    # Contest Experiments
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='tullock_contest', n_runs=1, n_epochs=3500)\
+    #     .set_setting(impact_factor=1, correlation_groups=[[0, 1]], correlation_coefficients=[0.6], correlation_types='corr_type') \
+    #     .set_logging(log_root_dir=log_root_dir, util_loss_frequency=1000) \
+    #     .set_hardware(specific_gpu=3) \
+    #     .set_learning(pretrain_iters=500, use_valuation=True, batch_size=2 ** 22) \
+    #     .get_config()
+
+    # to be changed
+    valuations = torch.tensor([1.0, 0.0, 0.0])
+    np = 2
+    gpu = 2
+    use_valuation = False
+    # fixed
+    exp_type = "all_pay"
+
+    experiment_config, experiment_class = ConfigurationManager(experiment_type=exp_type, n_runs=1, n_epochs=7500) \
+        .set_setting(valuations=valuations, n_players=np) \
+        .set_logging(log_root_dir=log_root_dir, util_loss_frequency=1000, save_models=True, plot_frequency=100) \
+        .set_hardware(specific_gpu=gpu) \
+        .set_learning(pretrain_iters=2500, use_valuation=use_valuation) \
+        .get_config()
+
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='all_pay', n_runs=1, n_epochs=15000) \
+    #     .set_setting(n_players=2, valuations=torch.tensor([1.0, 0.0, 0.0])) \
+    #     .set_logging(log_root_dir=log_root_dir, util_loss_frequency=1000, best_response=True, plot_frequency=100) \
+    #     .set_hardware(specific_gpu=1) \
+    #     .set_learning(pretrain_iters=500, use_valuation=True, learner_hyperparams={'population_size': 64,
+    #                              'sigma': 5,
+    #                              'scale_sigma_by_model_size': True}) \
+    #     .get_config()
 
     # Run exps that contain integration
     # experiment_types = ['splitaward']  # ['single_item_gaussian_symmetric', 'multiunit', 'splitaward']
@@ -139,10 +171,10 @@ if __name__ == '__main__':
     #     .set_logging(log_root_dir=log_root_dir) \
     #     .get_config()
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='llllrrg', n_runs=10, n_epochs=4000) \
-        .set_logging(log_root_dir=log_root_dir) \
-        .set_hardware(specific_gpu=1) \
-        .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='llllrrg', n_runs=10, n_epochs=4000) \
+    #     .set_logging(log_root_dir=log_root_dir) \
+    #     .set_hardware(specific_gpu=1) \
+    #     .get_config()
 
     # RuntimeError: Sizes of tensors must match
 

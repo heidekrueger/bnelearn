@@ -61,6 +61,33 @@ def truthful_bid(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
     """Truthful bidding function: A BNE in any VCG auction."""
     return valuation
 
+def loss_equilibrium(valuation: torch.Tensor, lamb: float, **kwargs):
+    return -1/(2*(lamb - 1) * valuation - 2 * lamb) * (valuation ** 2)
+
+def bne_crowdsourcing(valuation: torch.Tensor, v1: float = 1/2, v2: float = 1/2, **kwargs):
+    return torch.relu(8*valuation*(3*v1 -2) + 4*valuation.log()*(3-5*v1) + 8*(2-3*v1))
+
+    #beta = lambda c, v1: 8*c*(3*v1 -2) + 4*np.log(c)*(3-5*v1) + 8*(2-3*v1)
+
+    #return (-8+8*valuation-8* valuation.log()) * v1 + (16-16*valuation+12*valuation.log())*v2
+
+    
+
+def bne_crowdsourcing_valuations(valuation: torch.Tensor, v1: float = 1, v2 = 0, m: float = 0, player_position=0, **kwargs):
+    #return torch.relu(0.63 * (valuation ** 2 - 2/3 * valuation ** 3) - 0.37 * valuation ** 2)
+    #return torch.relu(v1 * 2 * ((valuation ** 2)/2 - (valuation ** 3)/3) + v2 * 2 * ((valuation ** 2)/2 - (2*valuation**3)/3))
+
+    a = lambda m, v: 2/(1-m) * ((m**3)/(6*(1-m)) + (v ** 3)/(3*(1-m)) - (m*v**2)/(2*(1-m)))
+    b = lambda m, v: 2/(1-m) * (-(m**3)/(3*(1-m)) - (m ** 2)/2 - (2 * v **3)/(3*(1-m)) + (m * v ** 2)/(1-m) + (v ** 2)/2)
+
+    #return torch.relu(v1 * 2/3 * (valuation ** 3) + v2 * 2 * ((valuation ** 2)/2 - (2*valuation ** 3)/3)) 
+    return v1 * a(m, valuation) + v2 * b(m, valuation)
+
+def bne_all_pay(valuation: torch.Tensor, n: int = 2, **kwargs) -> torch.Tensor:
+    return (n-1) * (valuation ** n)/n
+
+def bne_all_pay_cost(valuation: torch.Tensor, n: int = 2, **kwargs):
+    return torch.relu(-torch.log(valuation))
 
 def bne_fpsb_ipv_asymmetric_uniform_overlapping_priors_risk_neutral(
         valuation: torch.Tensor or float, player_position: int,
