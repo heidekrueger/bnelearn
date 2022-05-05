@@ -32,7 +32,7 @@ from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
 from bnelearn.experiment.configurations import (ExperimentConfig)
 from bnelearn.mechanism import Mechanism
-from bnelearn.strategy import NeuralNetStrategy
+from bnelearn.strategy import NeuralNetStrategy, NeuralProbabilityStrategy
 from bnelearn.sampler import ValuationObservationSampler
 
 
@@ -215,14 +215,26 @@ class Experiment(ABC):
         # this method is part of the init workflow, so we #pylint: disable=attribute-defined-outside-init
         self.models = [None] * self.n_models
 
+        # for i in range(len(self.models)):
+        #     self.models[i] = NeuralNetStrategy(
+        #         self.observation_size,
+        #         hidden_nodes=self.learning.hidden_nodes,
+        #         hidden_activations=self.learning.hidden_activations,
+        #         ensure_positive_output=self.positive_output_point,
+        #         output_length=self.action_size,
+        #         dist = torch.distributions.Normal
+        #     ).to(self.hardware.device)
+
         for i in range(len(self.models)):
-            self.models[i] = NeuralNetStrategy(
+            self.models[i] = NeuralProbabilityStrategy(
                 self.observation_size,
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
                 ensure_positive_output=self.positive_output_point,
-                output_length=self.action_size
+                output_length=self.action_size,
+                action_dist = torch.distributions.Normal
             ).to(self.hardware.device)
+
 
         self.bidders = [
             self._strat_to_bidder(strategy=self.models[m_id],

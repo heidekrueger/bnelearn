@@ -25,30 +25,40 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager  # py
 if __name__ == '__main__':
 
     # path is user-specific
-    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'crowdsourcing_plots')
+    torch.autograd.set_detect_anomaly(True)
 
-    # Contest Experiments
-    # experiment_config, experiment_class = ConfigurationManager(experiment_type='tullock_contest', n_runs=1, n_epochs=3500)\
-    #     .set_setting(impact_factor=1, correlation_groups=[[0, 1]], correlation_coefficients=[0.6], correlation_types='corr_type') \
-    #     .set_logging(log_root_dir=log_root_dir, util_loss_frequency=1000) \
-    #     .set_hardware(specific_gpu=3) \
-    #     .set_learning(pretrain_iters=500, use_valuation=True, batch_size=2 ** 22) \
+    log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'abstract_plots', 'updated_weak', '3')
+
+    # # Contest Experiments
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='crowdsourcing', n_runs=1, n_epochs=5000)\
+        .set_setting(impact_factor=1, n_players=3, valuations=torch.tensor([0.8, 0.2, 0.0])) \
+        .set_logging(log_root_dir=log_root_dir, util_loss_frequency=1000, save_models=True) \
+        .set_hardware(specific_gpu=4) \
+        .set_learning(pretrain_iters=500, use_valuation=True, batch_size=2 ** 22, learner_type='PGLearner') \
+        .get_config()
+
+    # Crowdsourcing Contest
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type='tullock_contest', n_runs=1, n_epochs=5000) \
+    #     .set_setting(n_players=2, impact_factor=5, impact_function="tullock_contest") \
+    #     .set_logging(log_root_dir=log_root_dir, util_loss_frequency=500, save_models=True, plot_frequency=500) \
+    #     .set_hardware(specific_gpu=5) \
+    #     .set_learning(pretrain_iters=500, use_valuation=True) \
     #     .get_config()
 
     # to be changed
-    valuations = torch.tensor([1.0, 0.0, 0.0])
-    np = 2
-    gpu = 2
-    use_valuation = False
-    # fixed
-    exp_type = "all_pay"
+    # valuations = torch.tensor([1.0, 0.0, 0.0])
+    # np = 2
+    # gpu = 4
+    # use_valuation = True
+    # # fixed
+    # exp_type = "crowdsourcing"
 
-    experiment_config, experiment_class = ConfigurationManager(experiment_type=exp_type, n_runs=1, n_epochs=7500) \
-        .set_setting(valuations=valuations, n_players=np) \
-        .set_logging(log_root_dir=log_root_dir, util_loss_frequency=1000, save_models=True, plot_frequency=100) \
-        .set_hardware(specific_gpu=gpu) \
-        .set_learning(pretrain_iters=2500, use_valuation=use_valuation) \
-        .get_config()
+    # experiment_config, experiment_class = ConfigurationManager(experiment_type=exp_type, n_runs=1, n_epochs=3500) \
+    #     .set_setting(valuations=valuations, n_players=np) \
+    #     .set_logging(log_root_dir=log_root_dir, util_loss_frequency=100, save_models=True, plot_frequency=100) \
+    #     .set_hardware(specific_gpu=gpu) \
+    #     .set_learning(pretrain_iters=500, use_valuation=use_valuation) \
+    #     .get_config()
 
     # experiment_config, experiment_class = ConfigurationManager(experiment_type='all_pay', n_runs=1, n_epochs=15000) \
     #     .set_setting(n_players=2, valuations=torch.tensor([1.0, 0.0, 0.0])) \

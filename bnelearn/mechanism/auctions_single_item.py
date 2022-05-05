@@ -314,35 +314,37 @@ class TullockContest(Mechanism):
         *batch_sizes, n_players, n_items = bids.shape
 
         # temporarily reshape bids to cope with probability calculation
-        eff = bids.reshape(math.prod([*batch_sizes]), n_players, n_items)
+        #eff = bids.reshape(math.prod([*batch_sizes]), n_players, n_items)
 
         # allocate return variables
-        payments = bids.reshape(math.prod([*batch_sizes]), n_players) # pay as bid
+        #payments = bids.reshape(math.prod([*batch_sizes]), n_players) # pay as bid
+        payments = bids.reshape(*batch_sizes, n_players) # pay as bid
 
         # transform bids according to impact function
-        eff = self.impact_fun(eff).reshape(math.prod([*batch_sizes]), n_players)
+        #eff = self.impact_fun(eff).reshape(math.prod([*batch_sizes]), n_players)
+        bids = self.impact_fun(bids)
 
         # Calculate winning probabilities
-        winning_probs = eff/eff.sum(dim=1, keepdim=True)
+        winning_probs = bids/bids.sum(dim=-2, keepdim=True)
         winning_probs[winning_probs.isnan()] = 1/n_players
 
         if self.use_valuation:
-            winner = winning_probs.multinomial(num_samples=1)
+            #winner = winning_probs.multinomial(num_samples=1)
 
-            allocations = torch.zeros(math.prod([*batch_sizes]), n_players, device=self.device)
+            #allocations = torch.zeros(math.prod([*batch_sizes]), n_players, device=self.device)
 
-            allocations.scatter_(1, winner, 1)
+            #allocations.scatter_(1, winner, 1)
 
             # Don't allocate items that have a winnign bid of zero.
-            allocations.masked_fill_(mask=payments== 0, value=0)
+            #allocations.masked_fill_(mask=payments== 0, value=0)
 
             #transform payments back
-            payments = payments.reshape(*batch_sizes, n_players)
+            #payments = payments.reshape(*batch_sizes, n_players)
 
 
-            allocations = allocations.reshape(*batch_sizes, n_players, n_items)    
+            #allocations = allocations.reshape(*batch_sizes, n_players, n_items)    
 
-            return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
+            return (winning_probs, payments)  # payments: batches x players, allocation: batch x players x items
 
         else:
             winning_probs = winning_probs.reshape(*batch_sizes, n_players, n_items)
@@ -355,18 +357,10 @@ class TullockContest(Mechanism):
 class CrowdsourcingContest(Mechanism):
     """Tullock Lottery"""
 
-    def __init__(self, cuda: bool = True, cost_type: str = None, cost_param: float = None):
+    def __init__(self, cuda: bool = True, deterministic = True):
         super().__init__(cuda)
 
-        if cost_type is None:
-            self.cost_function = lambda x: x
-        elif cost_type == "linear":
-            self.cost_function = lambda x: x + cost_param
-        elif cost_type == "concave_convex":
-            self.cost_function = lambda x: x ** cost_param
-        else:
-            raise ValueError("Cost function not implemented")
-
+        self.deterministic = deterministic
 
     # TODO: If multiple players submit the highest bid, the implementation chooses the first rather than at random
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -393,7 +387,7 @@ class CrowdsourcingContest(Mechanism):
                         allocation in that batch.
         """
         assert bids.dim() >= 3, "Bid tensor must be at least 3d (*batch_dims x players x items)"
-        #assert (bids >= 0).all().item(), "All bids must be nonnegative."
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
@@ -402,25 +396,23 @@ class CrowdsourcingContest(Mechanism):
         *batch_dims, player_dim, item_dim = range(bids.dim())  # pylint: disable=unused-variable
         *batch_sizes, n_players, n_items = bids.shape
 
+        if len(batch_sizes) > 1:
+            print(2)
+
         # determine allocation
-        indices, allocations = torch.topk(bids, n_players, dim=player_dim)
-        #indices = (torch.linspace(1, n_players, n_players).to('cuda') * torch.ones_like(indices.squeeze(-1))).unsqueeze(-1)
+        if self.deterministic:
+            _, allocations = torch.topk(bids, n_players, dim=player_dim)
 
-        _, sorted_allocations = torch.sort(allocations, dim=player_dim)
+            _, sorted_allocations = torch.sort(allocations, dim=player_dim)
 
-        #allocation = torch.gather(indices, dim=player_dim, index=sorted_allocations) 
-        #allocation = allocation - 1
-        allocation = sorted_allocations
-        #allocation = allocations
-
-        # white noise
-        #allocations = allocations + torch.normal(torch.zeros(allocations.shape), 0.1).cuda()
+            allocation = sorted_allocations
+        else:
+            raise NotImplementedError
 
         # apply cost function
-        bids = self.cost_function(bids)
+        #bids = self.cost_function(bids)
 
-        payments = bids.reshape(math.prod([*batch_sizes]), n_players) # pay as bid
-        payments = payments.reshape(*batch_sizes, n_players)
+        payments = bids.reshape(*batch_sizes, n_players) # pay as bid
 
         return (allocation, payments)  # payments: batches x players, allocation: batch x players x items
 

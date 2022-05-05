@@ -248,6 +248,9 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
         super().__init__(config=config)
 
+        # set action_size to 2
+        self.action_size = 2
+
     def _check_and_set_known_bne(self):
         if self.payment_rule == 'first_price':
             self._optimal_bid = partial(bne_fpsb_ipv_symmetric_uniform_prior,
@@ -721,7 +724,7 @@ class ContestExperiment(SingleItemExperiment):
 
             self.u_lo: List[float] = [float(u_lo[i]) for i in range(self.n_players)]
             self.u_hi: List[float] = [float(u_hi[i]) for i in range(self.n_players)]
-            assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
+#            assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
             self.positive_output_point = torch.tensor([min(self.u_hi)] * self.n_items)
             self.symmetric = False
             self.model_sharing = False
@@ -773,6 +776,9 @@ class ContestExperiment(SingleItemExperiment):
             if config.setting.impact_factor == 0.5:
                 self.plot_ymax = 0.5
             else:
+                self.plot_ymax = 0.45
+
+            if not self.use_valuation:
                 self.plot_ymax = 1.7
         elif config.setting.impact_function == "tullock_lottery":
             self.impact_fun = lambda x: x
@@ -786,21 +792,23 @@ class ContestExperiment(SingleItemExperiment):
             self.plot_xmax = max(u_hi)
             self.plot_ymin = 0
             self.plot_ymax = 2
-        elif config.setting.impact_function == "crowdsourcing":
-            self.valuations = config.setting.valuations.to("cuda")
+        elif config.setting.payment_rule == "crowdsourcing":
+            self.valuations = config.setting.valuations.cuda()
             self.plot_xmin = min(u_lo)
             self.plot_xmax = max(u_hi)
             self.plot_ymin = 0
             self.plot_ymax = 1
+            self.deterministic = True if config.setting.impact_function=="deterministic" else False
         else:
             raise ValueError("Impact function not defined")
 
         super().__init__(config)
 
+        # set action_size to 2
+        self.action_size = 2
+
     def pretrain_transform(self, player_position: int) -> callable:
         if self.use_valuation:
-            #return partial(bne_crowdsourcing_valuations, v1=self.valuations[0], v2=self.valuations[1])
-            #return partial(bne_crowdsourcing_valuations, v1=self.valuations[0], v2=self.valuations[1], m=self.u_lo)
             return lambda x: x
         else:
             return lambda x: self.u_hi - x 
@@ -843,7 +851,7 @@ class ContestExperiment(SingleItemExperiment):
                                             cost_type = self.cost_type,
                                             cost_param = self.cost_param)
         elif self.payment_rule == 'crowdsourcing':
-            self.mechanism = CrowdsourcingContest(cuda=self.hardware.cuda)
+            self.mechanism = CrowdsourcingContest(cuda=self.hardware.cuda, deterministic=self.deterministic)
         else:
             raise ValueError('Invalid Mechanism type!')
 
@@ -884,7 +892,7 @@ class ContestExperiment(SingleItemExperiment):
         print('Utility in BNE (sampled): \t{}'.format(self.bne_utilities.tolist()))
         self.bne_utility = self.bne_utilities.mean()
 
-    def _strat_to_bidder(self, player_position: int = 0, **kwargs):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False, **kwargs):
         if player_position == 10:
             if isinstance(self._optimal_bid, List):
                 kwargs['strategy'] = ClosureStrategy(self._optimal_bid[0])
@@ -892,18 +900,18 @@ class ContestExperiment(SingleItemExperiment):
                 kwargs['strategy'] = ClosureStrategy(self._optimal_bid)
             return CrowdsourcingContestant(valuations=self.valuations, use_valuations=self.use_valuation, player_position=player_position, **kwargs)
         if self.use_valuation and self.payment_rule != "crowdsourcing":
-            return Bidder(player_position=player_position,**kwargs)
+            return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching)
         elif self.payment_rule == "crowdsourcing":
-            return CrowdsourcingContestant(valuations=self.valuations, use_valuations=self.use_valuation, player_position=player_position, **kwargs)
+            return CrowdsourcingContestant(strategy, player_position, batch_size, enable_action_caching=enable_action_caching, valuations=self.valuations, 
+                                            use_valuations=self.use_valuation, **kwargs)
         else:
-            return Contestant(player_position=player_position, **kwargs)
+            return Contestant(strategy, player_position, batch_size, enable_action_caching=enable_action_caching, **kwargs)
 
     def _get_logdir_hierarchy(self):
-        if self.use_valuation:
-            t = "valuations"
+        if self.payment_rule == "crowdsourcing":
+            name = [f'{self.payment_rule}', f'{self.n_players}', f'{self.valuations[0]}']
         else:
-            t = "marginal_costs"
-        name = ['single_item', 'contest', 'tullock_lottery', f'{t}']
+            name = [f'{self.payment_rule}', f'{self.n_players}', f'{self.config.setting.impact_factor}']
         return os.path.join(*name)
 
     def run(self):
@@ -920,9 +928,46 @@ class ContestExperiment(SingleItemExperiment):
             self._optimal_bid = partial(bne_crowdsourcing)
             return True
         elif self.payment_rule == 'crowdsourcing' and self.use_valuation:
-            self._optimal_bid = lambda x, player_position=0: bne_crowdsourcing_valuations(x, v1=self.valuations[0], v2=self.valuations[1], m=self.u_lo)
+            self._optimal_bid = lambda x, player_position=0: bne_crowdsourcing_valuations(x, v1=self.valuations[0], v2=self.valuations[1], N=self.n_players)
             return True
         else:
             return False
+
+    def _setup_eval_environment(self):
+        """Determines whether a bne exists and sets up eval environment."""
+
+        assert self.known_bne
+        assert  hasattr(self, '_optimal_bid')
+        print("Setting up the evaluation environment..." + \
+            "\tDepending on your and hardware and the eval_batch_size, this may take a while," +\
+                "-- sequential numeric integration on the cpu is required in this environment.")
+
+        n_processes_optimal_strategy = self.config.hardware.max_cpu_threads if self.valuation_prior != 'uniform' and \
+                                                self.payment_rule != 'second_price' else 0
+        bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
+
+
+        # define bne agents once then use them in all runs
+        self.bne_env = AuctionEnvironment(
+            mechanism = self.mechanism,
+            agents=[self._strat_to_bidder(bne_strategy,
+                                          player_position=i,
+                                          batch_size=self.logging.eval_batch_size,
+                                          enable_action_caching=True)
+                    for i in range(self.n_players)],
+            valuation_observation_sampler = self.sampler,
+            batch_size=self.logging.eval_batch_size,
+            n_players=self.n_players,
+            strategy_to_player_closure=self._strat_to_bidder
+        )
+
+        # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
+        # TODO: This is not very precise. Instead we should consider taking the mean over all agents
+        bne_utility_sampled = self.bne_env.get_reward(self.bne_env.agents[0], redraw_valuations=True)
+
+        print('Utility in BNE (sampled): \t{:.5f}'.format(bne_utility_sampled))
+
+        self.bne_utility = bne_utility_sampled
+        self.bne_utilities = [self.bne_utility] * self.n_models
 
     

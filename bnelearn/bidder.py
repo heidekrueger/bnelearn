@@ -192,7 +192,7 @@ class Bidder(Player):
 
         return welfare
 
-    def get_action(self, observations = None):
+    def get_action(self, observations = None, log_prob: bool = False):
         """Calculate action from given observations, or retrieve from cache"""
 
         if self._enable_action_caching and not self._cached_observations_changed and \
@@ -217,7 +217,7 @@ class Bidder(Player):
             dim = self.strategy.input_length
             inputs = inputs[:,:dim]
 
-        actions = self.strategy.play(inputs)
+        actions = self.strategy.play(inputs, log_prob=log_prob)           
 
         if self._enable_action_caching:
             self.cached_observations = observations
@@ -324,9 +324,15 @@ class Contestant(Bidder):
 
 
 class CrowdsourcingContestant(Bidder):
+  
 
-    def __init__(self, valuations: torch.tensor = None, use_valuations = False, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, strategy: Strategy, 
+                       player_position: int, 
+                       batch_size: int, 
+                       enable_action_caching: bool = False, 
+                       valuations: bool = True, 
+                       use_valuations: bool = True):
+        super().__init__(strategy, player_position, batch_size, enable_action_caching=enable_action_caching)
 
         self.valuations = valuations
         self.num_classes = self.valuations.shape[0]
@@ -360,3 +366,4 @@ class CrowdsourcingContestant(Bidder):
 
         payoff = allocations - disutil
         return payoff.squeeze(-1)
+

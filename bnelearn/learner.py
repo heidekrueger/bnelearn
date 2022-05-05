@@ -310,16 +310,23 @@ class PGLearner(GradientBasedLearner):
     def _set_gradients(self):
         self.environment.prepare_iteration()
 
-        if self.baseline_method == 'current_reward':
-            self.baseline = self.environment.get_strategy_reward(
-                self.model,**self.strat_to_player_kwargs
-                ).detach().view(1)
-        else:
-            pass # is already constant float
+        # if self.baseline_method == 'current_reward':
+        #     self.baseline = self.environment.get_strategy_reward(
+        #         self.model,**self.strat_to_player_kwargs
+        #         ).detach().view(1)
+        # else:
+        #     pass # is already constant float
 
-        loss = -self.environment.get_strategy_reward(
-            self.model,**self.strat_to_player_kwargs
-        )
+        # loss = -self.environment.get_strategy_reward(
+        #     self.model,**self.strat_to_player_kwargs
+        # )
+
+        # loss.backward()
+
+        rewards, log_prob = self.environment.get_strategy_action_and_reward(strategy=self.model, **self.strat_to_player_kwargs)
+
+        # Determine loss
+        loss = -(rewards * log_prob).mean()
 
         loss.backward()
 

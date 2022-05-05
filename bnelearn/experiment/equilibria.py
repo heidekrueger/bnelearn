@@ -73,15 +73,18 @@ def bne_crowdsourcing(valuation: torch.Tensor, v1: float = 1/2, v2: float = 1/2,
 
     
 
-def bne_crowdsourcing_valuations(valuation: torch.Tensor, v1: float = 1, v2 = 0, m: float = 0, player_position=0, **kwargs):
+def bne_crowdsourcing_valuations(valuation: torch.Tensor, v1: float = 1, v2 = 0, N: int = 0, player_position=0, **kwargs):
     #return torch.relu(0.63 * (valuation ** 2 - 2/3 * valuation ** 3) - 0.37 * valuation ** 2)
     #return torch.relu(v1 * 2 * ((valuation ** 2)/2 - (valuation ** 3)/3) + v2 * 2 * ((valuation ** 2)/2 - (2*valuation**3)/3))
 
-    a = lambda m, v: 2/(1-m) * ((m**3)/(6*(1-m)) + (v ** 3)/(3*(1-m)) - (m*v**2)/(2*(1-m)))
-    b = lambda m, v: 2/(1-m) * (-(m**3)/(3*(1-m)) - (m ** 2)/2 - (2 * v **3)/(3*(1-m)) + (m * v ** 2)/(1-m) + (v ** 2)/2)
+    # old for n = 3 and general m
+    # a = lambda m, v: 2/(1-m) * ((m**3)/(6*(1-m)) + (v ** 3)/(3*(1-m)) - (m*v**2)/(2*(1-m)))
+    # b = lambda m, v: 2/(1-m) * (-(m**3)/(3*(1-m)) - (m ** 2)/2 - (2 * v **3)/(3*(1-m)) + (m * v ** 2)/(1-m) + (v ** 2)/2)
 
-    #return torch.relu(v1 * 2/3 * (valuation ** 3) + v2 * 2 * ((valuation ** 2)/2 - (2*valuation ** 3)/3)) 
-    return v1 * a(m, valuation) + v2 * b(m, valuation)
+    # return v1 * a(m, valuation) + v2 * b(m, valuation)
+    a = lambda v, N: (N-1)/N * v ** N
+    b = lambda v, N: (N-1) * (((N-2) * v ** (N-1))/(N-1) + (v**N)/N - v**N)
+    return torch.relu(v1 * a(valuation, N) + v2 * b(valuation, N))
 
 def bne_all_pay(valuation: torch.Tensor, n: int = 2, **kwargs) -> torch.Tensor:
     return (n-1) * (valuation ** n)/n

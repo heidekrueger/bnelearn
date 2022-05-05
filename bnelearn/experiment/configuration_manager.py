@@ -287,8 +287,8 @@ class ConfigurationManager:
         # self.setting.correlation_coefficients = [0.5]
 
     def _init_tullock_contest(self):
-        self.setting.u_lo = [0.1]
-        self.setting.u_hi = [1.1]
+        self.setting.u_lo = [0.0]
+        self.setting.u_hi = [1.0]
         self.setting.impact_function = "tullock_contest"
         self.learning.model_sharing = True
         self.logging.log_metrics = {'util_loss': True}
@@ -315,11 +315,11 @@ class ConfigurationManager:
         self.setting.payment_rule = "loss_aversion"
 
     def _init_crowdsourcing_contest(self):
-        self.setting.u_lo = [0.5]
+        self.setting.u_lo = [0]
         self.setting.u_hi = [1.0]
         self.learning.model_sharing = True
         self.setting.payment_rule = "crowdsourcing"
-        self.setting.impact_function = "crowdsourcing"
+        self.setting.impact_function = "deterministic"
         self.setting.impact_factor = 1
         self.setting.valuations = torch.tensor([0.63, 0.37, 0])
 
@@ -329,6 +329,7 @@ class ConfigurationManager:
         self.learning.model_sharing = True
         self.setting.payment_rule = "all_pay"
         self.learning.use_valuation = False
+        self.setting.action_dist = torch.distributions.Normal
         # mix = torch.distributions.Categorical(torch.ones(2,))
         # comp = torch.distributions.Normal(torch.tensor([0.25, 0.75]), torch.tensor([0.1, 0.1]))
         # self.setting.common_prior = torch.distributions.MixtureSameFamily(mix, comp)
@@ -521,7 +522,7 @@ class ConfigurationManager:
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
                     core_solver: str = 'None', regret: float = 'None', impact_factor: float = 'None',
-                    cost_type: str=None, cost_param: float = None, valuations: List = None):
+                    cost_type: str=None, cost_param: float = None, valuations: List = None, impact_function: str = 'None'):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.

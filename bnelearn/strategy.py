@@ -56,7 +56,7 @@ class ClosureStrategy(Strategy):
         if self._mute:
             sys.stderr = open(os.devnull, 'w')
 
-    def play(self, inputs):
+    def play(self, inputs, **kwargs):
         pool_size = 1
 
         if self.parallel:
@@ -305,7 +305,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
                  ensure_positive_output: torch.Tensor or None = None,
                  output_length: int = 1, # currently last argument for backwards-compatibility
                  dropout: float = 0.0
-                 ):
+                ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
             "Provided nodes and activations do not match!"
@@ -426,7 +426,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
         self.__init__(self.input_length, self.hidden_nodes,
-                      self.activations[:-1], ensure_positive_output, self.output_length)
+                      self.activations[:], ensure_positive_output, self.output_length,action_dist=self.action_dist)
 
     def forward(self, x):
         for layer in self.layers.values():
@@ -434,7 +434,118 @@ class NeuralNetStrategy(Strategy, nn.Module):
         return x
 
     def play(self, inputs):
+
         return self.forward(inputs)
+
+
+class NeuralProbabilityStrategy(NeuralNetStrategy, nn.Module):
+
+    def __init__(self, input_length: int,
+                 hidden_nodes: Iterable[int],
+                 hidden_activations: Iterable[nn.Module],
+                 ensure_positive_output: torch.Tensor or None = None,
+                 output_length: int = 1, # currently last argument for backwards-compatibility
+                 dropout: float = 0.0, 
+                 action_dist: torch.distributions.Distribution = None
+                 ):
+
+        assert len(hidden_nodes) == len(hidden_activations), \
+            "Provided nodes and activations do not match!"
+
+        nn.Module.__init__(self)
+
+        self.input_length = input_length
+        self.output_length = output_length
+        self.hidden_nodes = copy(hidden_nodes)
+        self.activations = copy(hidden_activations) # do not write to list outside!
+        self.dropout = dropout
+        self.action_dist = action_dist
+
+        self.layers = nn.ModuleDict()
+
+        if len(hidden_nodes) > 0:
+            ## create hdiden layers
+            # first hidden layer (from input)
+            self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
+            self.layers[str(self.activations[0]) + '_0'] = self.activations[0]
+            if self.dropout:
+                self.layers['dropout_0'] = nn.AlphaDropout(p=self.dropout)
+            # hidden-to-hidden-layers
+            for i in range (1, len(hidden_nodes)):
+                self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
+                self.layers[str(self.activations[i]) + '_' + str(i)] = self.activations[i]
+                if self.dropout:
+                    self.layers['dropout_' + str(i)] = nn.AlphaDropout(p=self.dropout)
+        else:
+            # output layer directly from inputs
+            hidden_nodes = [input_length] #don't write to self.hidden nodes, just ensure correct creation
+
+        # create output layer
+        self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
+        #self.layers[str(nn.ReLU()) + '_out'] = nn.ReLU()
+        #self.activations.append(self.layers[str(nn.ReLU()) + '_out'])
+
+        # test whether output at ensure_positive_output is positive,
+        # if it isn't --> reset the initialization
+        if ensure_positive_output is not None:
+            current_device = torch.nn.utils.parameters_to_vector(self.parameters()).device
+            ensure_positive_output = ensure_positive_output.to(current_device)
+            if not torch.all(self.forward(ensure_positive_output).gt(0)):
+                self.reset(ensure_positive_output)
+
+
+    def normal(self, x, mu, sigma_sq):
+            pi = torch.tensor(torch.acos(torch.zeros(1)).item() * 2).to(sigma_sq.device)
+            a = (-1*(x-mu).pow(2)/(2*sigma_sq)).exp()
+            b = 1/(2*sigma_sq*pi.expand_as(sigma_sq)).sqrt()
+            return a*b
+
+    def play(self, inputs, log_prob: bool = False):
+
+        out = self.forward(inputs)
+        mu = out[..., 0]
+        try:
+            sigma = out[..., 1].exp()
+        except:
+            print(2)
+
+        dists = self.action_dist(mu, sigma)
+        action = dists.sample()
+
+        log_probs = dists.log_prob(action)
+        action = action.unsqueeze(-1)
+        action = action.relu()
+
+        # eps = torch.randn(mu.size()).to(sigma.device)
+
+        # action = (mu + sigma.sqrt() * eps)
+        # prob = self.normal(action, mu, sigma.sqrt())
+        # log_probs = prob.log()
+        # action = action.relu().unsqueeze(-1)
+
+
+
+        # # Linear Transformation of mean
+        # # Exponential Transformation of standard deviation -> tbd
+        # #out[..., 1] = out[..., 1].exp() 
+
+        # # try:
+        # #     dist = self.action_dist(loc=out[..., 0], scale=out[..., 1].exp())
+        # # except:
+        # #     print(2)
+
+        
+
+        # dist = self.action_dist(0, 1)
+        # samples = out[..., 0] + out[..., 1] * dist.sample(inputs.shape[0])
+
+        # #samples = dist.sample().relu()
+        # #log_probs = dist.log_prob(samples)
+        # samples = samples.unsqueeze(-1)
+
+        # log_probs = torch.log()
+
+        return action if not log_prob else (action, log_probs)
 
 class TruthfulStrategy(Strategy, nn.Module):
     """A strategy that plays truthful valuations."""

@@ -89,14 +89,18 @@ class Environment(ABC):
 
         if not self._strategy_to_player:
             raise NotImplementedError('This environment has no strategy_to_player closure!')
-        agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
-                                         player_position=player_position, **strat_to_player_kwargs)
-
+        try:
+            agent = self._strategy_to_player(strategy, batch_size=self.batch_size,
+                                             player_position=player_position, **strat_to_player_kwargs)
+        except:
+            print(2)
+            self._strategy_to_player(strategy, batch_size=self.batch_size,
+                                             player_position=player_position, **strat_to_player_kwargs)
         # NOTE: Order matters! if redraw_valuations, then action must be calculated AFTER reward
-        reward = self.get_reward(agent, redraw_valuations = redraw_valuations, aggregate = False)
-        action = agent.get_action()
+        reward, log_prob = self.get_reward(agent, redraw_valuations = redraw_valuations, aggregate = False, return_log_prob = True)
+        #action = agent.get_action()
 
-        return action, reward
+        return reward, log_prob
 
     def _generate_agent_actions(
             self,
@@ -252,7 +256,8 @@ class AuctionEnvironment(Environment):
             redraw_valuations: bool = False,
             aggregate: bool = True,
             regularize: float = 0.0,
-            return_allocation: bool = False
+            return_allocation: bool = False,
+            return_log_prob: bool = False
         ) -> torch.Tensor or Tuple[torch.Tensor, torch.Tensor]: #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment, and optionally additionally the allocation of that player.
            Reward is calculated as average utility for each of the batch_size x env_size games
@@ -274,8 +279,16 @@ class AuctionEnvironment(Environment):
         agent_valuation = self._valuations[:, player_position, :]
 
         # get agent_bid
-        agent_bid = agent.get_action(agent_observation)
-        action_length = agent_bid.shape[1]
+        agent_bid = agent.get_action(agent_observation, log_prob=return_log_prob)
+
+        if return_log_prob:
+            # upack action
+            agent_bid, agent_log_prob = agent_bid
+
+        try:
+            action_length = agent_bid.shape[1]
+        except:
+            print(2)
 
         if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
             allocations, payments = self.mechanism.play(
@@ -298,6 +311,8 @@ class AuctionEnvironment(Environment):
                 # since auction mechanisms are symmetric, we'll define 'our' agent to have position 0
                 if opponent_pos is None:
                     opponent_pos = counter
+                if isinstance(opponent_bid, Tuple):
+                    opponent_bid = opponent_bid[0]
                 bid_profile[:, opponent_pos, :] = opponent_bid
                 counter = counter + 1
 
@@ -323,7 +338,12 @@ class AuctionEnvironment(Environment):
                 ).view(1, -1)
                 agent_allocation = agent_allocation[agent_allocation > 0].to(torch.int8)
 
-        return agent_utility if not return_allocation else (agent_utility, agent_allocation)
+        if return_allocation:
+            return (agent_utility, agent_allocation)
+        elif return_log_prob:
+            return (agent_utility, agent_log_prob)
+        else:
+            return agent_utility
 
     def get_allocation(
             self,
