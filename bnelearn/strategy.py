@@ -300,6 +300,9 @@ class NeuralNetStrategy(Strategy, nn.Module):
             to `dropout` share of nodes in each hidden layer during training.
         mixed_strategy (otional): str
             Which distribution to use when the strategy should be mixed.
+        res_net (optional): bool
+            Switch to use ResNet skip connections, s.t. only the difference from
+            a ruthful strategy is learned.
 
     """
     def __init__(self, input_length: int,
@@ -309,7 +312,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
                  output_length: int = 1, # currently last argument for backwards-compatibility
                  dropout: float = 0.0,
                  mixed_strategy: str = None,
-                 bias: bool = True
+                 bias: bool = True,
+                 res_net: bool = False
                  ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
@@ -324,6 +328,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.dropout = dropout
         self.mixed_strategy = mixed_strategy
         self.bias = bias
+        self.res_net = res_net
 
         self.layers = nn.ModuleDict()
 
@@ -365,8 +370,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         else:
             raise ValueError("Requested unknown probabilistic layer.")
 
-        self.layers[str(nn.ReLU()) + '_out'] = nn.ReLU()
-        self.activations.append(self.layers[str(nn.ReLU()) + '_out'])
+        self.relu = nn.ReLU()
 
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization
@@ -458,7 +462,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
-        activations = self.activations[:-2] if self.mixed_strategy else self.activations[:-1]
+        activations = self.activations[:-1] if self.mixed_strategy else self.activations
         self.__init__(
             input_length=self.input_length,
             hidden_nodes= self.hidden_nodes,
@@ -471,15 +475,23 @@ class NeuralNetStrategy(Strategy, nn.Module):
         )
 
     def forward(self, x, deterministic=False, pretrain=False):
+
+        if self.res_net:
+            skip = x
+
         for layer in self.layers.values():
             if pretrain and hasattr(layer, 'mixed_strategy'):
                 # ignore last ReLU layer if existend (no fails due to negative values)
-                return layer.forward(x, deterministic=deterministic, pretrain=pretrain)
-            if hasattr(layer, 'mixed_strategy'):
+                x = layer.forward(x, deterministic=deterministic, pretrain=pretrain)
+            elif hasattr(layer, 'mixed_strategy'):
                 x = layer.forward(x, deterministic=deterministic)
             else:
                 x = layer(x)
-        return x
+
+        if self.res_net:
+            x += skip
+
+        return self.relu(x)
 
     def play(self, inputs, deterministic: bool=False):
         return self.forward(inputs, deterministic)

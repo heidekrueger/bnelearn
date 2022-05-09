@@ -50,6 +50,7 @@ class GradientBasedLearner(Learner):
             raise ValueError('Optimizer hyperparams must be a dict (even if empty).')
         self.optimizer_hyperparams = optimizer_hyperparams
         self.optimizer: torch.optim.Optimizer = optimizer_type(self.params(), **self.optimizer_hyperparams)
+        # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=50, gamma=0.95)
 
     @abstractmethod
     def _set_gradients(self):
@@ -70,6 +71,7 @@ class GradientBasedLearner(Learner):
         """
         self.optimizer.zero_grad()
         self._set_gradients()
+        # self.scheduler.step()
         return self.optimizer.step(closure=closure)
 
     def update_strategy_and_evaluate_utility(self, closure = None):
@@ -351,7 +353,7 @@ class ReinforceLearner(GradientBasedLearner):
             aggregate_batch=False
         )
 
-        last_layer_key = list(self.model.layers)[-2]
+        last_layer_key = list(self.model.layers)[-1]
         last_layer = self.model.layers[last_layer_key]
         if hasattr(last_layer, "mixed_strategy"):
             log_prob = last_layer.log_prob.view_as(reward)

@@ -33,7 +33,10 @@ class GaussLayer(nn.Module):
         if deterministic:
             return x[..., :m]
 
-        normal = torch.distributions.normal.Normal(x[..., :m], x[..., m:].exp())
+        mean = x[..., :m]
+        std = x[..., m:].exp()
+
+        normal = torch.distributions.normal.Normal(mean, std)
 
         # Pretrain is supervised learning -> `rsample` is differentable,
         # otherwise we differentiate though the log probabilites
