@@ -12,9 +12,11 @@ class VickreyAuction(Mechanism):
 
     def __init__(self, random_tie_break: bool=False, **kwargs):
         self.random_tie_break = random_tie_break
+        self.smoothing = .01
         super().__init__(**kwargs)
 
-    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    # pylint: disable=arguments-differ
+    def run(self, bids: torch.Tensor, smooth_market: bool=False) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Runs a (batch of) Vickrey/Second Price Sealed Bid Auctions.
 
@@ -52,10 +54,8 @@ class VickreyAuction(Mechanism):
             idx = torch.randn((*batch_sizes, n_players), device=bids.device).sort(dim=1)[1]
             bids = batched_index_select(bids, 1, idx)
 
-        # allocate return variables
+        # calculate payments
         payments_per_item = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
-        allocations = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
-
         highest_bids, winning_bidders = bids.max(dim=player_dim,
                                                  keepdim=True)  # shape of each: [batch_size, 1, n_items]
 
@@ -65,9 +65,20 @@ class VickreyAuction(Mechanism):
 
         payments_per_item.scatter_(player_dim, winning_bidders, second_prices)
         payments = payments_per_item.sum(item_dim)
-        allocations.scatter_(player_dim, winning_bidders, 1)
-        # Don't allocate items that have a winnign bid of zero.
-        allocations.masked_fill_(mask=payments_per_item == 0, value=0)
+
+        if not smooth_market:
+            allocations = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
+            allocations.scatter_(player_dim, winning_bidders, 1)
+
+            # Don't allocate items that have a winnign bid of zero.
+            allocations.masked_fill_(mask=payments_per_item == 0, value=0)
+
+        else:
+            allocations = torch.nn.Softmax(dim=-2)(bids / self.smoothing)
+
+            # redistribute original payments proportional to allocation smoothing
+            total_payments = payments.sum(axis=-1)
+            payments = torch.einsum('bpi,b->bp', allocations, total_payments)
 
         if self.random_tie_break: # restore bidder order
             idx_rev = idx.sort(dim=1)[1]
@@ -88,6 +99,7 @@ class FirstPriceSealedBidAuction(Mechanism):
         super().__init__(**kwargs)
 
     # TODO: If multiple players submit the highest bid, the implementation chooses the first rather than at random
+    # pylint: disable=arguments-differ
     def run(self, bids: torch.Tensor, smooth_market: bool=False) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Runs a (batch of) First Price Sealed Bid Auction.
@@ -146,8 +158,6 @@ class FirstPriceSealedBidAuction(Mechanism):
 
         else:
             payments = bids.clone()
-            # TODO: I guess here is the error when model sharing is used
-            # Use stop_gradient for other agents?
 
             # annealing of smoothing
             # self.smoothing = max(0.999*self.smoothing, 0.002)
