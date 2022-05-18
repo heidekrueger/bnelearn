@@ -171,6 +171,7 @@ class LLGAuction(Mechanism):
 
     def __init__(self, rule='first_price', cuda: bool = True):
         super().__init__(cuda)
+        self.smoothing = .01
 
         if rule not in ['first_price', 'vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
             raise ValueError('Invalid Pricing rule!')
@@ -179,7 +180,8 @@ class LLGAuction(Mechanism):
             rule = 'nearest_zero'
         self.rule = rule
 
-    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    # pylint: disable=arguments-differ
+    def run(self, bids: torch.Tensor, smooth_market: bool=False) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Runs a (batch of) LLG Combinatorial auction(s).
 
@@ -231,17 +233,30 @@ class LLGAuction(Mechanism):
 
         # 1. Determine efficient allocation
         locals_win = (b_locals.sum(axis=player_dim, keepdim=True) > b_global).float()  # batch_sizes x 1
-        allocations = locals_win * allocation_locals + (1 - locals_win) * allocation_global
+
+        if not smooth_market:
+            allocations = locals_win * allocation_locals + (1 - locals_win) * allocation_global
+        else:
+            # here the softened allocation has to distributed fair among the locals
+            local_bids_sum = b_locals.sum(axis=player_dim, keepdim=True)
+            team_bids = torch.concat((local_bids_sum, b_global), axis=-1)
+            team_allocations = torch.nn.Softmax(dim=-1)(team_bids / self.smoothing)
+            idx = [0] * (n_players - 1)
+            idx.append(1)
+            allocations = team_allocations[..., idx]
 
         if self.rule == 'first_price':
-            payments = allocations * bids  # batch x players
+            payments = bids  # batch x players
+
         else:  # calculate local and global winner prices separately
+            # 1. calculate payments of local bidders
             payments = torch.zeros(*batch_sizes, n_players, device=self.device)
             global_winner_prices = b_locals.sum(axis=player_dim, keepdim=True)  # batch_size x 1
-            payments[..., [-1]] = (1 - locals_win) * global_winner_prices
+            payments[..., [-1]] = global_winner_prices
 
             local_winner_prices = torch.zeros(*batch_sizes, n_players - 1, device=self.device)
 
+            # 2. calculate payments of local bidders
             if self.rule in ['vcg', 'nearest_vcg']:
                 # vcg prices are needed for vcg, nearest_vcg
                 local_vcg_prices = torch.zeros_like(local_winner_prices)
@@ -293,7 +308,10 @@ class LLGAuction(Mechanism):
             else:
                 raise ValueError("invalid bid rule")
 
-            payments[..., :-1] = locals_win * local_winner_prices  # TODO: do we even need this * op?
+            payments[..., :-1] = local_winner_prices
+
+        # only pay when won
+        payments *= allocations
 
         return (allocations.unsqueeze(-1), payments)  # payments: batches x players, allocation: batch x players x items
 

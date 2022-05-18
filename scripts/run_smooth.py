@@ -16,16 +16,18 @@ from bnelearn.experiment.configuration_manager import ConfigurationManager
 
 if __name__ == '__main__':
 
+    torch.set_printoptions(precision=4, sci_mode=False)
+
     # NOTE: n_players changes optimal smoothing factor.
     # User parameters
     specific_gpu = 1
     n_runs = 1
-    n_epochs = 1000
+    n_epochs = 500
 
     # model_sharing = True
-    pretrain_iters = 50
+    pretrain_iters = 10
 
-    batch_size = 2**10
+    batch_size = 2**16
     eval_batch_size = 2**22
     util_loss_frequency = n_epochs
     util_loss_batch_size = 2**8
@@ -35,19 +37,26 @@ if __name__ == '__main__':
         os.path.expanduser('~'), 'bnelearn', 'experiments', 'debug-smooth'
     )
 
-    experiment_config, experiment_class = \
-        ConfigurationManager(
-            experiment_type='single_item_uniform_symmetric',
-            n_runs=n_runs,
-            n_epochs=n_epochs,
+    for smooth_market, learner in zip([True, False], ['PGLearner', 'ESPGLearner']):
+    # for smooth_market, learner in zip([True], ['PGLearner']):
+    # for smooth_market, learner in zip([False], ['ESPGLearner']):
+        experiment_config, experiment_class = \
+            ConfigurationManager(
+                # experiment_type='single_item_uniform_symmetric',
+                experiment_type='llg',
+                n_runs=n_runs,
+                n_epochs=n_epochs,
             ) \
             .set_setting(
-                payment_rule='first_price',
-                n_players=2
+                # payment_rule='first_price',
+                # payment_rule='second_price',
+                # payment_rule='nearest_zero',
+                payment_rule='vcg',
+                # n_players=2
                 ) \
             .set_learning(
-                learner_type='PGLearner',
-                smooth_market=True,
+                learner_type=learner,
+                smooth_market=smooth_market,
                 model_sharing=True,
                 batch_size=batch_size,
                 pretrain_iters=pretrain_iters,
@@ -63,6 +72,6 @@ if __name__ == '__main__':
                 ) \
             .set_hardware(specific_gpu=specific_gpu) \
             .get_config()
-    experiment = experiment_class(experiment_config)
-    experiment.run()
-    torch.cuda.empty_cache()
+        experiment = experiment_class(experiment_config)
+        experiment.run()
+        torch.cuda.empty_cache()
