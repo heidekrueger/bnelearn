@@ -20,7 +20,6 @@ MAPPING_METRICS_TAGS = {
 
     'update_norm':          'learner_info/update_norm',
     'gradient_norm':        'learner_info/gradient_norm',
-    'smoothing_factor':     'learner_info/smoothing_factor',
     'utility_variance':     'learner_info/utility_variance',
 
     'util_loss_ex_ante':    'eval/util_loss_ex_ante',
@@ -57,8 +56,11 @@ ALIASES_LATEX = {
     'eval_vs_bne/utility_vs_bne':       '$\hat u(\beta_i, \beta^*_{-i})$',
 
     'meta/overhead_hours':       '$T$',
+    'meta/iter_time':            '$t/$iter',
+    'learning_info/update_norm': '$|\Delta \theta|$',
 
-    'learning_info/update_norm':          '$|\Delta \theta|$'
+    'first_price':               'FPSB',
+    'second_price':              'SPSB',
 }
 
 

@@ -80,7 +80,7 @@ class LearningConfig:
     hidden_nodes: List[int]
     pretrain_iters: int
     batch_size: int
-    smooth_market: bool
+    smoothing_temperature: float
     redraw_every_iteration: bool
     hidden_activations: List[nn.Module] = None
 

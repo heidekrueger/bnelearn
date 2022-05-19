@@ -56,9 +56,13 @@ class SingleItemExperiment(Experiment, ABC):
 
     def _setup_mechanism(self):
         if self.payment_rule == 'first_price':
-            self.mechanism = FirstPriceSealedBidAuction(cuda=self.hardware.cuda)
+            self.mechanism = FirstPriceSealedBidAuction(
+                cuda=self.hardware.cuda,
+                smoothing_temperature=self.learning.smoothing_temperature)
         elif self.payment_rule == 'second_price':
-            self.mechanism = VickreyAuction(cuda=self.hardware.cuda)
+            self.mechanism = VickreyAuction(
+                cuda=self.hardware.cuda,
+                smoothing_temperature=self.learning.smoothing_temperature)
         else:
             raise ValueError('Invalid Mechanism type!')
 

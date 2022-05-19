@@ -83,7 +83,7 @@ if __name__ == '__main__':
             optimizer_hyperparams={'lr': 1e-3, 'weight_decay': 0.001},
             # scheduler_type='ExponentialLR',
             # scheduler_hyperparams={'gamma': .9999},
-            smooth_market=True,
+            smoothing_temperature=0.01,
             ) \
         .set_logging(
             eval_batch_size=2**22,

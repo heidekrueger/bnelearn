@@ -12,7 +12,6 @@ class VickreyAuction(Mechanism):
 
     def __init__(self, random_tie_break: bool=False, **kwargs):
         self.random_tie_break = random_tie_break
-        self.smoothing = .01
         super().__init__(**kwargs)
 
     # pylint: disable=arguments-differ
@@ -74,7 +73,7 @@ class VickreyAuction(Mechanism):
             allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
         else:
-            allocations = torch.nn.Softmax(dim=-2)(bids / self.smoothing)
+            allocations = torch.nn.Softmax(dim=-2)(bids / self.smoothing_temperature)
 
             # redistribute original payments proportional to allocation smoothing
             total_payments = payments.sum(axis=-1)
@@ -95,7 +94,6 @@ class FirstPriceSealedBidAuction(Mechanism):
     """First Price Sealed Bid auction"""
 
     def __init__(self, **kwargs):
-        self.smoothing = .01
         super().__init__(**kwargs)
 
     # TODO: If multiple players submit the highest bid, the implementation chooses the first rather than at random
@@ -160,9 +158,9 @@ class FirstPriceSealedBidAuction(Mechanism):
             payments = bids.clone()
 
             # annealing of smoothing
-            # self.smoothing = max(0.999*self.smoothing, 0.002)
+            # self.smoothing_temperature = max(0.999*self.smoothing_temperature, 0.002)
 
-            allocations = torch.nn.Softmax(dim=-2)(bids / self.smoothing)
+            allocations = torch.nn.Softmax(dim=-2)(bids / self.smoothing_temperature)
 
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 

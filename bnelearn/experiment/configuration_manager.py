@@ -307,7 +307,7 @@ class ConfigurationManager:
         # Using . instead of : for compatability with Windows
         # Why do we even need the timestamp field?
         # self.logging.experiment_timestamp = time.strftime('%Y-%m-%d %a %H.%M')
-        self.logging.experiment_dir = time.strftime('%Y-%m-%d %a %H.%M')
+        self.logging.experiment_dir = time.strftime('%Y-%m-%d %a %H:%M:%S')
         if self.logging.experiment_name:
             self.logging.experiment_dir += ' ' + str(self.logging.experiment_name)
 
@@ -509,7 +509,7 @@ class ConfigurationManager:
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', scheduler_type: str = 'None',
                      scheduler_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
-                     pretrain_iters: int = 'None', smooth_market: bool = 'None',
+                     pretrain_iters: int = 'None', smoothing_temperature: bool = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
                      redraw_every_iteration: bool = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
@@ -597,7 +597,7 @@ class ConfigurationManager:
             pretrain_iters=500,
             batch_size=2 ** 18,
             hidden_activations=[nn.SELU(), nn.SELU()],
-            smooth_market=False,
+            smoothing_temperature=None,
             redraw_every_iteration=False)
         logging = LoggingConfig(
             enable_logging=True,

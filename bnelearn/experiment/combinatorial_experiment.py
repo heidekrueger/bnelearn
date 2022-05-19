@@ -156,7 +156,8 @@ class LLGExperiment(LocalGlobalExperiment):
                                   default_device=default_device)
 
     def _setup_mechanism(self):
-        self.mechanism = LLGAuction(rule=self.payment_rule)
+        self.mechanism = LLGAuction(rule=self.payment_rule,
+                                    smoothing_temperature=self.learning.smoothing_temperature)
 
     def _optimal_bid(self, valuation, player_position): # pylint: disable=method-hidden
         """Core selecting and vcg equilibria for the Bernoulli weigths model in Ausubel & Baranov (2019)

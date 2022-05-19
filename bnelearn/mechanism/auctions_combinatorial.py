@@ -169,9 +169,8 @@ class LLGAuction(Mechanism):
         For the LLG Domain see e.g. Ausubel & Milgrom 2006 or Bosshard et al 2017
     """
 
-    def __init__(self, rule='first_price', cuda: bool = True):
+    def __init__(self, rule='first_price', cuda: bool = True, smoothing_temperature: float=None):
         super().__init__(cuda)
-        self.smoothing = .01
 
         if rule not in ['first_price', 'vcg', 'nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']:
             raise ValueError('Invalid Pricing rule!')

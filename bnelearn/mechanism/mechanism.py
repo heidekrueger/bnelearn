@@ -6,6 +6,7 @@ This module implements games such as matrix games and auctions.
 
 from abc import ABC, abstractmethod
 from typing import Tuple
+import warnings
 
 # pylint: disable=E1102
 import torch
@@ -33,6 +34,13 @@ class Mechanism(Game, ABC):
     A Mechanism collects bids from all players, then allocates available
     items as well as payments for each of the players.
     """
+    def __init__(self, cuda: bool = True, smoothing_temperature: float = None):
+        super().__init__(cuda)
+        if smoothing_temperature == 0:
+            warnings.warn('Smoothing temperature must be larger than zero.')
+            self.smoothing_temperature = 1e-16
+        else:
+            self.smoothing_temperature = smoothing_temperature
 
     def play(self, action_profile, smooth_market: bool=False) -> Tuple[torch.Tensor, torch.Tensor]:
         if smooth_market:

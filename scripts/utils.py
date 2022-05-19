@@ -4,6 +4,7 @@ import torch
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import json
 
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
@@ -12,37 +13,22 @@ from bnelearn.strategy import NeuralNetStrategy
 from bnelearn.experiment.configuration_manager import ConfigurationManager
 from bnelearn.util import logging
 
-
-#pylint: disable=anomalous-backslash-in-string
-ALIASES = {
-    'eval_vs_bne/L_2':           '$L_2$',
-    'eval_vs_bne/L_inf':         '$L_\infty$',
-    'eval/epsilon_absolute':     '$\epsilon_\text{abs}$',
-    'eval/epsilon_relative':     '$\mathcal{L}$',
-    'eval/overhead_hours':       '$T$',
-    'eval/update_norm':          '$|\Delta \theta|$',
-    'eval/utilities':            '$u$',
-    'eval/utility_vs_bne':       '$\hat u(\beta_i, \beta^*_{-i})$',
-    'eval/util_loss_ex_ante':    '$\hat \ell$',
-    'eval/util_loss_ex_interim': '$\hat \epsilon$',
-    'eval/estimated_relative_ex_ante_util_loss': '$\hat{\mathcal{L}}$',
-    'eval/efficiency':           '$\mathcal{E}$',
-    'eval/revenue':              '$\mathcal{R}$'
-}
+from bnelearn.util.metrics import ALIASES_LATEX
 
 
 def multiple_exps_logs_to_df(
         path: str or dict,
-        metrics: list = ['eval/L_2', 'eval/epsilon_relative', 'eval/util_loss_ex_interim',
+        metrics: list = ['eval_vs_bne/L_2', 'eval/epsilon_relative', 'eval/util_loss_ex_interim',
                          'eval/estimated_relative_ex_ante_util_loss',
                          'eval/efficiency', 'eval/revenue', 'eval/utilities'],
         precision: int = 4,
         with_stddev: bool = False,
         with_setting_parameters: bool = True,
-    ):
+        save: bool = False,
+    ) -> pd.DataFrame:
     """Creates and returns a Pandas DataFrame from all logs in `path`.
 
-    This function is universially usable.
+    This function is universally usable.
 
     Arguments:
         path: str or dict, which path to crawl for csv logs.
@@ -51,20 +37,25 @@ def multiple_exps_logs_to_df(
         with_stddev: bool.
         with_setting_parameters: bool, some hyperparams can be read in from
             the path itself. Turning this switch on pareses these values to
-            individuall columns.
+            individual columns.
 
     Returns:
-        aggregate_df pandas Dataframe with one run corresponding to one row,
+        aggregate_df pandas dataframe with one run corresponding to one row,
             columns correspond to the logged metrics (from the last iter).
 
     """
     if isinstance(path, str):
         experiments = [os.path.join(dp, f) for dp, dn, filenames
                        in os.walk(path) for f in filenames
-                       if os.path.splitext(f)[1] == '.csv']
+                       if os.path.splitext(f)[1] == '.csv'
+                       and "aggregate_log" in f]
         experiments = {str(e): e for e in experiments}
     else:
         experiments = path
+
+    if len(experiments) == 0:
+        print("Path empty.")
+        return pd.DataFrame()
 
     form = '{:.' + str(precision) + 'f}'
 
@@ -94,10 +85,18 @@ def multiple_exps_logs_to_df(
         aggregate_df['Auction game'][-1] = exp_name
 
     aggregate_df.columns = aggregate_df.columns.map(
-        lambda m: ALIASES[m] if m in ALIASES.keys() else m
+        lambda m: ALIASES_LATEX[m] if m in ALIASES_LATEX.keys() else m
     )
 
     if with_setting_parameters:
+        def map_smoothing(row):
+            with open(row['Auction game'][:-17] + 'experiment_configurations.json') as json_file:
+                experiment_config_as_dict = json.load(json_file)
+                return experiment_config_as_dict["learning"]["smoothing_temperature"]
+        smoothing_temperature = aggregate_df.apply(map_smoothing, axis=1)
+        if smoothing_temperature.shape[0] > 0:
+            aggregate_df['Smoothing'] = smoothing_temperature
+
         def map_corrtype(row):
             for t in ['Bernoulli', 'constant', 'independent']:
                 if t in row['Auction game']:
@@ -134,32 +133,18 @@ def multiple_exps_logs_to_df(
 
         # multi-unit mapppings
         def map_pricing(row):
-            if 'first_price' in row['Auction game']:
-                return 'first_price'
-            if 'uniform' in row['Auction game']:
-                return 'uniform'
-            if 'nearest_vcg' in row['Auction game']:
-                return 'nearest_vcg'
-            if 'vcg' in row['Auction game']:
-                return 'vcg'
-            if 'nearest_bid' in row['Auction game']:
-                return 'nearest_bid'
-            if 'nearest_zero' in row['Auction game']:
-                return 'nearest_zero'
-            return None
+            with open(row['Auction game'][:-17] + 'experiment_configurations.json') as json_file:
+                experiment_config_as_dict = json.load(json_file)
+                payment_rule = experiment_config_as_dict["setting"]["payment_rule"]
+                return ALIASES_LATEX[payment_rule]
         pri = aggregate_df.apply(map_pricing, axis=1)
         if pri.shape[0] > 0:
             aggregate_df['Pricing'] = pri
 
         def map_units(row):
-            if 'units' in row['Auction game']:
-                end = row['Auction game'].find('units')
-                start = end - 1
-                while row['Auction game'][start] != '_':
-                    start -= 1
-                start += 1
-                return row['Auction game'][start:end]
-            return None
+            with open(row['Auction game'][:-17] + 'experiment_configurations.json') as json_file:
+                experiment_config_as_dict = json.load(json_file)
+                return experiment_config_as_dict["setting"]["n_items"]
         uni = aggregate_df.apply(map_units, axis=1)
         if uni.shape[0] > 0:
             aggregate_df['Units'] = pd.to_numeric(uni)
@@ -176,19 +161,18 @@ def multiple_exps_logs_to_df(
         pla = aggregate_df.apply(map_players, axis=1)
         if pla.shape[0] > 0:
             aggregate_df['Players'] = pd.to_numeric(pla)
-
-        def map_regret(row):
-            if 'regret_' in row['Auction game']:
-                start = row['Auction game'].find('regret_') + 7
-                end = row['Auction game'].find('/', start)
-                return row['Auction game'][start:end]
-            return 0.0
-        reg = aggregate_df.apply(map_regret, axis=1)
-        if reg.shape[0] > 0:
-            aggregate_df['Regret'] = pd.to_numeric(reg)
+        
+        def map_batch(row):
+            with open(row['Auction game'][:-17] + 'experiment_configurations.json') as json_file:
+                experiment_config_as_dict = json.load(json_file)
+                return experiment_config_as_dict["learning"]["batch_size"]
+        bat = aggregate_df.apply(map_batch, axis=1)
+        if bat.shape[0] > 0:
+            aggregate_df['Batch'] = pd.to_numeric(bat)
 
     # write to file
-    aggregate_df.to_csv('experiments/summary.csv', index=False)
+    if save:
+        aggregate_df.to_csv(f'{path}/summary.csv', index=False)
 
     return aggregate_df
 
@@ -250,7 +234,7 @@ def single_asym_exp_logs_to_df(
         bidder_names = df.index
     df.insert(0, 'bidder', bidder_names)
 
-    aliasies = ALIASES.copy()
+    aliasies = ALIASES_LATEX.copy()
     for m in metrics:
         if m[-5:-1] == '_bne':
             aliasies[m] = aliasies[m[:-5]][:-1] + '^\text{BNE{'+str(m[-1])+'}}$'
@@ -267,11 +251,16 @@ def df_to_tex(
         name: str = 'table.tex',
         label: str = 'tab:full_reults',
         caption: str = '',
+        save_path: str = None,
     ):
     """Creates a tex file with the csv at `path` as a LaTeX table."""
     def bold(x):
         return r'\textbf{' + x + '}'
-    df.to_latex('experiments/' + name, na_rep='--', escape=False,
+    
+    if save_path is None:
+        save_path = os.path.dirname(os.path.realpath(__file__))
+
+    df.to_latex(save_path + "/" + name, na_rep='--', escape=False,
                 index=False, index_names=False, caption=caption, column_format='l'+'r'*(len(df.columns)-1),
                 label=label, formatters={'bidder': bold})
 
@@ -343,7 +332,7 @@ def csv_to_boxplot(
     plt.ylim([-0.0015, 0.0015])
     plt.ticklabel_format(axis="y", style="sci", scilimits=(0,0))
     plt.xlabel('correlation $\gamma$')
-    plt.ylabel('loss ' + ALIASES[metric])
+    plt.ylabel('loss ' + ALIASES_LATEX[metric])
     # plt.grid()
     plt.tight_layout()
     plt.savefig('experiments/' + name)
@@ -376,27 +365,4 @@ def bids_to_csv(
 
 if __name__ == '__main__':
 
-    # # Single item asymmetric uniform overlapping
-    path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/single_item/first_price/uniform/asymmetric/risk_neutral/2p/2021-10-26 Tue 16.02/aggregate_log.csv'
-    df = single_asym_exp_logs_to_df(
-        path, metrics=['eval_vs_bne/L_2', 'eval/epsilon_relative',
-        'eval/estimated_relative_ex_ante_util_loss'])
-    df_to_tex(df, name='table_asym_overlapping.tex',
-              caption='Average utilities achieved in asymmetric first-price setting with overlapping valuations. Mean and standard deviation are aggregated over ten runs of 2{,}000 iterations each.',
-              label='table:asym_over_results')
-
-    # Single-item asymmetric uniform disjunct
-    path = '/home/kohring/bnelearn/experiments/asymmmetric-final-results/single_item/first_price/uniform/asymmetric/risk_neutral/2p/2021-10-26 Tue 10.25/aggregate_log.csv'
-    df = single_asym_exp_logs_to_df(
-        path, metrics=['eval_vs_bne/L_2_bne2', 'eval/epsilon_relative_bne2',
-        'eval/estimated_relative_ex_ante_util_loss'])
-    df_to_tex(df, name='table_asym_nonoverlapping.tex',
-              caption='Average NPGA utilities achieved in asymmetric first-price setting with non-overlapping valuations. Aggregated over ten runs of 2{,}000 iterations each. Compared against the second equilibrium of \cite{kaplan2015multiple}.',
-    	      label='table:asym_nonover_results')
-
-    # Asymmetric LLG setting
-    # TODO
-
-
-    # LLLLGG setting
-    # TODO
+    pass

@@ -194,7 +194,7 @@ class Experiment(ABC):
                 optimizer_hyperparams=self.learning.optimizer_hyperparams,
                 scheduler_type=self.learning.scheduler,
                 scheduler_hyperparams=self.learning.scheduler_hyperparams,
-                smooth_market=self.learning.smooth_market,
+                smooth_market=self.learning.smoothing_temperature is not None,
                 strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
             )
             for m_id, model in enumerate(self.models)]
@@ -737,10 +737,6 @@ class Experiment(ABC):
         if self.logging.log_metrics['revenue'] and (self.epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['revenue'] = \
                 self.env.get_revenue(self.env)
-
-        if self.learning.smooth_market:
-            self._cur_epoch_log_params['smoothing_factor'] = \
-                self.env.mechanism.smoothing
 
         self._cur_epoch_log_params['utility_variance'] = [
             self.env.get_reward(
