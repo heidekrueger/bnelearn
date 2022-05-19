@@ -347,6 +347,19 @@ class PGLearner(GradientBasedLearner):
 
         loss.backward()
 
+class CGDLearner(GradientBasedLearner):
+    """Neural Self-Play with directly computed Policy Gradients.
+
+    """
+    def __init__(self, hyperparams: dict, **kwargs):
+        # TODO @Christ
+        raise NotImplementedError()
+
+    def _set_gradients(self):
+        # TODO @Christ
+        raise NotImplementedError()
+
+
 class DPGLearner(GradientBasedLearner):
     """Implements Deterministic Policy Gradients
 
