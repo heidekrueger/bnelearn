@@ -95,6 +95,7 @@ class FirstPriceSealedBidAuction(Mechanism):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.softmax = torch.nn.Softmax(dim=-2)
 
     # TODO: If multiple players submit the highest bid, the implementation chooses the first rather than at random
     # pylint: disable=arguments-differ
@@ -160,7 +161,7 @@ class FirstPriceSealedBidAuction(Mechanism):
             # annealing of smoothing
             # self.smoothing_temperature = max(0.999*self.smoothing_temperature, 0.002)
 
-            allocations = torch.nn.Softmax(dim=-2)(bids / self.smoothing_temperature)
+            allocations = self.softmax((bids / self.smoothing_temperature) - (1 / self.smoothing_temperature))
 
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
