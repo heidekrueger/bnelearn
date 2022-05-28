@@ -1,14 +1,15 @@
 ![bnelearn-logo](docs/bnelearn-logo.png)
 
----
-# Learning Equilibria in Bayesian Games
+A Framework for Equilibrium Learning in Sealed-Bid Auctions
 [![pipeline status](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/pipeline.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master) | [![coverage report](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/coverage.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master)
 
-This repository contains a framework for finding Bayes Nash Equilibria through learning with Neural Networks.
+Authors: Stefan Heidekrüger ([@heidekrueger](https://github.com/heidekrueger)), Paul Sutterer, Nils Kohring ([@kohring](https://github.com/kohring)), Martin Bichler
 
-#### Overview of What's implemented
+Currently, this repository contains minimal code to reproduce the experiments in our forthcoming paper: "Learning Equilibria in Symmetric Auction Games using Artificial Neural Networks", published in _Nature Machine Intelligence_ [Link](https://www.nature.com/articles/s42256-021-00365-4).
 
-Running experiments for n-player Matrix and sealed-bid auction Games with either
+#### Overview of What's Implemented
+
+Running experiments for $n$-player Matrix and sealed-bid auction Games with either
 
 * Fictitious Play, Stochastic Fictitious Play, Mixed Fictitious Play in matrix games
 * "Neural Pseudogradient Ascent" in a wide array of Auction games:
@@ -16,16 +17,20 @@ Running experiments for n-player Matrix and sealed-bid auction Games with either
   * Local-Global combinatorial auctions, in particular LLG and LLLLGG
     * for LLG we support bne for independent and correlated local bidders for several core-selecting payment rules
   * split-award and mineral-rights auctions
+**TODO:** Update.
 
 #### Table of Contents
-1. [Installation](#Installation)
-2. [Background](#Background)
-3. [The bnelearn package](#package)
-4. [Contribute](#Contribute)
+[1. Installation](#Installation)
+[2. Background](#Background)
+[3. The bnelearn package](#package)
+[4. Contribute](#Contribute)
+[5. Citation](#Citation)
 
 ---
-## 1. Installation and Running the software <a name="Installation"></a>
+## 1. Installation and Running the Software <a name="Installation"></a>
 See [Installation](installation.md).
+**TODO:** With what's on Github.
+**TODO:** Add example of customization.
 
 ---
 ## 2. Background <a name="Background"></a>
@@ -41,8 +46,8 @@ To facilitate future research in equilibrium computation in auctions, we propose
 In addition to researchers in equilibrium computation, we expect that such a framework will also be useful to practitioners of auction theory in the economic sciences: Given the fact that existing approaches have been empirically demonstrated to converge to approximate equilibria in a wide range of auction settings, and (approximate) error bounds can be calculated for candidate solutions, _bnelearn} enables analyses of strategic behavior in markets that elude analytical equilibrium analysis. As an example, in \cite{bichler2021LearningEquilibriaSymmetric}, we were empirically able to quantify the effects of correlation between bidders on revenue and economic efficiency in equilibrium of small combinatorial auctions with core-selecting payment rules.
 
 
-### Problem statement
-#### Model of an auction game
+### Problem Statement
+#### Model of an Auction Game
 
 We consider _sealed-bid_ auctions as special cases of Bayesian games. In such games, an auctioneer aims to sell $m$ goods to $n$ competing buyers. These buyers each submit bids based on their private information. Based on these bids, the auctioneer then uses an _auction mechanism} to allocate the goods to the buyers and determine what prices to charge the winners. The most general case of such an auction game can be formalized as the tuple $G = (n, m, \mathcal{V}, \mathcal{O}, F, \mathcal{A}, x, p, u)$, where
 * $n$ is the number of participating _bidders_ or _agents_. We denote the set of bidders by $\mathcal{I} = \lbrace 1, \dots, n\rbrace$ and use the letter $i$ to index it.
@@ -64,30 +69,29 @@ $$\forall\ i\in\mathcal I, o_i \in \mathcal O_i: \quad \overline{\ell}_i\left(o_
 For $\epsilon = 0$, the BNE is called _exact_, or the $\epsilon$-prefix is simply dropped. The  _ex-ante $\epsilon$-BNE_ is defined analogously.
 
 
-### Related literature
+### Related Literature
 
 There is a large body of work on learning in games. However, the closer one comes to the modeling of auction games---continues type- and action spaces, general-sum games, non differentiable utility functions---less and less theoretical results or just heuristic learning approaches exist.
 
 For rather small auction settings and under further assumptions, one is able to derive equilibria analytically for specific settings. Some fundamental results are listed by \citet{krishna2009AuctionTheory}.
 
-#### Methods for equilibrium learning
+#### Methods for Equilibrium Learning
 Equilibrium learning is now concerned with finding an optimal strategy profile for the agents. Where optimality is generally defined as the profile being a Bayes-Nash equilibrium. It has been shown that finding exact equilibria for these types of games with continuous state and action spaces is a computationally hard problem. However, \cite{bichler2021LearningEquilibriaSymmetric} were able to provably approximate equilibria in auction games under symmetry assumptions.
 
 \todo[inline]{Adapted from old journal version:} Earlier approaches to compute auction game equilibria approximately either comprised solving the set of differential equations resulting from the first order conditions of simultaneous maximization of the bidders' payoffs \citep{marshall1994numerical, bajari2001comparing}, or of restricting the action space, usually by discretization \citep{athey2001single}. \citet{armantier2008ApproximationNashEquilibria} introduced a general BNE computation method that is based on expressing the Bayesian game as the limit of a sequence of complete information games. Defining this sequence, however, also requires setting specific analysis. More recently, research in machine learning contributed to learning good bidding strategies in repeated revenue maximizing auctions \citep{nedelec2019learning}. \citet{bosshard2017ComputingBayesNashEquilibria,bosshardComputingBayesNashEquilibria2018} were first to compute equilibria in more complex combinatorial auctions. Their approach explicitly computes point-wise best responses in a fine grained linearization of the strategy space via sophisticated Monte-Carlo integration. Assuming independent priors and risk neutral utility functions, their verification method guarantees an upper bound $\epsilon$ on the interim loss in utility, thus provably finding an $\epsilon$-BNE.
 
-#### Existing multi-agent learning packages
+#### Existing Multi-Agent Learning Packages
 Other multi-agent learning frameworks, such as OpenSpiel \citep{lanctotEtAl2019OpenSpiel} that is a collection of games and algorithms for reinforcement learning and planning or PettingZoo \citep{terry2020pettingzoo} that is a multi-agent extension of the famous OpenAI Gym framework \citep{OpenAIGym}, mainly focus on zero-sum games and on games with discrete action spaces. Crucially, they neither allow an efficient evaluation of running a large batch of games in parallel.
 
 
-## The bnelearn package <a name="package"></a>
+## 3. The bnelearn Package <a name="package"></a>
 In this section, we will present the _bnelearn} package with its most essential features and the auction games and learning algorithms it contains.
 
-#### Structure and features
+#### Structure and Features
 * I(PV) and non-PV (e.g. common values), with arbitrary priors/correlation profiles, utilities, valuation/observation/bid dimensionalities.
 * modular organization allows for easy construction of new markets (e.g. bid languages / ...) from existing or custom building blocks
 * extensive metrics (learning-related: estimates of "equilibrium quality", utilities over time, market analysis: efficiency, revenue, individual payoffs) and built-in plotting capacities.
 * wide range of predefined settings and building blocks. (Learning rules: NPGA, PSO, Bosshards(???), Auctions (...), Priors/Correlations (...), utility functions, ...)
-
 
 
 * fully vectorized, cuda enabled, massive parallelism
@@ -97,16 +101,32 @@ In this section, we will present the _bnelearn} package with its most essential 
 
 Limitations: (same dimensionality for all players. Current implementations and learners use deterministic/pure continuous actions.)
 
-#### Predefined auction settings
+#### Predefined Auction Settings
 A diverse set of auction games is implemented in the framework.
 
-#### Predefined learners
-Algorithms for trying to iteratively learn equilibria implement the base class \code{Learner} in the framework. Two noteworthy algorithms that are contained are (i.) neural self-play with directly computed policy gradients from \cite{heinrich2016deep}, which is called \code{PGLearner}, and (ii.) neural pseudogradient ascent, \code{ESPGLearner}, from \cite{bichler2021LearningEquilibriaSymmetric}
+#### Predefined Learners
+Algorithms for trying to iteratively learn equilibria implement the base class `Learner` in the framework. Two noteworthy algorithms that are contained are (i.) neural self-play with directly computed policy gradients from \cite{heinrich2016deep}, which is called `PGLearner`, and (ii.) neural pseudogradient ascent, `ESPGLearner`, from \cite{bichler2021LearningEquilibriaSymmetric}
+**TODO:** Add PSO.
 
 
 ---
-## 3. Contribute: Before your first commits <a name="Contribute"></a>
+## 4. Contribute: Before Your First Commit <a name="Contribute"></a>
 Please read [Contributing](contributing.md) carefully and follow the set-up steps described there.
 
-#### Git lfs
+#### Git LFS
 On a new machine, please make sure you have git-lfs installed and configured for this repository. (See [contributing.md](contributing.md) for details.)
+
+---
+## 5. Suggested Citation <a name="Citation"></a>
+If you find `bnelearn` helpful and use it in your work, please consider using the following citation:
+
+```
+@misc{Heidekrueger2021,
+  author = {Heidekr\"uger, Stefan and Kohring, Nils and Sutterer, Paul and Bichler, Martin},
+  title = {{bnelearn}: A Framework for Equilibrium Learning in Sealed-Bid Auctions},
+  year = {2021},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/heidekrueger/bnelearn}}
+}
+```
