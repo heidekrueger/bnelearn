@@ -1,6 +1,7 @@
 ![bnelearn-logo](docs/bnelearn-logo.png)
 
-A Framework for Equilibrium Learning in Sealed-Bid Auctions
+# A Framework for Equilibrium Learning in Sealed-Bid Auctions
+
 [![pipeline status](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/pipeline.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master) | [![coverage report](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/coverage.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master)
 
 Authors: Stefan Heidekrüger ([@heidekrueger](https://github.com/heidekrueger)), Paul Sutterer, Nils Kohring ([@kohring](https://github.com/kohring)), Martin Bichler
@@ -17,22 +18,23 @@ Running experiments for $n$-player Matrix and sealed-bid auction Games with eith
   * Local-Global combinatorial auctions, in particular LLG and LLLLGG
     * for LLG we support bne for independent and correlated local bidders for several core-selecting payment rules
   * split-award and mineral-rights auctions
+  
 **TODO:** Update.
 
 #### Table of Contents
-[1. Installation](#Installation)
-[2. Background](#Background)
-[3. The bnelearn package](#package)
-[4. Contribute](#Contribute)
-[5. Citation](#Citation)
+1. [Installation](#Installation)
+2. [Background](#Background)
+3. [The bnelearn package](#package)
+4. [Contribute](#Contribute)
+5. [Citation](#Citation)
 
----
 ## 1. Installation and Running the Software <a name="Installation"></a>
 See [Installation](installation.md).
+
 **TODO:** With what's on Github.
+
 **TODO:** Add example of customization.
 
----
 ## 2. Background <a name="Background"></a>
 
 The computation and analysis of equilibrium states in strategic settings is of utmost importance in the economic sciences. However, equilibria in many markets remain poorly understood. The computational complexity of finding Nash equilibria is known to be PPAD complete even for finite normal form games (NFG), a class that is considered to be hard unless P = NP \citep{daskalakis2009ComplexityComputingNash}. Despite these hardness results for the worst case, equilibrium computation has become tenable for NFGs of moderate sizes in recent years. \todoi{add some details and references.} Auction markets are of a particular interest to economists and policymakers, as a precise understanding of strategic behavior in proposed auction markets would be invaluable in the design and implementation market mechanisms with certain desiderata. However, the game theoretic properties of auctions are even less amiable to equilibrium computation: Auctions are commonly modeled as Bayesian games with continuous type and action spaces \cite{harsanyi1968GamesIncompleteInformationb}, resulting in an infinite-dimensional, functional space of possible strategies. Such games are no longer finite, so even Nash's famous theorem about the existence of equilibria \cite{nash1950EquilibriumPointsNperson} no longer holds, and the complexity of finding Bayesian Nash equilibria in auctions may be NP-hard or worse depending on the specifics of the game. In fact, \citet{cai2014SimultaneousBayesianAuctions} show that in certain combinatorial auctions, the computation of Bayesian Nash (BNE) is at least PP-hard (a complexity class above the polynomial hierarchy), and even certifying or approximating a BNE at a constant approximation bound remains NP-hard. The current understanding of strategic behavior in the field of auction theory therefore relies mainly on equilibria that have been analytically derived. Unfortunately, such results are scarce and elusive for all but a few simple settings. 
@@ -84,6 +86,7 @@ Equilibrium learning is now concerned with finding an optimal strategy profile f
 Other multi-agent learning frameworks, such as OpenSpiel \citep{lanctotEtAl2019OpenSpiel} that is a collection of games and algorithms for reinforcement learning and planning or PettingZoo \citep{terry2020pettingzoo} that is a multi-agent extension of the famous OpenAI Gym framework \citep{OpenAIGym}, mainly focus on zero-sum games and on games with discrete action spaces. Crucially, they neither allow an efficient evaluation of running a large batch of games in parallel.
 
 
+
 ## 3. The bnelearn Package <a name="package"></a>
 In this section, we will present the _bnelearn} package with its most essential features and the auction games and learning algorithms it contains.
 
@@ -106,17 +109,17 @@ A diverse set of auction games is implemented in the framework.
 
 #### Predefined Learners
 Algorithms for trying to iteratively learn equilibria implement the base class `Learner` in the framework. Two noteworthy algorithms that are contained are (i.) neural self-play with directly computed policy gradients from \cite{heinrich2016deep}, which is called `PGLearner`, and (ii.) neural pseudogradient ascent, `ESPGLearner`, from \cite{bichler2021LearningEquilibriaSymmetric}
+
 **TODO:** Add PSO.
 
 
----
 ## 4. Contribute: Before Your First Commit <a name="Contribute"></a>
 Please read [Contributing](contributing.md) carefully and follow the set-up steps described there.
 
 #### Git LFS
 On a new machine, please make sure you have git-lfs installed and configured for this repository. (See [contributing.md](contributing.md) for details.)
 
----
+
 ## 5. Suggested Citation <a name="Citation"></a>
 If you find `bnelearn` helpful and use it in your work, please consider using the following citation:
 
