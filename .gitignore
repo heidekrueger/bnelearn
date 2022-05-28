@@ -68,3 +68,4 @@ pylint.txt
 !/docs/Makefile
 !/docs/conf.py
 !/docs/run_docs_server.sh
+!/docs/bnelearn-logo.png
