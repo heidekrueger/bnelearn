@@ -2,9 +2,11 @@
 for batched constrained quadratic programs, based on Mehrotra's Predictor-Corrector-Method (MPC).
 
 authors:
+
     Anne Christopher
     Stefan Heidekrüger (@heidekrueger)
     Paul Sutterer
+
 """
 
 from typing import Tuple, Union

@@ -1,14 +1,15 @@
-""" Test auction learning in symmetric and asymmetric implementations,
-    using a 2p-FPSB setup.
+"""Test auction learning in symmetric and asymmetric implementations,
+using a 2p-FPSB setup.
 
-    This script tests
-    - whether the loop runs without runtime exceptions for a small number of iterations
-    - whether the model learnt the appropriate bid for the top-range of valuations
-      (this value is expected to be learned _very_ fast as it's most significant
-       and as such should always be found (up to a certain range) even in a short amount of time)
-    - Further, the script tests whether the utility after 200 iterations is in the expected range,
-       if it isn't it won't fail but issue a warning (because this might just be due to
-        stochasticity as it would take a significantly longer test time / more iterations to make sure.)
+This script tests
+
+* whether the loop runs without runtime exceptions for a small number of iterations
+* whether the model learnt the appropriate bid for the top-range of valuations
+  (this value is expected to be learned _very_ fast as it's most significant
+  and as such should always be found (up to a certain range) even in a short amount of time)
+* Further, the script tests whether the utility after 200 iterations is in the expected range,
+  if it isn't it won't fail but issue a warning (because this might just be due to
+  stochasticity as it would take a significantly longer test time / more iterations to make sure.)
 """
 import warnings
 import torch

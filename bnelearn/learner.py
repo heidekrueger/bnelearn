@@ -28,7 +28,7 @@ class Learner(ABC):
 
 class GradientBasedLearner(Learner):
     """A learning rule that is based on computing some version of (pseudo-)
-       gradient, then applying an SGD-like update via a `torch.optim.Optimizer`
+       gradient, then applying an SGD-like update via a ``torch.optim.Optimizer``
     """
     def __init__(self,
                  model: torch.nn.Module, environment: Environment,
@@ -84,11 +84,11 @@ class GradientBasedLearner(Learner):
 
 
 class ESPGLearner(GradientBasedLearner):
-    """ Neural Self-Play with Evolutionary Strategy Pseudo-PG
+    """Neural Self-Play with Evolutionary Strategy Pseudo-PG
 
     Uses pseudo-policy gradients calculated as
 
-            ```(rewards - baseline).mean() * epsilons / sigma²```
+        ```(rewards - baseline).mean() * epsilons / sigma**2```
 
     over a population of models perturbed by parameter noise epsilon yielding
     perturbed rewards.

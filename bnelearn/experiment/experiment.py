@@ -1,5 +1,4 @@
-"""
-This module defines an experiment. It includes logging and plotting since they
+"""This module defines an experiment. It includes logging and plotting since they
 can often be shared by specific experiments.
 """
 
@@ -22,8 +21,6 @@ import torch
 from matplotlib.ticker import FormatStrFormatter, LinearLocator
 
 from mpl_toolkits.mplot3d import Axes3D  # pylint: disable=unused-import
-
-from torch.utils.tensorboard import SummaryWriter
 
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
@@ -473,7 +470,7 @@ class Experiment(ABC):
     ########################################################################################################
 
     # TODO Stefan: method only uses self in eval and for output point
-    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
+    def _plot(self, plot_data, writer: "SummaryWriter" or None, epoch=None,
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts: list = None,
               figure_name: str = 'bid_function', plot_points=100):

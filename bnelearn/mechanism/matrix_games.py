@@ -1,3 +1,4 @@
+"""Matrix Games"""
 from typing import List
 
 # pylint: disable=E1102
@@ -230,7 +231,7 @@ class MatrixGame(Game):
     def calculate_expected_action_payoffs(self, strategy_profile, player_position):
         """
         Calculates the expected utility for a player under a mixed opponent strategy
-        ----------
+
         Args:
             strategy_profile: List of action-probability-vectors for each player. player i's strategy must be supplied
                           but is ignored.

@@ -221,7 +221,7 @@ class Bidder(Player):
 
 class ReverseBidder(Bidder):
     """
-    Bidder that has reversed utility (*(-1)) as valuations correspond to
+    Bidder that has reversed utility :math:`*(-1)` as valuations correspond to
     their costs and payments to what they get payed.
     """
     def __init__(self, efficiency_parameter=None, **kwargs):

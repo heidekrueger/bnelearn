@@ -103,39 +103,47 @@ ACTIVATIONS = {'SELU': lambda: nn.SELU,
 # This module explicitly takes care of unifying lots of variables, it's okay to use many locals here.
 # pylint: disable=too-many-instance-attributes
 class ConfigurationManager:
-    """
+    r"""
     The class provides a 'front-end' for the whole package. It allows for creation of a full and
-    consistent ExperimentConfiguration, as defined by the ExperimentConfig dataclass.
+    consistent ``ExperimentConfiguration``, as defined by the ExperimentConfig dataclass.
     It manages all the defaults, including those specific for each experiment type, auto-inits the parameters that
     are not supposed to be initialized manually, and allows to selectively change any part of the configuration,
     while also performing a parameter and consistency check before creating the final configuration object.
 
     The workflow with the class API is as follows:
-    1. Init class object with the experiment type string, n_runs and n_epochs.
-    For possible experiment types see ConfigurationManager.experiment_types
-    1.1. __init__ calls get_default_config_members method to get default configuration members.
-    1.2 Based on the experiment type, __init__ calls the appropriate ancillary _init_experiment_type.
-    It sets the default parameters specific for the given experiment type.
-    2. (Optional step) Call set_config_member methods (e.g. set_setting) in a chain style,
-    each methods allows to selectively set any parameter of a corresponding config member to a new arbitrary value,
-    while leaving all the parameters not specified by the user intact - with their default values.
-    3. Call the get_config method to get a ready configuration object and an experiment class corresponding
-    to the experiment type (the latter needed for an easy instantiation of the Experiment)
-    3.1 get_config calls _post_init, which inits the parameters which shouldn't be set manually, checks for consistency
-    between the related parameters and validates whether each parameter is in an appropriate value range.
-    Then, it calls the type specific _post_init_experiment_type method which performs all the same things, but specific
-    for the experiment type.
-    3.2 get_config creates and returns the final and valid configuration object alongside the experiment class.
+
+    #. Init class object with the experiment type string, n_runs and n_epochs.
+       For possible experiment types see ``ConfigurationManager.experiment_types``
+        #. ``__init__`` calls get_default_config_members method to get default configuration members.
+        #. Based on the experiment type, ``__init__`` calls the appropriate ancillary _init_experiment_type.
+           It sets the default parameters specific for the given experiment type.
+    #. (Optional step) Call set_config_member methods (e.g. ``set_setting``) in a chain style,
+       each methods allows to selectively set any parameter of a corresponding config member to a new arbitrary value,
+       while leaving all the parameters not specified by the user intact - with their default values.
+    #. Call the get_config method to get a ready configuration object and an experiment class corresponding
+       to the experiment type (the latter needed for an easy instantiation of the Experiment)
+        #. ``get_config`` calls ``_post_init``, which inits the parameters which shouldn't be set manually, checks for consistency
+           between the related parameters and validates whether each parameter is in an appropriate value range.
+           Then, it calls the type specific ``_post_init_experiment_type`` method which performs all the same things, but specific
+           for the experiment type.
+        #. ``get_config`` creates and returns the final and valid configuration object alongside the experiment class.
 
     Example of class usage:
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit', n_runs=1, n_epochs=20) \
-        .set_logging(log_root_dir=log_root_dir) \
-        .set_setting(payment_rule='discriminatory') \
-        .set_learning(model_sharing=False) \
-        .set_hardware() \
-        .get_config()
+    
+    .. code-block:: python
 
-    experiment_class(experiment_config).run()
+        experiment_config, experiment_class = \
+            ConfigurationManager(
+                experiment_type='multiunit', n_runs=1, n_epochs=20
+            ) \
+            .set_logging(log_root_dir=log_root_dir) \
+            .set_setting(payment_rule='discriminatory') \
+            .set_learning(model_sharing=False) \
+            .set_hardware() \
+            .get_config()
+
+        experiment_class(experiment_config).run()
+
     """
 
     def _init_single_item_uniform_symmetric(self):
