@@ -292,7 +292,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
             positive bid anywhere at the given input tensor. Otherwise,
             the weights will be reinitialized.
         output_length (optional): int
-            length of output/action vectorm defaults to 1
+            length of output/action vector defaults to 1
             (currently given last for backwards-compatibility)
         dropout (optional): float
             If not 0, applies AlphaDropout (https://pytorch.org/docs/stable/nn.html#torch.nn.AlphaDropout)
@@ -350,49 +350,33 @@ class NeuralNetStrategy(Strategy, nn.Module):
             if not torch.all(self.forward(ensure_positive_output).gt(0)):
                 self.reset(ensure_positive_output)
 
+        self.n_parameters = sum([p.numel() for p in self.parameters()])
+
     @classmethod
     def load(cls, path: str, device='cpu'):
         """
-        Initializes a saved NeuralNetStrategy from ´path´.
+        Initializes a saved NeuralNetStrategy from ``path``.
         """
-
         model_dict = torch.load(path, map_location=device)
-
-        # TODO: Dangerous hack for reloading a startegy from disk/pickle
-        params = {}
-        params["hidden_nodes"] = []
-        params["hidden_activations"] = []
-        length = len(list(model_dict.values()))
-        layer_idx = 0
-        value_key_zip = zip(
-            list(model_dict.values()),
-            list(model_dict._metadata.keys())[2:] # pylint: disable=protected-access
-        )
-        for tensor, layer_activation in value_key_zip:
-            if layer_idx == 0:
-                params["input_length"] = tensor.shape[1]
-            elif layer_idx == length - 1:
-                params["output_length"] = tensor.shape[0]
-            elif layer_idx % 2 == 1:
-                params["hidden_nodes"].append(tensor.shape[0])
-                params["hidden_activations"].append(
-                    # TODO Nils: change once models are saved correctly
-                    # eval('nn.' + layer_activation[7:-2]))
-                    nn.SELU())
-            layer_idx += 1
 
         # standard initialization
         strategy = cls(
-            input_length=params["input_length"],
-            hidden_nodes=params["hidden_nodes"],
-            hidden_activations=params["hidden_activations"],
-            output_length=params["output_length"]
+            input_length=model_dict["input_length"],
+            hidden_nodes=model_dict["hidden_nodes"],
+            hidden_activations=model_dict["hidden_activations"],
+            output_length=model_dict["output_length"],
+            dropout=model_dict["dropout"]
         )
+
+        # delete custom params that can't be handled by super
+        del (model_dict["input_length"], model_dict["hidden_nodes"], model_dict["hidden_activations"],
+             model_dict["output_length"], model_dict["dropout"])
 
         # override model weights with saved ones
         strategy.load_state_dict(model_dict)
 
         return strategy
+
 
     def pretrain(self, input_tensor: torch.Tensor, iters: int, transformation: Callable = None):
         """Performs `iters` steps of supervised learning on `input` tensor,

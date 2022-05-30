@@ -205,7 +205,7 @@ class Bidder(Player):
         if hasattr(self.strategy, 'input_length') and self.strategy.input_length != self.observation_size:
             warnings.warn("Strategy expects shorter input_length than n_items. Truncating observations...")
             dim = self.strategy.input_length
-            inputs = inputs[:,:dim]
+            inputs = inputs[..., :dim]
 
         actions = self.strategy.play(inputs)
 
@@ -220,8 +220,7 @@ class Bidder(Player):
 
 
 class ReverseBidder(Bidder):
-    """
-    Bidder that has reversed utility :math:`*(-1)` as valuations correspond to
+    """Bidder that has reversed utility :math:`\cdot (-1)` as valuations correspond to
     their costs and payments to what they get payed.
     """
     def __init__(self, efficiency_parameter=None, **kwargs):
@@ -236,7 +235,7 @@ class ReverseBidder(Bidder):
 
 
 class CombinatorialBidder(Bidder):
-    """Bidder in combinatrorial auctions.
+    """Bidder in combinatorial auctions.
 
     Note: Currently only set up for full LLG setting.
 

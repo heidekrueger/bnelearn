@@ -29,15 +29,16 @@ In this section, we will present the `bnelearn` package with its most essential 
 
 Structure
 ---------
-* I(PV) and non-PV (e.g. common values), with arbitrary priors/correlation profiles, utilities, valuation/observation/bid dimensionalities.
-* modular organization allows for easy construction of new markets (e.g. bid languages / ...) from existing or custom building blocks
-* extensive metrics (learning-related: estimates of "equilibrium quality", utilities over time, market analysis: efficiency, revenue, individual payoffs) and built-in plotting capacities.
-* wide range of predefined settings and building blocks. (Learning rules: NPGA, PSO, Bosshards(???), Auctions (...), Priors/Correlations (...), utility functions, ...)
-
-
-* fully vectorized, cuda enabled, massive parallelism
-* Variance Reduction easy-to-use built-in / Quasirandom sampling (not yet implemented, but should be easy)
-* for combinatorial auctions: custom batched, cuda-enabled QP solver for quadratic auction rules + gurobi/cvxpy integration for arbitrary auctions stated as a MIP.
+* I(PV) and non-PV (e.g., common values), with arbitrary priors/correlation profiles, utilities, valuation/observation/bid dimensionalities.
+* Modular organization allows for easy construction of new markets (e.g., bid languages, etc.) from existing or custom building blocks.
+* Extensive metrics (learning-related: estimates of "equilibrium quality", utilities over time, market analysis: efficiency, revenue, individual payoffs) and built-in plotting capacities.
+* Wide range of predefined settings and building blocks.
+  * Learning rules: Policy Gradients, NPGA, PSO.
+  * Auctions: Single-item, multi-unit, LLG combinatorial auction, LLLLGG combinatorial auction.
+  * Priors/correlations: Uniform and normal priors that are either independent or Bernoulli or constant weight dependent.
+  * Utility functions: Quasi-linear utility, either risk neutral, risk averse, or risk seeking.
+* Fully vectorized, cuda enabled, massive parallelism
+* For combinatorial auctions: custom batched, cuda-enabled QP solver for quadratic auction rules + gurobi/cvxpy integration for arbitrary auctions stated as a MIP.
 
 
 Predefined Auction Settings
@@ -49,7 +50,7 @@ A diverse set of auction games is implemented in the framework.
 Predefined Learners
 -------------------
 
-Algorithms for trying to iteratively learn equilibria implement the base class `Learner` in the framework. Two noteworthy algorithms that are contained are (i.) neural self-play with directly computed policy gradients from \cite{heinrich2016deep}, which is called `PGLearner`, and (ii.) neural pseudogradient ascent, `ESPGLearner`, from \cite{bichler2021LearningEquilibriaSymmetric}
+Algorithms for trying to iteratively learn equilibria implement the base class `Learner` in the framework. Two noteworthy algorithms that are contained are (i.) neural self-play with directly computed policy gradients from `(Heinrich and Silver, 2016) <https://arxiv.org/abs/1603.01121>`_, which is called `PGLearner`, and (ii.) neural pseudogradient ascent, `ESPGLearner`, from `(Bichler et al. 2021) <https://www.nature.com/articles/s42256-021-00365-4>`_.
 
 **TODO:** Add PSO.
 
@@ -59,8 +60,10 @@ Limitations and Alternatives
 
 Same dimensionality for all players. Current implementations and learners use deterministic/pure continuous actions.
 
+Variance reduction or Quasirandom sampling is not yet implemented but should be easy.
 
-**Other exxisting multi-agent Learning Packages:** Other multi-agent learning frameworks, such as OpenSpiel \citep{lanctotEtAl2019OpenSpiel} that is a collection of games and algorithms for reinforcement learning and planning or PettingZoo \citep{terry2020pettingzoo} that is a multi-agent extension of the famous OpenAI Gym framework \citep{OpenAIGym}, mainly focus on zero-sum games and on games with discrete action spaces. Crucially, they neither allow an efficient evaluation of running a large batch of games in parallel.
+
+**Other existing multi-agent Learning Packages:** Other multi-agent learning frameworks, such as `OpenSpiel <https://github.com/deepmind/open_spiel>`_ that is a collection of games and algorithms for reinforcement learning and planning or `PettingZoo <https://github.com/Farama-Foundation/PettingZoo>`_ that is a multi-agent extension of the famous OpenAI Gym framework `OpenAIGym <https://github.com/openai/gym>`_, mainly focus on zero-sum games and on games with discrete action spaces. Crucially, they neither allow an efficient evaluation of running a large batch of games in parallel.
 
 
 

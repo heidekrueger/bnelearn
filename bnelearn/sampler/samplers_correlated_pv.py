@@ -348,41 +348,90 @@ class LLGSampler(LocalGlobalCompositePVSampler):
 class LLGFullSampler(LLGSampler):
     """A sampler for the LLG full setting."""
     def _generate_grid(self, player_position: int, minimum_number_of_points: int,
-                       reduced: bool, dtype=torch.float, device=None) -> torch.Tensor:
+                       reduced: bool, dtype=torch.float, device=None,
+                       support_bounds: torch.Tensor=None, return_mesh: bool=False) -> torch.Tensor:
+        """Here, the grid could be three dimensional, as bidders can bid on all
+        three items, even though they're only interested in one.
+        """
         device = device or self.default_device
+        
+        if support_bounds is None:
+            bounds = self.support_bounds[player_position]
+        else:
+            bounds = support_bounds[player_position]
+            
+        # only a 1D grid for this single-minded bidder
+        if reduced:
+            grid = torch.linspace(
+                bounds[0][0], bounds[0][1], minimum_number_of_points,
+                device=device, dtype=dtype
+                ).view(-1, 1)
 
-        bounds = self.support_bounds[player_position]
+            if return_mesh:
+                grid = [grid.view(-1)]  # grid is already 1D
 
-        # dimensionality
-        dims = 1 if reduced else 3
+        else:
+            dims = 3
 
-        # use equal density in each dimension of the valuation, such that
-        # the total number of points is at least as high as the specified one
-        n_points_per_dim = ceil(minimum_number_of_points**(1/dims))
+            # create grid for actual 3D single-minded prior (e.g. all but one dim
+            # are zero)
+            if support_bounds is None:
+                grid = torch.zeros((minimum_number_of_points, dims),
+                                   device=device, dtype=dtype)
+                grid[:, player_position] = torch.linspace(
+                    bounds[0][0], bounds[0][1], minimum_number_of_points,
+                    device=device, dtype=dtype
+                    )
 
-        # create equidistant lines along the support in each dimension
-        lines = [torch.linspace(bounds[0][0], bounds[0][1], n_points_per_dim,
-                                device=device, dtype=dtype)
-                 for _ in range(dims)]
-        grid = torch.stack(torch.meshgrid(lines), dim=-1).view(-1, dims)
+                if return_mesh:
+                    grid = [grid.view(-1)]  # grid is already 1D
+
+            # sample 3D but on other bounds
+            else:
+
+                # use equal density in each dimension of the valuation, such that
+                # the total number of points is at least as high as the specified one
+                n_points_per_dim = ceil(minimum_number_of_points**(1/dims))
+
+                # create equidistant lines along the support in each dimension
+                lines = [torch.linspace(bounds[0][0], bounds[0][1], n_points_per_dim,
+                                        device=device, dtype=dtype)
+                        for i in range(dims)]
+                grid = torch.stack(torch.meshgrid(lines), dim=-1).view(-1, dims)
+
+                if return_mesh:
+                    raise NotImplementedError()
 
         return grid
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
-                                dtype=torch.float, device=None) -> torch.Tensor:
-        """Here, the grid needs to be three dimensional, as bidders can bid on
-        all three items, even though they're only interested in one.
-        """
-        return self._generate_grid(player_position, minimum_number_of_points, False,
-                                   dtype, device)
+                                dtype=torch.float, device=None, support_bounds=None,
+                                return_mesh: bool=False) -> torch.Tensor:
+        """Here, the grid can be one dimensional, as bidders are single-minded.
+        Also has mesh funtionallity for creation of grid cells."""
+        return self._generate_grid(player_position, minimum_number_of_points, True,
+                                   dtype, device, support_bounds, return_mesh)
 
     def generate_reduced_grid(self, player_position: int, minimum_number_of_points: int,
-                              dtype=torch.float, device=None) -> torch.Tensor:
-        """Valuations are actually three dimensional, but as two dims are allways
-        zero, it is sufficient to sample one dimensional data.
-        """
+                                dtype=torch.float, device=None, support_bounds=None) -> torch.Tensor:
+        """Here, the grid can be one dimensional, as bidders are single-minded."""
         return self._generate_grid(player_position, minimum_number_of_points, True,
-                                   dtype, device)
+                                   dtype, device, support_bounds)
+
+    def generate_action_grid(self, player_position: int, minimum_number_of_points: int,
+                                dtype=torch.float, device=None, support_bounds=None) -> torch.Tensor:
+        """Here, the grid needs to be three dimensional and the support bounds
+        need to be wider.
+        """
+        support_bounds = self.support_bounds.clone()
+
+        # Grid bids should always start at zero if not specified otherwise
+        support_bounds[:, :, 0] = 0
+
+        return self._generate_grid(player_position, minimum_number_of_points, False,
+                                   dtype, device, support_bounds)
+
+
 class LLLLGGSampler(LocalGlobalCompositePVSampler):
     """A sampler for the LLLLGG settings in Bosshard et al (2020).
 

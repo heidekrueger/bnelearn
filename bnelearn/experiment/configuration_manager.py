@@ -158,13 +158,13 @@ class ConfigurationManager:
 
     def _init_single_item_asymmetric_uniform_overlapping(self):
         self.learning.model_sharing = False
-        self.setting.u_lo = [5, 5]
-        self.setting.u_hi = [15, 25]
+        self.setting.u_lo = [0.0, 0.0]
+        self.setting.u_hi = [0.5, 1.0]
 
     def _init_single_item_asymmetric_uniform_disjunct(self):
         self.learning.model_sharing = False
-        self.setting.u_lo = [0, 6]
-        self.setting.u_hi = [5, 7]
+        self.setting.u_lo = [0, .6]
+        self.setting.u_hi = [.5, .7]
 
     def _init_mineral_rights(self):
         self.setting.n_players = 3
@@ -206,21 +206,6 @@ class ConfigurationManager:
                                     'revenue': True,
                                     'util_loss': True}
 
-    #     self.setting.correlation_types = 'independent'
-    #
-    # def with_correlation(self, gamma, correlation_type='Bernoulli_weights'):
-    #     self.setting.gamma = gamma
-    #     self.setting.correlation_types = correlation_type if gamma > 0.0 else 'independent'
-    #
-    #     if correlation_type == 'constant_weights' and gamma > 0:
-    #         if 'opt' in self.logging.log_metrics.keys():
-    #             del self.logging.log_metrics['opt']
-    #         if 'l2' in self.logging.log_metrics.keys():
-    #             del self.logging.log_metrics['l2']
-    #         print('BNE in constant weights correlation model not approximated.')
-    #
-    #     return self
-
     def _init_llg_full(self):
         self.learning.model_sharing = False
         self.setting.u_lo = [0, 0, 0]
@@ -260,7 +245,7 @@ class ConfigurationManager:
 
     def _init_multiunit(self):
         self.setting.payment_rule = 'vcg'
-        self.setting.n_units = 2
+        self.setting.n_items = 2
         self.learning.model_sharing = True
         self.setting.u_lo = [0]
         self.setting.u_hi = [1]
@@ -275,7 +260,7 @@ class ConfigurationManager:
                                     'revenue': True}
 
     def _init_splitaward(self):
-        self.setting.n_units = 2
+        self.setting.n_items = 2
         self.learning.model_sharing = True
         self.setting.u_lo = [1]
         self.setting.u_hi = [1.4]
@@ -291,7 +276,7 @@ class ConfigurationManager:
 
         # Logging
         # Rationale behind timestamp format: should be ordered chronologically but include weekday.
-        # Using . instead of : for compatability with Windows
+        # Using . instead of : for compatibility with Windows
         # Why do we even need the timestamp field?
         # self.logging.experiment_timestamp = time.strftime('%Y-%m-%d %a %H.%M')
         self.logging.experiment_dir = time.strftime('%Y-%m-%d %a %H.%M')
@@ -348,7 +333,7 @@ class ConfigurationManager:
         pass
 
     def _post_init_llg(self):
-        # How many of those types are there and how do they correspond to gammavalues?
+        # How many of those types are there and how do they correspond to gamma values?
         # I might wrongly understand the relationship here
         if self.setting.gamma == 0.0:
             self.setting.correlation_types = 'independent'
@@ -356,7 +341,7 @@ class ConfigurationManager:
             if self.setting.correlation_types is None:
                 self.setting.correlation_types = 'Bernoulli_weights'
             if self.setting.correlation_types not in ['Bernoulli_weights', 'constant_weights']:
-                raise NotImplementedError(f'`{self.setting.correlation_types}` corrrelation model unknown.')
+                raise NotImplementedError(f'`{self.setting.correlation_types}` correlation model unknown.')
         elif self.setting.gamma > 1.0:
             raise ValueError('Invalid gamma')
 
@@ -436,10 +421,10 @@ class ConfigurationManager:
                     common_prior: torch.distributions.Distribution = 'None', valuation_mean: float = 'None',
                     valuation_std: float = 'None', u_lo: list = 'None', u_hi: list = 'None', gamma: float = 'None',
                     correlation_types: str = 'None', correlation_groups: List[List[int]] = 'None',
-                    correlation_coefficients: List[float] = 'None', n_units: int = 'None',
+                    correlation_coefficients: List[float] = 'None', n_items: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None', regret: float = 'None',):
+                    core_solver: str = 'None'):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
@@ -463,12 +448,14 @@ class ConfigurationManager:
                 should be part of exactly one sublist. (Relevant settings: LLG)
             correlation_coefficients: List of correlation coefficients for each
                 group specified with ``correlation_groups``.
-            n_units: TODO: @Nils?
+            n_items: Number of items to sell.
             pretrain_transform: A function used to explicitly give the desired behavior in pretraining for
                 given neural net inputs. Defaults to identity, i.e. truthful bidding.
-            constant_marginal_values: TODO @Nils
-            item_interest_limit: TODO @Nils
-            efficiency_parameters: TODO @Nils
+            constant_marginal_values: Whether or not the bidders have constant marginal values in
+                multi-unit auctions.
+            item_interest_limit: Whether or not the bidders have a lower demand in units than available in
+                multi-unit auctions.
+            efficiency_parameters: Efficiency parameter in split-award auction.
             core_solver: Specifies which solver should be used to calculate core prices.
                 Should be one of 'NoCore', 'mpc', 'gurobi', 'cvxpy' (Relevant settings: LLLLGG)
 
@@ -553,6 +540,7 @@ class ConfigurationManager:
          of the ExperimentConfig"""
         running = RunningConfig(n_runs=0, n_epochs=0)
         setting = SettingConfig(
+            n_items=1,
             n_players=2,
             payment_rule='first_price',
             risk=1.0)
@@ -567,7 +555,8 @@ class ConfigurationManager:
             hidden_nodes=[10, 10],
             pretrain_iters=500,
             batch_size=2 ** 18,
-            hidden_activations=[nn.SELU(), nn.SELU()])
+            hidden_activations=[nn.SELU(), nn.SELU()],
+            redraw_every_iteration=False)
         logging = LoggingConfig(
             enable_logging=True,
             log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),
@@ -594,7 +583,6 @@ class ConfigurationManager:
             specific_gpu=0,
             cuda=True,
             fallback=False,
-            # TODO, see gitlab issue #218
             max_cpu_threads=MAX_CPU_THREADS)
 
         return running, setting, learning, logging, hardware
@@ -687,7 +675,7 @@ class ConfigurationManager:
         # Attribute assignment pattern: experiment_config.config_group_name.config_group_object_attr = attr_val
         # e.g. experiment_config.run_config.n_runs = experiment_config_as_dict['run_config']['n_runs']
         # config_group_object assignment pattern: experiment_config.config_group_name = config_group_object
-        # e.g. experiment_config.run_config = earlier initialised and filled instance of RunningConfiguration class
+        # e.g. experiment_config.run_config = earlier initialized and filled instance of RunningConfiguration class
         experiment_config_as_dict = {k: v for (k, v) in experiment_config_as_dict.items() if
                                      k != 'experiment_class'}.items()
         for config_set_name, config_group_dict in experiment_config_as_dict:
@@ -732,5 +720,20 @@ class ConfigurationManager:
                 return torch.optim.Adam
             if optimizer in ('SGD', 'sgd', 'Sgd'):
                 return torch.optim.SGD
-            # add more optimizers as needed
-        raise ValueError('Optimizer type could not be inferred!')
+            try:
+                return eval('torch.optim.' + optimizer)
+            except AttributeError as e:
+                raise AttributeError(f'Optimizer type `{optimizer}` could not be inferred!') \
+                    from e
+
+    @staticmethod
+    def _set_scheduler(scheduler: str) -> object:
+        """Set learning rate scheduler."""
+        if scheduler is None:
+            return None
+        if isinstance(scheduler, str):
+            try:
+                return eval('torch.optim.lr_scheduler.' + scheduler)
+            except AttributeError as e:
+                raise AttributeError(f'Learning rate scheduler type `{scheduler}` could not be inferred!') \
+                    from e

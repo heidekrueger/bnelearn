@@ -30,6 +30,7 @@ class RunningConfig:
 @dataclass
 class SettingConfig:
     n_players: int
+    n_items: int
     payment_rule: str
     risk: float
 
@@ -51,7 +52,6 @@ class SettingConfig:
     correlation_coefficients: List[float] = None  # coefficients in each group
 
     # Multi-Unit
-    n_units: int = None
     pretrain_transform: callable = None
     constant_marginal_values: bool = False
     item_interest_limit: int = None
@@ -74,6 +74,7 @@ class LearningConfig:
     hidden_nodes: List[int]
     pretrain_iters: int
     batch_size: int
+    redraw_every_iteration: bool
     hidden_activations: List[nn.Module] = None
 
 

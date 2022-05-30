@@ -1,5 +1,5 @@
-"""In this file multi-unit experiments ´MultiUnitExperiment´ are defined and
-their analytical BNEs (if known) are assigned. Also, the ´SplitAwardExperiment´
+"""In this file multi-unit experiments ``MultiUnitExperiment`` are defined and
+their analytical BNEs (if known) are assigned. Also, the ``SplitAwardExperiment``
 is implemented as well, as it shares most its properties.
 """
 
@@ -23,7 +23,7 @@ from bnelearn.mechanism import (FPSBSplitAwardAuction,
                                 MultiUnitVickreyAuction)
 from bnelearn.sampler import (MultiUnitValuationObservationSampler,
                               CompositeValuationObservationSampler,
-                              SplitAwardtValuationObservationSampler)
+                              SplitAwardValuationObservationSampler)
 from bnelearn.strategy import ClosureStrategy
 
 
@@ -55,7 +55,7 @@ class _MultiUnitSetupEvalMixin(ABC):
                 mechanism=self.mechanism,
                 agents=[
                     self._strat_to_bidder(bne_strategy, self.logging.eval_batch_size, j,
-                                        enable_action_caching=self.config.logging.cache_eval_actions)
+                                          enable_action_caching=self.config.logging.cache_eval_actions)
                     for j, bne_strategy in enumerate(bne_strategies)
                 ],
                 valuation_observation_sampler=self.sampler,
@@ -78,23 +78,39 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
     def __init__(self, config: ExperimentConfig):
         self.config = config
 
-        self.n_units = self.n_items = self.config.setting.n_units
-        self.observation_size = self.valuation_size = self.action_size = self.n_units
+        self.n_items = self.config.setting.n_items
+        self.observation_size = self.valuation_size = self.action_size = self.n_items
         self.n_players = self.config.setting.n_players
         self.payment_rule = self.config.setting.payment_rule
         self.risk = float(self.config.setting.risk)
 
-        # Transfrom bounds to list in case of symmetry
+        self.u_lo = self.config.setting.u_lo
+        self.u_hi = self.config.setting.u_hi
+
+        # Transform bounds to list in case of symmetry
         if len(self.config.setting.u_lo) == 1:
-            self.u_lo = self.config.setting.u_lo * self.n_players
+            self.u_lo *= self.n_players
         if len(self.config.setting.u_hi) == 1:
-            self.u_hi = self.config.setting.u_hi * self.n_players
+            self.u_hi *= self.n_players
+
+        # Consistency check of input dims
+        if len(set([len(self.u_lo), len(self.u_hi)])) != 1:
+            warnings.warn('Dimensions of prior do not match.')
+        if len(self.u_lo) != self.n_players:
+            warnings.warn('Dimensions of prior do not match no. of players.')
+            self.n_players = len(self.u_lo)
 
         # Handle model sharing in case of symmetry
         self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
-            self.n_models = 1
-            self._bidder2model = [0] * self.n_players
+            # Handle asymmetric priors
+            prior_bounds = list(zip(self.u_lo, self.u_hi))
+            unique_priors = list(set(prior_bounds))
+            self.n_models = len(unique_priors)
+            self._bidder2model: List[int] = list()
+            for model_position in range(self.n_models):
+                n_bidders_per_model = prior_bounds.count(unique_priors[model_position])
+                self._bidder2model += [model_position] * n_bidders_per_model
         else:
             self.n_models = self.n_players
             self._bidder2model = list(range(self.n_players))
@@ -119,7 +135,8 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
         """Standard `strat_to_bidder` method."""
-        return Bidder(strategy, player_position, batch_size, bid_size=self.n_units,
+        return Bidder(strategy, player_position, batch_size, bid_size=self.n_items,
+                      valuation_size=self.n_items, observation_size=self.n_items,
                       enable_action_caching=enable_action_caching, risk=self.risk)
 
     def _setup_sampler(self):
@@ -139,7 +156,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
         if len(set(self.u_lo)) == 1 and len(set(self.u_hi)) == 1:
             # Case: Symmetric Priors
             self.sampler = MultiUnitValuationObservationSampler(
-                n_players=self.n_players, n_items=self.n_units,
+                n_players=self.n_players, n_items=self.n_items,
                 max_demand=self.item_interest_limit,
                 constant_marginal_values=self.constant_marginal_values,
                 u_lo=self.u_lo[0], u_hi=self.u_hi[0],
@@ -149,7 +166,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
             # Case: asymmetric bidders with individual samplers
             bidder_samplers = [
                 MultiUnitValuationObservationSampler(
-                    n_players=1, n_items=self.n_units,
+                    n_players=1, n_items=self.n_items,
                     max_demand=self.item_interest_limit,
                     constant_marginal_values=self.constant_marginal_values,
                     u_lo=self.u_lo[i], u_hi=self.u_hi[i],
@@ -183,7 +200,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
 
     def _get_logdir_hierarchy(self):
         name = ['multi_unit', self.payment_rule, str(self.risk) + 'risk',
-                str(self.n_players) + 'players_' + str(self.n_units) + 'units']
+                str(self.n_players) + 'players_' + str(self.n_items) + 'units']
         # if self.gamma > 0:
         #     name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
         return os.path.join(*name)
@@ -202,12 +219,18 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
                       plot_points=plot_points)
 
         # 3D plot if available
-        if self.n_units == 2 and not self.constant_marginal_values:
+        if self.n_items == 2 and not self.constant_marginal_values:
             # Discard BNEs as they're making 3d plots more complicated
             if self.known_bne and plot_data[0].shape[1] > len(self.models):
                 plot_data = [d[:, :len(self.models), :] for d in plot_data]
             super()._plot_3d(plot_data=plot_data, writer=writer, epoch=epoch,
                              figure_name=figure_name, labels=labels)
+
+    def _get_model_names(self):
+        model_names: List[str] = list()
+        for i in range(self.n_models):
+            model_names.append(f'bidder {i}')
+        return model_names
 
 
 class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
@@ -222,15 +245,15 @@ class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
         assert len(set(self.config.setting.u_lo)) == 1, "Only symmetric priors supported!"
         assert len(set(self.config.setting.u_hi)) == 1, "Only symmetric priors supported!"
 
-        assert self.config.setting.n_units == 2, 'Only two units (lots) supported!'
+        assert self.config.setting.n_items == 2, 'Only two units (lots) supported!'
         assert self.config.setting.n_players == 2, 'Only two players are supported!'
 
         assert all(u_lo > 0 for u_lo in self.config.setting.u_lo), \
             '100% Unit must be valued > 0'
 
         # Split-award specific parameters
-        self.n_units = self.n_items = self.action_size = \
-            self.observation_size = self.valuation_size = self.config.setting.n_units
+        self.n_items = self.action_size = \
+            self.observation_size = self.valuation_size = self.config.setting.n_items
         self.n_players = self.config.setting.n_players
         self.payment_rule = self.config.setting.payment_rule
         self.risk = float(self.config.setting.risk)
@@ -256,7 +279,7 @@ class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
         self.common_prior = self.config.setting.common_prior
 
         self.positive_output_point = torch.tensor(
-            [1.2, self.efficiency_parameter * 1.2], dtype=torch.float)
+            [self.efficiency_parameter * 1.2, 1.2], dtype=torch.float)
 
         # Plotting bounds
         _lo = self.config.setting.u_lo[0]
@@ -280,7 +303,7 @@ class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
             raise NotImplementedError('Correlation not implemented.')
 
         # Setup sampler
-        self.sampler = SplitAwardtValuationObservationSampler(
+        self.sampler = SplitAwardValuationObservationSampler(
             lo=self.u_lo, hi=self.u_hi, efficiency_parameter=self.efficiency_parameter,
             valuation_size=self.valuation_size,
             default_batch_size=self.config.learning.batch_size,
@@ -296,7 +319,7 @@ class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
 
     def _check_and_set_known_bne(self):
         """check for available BNE strategy"""
-        if self.config.setting.n_units == 2 and self.config.setting.n_players == 2 \
+        if self.config.setting.n_items == 2 and self.config.setting.n_players == 2 \
             and self.risk == 1 and self.correlation == 0:
             self._optimal_bid = [
                 bne_splitaward_2x2_1_factory(self.config.setting, True),
@@ -320,12 +343,12 @@ class SplitAwardExperiment(_MultiUnitSetupEvalMixin, Experiment):
     def _strat_to_bidder(self, strategy, batch_size, player_position=None, enable_action_caching=False):
         """Standard strat_to_bidder method, but with ReverseBidder"""
         return ReverseBidder(strategy=strategy, player_position=player_position,
-                             batch_size=batch_size, bid_size=self.n_units,
+                             batch_size=batch_size, bid_size=self.n_items,
                              enable_action_caching=enable_action_caching,
                              efficiency_parameter=self.efficiency_parameter,
                              risk=self.risk)
 
     def _get_logdir_hierarchy(self):
         name = ['SplitAward', self.payment_rule, str(self.n_players) + 'players_' +
-                str(self.n_units) + 'units']
+                str(self.n_items) + 'units']
         return os.path.join(*name)

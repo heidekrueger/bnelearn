@@ -25,3 +25,4 @@ tabulate
 tensorboard
 torch==1.10.0+cu113 # alternative via conda: pytorch -c pytorch
 tqdm # for progress bars
+sympy

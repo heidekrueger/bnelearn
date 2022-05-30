@@ -72,11 +72,14 @@ class SymmetricIPVSampler(IPVSampler):
         self.distribution = self.base_distribution.expand([n_players, valuation_size])
 
         # bounds: use real support, unless unbounded:
-        lower_bound = self.base_distribution.icdf(torch.tensor(0.)).relu()
-        upper_bound = self.base_distribution.icdf(torch.tensor(1.))
-        if upper_bound.isinf().item():
+        support = self.base_distribution.support
+        if isinstance(support, torch.distributions.constraints._Real):
             upper_bound = self.base_distribution.icdf(
                 torch.tensor(self.UPPER_BOUND_QUARTILE_IF_UNBOUNDED))
+            lower_bound = torch.tensor(0, device=upper_bound.device)
+        else:
+            lower_bound = torch.tensor(support.lower_bound).relu()
+            upper_bound = torch.tensor(support.upper_bound)
 
         assert upper_bound >= lower_bound
 
@@ -179,7 +182,7 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
             constant_marginal_values: whether or not all values should be
                 constant (i.e. to enforce additive valuations on homogenous goods.)
             u_lo: lower bound for uniform distribution
-            u_hi: upper bound for uniform distribtuion
+            u_hi: upper bound for uniform distribution
             default_batch_size
             default_device
         """
@@ -223,7 +226,10 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
                                 dtype=torch.float, device = None,
-                                support_bounds: torch.Tensor = None) -> torch.Tensor:
+                                support_bounds: torch.Tensor = None, return_mesh: bool=False) -> torch.Tensor:
+        if return_mesh:
+            raise NotImplementedError('Cell partition not implemented for multi-unit auctions (b/c not rectangular).')
+        
         rectangular_grid = super().generate_valuation_grid(
             player_position, minimum_number_of_points, dtype, device, support_bounds)
 
@@ -231,7 +237,7 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         return rectangular_grid.sort(dim=1, descending=True)[0].unique(dim=0)
 
 
-class SplitAwardtValuationObservationSampler(UniformSymmetricIPVSampler):
+class SplitAwardValuationObservationSampler(UniformSymmetricIPVSampler):
     """Sampler for Split-Award, private value settings. Here bidders have two
     valuations of which one is a linear combination of the other.
     """
@@ -253,8 +259,8 @@ class SplitAwardtValuationObservationSampler(UniformSymmetricIPVSampler):
         return sample
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
-                                dtype=torch.float, device=None,
-                                support_bounds: torch.Tensor = None) -> torch.Tensor:
+                                dtype=torch.float, device=None, support_bounds: torch.Tensor = None,
+                                return_mesh: bool=False) -> torch.Tensor:
         device = device or self.default_device
 
         if support_bounds is None:
@@ -272,5 +278,26 @@ class SplitAwardtValuationObservationSampler(UniformSymmetricIPVSampler):
 
         grid = torch.stack((self.efficiency_parameter * line, line), dim=-1) \
             .view(-1, dims)
+
+        if return_mesh:
+            grid = [self.efficiency_parameter * line, line]
+
+        return grid
+
+    def generate_action_grid(self, player_position: int, minimum_number_of_points: int,
+                             dtype=torch.float, device = None) -> torch.Tensor:
+        """From zero to some maximal value. Here, unlike in the other methods,
+        the two outputs must not be linearly dependent.
+        """
+        support_bounds = self.support_bounds.clone()
+
+        # Grid bids should always start at zero if not specified otherwise
+        support_bounds[:, :, 0] = 0
+        support_bounds[:, :, 1] *= 2
+
+        return UniformSymmetricIPVSampler.generate_valuation_grid(
+            self, player_position=player_position,
+            minimum_number_of_points=minimum_number_of_points,
+            dtype=dtype, device=device, support_bounds=support_bounds)
 
         return grid

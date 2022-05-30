@@ -315,7 +315,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
         self.u_lo: List[float] = [float(self.config.setting.u_lo[i]) for i in range(self.n_players)]
         self.u_hi: List[float] = [float(self.config.setting.u_hi[i]) for i in range(self.n_players)]
         assert self.u_hi[0] < self.u_hi[1], "First Player must be the weaker player"
-        self.positive_output_point = torch.tensor([min(self.u_hi)] * n_items)
+        self.positive_output_point = torch.tensor([[min(self.u_hi)] * n_items])
 
         self.plot_xmin = min(self.u_lo)
         self.plot_xmax = max(self.u_hi)

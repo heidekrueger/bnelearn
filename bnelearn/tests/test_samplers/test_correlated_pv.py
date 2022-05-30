@@ -210,7 +210,7 @@ def test_correlated_constant_weight_pv(n_players, valuation_size,
                          test_cases, ids=ids)
 def test_correlated_Bernoulli_weight_pv(n_players, valuation_size,
                                         gamma, u_lo, u_hi):
-    """Functionality and correcness test of the Bernoulli Weights sampler.
+    """Functionality and correctness test of the Bernoulli Weights sampler.
     We test
     - correctness of sample on standard device with standard batch_size
       - dimensions and output devices

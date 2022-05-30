@@ -121,8 +121,6 @@ def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: fl
     else:
         return norm_actions(s_actions, actions, p)
 
-
-
 def _create_grid_bid_profiles(bidder_position: int, grid: torch.Tensor, bid_profile: torch.Tensor):
     """Given an original bid profile, creates a tensor of (grid_size *
     batch_size) batches of bid profiles, where for each original batch, the
@@ -230,18 +228,18 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                          agent_observations: torch.Tensor,
                          grid_size: int,
                          opponent_batch_size: int = None,
-                         grid_best_response: bool = False):
+                         grid_best_response: bool = False, mute: bool = False):
     #pylint: disable = anomalous-backslash-in-string
     """Estimates a bidder's utility loss in the current state of the
-    environment, i.e. the     potential benefit of deviating from the current
-    strategy, evaluated at each point of the agent_valuations. therfore, we
+    environment, i.e. the potential benefit of deviating from the current
+    strategy, evaluated at each point of the agent_valuations. Therefore, we
     calculate
 
     .. math::
         \max_{v_i \in V_i} \max_{b_i^* \in A_i} + E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i})) - u(v_i, b_i, b_{-i}(v_{-i}))]
 
-    We're conditoning on the agent's observation at `player_position`. That
-    means, types and observations of other palyers as well as its own type have
+    We're conditioning on the agent's observation at `player_position`. That
+    means, types and observations of other players as well as its own type have
     to be conditioned. As it's     conditioned on the observation, the agent's
     action stays the same.
 
@@ -250,10 +248,11 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         player_position: int, position of the player in the environment.
         grid_size: int, stating the number of alternative actions sampled via
             env.agents[player_position].get_valuation_grid(grid_size, True).
-        opponent_batch_size: int, specifing the sample size for opponents.
+        opponent_batch_size: int, specifying the sample size for opponents.
         grid_best_response: bool, whether or not the BRs live on the grid or
             possibly come from the actual actions (in case no better response
             was found on grid).
+        mute: bool, mute stdout.
 
     Returns:
         utility_loss (torch.Tensor, shape: [batch_size]):  the computed
@@ -285,7 +284,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
 
     ####### get best responses over grid of alternative actions #######
     action_alternatives = env.sampler.generate_action_grid(
-        player_position,
+        player_position=player_position,
         minimum_number_of_points=grid_size,
         dtype=agent_action_actual.dtype, device=agent_action_actual.device
     )
@@ -295,9 +294,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         env, player_position, obs, action_alternatives, opponent_batch_size)
     br_utility, br_indices = apply_with_dynamic_mini_batching(
         function=get_br_utily_and_index,
-        args=agent_observations,
-        n_outputs=2, dtypes=[action_alternatives.dtype, torch.long])
-
+        args=agent_observations, mute=mute)
 
     ##### calculate the loss and return best responses ###########
     utility_loss = (br_utility - utility_actual).relu_()
@@ -345,8 +342,7 @@ def _get_best_responses_among_alternatives(
     # for each agent_observation, find the best response
     # each have shape: [agent_batch_size]
     br_utility, br_indices = grid_utilities.max(dim=0)
-    return br_utility,br_indices
-
+    return br_utility, br_indices
 
 def ex_interim_utility(
         env: AuctionEnvironment, player_position: int,
@@ -386,7 +382,7 @@ def ex_interim_utility(
     # co has dimension (*agent_batches , opponent_batch, n_players, observation_size)
     # each agent_observations is repeated opponent_batch_size times
     cv, co = env.draw_conditionals(
-        player_position, agent_observations, opponent_batch_size
+        player_position, agent_observations, opponent_batch_size, device
         )
 
     action_profile_actual = torch.zeros(

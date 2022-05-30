@@ -66,7 +66,7 @@ class Environment(ABC):
                 or return batch_size many rewards (one for each sample). Default True
             strat_to_player_kwargs: further arguments needed for agent creation
             regularize: paramter that penalizes high action values (e.g. if we
-                get the same utility with different actions, we prefer the loweer
+                get the same utility with different actions, we prefer the lower
                 one). Default value of zero corresponds to no regularization.
 
         """
@@ -427,7 +427,8 @@ class AuctionEnvironment(Environment):
             self,
             conditioned_player: int,
             conditioned_observation: torch.Tensor,
-            inner_batch_size: int = None
+            inner_batch_size: int = None,
+            device: str = None,
         ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws a conditional valuation / observation profile based on a (vector of)
         fixed observations for one player.
@@ -437,7 +438,7 @@ class AuctionEnvironment(Environment):
 
         cv, co = self.sampler.draw_conditional_profiles(
             conditioned_player, conditioned_observation,
-            inner_batch_size
+            inner_batch_size, device
         )
 
         return cv, co

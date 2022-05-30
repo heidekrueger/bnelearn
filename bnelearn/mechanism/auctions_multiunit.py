@@ -28,13 +28,13 @@ class MultiUnitAuction(Mechanism):
         Args:
             bids: torch.Tensor
                 of bids with dimensions (*batch_sizes, n_players, n_items); first entry of
-                n_items dim corrsponds to bid of first unit, second entry to bid of second
+                n_items dim corresponds to bid of first unit, second entry to bid of second
                 unit, etc.
 
         Returns:
             cleaned_bids: torch.Tensor (*batch_sizes, n_players, n_items)
                 same dimension as bids, with zero entries whenever a bidder bid
-                nondecreasing in a batch.
+                non-decreasing in a batch.
         """
         diff = bids.sort(dim=-1, descending=True)[0] - bids
         diff = torch.abs(diff).sum(dim=-1) != 0  # boolean, batch_sizes x n_players
@@ -55,7 +55,7 @@ class MultiUnitAuction(Mechanism):
 
         Args:
             bids (torch.Tensor) of agents bids of shape (batch, agent, unit)
-            random_tie_break (bool), optinoal: wether or not to randomize the
+            random_tie_break (bool), optional: wether or not to randomize the
                 order of the agents (matters e.g. when all agents bid same
                 amount, then the first agent would always win).
             accept_zero_bids (bool), wether or not agents can win by bidding
@@ -63,7 +63,7 @@ class MultiUnitAuction(Mechanism):
 
         Returns:
             allocations (torch.Tensor) of zeros and ones to indicate the
-                alocated units for each batch and for each bid.
+                allocated units for each batch and for each bid.
 
         Note:
             This function assumes that validity checks have already been
@@ -88,7 +88,7 @@ class MultiUnitAuction(Mechanism):
 
         if random_tie_break:  # restore bidder order
             idx_rev = idx.sort()[1] + (n_players*n_items) \
-                    * torch.arange(*batch_sizes, device=bids.device).reshape(-1, 1)
+                * torch.arange(*batch_sizes, device=bids.device).reshape(-1, 1)
             allocations = allocations.view(-1)[idx_rev.view(-1)]
 
         # sorting is needed, since tie break could end up in favour of lower valued item
@@ -111,12 +111,12 @@ class MultiUnitDiscriminatoryAuction(MultiUnitAuction):
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Runs a (batch of) multi item discriminatory auction(s). Invalid bids
         (i.e. in increasing order) will be ignored (-> no allocation to that
-        bidder), s.t. the bidder might be able to ´learn´ the right behavior.
+        bidder), s.t. the bidder might be able to ``learn`` the right behavior.
 
         Args:
             bids: torch.Tensor
                 of bids with dimensions (*batch_sizes, n_players, n_items);
-                first entry of n_items dim corrsponds to bid of first unit,
+                first entry of n_items dim corresponds to bid of first unit,
                 second entry to bid of second unit, etc.
 
         Returns:
@@ -160,12 +160,12 @@ class MultiUnitUniformPriceAuction(MultiUnitAuction):
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Runs a (batch of) Multi Unit Uniform-Price Auction(s). Invalid bids
         (i.e. in increasing order) will be ignored (-> no allocation to that
-        bidder), s.t. the bidder might be able to ´learn´ the right behavior.
+        bidder), s.t. the bidder might be able to ``learn`` the right behavior.
 
         Args:
             bids: torch.Tensor
                 of bids with dimensions (*batch_sizes, n_players, n_items);
-                first entry of n_items dim corrsponds to bid of first unit,
+                first entry of n_items dim corresponds to bid of first unit,
                 second entry to bid of second unit, etc.
 
         Returns:
@@ -180,7 +180,7 @@ class MultiUnitUniformPriceAuction(MultiUnitAuction):
         assert bids.dim() >= 3, "Bid tensor must be at least 3d (*batches x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
-        # name dimensions for readibility
+        # name dimensions for readability
         *batch_sizes, n_players, n_items = bids.shape
         total_batch_size = reduce(mul, batch_sizes, 1)
 
@@ -221,12 +221,12 @@ class MultiUnitVickreyAuction(MultiUnitAuction):
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Runs a (batch of) Multi Unit Vickrey Auction(s). Invalid bids (i.e.
         in increasing order) will be ignored (-> no allocation to that bidder),
-        s.t. the bidder might be able to ´learn´ the right behavior.
+        s.t. the bidder might be able to ``learn`` the right behavior.
 
         Args:
             bids: torch.Tensor
                 of bids with dimensions (*batch_sizes, n_players, n_items);
-                first entry of n_items dim corrsponds to bid of first unit,
+                first entry of n_items dim corresponds to bid of first unit,
                 second entry to bid of second unit, etc.
 
         Returns:
@@ -241,7 +241,7 @@ class MultiUnitVickreyAuction(MultiUnitAuction):
         assert bids.dim() >= 3, "Bid tensor must be at least 3d (*batches x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
 
-        # name dimensions for readibility
+        # name dimensions for readability
         *batch_sizes, n_players, n_items = bids.shape
         total_batch_size = reduce(mul, batch_sizes, 1)
 
@@ -282,7 +282,7 @@ class FPSBSplitAwardAuction(MultiUnitAuction):
     """First-price sealed-bid split-award auction: Multiple agents bidding for
     either 100% of the share or 50%.
 
-    We define a bids as ´torch.Tensor´ with dimensions (*batch_sizes,
+    We define a bids as ``torch.Tensor`` with dimensions (*batch_sizes,
     n_players, n_bids=2), where the first bid is for the 50% share and the
     second for the 100% share.
     """
@@ -345,7 +345,7 @@ class FPSBSplitAwardAuction(MultiUnitAuction):
             winning_bundles = batched_index_select(winning_bundles, 1, idx_rev)
             # bids_flat = batched_index_select(bids_flat, 1, idx_rev)  # unused
 
-        winning_bundles = winning_bundles.view_as(bids)  # reshape to original sahpe
+        winning_bundles = winning_bundles.view_as(bids)  # reshape to original shape
 
         if not accept_zero_bids:
             winning_bundles.masked_fill_(mask=bids==0, value=0)
@@ -356,13 +356,13 @@ class FPSBSplitAwardAuction(MultiUnitAuction):
         """Computes first prices.
 
         Args:
-            bids: torch.Tensor, of dimensions (batch_size, n_bidders,
-                n_bids=2), values = [0, Inf].
-            allocations: torch.Tensor, dim: (batch_size, b_bundles=2), values =
+            bids: torch.Tensor, of dimensions ``(batch_size, n_bidders,
+                n_bids=2)``, values = [0, Inf].
+            allocations: torch.Tensor, dim: ``(batch_size, b_bundles=2)``, values =
                 {0, 1}.
 
         Returns:
-            payments: tensor of dimension (*n_batches x n_players); total
+            payments: tensor of dimension ``(*n_batches x n_players)``; total
                 payment from player to auctioneer for her allocation in that
                 batch.
         """
@@ -373,16 +373,16 @@ class FPSBSplitAwardAuction(MultiUnitAuction):
 
         Args:
             bids: torch.Tensor
-                of bids with dimensions (*batch_sizes, n_players, n_items=2);
-                first entry of n_items dim corrsponds to bid for 50% lot,
+                of bids with dimensions ``(*batch_sizes, n_players, n_items=2)``;
+                first entry of n_items dim corresponds to bid for 50% lot,
                 second entry to bid for 100% lot, etc.
 
         Returns:
             (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
-                allocation: tensor of dimension (*n_batches x n_players x 2),
+                allocation: tensor of dimension ``(*n_batches x n_players x 2)``,
                     1 indicating item is allocated to corresponding player in
                     that batch, 0 otherwise.
-                payments: tensor of dimension (*n_batches x n_players);
+                payments: tensor of dimension ``(*n_batches x n_players)``;
                     total payment from player to auctioneer for her
                     allocation in that batch.
         """
