@@ -15,7 +15,7 @@ Current parameter settings assume that you are running on a Unix system with a c
 Installation
 ============
 
-Install Python (tested on 3.8) and pip, we recommend using a separate environment using conda or virtualenv. If you have a CUDA-enabled GPU, follow the pytorch (tested on 1.8.1) installation instructions for your system at https://pytorch.org/get-started/locally/ (for a CPU-only installation, you can skip directly to the next step.) Install the remaining dependencies via pip install -r requirements.txt. Run the included tests via pytest. If installation was successfull, all tests should pass on GPU-systems. (On cpu-only systems, some tests will be skipped.)
+Install Python (tested on 3.9) and pip, we recommend using a separate environment using conda or virtualenv. If you have a CUDA-enabled GPU, follow the pytorch (tested on pytorch 1.10.1) installation instructions for your system at https://pytorch.org/get-started/locally/ (for a CPU-only installation, you can skip directly to the next step.) Install the remaining dependencies via pip install -r requirements.txt. Run the included tests via pytest. If installation was successfull, all tests should pass on GPU-systems. (On cpu-only systems, some tests will be skipped.)
 
 1. (Recommended but optional) Install the requirements via ``pip install -r requirements.txt``. This will install `all` requirements, including GPU-enabled pytorch, external solvers required for some combinatorial auctions and development tools. Note that ``requirements.txt`` will pull the latest stable torch version with cuda that is available at the time of writing (July 2021). You may want to manually install the latest version available for your system, see https://pytorch.org/get-started/locally/ for details.
 2. Install the bnelearn package via ``pip install -e .``.
@@ -48,7 +48,7 @@ Start by creating the environment:
 
 .. code-block:: bash
 
-    conda create -n bnelearn python=3.7
+    conda create -n bnelearn python=3.9 pip
 
 
 **Activate the environment**
@@ -66,7 +66,7 @@ Install pytorch: Using conda from the pytorch-channel on Windows:
 
 .. code-block:: bash
 
-    conda install pytorch torchvision cudatoolkit=10.0 -c pytorch
+    conda install pytorch torchvision cudatoolkit=11.3 -c pytorch
 
 or equivalent command for your system (https://pytorch.org/get-started/locally/)
 
@@ -82,18 +82,16 @@ Running the software
 ====================
 
 * Navigate to your local ``bnelearn`` folder (in the following: ``.``).
-* Activate the ``bnelearn`` conda-env: ``activate bnelearn``.
-* Start a jupyter server using ``jupyter lab``.
-* A browser window with jupyter should open automatically. If it doesn't you can find it at http://localhost:8888/lab.
-* In jupyter lab, browse to the notebooks directory and run any of the notebooks there.
+* Activate the ``bnelearn`` conda-env: ``conda activate bnelearn``.
+* Execute one of the scripts in the `scripts` directory, or run a `jupyter lab` instance to run of the notebooks in the `notebooks` directory.
 
 
 Experiment logging 
 ==================
 
-**On the fly logging:** Results of notebook experiments are written to a subdirectory as specified in each notebook. (Similar for experiments in ``scripts``. To view the results or monitor training process, start a tensorboard instance:
+**On the fly logging:** Results of script and notebook experiments are written to a subdirectory as specified in each script or notebook. To view the results or monitor training process, start a tensorboard instance:
 
-* Navigate to the ``./notebooks/`` directory.
+* Navigate to your experiment output directory.
 * In another terminal window, activate the ``bnelearn`` conda env as well: ``activate bnelearn``.
 * Start a tensorboard instance, pointing at the relevant subdirectory for your experiment (tensorboard can simultaneously display multiple runs of the same experiment.) I.e. if you're interested in fpsb experiments and your directory structure is
 

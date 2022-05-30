@@ -4,7 +4,10 @@
 Home
 ====
 
-Welcome to `bnelearn`'s documentation! bnelearn is a framework for equilibrium learning in sealed-bid auctions.
+Welcome to `bnelearn`'s documentation! bnelearn is a framework for equilibrium learning in sealed-bid auctions and other markets that can be modeled as Bayesian Games.
+
+* The public version of the `bnelearn` repository is hosted at `https://github.com/heidekrueger/bnelearn`.
+* Development is ongoing via a private GitLab repository on our university server. If you have questions, find an error, or want to contribute, please get in touch via the Issues on the GitHub repository above, or email one of the maintainers.
 
 * You can find the installation instructions at :doc:`/usage/installation`.
 * A quickstart guide is provided at :doc:`/usage/quickstart`.

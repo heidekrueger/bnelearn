@@ -2,6 +2,8 @@
 Quickstart
 ==========
 
+_The commands below can be used to reproduce the results Published in `Bichler et al. 2021, <https://www.nature.com/articles/s42256-021-00365-4>`. All references refer to the numbering in that paper._
+
 Let us take a look at how to learn in one of the predefined auction games with one of the predefined algorithms.
 
 
