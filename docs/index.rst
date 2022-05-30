@@ -32,11 +32,11 @@ Structure
 * I(PV) and non-PV (e.g., common values), with arbitrary priors/correlation profiles, utilities, valuation/observation/bid dimensionalities.
 * Modular organization allows for easy construction of new markets (e.g., bid languages, etc.) from existing or custom building blocks.
 * Extensive metrics (learning-related: estimates of "equilibrium quality", utilities over time, market analysis: efficiency, revenue, individual payoffs) and built-in plotting capacities.
-* Wide range of predefined settings and building blocks.
-  * Learning rules: Policy Gradients, NPGA, PSO.
-  * Auctions: Single-item, multi-unit, LLG combinatorial auction, LLLLGG combinatorial auction.
-  * Priors/correlations: Uniform and normal priors that are either independent or Bernoulli or constant weight dependent.
-  * Utility functions: Quasi-linear utility, either risk neutral, risk averse, or risk seeking.
+* Wide range of predefined settings and building blocks:
+    * Learning rules: Policy Gradients, NPGA, PSO.
+    * Auctions: Single-item, multi-unit, LLG combinatorial auction, LLLLGG combinatorial auction.
+    * Priors/correlations: Uniform and normal priors that are either independent or Bernoulli or constant weight dependent.
+    * Utility functions: Quasi-linear utility, either risk neutral, risk averse, or risk seeking.
 * Fully vectorized, cuda enabled, massive parallelism
 * For combinatorial auctions: custom batched, cuda-enabled QP solver for quadratic auction rules + gurobi/cvxpy integration for arbitrary auctions stated as a MIP.
 
@@ -50,9 +50,11 @@ A diverse set of auction games is implemented in the framework.
 Predefined Learners
 -------------------
 
-Algorithms for trying to iteratively learn equilibria implement the base class `Learner` in the framework. Two noteworthy algorithms that are contained are (i.) neural self-play with directly computed policy gradients from `(Heinrich and Silver, 2016) <https://arxiv.org/abs/1603.01121>`_, which is called `PGLearner`, and (ii.) neural pseudogradient ascent, `ESPGLearner`, from `(Bichler et al. 2021) <https://www.nature.com/articles/s42256-021-00365-4>`_.
+Algorithms for trying to iteratively learn equilibria implement the base class ``Learner`` in the framework. Two noteworthy algorithms that are contained are
 
-**TODO:** Add PSO.
+* Neural self-play with directly computed policy gradients from `(Heinrich and Silver, 2016) <https://arxiv.org/abs/1603.01121>`_, which is called ``PGLearner``,
+* Neural pseudogradient ascent (NPGA), called ``ESPGLearner``, from `(Bichler et al., 2021) <https://www.nature.com/articles/s42256-021-00365-4>`_,
+* Particle swarm optimization (PSO), called ``PSOLearner``, from `(Kohring et al., 2022) <https://scholar.google.com/citations?view_op=view_citation&hl=en&user=xSn9wlsAAAAJ&citation_for_view=xSn9wlsAAAAJ:Tyk-4Ss8FVUC>`_.
 
 
 Limitations and Alternatives
@@ -63,7 +65,7 @@ Same dimensionality for all players. Current implementations and learners use de
 Variance reduction or Quasirandom sampling is not yet implemented but should be easy.
 
 
-**Other existing multi-agent Learning Packages:** Other multi-agent learning frameworks, such as `OpenSpiel <https://github.com/deepmind/open_spiel>`_ that is a collection of games and algorithms for reinforcement learning and planning or `PettingZoo <https://github.com/Farama-Foundation/PettingZoo>`_ that is a multi-agent extension of the famous OpenAI Gym framework `OpenAIGym <https://github.com/openai/gym>`_, mainly focus on zero-sum games and on games with discrete action spaces. Crucially, they neither allow an efficient evaluation of running a large batch of games in parallel.
+**Other existing multi-agent Learning Packages:** Other multi-agent learning frameworks, such as `OpenSpiel <https://github.com/deepmind/open_spiel>`_ that is a collection of games and algorithms for reinforcement learning and planning or `PettingZoo <https://github.com/Farama-Foundation/PettingZoo>`_ that is a multi-agent extension of the famous `OpenAI Gym <https://github.com/openai/gym>`_ framework, mainly focus on zero-sum games and on games with discrete action spaces. Crucially, they neither allow an efficient evaluation of running a large batch of games in parallel.
 
 
 
