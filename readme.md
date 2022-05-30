@@ -4,9 +4,14 @@
 
 [![pipeline status](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/pipeline.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master) | [![coverage report](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/coverage.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master)
 
-Authors: Stefan Heidekrüger ([@heidekrueger](https://github.com/heidekrueger)), Paul Sutterer, Nils Kohring ([@kohring](https://github.com/kohring)), Martin Bichler
+**Maintainers**: Stefan Heidekrüger ([@heidekrueger](https://github.com/heidekrueger)), Nils Kohring ([@kohring](https://github.com/kohring)), Markus Ewert ([@Markus-Ewert](https://github.com/Markus-Ewert))
 
-Currently, this repository contains minimal code to reproduce the experiments in our forthcoming paper: "Learning Equilibria in Symmetric Auction Games using Artificial Neural Networks", published in _Nature Machine Intelligence_ [Link](https://www.nature.com/articles/s42256-021-00365-4).
+**Original Authors**: Stefan Heidekrüger, Paul Sutterer, Nils Kohring, Martin Bichler
+**Contributors**: Markus Ewert, Gleb Kilichenko ([@kilichenko](https://github.com/kilichenko)), Carina Fröhlich
+
+Currently, this repository contains minimal code to reproduce the experiments in our paper: "Learning Equilibria in Symmetric Auction Games using Artificial Neural Networks", published in _Nature Machine Intelligence_ [Link](https://www.nature.com/articles/s42256-021-00365-4).
+
+TODO: Update this
 
 #### Overview of What's Implemented
 
