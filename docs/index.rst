@@ -54,7 +54,7 @@ Algorithms for trying to iteratively learn equilibria implement the base class `
 
 * Neural self-play with directly computed policy gradients from `(Heinrich and Silver, 2016) <https://arxiv.org/abs/1603.01121>`_, which is called ``PGLearner``,
 * Neural pseudogradient ascent (NPGA), called ``ESPGLearner``, from `(Bichler et al., 2021) <https://www.nature.com/articles/s42256-021-00365-4>`_,
-* Particle swarm optimization (PSO), called ``PSOLearner``, from `(Kohring et al., 2022) <https://scholar.google.com/citations?view_op=view_citation&hl=en&user=xSn9wlsAAAAJ&citation_for_view=xSn9wlsAAAAJ:Tyk-4Ss8FVUC>`_.
+* Particle swarm optimization (PSO), called ``PSOLearner``, from `(Kohring et al., 2022) <http://aaai-rlg.mlanctot.info/papers/AAAI22-RLG_paper_8.pdf>`_.
 
 
 Limitations and Alternatives
