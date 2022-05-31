@@ -9,10 +9,10 @@
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-#
-# import os
-# import sys
-# sys.path.insert(0, os.path.abspath('.'))
+
+import os
+import sys
+sys.path.insert(0, os.path.abspath('.'))
 
 
 # -- Project information -----------------------------------------------------
@@ -30,8 +30,14 @@ release = 'beta'
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
+import sphinx_rtd_theme
 extensions = [
-]
+        "sphinx.ext.autodoc",
+        "sphinx_rtd_theme",
+        "sphinx.ext.viewcode", 
+        "sphinx.ext.napoleon", 
+        "sphinx.ext.todo",
+        "sphinx.ext.intersphinx"]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -56,16 +62,6 @@ html_static_path = ['_static']
 
 html_logo = "bnelearn-logo.png"
 
-import sphinx_rtd_theme
-import os 
-import sys 
-sys.path.append('..')
-extensions = ["sphinx.ext.autodoc",
-        "sphinx_rtd_theme",
-        "sphinx.ext.viewcode", 
-        "sphinx.ext.napoleon", 
-        "sphinx.ext.todo",
-        "sphinx.ext.intersphinx"]
 
 #display private members 
 #autodoc_default_options = {     "members": True,     "undoc-members": True, "private-members": True  }

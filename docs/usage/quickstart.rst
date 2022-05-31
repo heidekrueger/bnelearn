@@ -2,14 +2,15 @@
 Quickstart
 ==========
 
-_The commands below can be used to reproduce the results Published in `Bichler et al. 2021, <https://www.nature.com/articles/s42256-021-00365-4>`. All references refer to the numbering in that paper._
-
 Let us take a look at how to learn in one of the predefined auction games with one of the predefined algorithms.
 
 
-**Running the Experiments**
+Running the Experiments
+=======================
 
-You can then run the experiments underlying the tables and figures in the main paper via ``python run_experiments_npga.py``. The standard configuration of the file reruns the experiments behind Figure 3, i.e., one run each for all combinations of the correlation strength and the risk parameter. To run the other experiments reported in the paper, make the following changes in lines 17 to 34:
+The commands here can be used to reproduce the results published in `(Bichler et al., 2021) <https://www.nature.com/articles/s42256-021-00365-4>`_. All references refer to the numbering in that paper.
+
+You can then run the experiments underlying the tables and figures in the main paper via ``python run_experiments_npga.py`` (see `run_experiments_npga.py <https://github.com/heidekrueger/bnelearn/blob/main/run_experiments_npga.py>`_). The standard configuration of the file reruns the experiments behind Figure 3, i.e., one run each for all combinations of the correlation strength and the risk parameter. To run the other experiments reported in the paper, make the following changes in lines 17 to 34:
 
 * For the experiments underlying Figure 2, set ``n_runs = 10``, ``gammas = [0.5]``, ``payment_rules = ['nearest_vcg']``.
 * For the experiments underlying Table 1, set ``n_runs = 10``, ``risks = [1.0]``, ``gammas = [0.5]``, ``payment_rules = ['vcg', 'nearest_bid', 'nearest_zero', 'nearest_vcg', 'first_price']``.
@@ -25,3 +26,15 @@ To run the other experiments reported in the Supplementary Information, make the
 * For the experiments underlying Figure S.2, make the corresponding changes to the previous experiments.
 
 Logs will be written into the ``experiments`` subdirectory. While the experiments are running, you can examine the training progress via ``tensorboard --logdir experiments``.
+
+
+Running Experiments for Learning with PSO
+=========================================
+
+You can then run the experiments for particle swarm optimization (from `Kohring et al., 2022 <http://aaai-rlg.mlanctot.info/papers/AAAI22-RLG_paper_8.pdf>`_) via ``python run_experiments_pso.py`` (see `run_experiments_pso.py <https://github.com/heidekrueger/bnelearn/blob/main/run_experiments_pso.py>`_).
+
+
+Running Experiments for Learning in Contests
+============================================
+
+You can then run the experiments for particle swarm optimization via ``python run_experiments_contests.py`` (see `run_experiments_contests.py <https://github.com/heidekrueger/bnelearn/blob/main/run_experiments_contestss.py>`_).
