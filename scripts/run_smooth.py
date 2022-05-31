@@ -20,21 +20,21 @@ if __name__ == '__main__':
     # Experiments comparing NPGA and Smooth for single-item and LLG
     if True:
         log_root_dir = os.path.join(
-            os.path.expanduser('~'), 'bnelearn', 'experiments', 'smooth', 'single_item'
+            os.path.expanduser('~'), 'bnelearn', 'experiments', 'smooth', 'llg'
         )
  
         # User parameters
         specific_gpu = 2
-        n_runs = 5
-        n_epochs = 1000
+        n_runs = 10
+        n_epochs = 2000
 
         # model_sharing = True
-        pretrain_iters = 10
+        pretrain_iters = 50
 
         batch_size = 2**18
         eval_batch_size = 2**22
-        util_loss_batch_size = 2**8
-        util_loss_grid_size = 2**9
+        util_loss_batch_size = 2**10
+        util_loss_grid_size = 2**12
         util_loss_frequency = n_epochs
 
         for smoothing_temperature, learner in zip([0.02, None], ['PGLearner', 'ESPGLearner']):
@@ -42,16 +42,16 @@ if __name__ == '__main__':
         # for smoothing_temperature, learner in zip([None], ['ESPGLearner']):
             experiment_config, experiment_class = \
                 ConfigurationManager(
-                    experiment_type='single_item_uniform_symmetric',
-                    # experiment_type='llg',
+                    # experiment_type='single_item_uniform_symmetric',
+                    experiment_type='llg',
                     n_runs=n_runs,
                     n_epochs=n_epochs,
                 ) \
                 .set_setting(
                     # payment_rule='first_price',
-                    payment_rule='second_price',
+                    # payment_rule='second_price',
                     # payment_rule='nearest_zero',
-                    # payment_rule='vcg',
+                    payment_rule='vcg',
                     # n_players=2
                     ) \
                 .set_learning(
@@ -77,7 +77,7 @@ if __name__ == '__main__':
             experiment.run()
             torch.cuda.empty_cache()
 
-    # Experiment analysing temperature
+    # Experiment analyzing temperature
     if False:
         log_root_dir = os.path.join(
             os.path.expanduser('~'), 'bnelearn', 'experiments', 'smooth', 'temperature'

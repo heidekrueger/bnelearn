@@ -179,6 +179,8 @@ class LLGAuction(Mechanism):
             rule = 'nearest_zero'
         self.rule = rule
 
+        self.smoothing_temperature = smoothing_temperature
+
     # pylint: disable=arguments-differ
     def run(self, bids: torch.Tensor, smooth_market: bool=False) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -239,7 +241,7 @@ class LLGAuction(Mechanism):
             # here the softened allocation has to distributed fair among the locals
             local_bids_sum = b_locals.sum(axis=player_dim, keepdim=True)
             team_bids = torch.concat((local_bids_sum, b_global), axis=-1)
-            team_allocations = torch.nn.Softmax(dim=-1)(team_bids / self.smoothing)
+            team_allocations = torch.nn.Softmax(dim=-1)(team_bids / self.smoothing_temperature)
             idx = [0] * (n_players - 1)
             idx.append(1)
             allocations = team_allocations[..., idx]
