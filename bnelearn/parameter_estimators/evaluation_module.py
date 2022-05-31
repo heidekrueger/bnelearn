@@ -31,7 +31,7 @@ class Evaluation_Module(ABC):
 
 class CurveEvaluation(Evaluation_Module):
 
-    def __init__(self, n_players: int, data_location: str, treatment: str, gpu: int, method: str = "LM", u_hi: int, writer: SummaryWriter = None):
+    def __init__(self, n_players: int, data_location: str, treatment: str, gpu: int, u_hi: int, method: str = "LM", writer: SummaryWriter = None):
 
         assert method == "LM" or method == "Tobit"
 

@@ -155,19 +155,19 @@ if __name__ == '__main__':
             'first_price': {
                 'n_players':  [5, 10],
                 'treatment': ['cross_over', 'dual'],
-                'data_location': '/home/ewert/data/Kagel/FP_norm.csv',
+                'data_location': '/home/ewert/data/Kagel/FP.csv' if not scaled_value else '/home/ewert/data/Kagel/FP_scaled.csv',
                 'payment_rule': 'first_price'
             },
             'second_price': {
                 'n_players':  [5, 10],
                 'treatment': ['cross_over', 'dual'],
-                'data_location': '/home/ewert/data/Kagel/SP_norm.csv',
+                'data_location': '/home/ewert/data/Kagel/SP.csv' if not scaled_value else '/home/ewert/data/Kagel/SP_scaled.csv',
                 'payment_rule': 'second_price'
             },
             'third_price': {
                 'n_players':  [5, 10],
                 'treatment': ['cross_over', 'dual'],
-                'data_location': '/home/ewert/data/Kagel/TP_norm.csv',
+                'data_location': '/home/ewert/data/Kagel/TP_norm.csv' if not scaled_value else '/home/ewert/data/Kagel/TP_scaled.csv',
                 'payment_rule': 'third_price'
             },
         }
@@ -209,7 +209,7 @@ if __name__ == '__main__':
         'initial_samples': 5,
         'iterations': 7,
         'experiment': 'single_item_uniform_symmetric',
-        'epochs': 2000,
+        'epochs': 1,
         'objective': torch.min if eval_technique == 'curve' else torch.max,
         'evaluation_module': evaluation_module,
         'learner': 'PGLearner', # PGLearner, ESPGLearner
