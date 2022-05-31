@@ -26,7 +26,8 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
-                                                        AffiliatedObservationsExperiment
+                                                        AffiliatedObservationsExperiment,
+                                                        ContestExperiment
                                                         )
 
 # TODO: server-specific constant hardcoded. We need a more dynamic way to do this.
@@ -268,6 +269,21 @@ class ConfigurationManager:
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
 
+    def _init_tullock(self):
+        self.setting.u_lo = [0.0]
+        self.setting.u_hi = [1.0]
+        self.setting.common_prior = DISTRIBUTIONS['Uniform'](self.setting.u_lo[0], self.setting.u_hi[0])
+        self.setting.impact_function = "tullock_contest"
+        self.learning.model_sharing = True
+
+    def _init_crowdsourcing(self):
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1.0]
+        self.setting.common_prior = DISTRIBUTIONS['Uniform'](self.setting.u_lo[0], self.setting.u_hi[0])
+        self.learning.model_sharing = True
+        self.setting.payment_rule = "crowdsourcing"
+        self.setting.impact_function = "deterministic"
+
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
         # Learning
@@ -370,6 +386,12 @@ class ConfigurationManager:
     def _post_init_splitaward(self):
         pass
 
+    def _post_init_tullock(self):
+        pass
+
+    def _post_init_crowdsourcing(self):
+        pass
+
     experiment_types = {
         'single_item_uniform_symmetric':
             (UniformSymmetricPriorSingleItemExperiment, _init_single_item_uniform_symmetric,
@@ -398,7 +420,14 @@ class ConfigurationManager:
         'multiunit':
            (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
-           (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)
+           (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
+        'tullock_contest':
+            (ContestExperiment, _init_tullock, _post_init_tullock),
+        'all_pay_uniform_symmetric':
+            (UniformSymmetricPriorSingleItemExperiment, _init_single_item_uniform_symmetric, 
+            _post_init_single_item_uniform_symmetric),
+        'crowdsourcing':
+            (ContestExperiment, _init_crowdsourcing, _post_init_crowdsourcing)
         }
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
@@ -424,7 +453,8 @@ class ConfigurationManager:
                     correlation_coefficients: List[float] = 'None', n_items: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None'):
+                    core_solver: str = 'None', impact_factor: float = 'None', impact_function: str = 'None',
+                    valuations: List = None):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
@@ -473,7 +503,8 @@ class ConfigurationManager:
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
-                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
+                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
+                     use_valuation: bool = True):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.learning, arg):

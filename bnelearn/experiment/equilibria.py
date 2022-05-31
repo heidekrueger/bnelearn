@@ -204,6 +204,17 @@ def bne3_kaplan_zhamir(
 
     return bids
 
+def bne_symmetric_all_pay_uniform_prior(valuation: torch.Tensor, n_player: int, **kwargs) -> torch.Tensor:
+    return (n_player-1) * (valuation ** n_player)/n_player
+
+def bne_crowdsourcing_symmetric_uniform_value(valuation: torch.Tensor, v1: float = 1, v2 = 0, N: int = 0, player_position=0, **kwargs):
+    a = lambda v, N: (N-1)/N * v ** N
+    b = lambda v, N: (N-1) * (((N-2) * v ** (N-1))/(N-1) + (v**N)/N - v**N)
+    return torch.relu(v1 * a(valuation, N) + v2 * b(valuation, N))
+
+def bne_crowdsourcing_symmetric_uniform_cost(valuation: torch.Tensor, v1: float = 1/2, **kwargs):
+    return torch.relu(8*valuation*(3*v1 -2) + 4*valuation.log()*(3-5*v1) + 8*(2-3*v1))
+
 ###############################################################################
 ######  Single-Item Non-IPV
 ###############################################################################

@@ -6,7 +6,7 @@ import torch
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
-from bnelearn.mechanism import Mechanism
+from bnelearn.mechanism import Mechanism, TullockContest, CrowdsourcingContest
 from bnelearn.strategy import Strategy
 from bnelearn.util.tensor_util import apply_with_dynamic_mini_batching
 
@@ -404,7 +404,10 @@ def ex_interim_utility(
     #         payments:    *agent_batches x opponent_batch x n_players
     allocations, payments = mechanism.play(action_profile_actual)
 
-    agent_allocations = allocations[..., player_position, :].type(torch.bool)
+    if isinstance(mechanism, TullockContest) or isinstance(mechanism, CrowdsourcingContest):
+        agent_allocations = allocations[..., player_position, :]
+    else:
+        agent_allocations = allocations[..., player_position, :].type(torch.bool)
     agent_payments = payments[..., player_position]
     agent_valuations = cv[..., player_position, :]
     # shape of utility: *agent_batch_sizes x opponent_batch_size

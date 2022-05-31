@@ -395,7 +395,7 @@ class Experiment(ABC):
                 'prev_params': prev_params,
                 'time_per_step': time_per_step
             }
-            elapsed_overhead = self._evaluate_and_log_epoch()
+            elapsed_overhead = self._evaluate_and_log_epoch(epoch)
             print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, time_per_step, elapsed_overhead),
                   end="\r")
         else:
