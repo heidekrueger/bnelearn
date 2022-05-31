@@ -247,7 +247,7 @@ class LLGAuction(Mechanism):
             allocations = team_allocations[..., idx]
 
         if self.rule == 'first_price':
-            payments = bids  # batch x players
+            payments = bids.clone()  # batch x players
 
         else:  # calculate local and global winner prices separately
             # 1. calculate payments of local bidders
