@@ -68,6 +68,10 @@ class SettingConfig:
     cost_param: float = None
     cost_type: str = None
 
+    # Behavioral Utilities
+    lamb: float = None
+    regret: float = None
+
 
 @dataclass
 class LearningConfig:
@@ -79,6 +83,8 @@ class LearningConfig:
     hidden_nodes: List[int]
     pretrain_iters: int
     batch_size: int
+    mixed_strategy: str
+    bias: bool
     hidden_activations: List[nn.Module] = None
     use_valuation: bool = True
 

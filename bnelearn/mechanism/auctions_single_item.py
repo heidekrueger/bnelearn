@@ -78,7 +78,7 @@ class VickreyAuction(Mechanism):
             # also revert the order of bids if they're used later on
             bids = batched_index_select(bids, 1, idx_rev)
 
-        return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
+        return (allocations, payments, second_prices.reshape(*batch_sizes), highest_bids.reshape(*batch_sizes))  # payments: batches x players, allocation: batch x players x items
 
 
 class FirstPriceSealedBidAuction(Mechanism):
@@ -124,6 +124,11 @@ class FirstPriceSealedBidAuction(Mechanism):
 
         highest_bids, winning_bidders = bids.max(dim=player_dim, keepdim=True)  # both shapes: [*batch_sizes, 1, n_items]
 
+        # determine ref_bid 
+        top2_bids, _ = bids.topk(2, dim=player_dim, sorted=False)
+        second_prices, _ = top2_bids.min(player_dim, keepdim=True)
+        
+
         # replaced by equivalent, faster torch.scatter operation, see below,
         # but keeping nested-loop code for readability
         # note: code in comment references bids.max with keepdim=False.
@@ -139,7 +144,7 @@ class FirstPriceSealedBidAuction(Mechanism):
         # Don't allocate items that have a winnign bid of zero.
         allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
-        return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
+        return (allocations, payments, second_prices.reshape(*batch_sizes), highest_bids.reshape(*batch_sizes))  # payments: batches x players, allocation: batch x players x items
 
 
 class ThirdPriceSealedBidAuction(Mechanism):
@@ -177,7 +182,10 @@ class ThirdPriceSealedBidAuction(Mechanism):
         *batch_dims, player_dim, item_dim = range(bids.dim())  # pylint: disable=unused-variable
         *batch_sizes, n_players, n_items = bids.shape
 
-        assert torch.min((bids > 0).sum(player_dim)) >= 3, "Auction format needs at least three participants (with positive bid)"
+        # if torch.min((bids > 0).sum(player_dim)) < 3:
+        #     print(2)
+
+        # assert torch.min((bids > 0).sum(player_dim)) >= 3, "Auction format needs at least three participants (with positive bid)"
 
         # allocate return variables
         payments_per_item = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
@@ -196,7 +204,7 @@ class ThirdPriceSealedBidAuction(Mechanism):
         # Don't allocate items that have a winnign bid of zero.
         allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
-        return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
+        return (allocations, payments, third_prices.reshape(*batch_sizes), highest_bids.reshape(*batch_sizes))  # payments: batches x players, allocation: batch x players x items
 
 class SingleItemAllPayAuction(Mechanism):
 

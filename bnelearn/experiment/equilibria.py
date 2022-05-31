@@ -42,7 +42,9 @@ def bne_fpsb_ipv_symmetric_generic_prior_risk_neutral(
     numerator = cumulatively_integrate(cdf_powered, upper_bounds = valuation)
 
     return valuation - numerator / cdf_powered(valuation)
-
+    
+def bne_tpsb_ipv_symmetric_generic_prior_risk_neutral(valuation: torch.tensor, n_players: int):
+    return (valuation * (n_players - 1))/(n_players-2)
 
 def bne_fpsb_ipv_symmetric_uniform_prior(
     valuation: torch.Tensor, n: int, r: float, u_lo, u_hi, **kwargs) -> torch.Tensor:

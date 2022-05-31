@@ -521,7 +521,7 @@ class ConfigurationManager:
                     correlation_coefficients: List[float] = 'None', n_units: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None', regret: float = 'None', impact_factor: float = 'None',
+                    core_solver: str = 'None', regret: float = None, impact_factor: float = 'None',
                     cost_type: str=None, cost_param: float = None, valuations: List = None, impact_function: str = 'None'):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
@@ -569,7 +569,8 @@ class ConfigurationManager:
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
-                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None', use_valuation: bool = True):
+                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None', use_valuation: bool = True,
+                     mixed_strategy: str = 'None', bias: bool = 'None'):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.learning, arg):
@@ -638,7 +639,9 @@ class ConfigurationManager:
         setting = SettingConfig(
             n_players=2,
             payment_rule='first_price',
-            risk=1.0)
+            risk=1.0,
+            lamb=0.0,
+            regret=0.0)
         learning = LearningConfig(
             model_sharing=True,
             learner_type='ESPGLearner',
@@ -651,7 +654,9 @@ class ConfigurationManager:
             pretrain_iters=500,
             batch_size=2 ** 18,
             hidden_activations=[nn.SELU(), nn.SELU()],
-            use_valuation=True)
+            use_valuation=True,
+            mixed_strategy=None,
+            bias=True)
         logging = LoggingConfig(
             enable_logging=True,
             log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),

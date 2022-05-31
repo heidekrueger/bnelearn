@@ -12,7 +12,7 @@ import torch
 
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism
-from bnelearn.strategy import Strategy
+from bnelearn.strategy import Strategy, NeuralNetStrategy
 from bnelearn.sampler import ValuationObservationSampler
 
 class Environment(ABC):
@@ -55,7 +55,7 @@ class Environment(ABC):
 
     def get_strategy_reward(self, strategy: Strategy, player_position: int,
                             redraw_valuations=False, aggregate_batch=True,
-                            regularize: float=0,
+                            regularize: float=0, deterministic: bool=False,
                             **strat_to_player_kwargs) -> torch.Tensor:
         """
         Returns reward of a given strategy in given environment agent position.
@@ -79,7 +79,8 @@ class Environment(ABC):
                                          player_position=player_position, **strat_to_player_kwargs)
         # TODO: this should rally be in AuctionEnv subclass
         return self.get_reward(agent, redraw_valuations=redraw_valuations,
-                               aggregate=aggregate_batch, regularize=regularize)
+                               aggregate=aggregate_batch, regularize=regularize,
+                               deterministic=deterministic)
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
                                        redraw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
@@ -247,6 +248,10 @@ class AuctionEnvironment(Environment):
             exclude = set()
 
         for agent in (a for a in self.agents if a.player_position not in exclude):
+
+            if isinstance(agent.strategy, NeuralNetStrategy):
+                agent.strategy.train(False)
+
             yield (agent.player_position,
                    agent.get_action(self._observations[:, agent.player_position, :]))
 
@@ -257,7 +262,8 @@ class AuctionEnvironment(Environment):
             aggregate: bool = True,
             regularize: float = 0.0,
             return_allocation: bool = False,
-            return_log_prob: bool = False
+            return_log_prob: bool = False,
+            deterministic: bool = False
         ) -> torch.Tensor or Tuple[torch.Tensor, torch.Tensor]: #pylint: disable=arguments-differ
         """Returns reward of a single player against the environment, and optionally additionally the allocation of that player.
            Reward is calculated as average utility for each of the batch_size x env_size games
@@ -279,16 +285,8 @@ class AuctionEnvironment(Environment):
         agent_valuation = self._valuations[:, player_position, :]
 
         # get agent_bid
-        agent_bid = agent.get_action(agent_observation, log_prob=return_log_prob)
-
-        if return_log_prob:
-            # upack action
-            agent_bid, agent_log_prob = agent_bid
-
-        try:
-            action_length = agent_bid.shape[1]
-        except:
-            print(2)
+        agent_bid = agent.get_action(agent_observation, deterministic=deterministic)
+        action_length = agent_bid.shape[-1]
 
         if not self.agents or len(self.agents)==1:# Env is empty --> play only with own action against 'nature'
             allocations, payments = self.mechanism.play(
@@ -316,13 +314,13 @@ class AuctionEnvironment(Environment):
                 bid_profile[:, opponent_pos, :] = opponent_bid
                 counter = counter + 1
 
-            allocations, payments = self.mechanism.play(bid_profile)
+            allocations, payments, ref_bid, win_bid = self.mechanism.play(bid_profile)
 
         agent_allocation = allocations[:, player_position, :]
         agent_payment = payments[:,player_position]
 
         # average over batch against this opponent
-        agent_utility = agent.get_utility(agent_allocation, agent_payment, agent_valuation)
+        agent_utility = agent.get_utility(agent_allocation, agent_payment, agent_valuation, ref_bid, win_bid)
 
         # regularize
         agent_utility -= regularize * agent_bid.mean()
@@ -338,12 +336,7 @@ class AuctionEnvironment(Environment):
                 ).view(1, -1)
                 agent_allocation = agent_allocation[agent_allocation > 0].to(torch.int8)
 
-        if return_allocation:
-            return (agent_utility, agent_allocation)
-        elif return_log_prob:
-            return (agent_utility, agent_log_prob)
-        else:
-            return agent_utility
+        return agent_utility if not return_allocation else (agent_utility, agent_allocation)
 
     def get_allocation(
             self,

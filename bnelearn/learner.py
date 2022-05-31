@@ -323,12 +323,37 @@ class PGLearner(GradientBasedLearner):
 
         # loss.backward()
 
-        rewards, log_prob = self.environment.get_strategy_action_and_reward(strategy=self.model, **self.strat_to_player_kwargs)
+        # rewards, log_prob = self.environment.get_strategy_action_and_reward(strategy=self.model, **self.strat_to_player_kwargs)
 
-        # Determine loss
-        loss = -(rewards * log_prob).mean()
+        # # Determine loss
+        # loss = -(rewards * log_prob).mean()
+
+        # loss.backward()
+
+        # set switch to set `log_prob`
+        self.model.train(True)
+
+        reward = -self.environment.get_strategy_reward(
+            self.model, **self.strat_to_player_kwargs,
+            aggregate_batch=False
+        )
+
+        last_layer_key = list(self.model.layers)[-1]
+        last_layer = self.model.layers[last_layer_key]
+        if hasattr(last_layer, "mixed_strategy"):
+            log_prob = last_layer.log_prob.view_as(reward)
+        else:
+            raise ValueError("REINFORCE requires mixed policies!")
+
+        loss = (reward * log_prob).mean()
+        # NOTE: gradient "flows" through `log_prob` not `reward`
 
         loss.backward()
+
+        self.model.train(False)
+
+
+
 
 class DPGLearner(GradientBasedLearner):
     """Implements Deterministic Policy Gradients

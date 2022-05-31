@@ -14,6 +14,7 @@ from bnelearn.experiment import Experiment
 from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.experiment.equilibria import (
     bne_fpsb_ipv_asymmetric_uniform_overlapping_priors_risk_neutral,
+    bne_tpsb_ipv_symmetric_generic_prior_risk_neutral,
     bne1_kaplan_zhamir,
     bne2_kaplan_zhamir,
     bne3_kaplan_zhamir,
@@ -21,7 +22,7 @@ from bnelearn.experiment.equilibria import (
     bne_2p_affiliated_values,
     bne_3p_mineral_rights,
     bne_fpsb_ipv_symmetric_generic_prior_risk_neutral, truthful_bid, loss_equilibrium, bne_crowdsourcing, bne_crowdsourcing_valuations, bne_all_pay, bne_all_pay_cost)
-from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, TullockContest, SingleItemAllPayAuction, CrowdsourcingContest
+from bnelearn.mechanism import FirstPriceSealedBidAuction, VickreyAuction, TullockContest, SingleItemAllPayAuction, CrowdsourcingContest, ThirdPriceSealedBidAuction
 from bnelearn.sampler import (AffiliatedValuationObservationSampler,
                               CompositeValuationObservationSampler,
                               MineralRightsValuationObservationSampler,
@@ -60,6 +61,8 @@ class SingleItemExperiment(Experiment, ABC):
             self.mechanism = VickreyAuction(cuda=self.hardware.cuda)
         elif self.payment_rule == "loss_aversion" or self.payment_rule == "all_pay":
             self.mechanism = SingleItemAllPayAuction(cuda=self.hardware.cuda)
+        elif self.payment_rule == 'third_price':
+            self.mechanism = ThirdPriceSealedBidAuction(cuda=self.hardware.cuda)
         else:
             raise ValueError('Invalid Mechanism type!')
 
@@ -93,10 +96,8 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.risk = float(self.config.setting.risk)
         self.risk_profile = self.get_risk_profile(self.risk)
 
-        if self.config.setting.payment_rule == "loss_aversion":
-            self.lamb = self.config.setting.lamb
-        else:
-            self.lamb = 1
+        self.lamb = self.config.setting.lamb
+        self.regret = self.config.setting.regret
 
         self.model_sharing = self.config.learning.model_sharing
         if self.model_sharing:
@@ -123,6 +124,8 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         elif self.payment_rule == 'second_price':
             self._optimal_bid = truthful_bid
             return True
+        elif self.payment_rule == "third_price" and self.risk == 1:
+            self._optimal_bid = partial(bne_tpsb_ipv_symmetric_generic_prior_risk_neutral, n_players=self.n_players)
         else:
             # no bne found, defer to parent
             return super()._check_and_set_known_bne()
@@ -188,25 +191,41 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         # Calculate bne_utility via sampling and from known closed form solution and do a sanity check
         # TODO: This is not very precise. Instead we should consider taking the mean over all agents
         bne_utility_sampled = self.bne_env.get_reward(self.bne_env.agents[0], redraw_valuations=True)
-        bne_utility_analytical = self._get_analytical_bne_utility()
+        #bne_utility_analytical = self._get_analytical_bne_utility() # TBD: OUTCOMMENT
 
         print('Utility in BNE (sampled): \t{:.5f}'.format(bne_utility_sampled))
-        print('Utility in BNE (analytic): \t{:.5f}'.format(bne_utility_analytical))
+        #print('Utility in BNE (analytic): \t{:.5f}'.format(bne_utility_analytical))
 
         # don't print the warning for small batch_sizes (i.e. in test suite)
-        if self.logging.eval_batch_size > 2**16 and \
-            not torch.allclose(bne_utility_analytical, bne_utility_sampled, atol=5e-2):
-            warnings.warn(
-                "Analytical BNE Utility does not match sampled utility from parent class! \n\t sampled {}, analytic {}"
-                    .format(bne_utility_sampled, bne_utility_analytical))
-        print('Using analytical BNE utility.')
-        self.bne_utility = bne_utility_analytical
+        # if self.logging.eval_batch_size > 2**16 and \
+        #     not torch.allclose(bne_utility_analytical, bne_utility_sampled, atol=5e-2):
+        #     warnings.warn(
+        #         "Analytical BNE Utility does not match sampled utility from parent class! \n\t sampled {}, analytic {}"
+        #             .format(bne_utility_sampled, bne_utility_analytical))
+        # print('Using analytical BNE utility.')
+        #self.bne_utility = bne_utility_analytical
+        self.bne_utility = bne_utility_sampled
         self.bne_utilities = [self.bne_utility] * self.n_models
 
+    def behavioral_payoff(self, payoff: torch.tensor, payments: torch.tensor, ref_bid: torch.tensor, valuation: torch.tensor, win_bid: torch.tensor):
+
+        # risk aversion
+        if self.risk != 1.0:
+            return payoff.relu().pow_(self.risk).sub_(payoff.neg_().relu_().pow_(self.risk))
+        elif self.regret != None: # regret defined as Engelbrecht-Wiggans and Katok (2008)
+            if self.payment_rule == "first_price":
+                payoff[payoff > 0] -= self.regret[0] * (payments[payoff > 0] - ref_bid[payoff > 0]) # winners regret fpsb
+                
+            mask = (payoff == 0) & (win_bid < valuation.squeeze(-1))
+            payoff[mask] -= self.regret[1] * (valuation.squeeze(-1)[mask] - win_bid[mask]) # losers regret
+            return payoff
+        else:
+            return payoff
+
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+
         if self.use_valuation:
-            return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
-                        risk=self.risk, lamb=self.lamb)
+            return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching, behavioral_payoff=self.behavioral_payoff)
         else:
             return Contestant(strategy=strategy, batch_size=batch_size, player_position=player_position, enable_action_caching=enable_action_caching)
 
@@ -248,8 +267,13 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
 
         super().__init__(config=config)
 
-        # set action_size to 2
-        self.action_size = 2
+    def run(self):
+        success = super().run()
+
+        if success:
+            return success, self.models if len(self.models) > 1 else self.models[0]
+        else:   
+            return success, None
 
     def _check_and_set_known_bne(self):
         if self.payment_rule == 'first_price':
@@ -803,9 +827,6 @@ class ContestExperiment(SingleItemExperiment):
             raise ValueError("Impact function not defined")
 
         super().__init__(config)
-
-        # set action_size to 2
-        self.action_size = 2
 
     def pretrain_transform(self, player_position: int) -> callable:
         if self.use_valuation:

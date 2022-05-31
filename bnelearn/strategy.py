@@ -16,6 +16,7 @@ from torch.distributions.categorical import Categorical
 from tqdm import tqdm
 
 from bnelearn.mechanism import Game, MatrixGame
+from bnelearn.util.tensor_util import GaussLayer
 
 ## E1102: false positive on torch.tensor()
 ## false positive 'arguments-differ' warnings for forward() overrides
@@ -304,8 +305,11 @@ class NeuralNetStrategy(Strategy, nn.Module):
                  hidden_activations: Iterable[nn.Module],
                  ensure_positive_output: torch.Tensor or None = None,
                  output_length: int = 1, # currently last argument for backwards-compatibility
-                 dropout: float = 0.0
-                ):
+                 dropout: float = 0.0,
+                 mixed_strategy: str = None,
+                 bias: bool = True,
+                 res_net: bool = False
+                 ):
 
         assert len(hidden_nodes) == len(hidden_activations), \
             "Provided nodes and activations do not match!"
@@ -317,20 +321,25 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.hidden_nodes = copy(hidden_nodes)
         self.activations = copy(hidden_activations) # do not write to list outside!
         self.dropout = dropout
+        self.mixed_strategy = mixed_strategy
+        self.bias = bias
+        self.res_net = res_net
 
         self.layers = nn.ModuleDict()
 
         if len(hidden_nodes) > 0:
             ## create hdiden layers
             # first hidden layer (from input)
-            self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
-            self.layers[str(self.activations[0]) + '_0'] = self.activations[0]
+            self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0], bias=self.bias)
+            if self.activations[0] is not None:
+                self.layers[str(self.activations[0]) + '_0'] = self.activations[0]
             if self.dropout:
                 self.layers['dropout_0'] = nn.AlphaDropout(p=self.dropout)
             # hidden-to-hidden-layers
             for i in range (1, len(hidden_nodes)):
-                self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i])
-                self.layers[str(self.activations[i]) + '_' + str(i)] = self.activations[i]
+                self.layers['fc_' + str(i)] = nn.Linear(hidden_nodes[i-1], hidden_nodes[i], bias=self.bias)
+                if self.activations[i] is not None:
+                    self.layers[str(self.activations[i]) + '_' + str(i)] = self.activations[i]
                 if self.dropout:
                     self.layers['dropout_' + str(i)] = nn.AlphaDropout(p=self.dropout)
         else:
@@ -338,17 +347,32 @@ class NeuralNetStrategy(Strategy, nn.Module):
             hidden_nodes = [input_length] #don't write to self.hidden nodes, just ensure correct creation
 
         # create output layer
-        self.layers['fc_out'] = nn.Linear(hidden_nodes[-1], output_length)
-        self.layers[str(nn.ReLU()) + '_out'] = nn.ReLU()
-        self.activations.append(self.layers[str(nn.ReLU()) + '_out'])
+        self.layers['fc_out'] = nn.Linear(
+            hidden_nodes[-1],
+            2 * self.output_length if self.mixed_strategy else self.output_length,
+            bias=self.bias
+        )
+
+        # add probabilistic layer
+        if self.mixed_strategy == 'normal':
+            self.layers['gauss_stochastic'] = GaussLayer()
+            self.activations.append(self.layers['gauss_stochastic'])
+        elif self.mixed_strategy is None:
+            pass
+        else:
+            raise ValueError("Requested unknown probabilistic layer.")
+
+        self.relu = nn.ReLU()
 
         # test whether output at ensure_positive_output is positive,
         # if it isn't --> reset the initialization
         if ensure_positive_output is not None:
             current_device = torch.nn.utils.parameters_to_vector(self.parameters()).device
             ensure_positive_output = ensure_positive_output.to(current_device)
+            self.train(False)  # disregard `log_prob` if mixed-strat
             if not torch.all(self.forward(ensure_positive_output).gt(0)):
                 self.reset(ensure_positive_output)
+
 
     @classmethod
     def load(cls, path: str, device='cpu'):
@@ -418,24 +442,51 @@ class NeuralNetStrategy(Strategy, nn.Module):
         optimizer = torch.optim.Adam(self.parameters())
         for _ in range(iters):
             self.zero_grad()
-            diff = (self.forward(input_tensor) - desired_output)
+            if self.mixed_strategy is not None:
+                diff = (self.forward(input_tensor, pretrain=True) - desired_output)
+            else:
+                diff = (self.forward(input_tensor) - desired_output)
             loss = (diff * diff).sum()
             loss.backward()
             optimizer.step()
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
-        self.__init__(self.input_length, self.hidden_nodes,
-                      self.activations[:], ensure_positive_output, self.output_length,action_dist=self.action_dist)
+        activations = self.activations[:-1] if self.mixed_strategy else self.activations
+        self.__init__(
+            input_length=self.input_length,
+            hidden_nodes= self.hidden_nodes,
+            hidden_activations=activations,
+            ensure_positive_output=ensure_positive_output,
+            output_length=self.output_length,
+            dropout=self.dropout,
+            mixed_strategy=self.mixed_strategy,
+            bias=self.bias,
+        )
 
-    def forward(self, x):
+
+    def forward(self, x, deterministic=False, pretrain=False):
+        if self.res_net:
+            skip = x
+
         for layer in self.layers.values():
-            x = layer(x)
-        return x
+            if pretrain and hasattr(layer, 'mixed_strategy'):
+                # ignore last ReLU layer if existend (no fails due to negative values)
+                x = layer.forward(x, deterministic=deterministic, pretrain=pretrain)
+            elif hasattr(layer, 'mixed_strategy'):
+                x = layer.forward(x, deterministic=deterministic)
+            else:
+                x = layer(x)
 
-    def play(self, inputs):
+        if self.res_net:
+            x += skip
 
-        return self.forward(inputs)
+        return self.relu(x)
+
+
+    def play(self, inputs, deterministic: bool = False):
+
+        return self.forward(inputs, deterministic)
 
 
 class NeuralProbabilityStrategy(NeuralNetStrategy, nn.Module):

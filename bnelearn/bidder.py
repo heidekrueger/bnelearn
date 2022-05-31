@@ -82,8 +82,7 @@ class Bidder(Player):
                  bid_size: int = 1,
                  cuda: str = True,
                  enable_action_caching: bool = False,
-                 risk: float = 1.0,
-                 lamb: float = 1.0
+                 behavioral_payoff: callable = None
                  ):
 
         super().__init__(strategy, player_position, batch_size, cuda)
@@ -92,8 +91,8 @@ class Bidder(Player):
         self.observation_size = observation_size
         self.bid_size = bid_size
 
-        self.risk = risk
-        self.lamb = lamb
+        self.behavioral_payoff = behavioral_payoff
+        
         self._enable_action_caching = enable_action_caching
         self._cached_observations_changed = False # true if new observations drawn since actions calculated
         self._cached_observations = None
@@ -143,7 +142,7 @@ class Bidder(Player):
             self._cached_valuations = new_value.to(self._cached_valuations.device, self._cached_valuations.dtype)
             self._cached_valuations_changed = True
 
-    def get_utility(self, allocations, payments, valuations=None):
+    def get_utility(self, allocations, payments, valuations=None, sec_bid=None, win_bid=None):
         """
         For a batch of valuations, allocations, and payments of the bidder,
         return their utility.
@@ -153,25 +152,27 @@ class Bidder(Player):
         payoff.
         """
 
+        if sec_bid == None:
+            print(2)
+
         if valuations is None:
             valuations = self._cached_valuations
 
-        try:
-            welfare = self.get_welfare(allocations, valuations)
-            payoff = welfare - payments
-        except:
-            print(2)
+        welfare = self.get_welfare(allocations, valuations)
+        payoff = welfare - payments
 
-        if self.risk == 1.0 and self.lamb == 1.0:
+        if self.behavioral_payoff is not None:
+            return self.behavioral_payoff(payoff=payoff, payments=payments, ref_bid=sec_bid, valuation=valuations, win_bid=win_bid)
+        else:
             return payoff
-        elif self.lamb != 1.0:
-            payoff[payoff < 0] = payoff[payoff < 0] * self.lamb 
-            return payoff
+        # elif self.lamb != 1.0:
+        #     payoff[payoff < 0] = payoff[payoff < 0] * self.lamb 
+        #     return payoff
+        
 
         # payoff^alpha not well defined in negative domain for risk averse agents
         # the following is a memory-saving implementation of
         #return payoff.relu()**self.risk - (-payoff).relu()**self.risk
-        return payoff.relu().pow_(self.risk).sub_(payoff.neg_().relu_().pow_(self.risk))
 
     def get_welfare(self, allocations, valuations=None):
         """For a batch of allocations return the player's welfare.
@@ -192,7 +193,7 @@ class Bidder(Player):
 
         return welfare
 
-    def get_action(self, observations = None, log_prob: bool = False):
+    def get_action(self, observations = None, deterministic: bool = False):
         """Calculate action from given observations, or retrieve from cache"""
 
         if self._enable_action_caching and not self._cached_observations_changed and \
@@ -217,7 +218,7 @@ class Bidder(Player):
             dim = self.strategy.input_length
             inputs = inputs[:,:dim]
 
-        actions = self.strategy.play(inputs, log_prob=log_prob)           
+        actions = self.strategy.play(inputs, deterministic=deterministic)           
 
         if self._enable_action_caching:
             self.cached_observations = observations

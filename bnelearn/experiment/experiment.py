@@ -142,6 +142,9 @@ class Experiment(ABC):
         else:
             self.logging.log_metrics['opt'] = False
 
+        self.mixed_strategy = self.learning.mixed_strategy
+        self.bias = self.learning.bias
+
     @abstractmethod
     def _setup_mechanism(self):
         pass
@@ -215,25 +218,27 @@ class Experiment(ABC):
         # this method is part of the init workflow, so we #pylint: disable=attribute-defined-outside-init
         self.models = [None] * self.n_models
 
-        # for i in range(len(self.models)):
-        #     self.models[i] = NeuralNetStrategy(
-        #         self.observation_size,
-        #         hidden_nodes=self.learning.hidden_nodes,
-        #         hidden_activations=self.learning.hidden_activations,
-        #         ensure_positive_output=self.positive_output_point,
-        #         output_length=self.action_size,
-        #         dist = torch.distributions.Normal
-        #     ).to(self.hardware.device)
-
         for i in range(len(self.models)):
-            self.models[i] = NeuralProbabilityStrategy(
+            self.models[i] = NeuralNetStrategy(
                 self.observation_size,
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
                 ensure_positive_output=self.positive_output_point,
                 output_length=self.action_size,
-                action_dist = torch.distributions.Normal
+                mixed_strategy=self.mixed_strategy,
+                bias=self.bias,
             ).to(self.hardware.device)
+
+
+        # for i in range(len(self.models)):
+        #     self.models[i] = NeuralProbabilityStrategy(
+        #         self.observation_size,
+        #         hidden_nodes=self.learning.hidden_nodes,
+        #         hidden_activations=self.learning.hidden_activations,
+        #         ensure_positive_output=self.positive_output_point,
+        #         output_length=self.action_size,
+        #         action_dist = torch.distributions.Normal
+        #     ).to(self.hardware.device)
 
 
         self.bidders = [
@@ -251,6 +256,10 @@ class Experiment(ABC):
             _, obs = self.sampler.draw_profiles()
 
             for i, model in enumerate(self.models):
+
+                # set mode: disregrad `log_prob`
+                model.train(False)
+
                 pos = self._model2bidder[i][0]
                 model.pretrain(obs[:, pos, :], self.learning.pretrain_iters,
                                # bidder specific pretraining (e.g. for LLGFull)

@@ -19,6 +19,8 @@ import torch
 sys.path.append(os.path.realpath('.'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
+sys.path.remove('/home/kohring/bnelearn')
+
 from bnelearn.experiment.configuration_manager import ConfigurationManager  # pylint: disable=import-error
 
 
@@ -30,11 +32,11 @@ if __name__ == '__main__':
     log_root_dir = os.path.join(os.path.expanduser('~'), 'bnelearn', 'abstract_plots', 'updated_weak', '3')
 
     # # Contest Experiments
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='crowdsourcing', n_runs=1, n_epochs=5000)\
-        .set_setting(impact_factor=1, n_players=3, valuations=torch.tensor([0.8, 0.2, 0.0])) \
+    experiment_config, experiment_class = ConfigurationManager(experiment_type='single_item_uniform_symmetric', n_runs=1, n_epochs=5000)\
+        .set_setting(n_players=5, payment_rule='first_price', u_hi=[10], risk=0.1) \
         .set_logging(log_root_dir=log_root_dir, util_loss_frequency=1000, save_models=True) \
-        .set_hardware(specific_gpu=4) \
-        .set_learning(pretrain_iters=500, use_valuation=True, batch_size=2 ** 22, learner_type='PGLearner') \
+        .set_hardware(specific_gpu=5) \
+        .set_learning(pretrain_iters=500, use_valuation=True, batch_size=2 ** 18, learner_type='PGLearner', mixed_strategy="normal") \
         .get_config()
 
     # Crowdsourcing Contest

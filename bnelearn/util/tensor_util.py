@@ -5,6 +5,7 @@ from tqdm import tqdm
 from typing import List
 from math import ceil
 import torch
+import torch.nn as nn
 
 _CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
 ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even a batch_size of 1 leads to OOM!"
@@ -103,3 +104,41 @@ def apply_with_dynamic_mini_batching(
             mini_batch_size = int(mini_batch_size / 2)
 
     return output
+
+class GaussLayer(nn.Module):
+    """
+    Custom layer for normally distributed predictions (non-negative).
+
+    Has no trainable parameters.
+    """
+    def __init__(self, **kwargs):
+        super(GaussLayer, self).__init__(**kwargs)
+        self.mixed_strategy = True
+        self.log_prob = None
+
+    # pylint: disable=fixme, missing-function-docstring
+    def forward(self, x, deterministic=False, pretrain=False):
+        if x.dim() == 1:
+            x = x.view(-1, 1)
+        m = x.shape[-1] // 2
+
+        # return mean actions
+        if deterministic:
+            return x[..., :m]
+
+        mean = x[..., :m]
+        std = x[..., m:].exp()
+
+        normal = torch.distributions.normal.Normal(mean, std)
+
+        # Pretrain is supervised learning -> `rsample` is differentable,
+        # otherwise we differentiate though the log probabilites
+        if pretrain:
+            return normal.rsample()
+        else:
+            out = normal.sample()
+
+        if self.training:
+            self.log_prob = normal.log_prob(out)
+
+        return out
