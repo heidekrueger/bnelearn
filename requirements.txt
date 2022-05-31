@@ -25,3 +25,21 @@ tabulate
 tensorboard
 torch==1.10.0+cu113 # alternative via conda: pytorch -c pytorch
 tqdm # for progress bars
+sympy
+
+
+##### temporary requirements to account for external bugs
+##### these can be removed again soon 
+
+# 2022-05-30 
+#Tensorboard 2.9.0 / 2.8.0 / 2.7.0 are incompatible with the latest verison of protobuf 
+# we fix this by downgrading protobuf manualle
+# this is necessary while tb 2.9.1 / 2.8.2 / 2.7.3 are not yet available on pip
+# see https://github.com/tensorflow/tensorflow/issues/53234 for detail
+protobuf >= 3.9.2, < 3.20
+
+# 2022-05-30
+# pytorch currently has an incompatibility with the latest setuptools which breaks our build
+# see https://github.com/pytorch/pytorch/issues/69894
+# temporary fix: downgrade setuptools
+setuptools==59.5.0
