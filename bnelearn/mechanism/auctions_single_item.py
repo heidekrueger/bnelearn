@@ -161,7 +161,7 @@ class FirstPriceSealedBidAuction(Mechanism):
             # annealing of smoothing
             # self.smoothing_temperature = max(0.999*self.smoothing_temperature, 0.002)
 
-            allocations = self.softmax((bids / self.smoothing_temperature) - (1 / self.smoothing_temperature))
+            allocations = self.softmax(bids / self.smoothing_temperature)
 
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
 
