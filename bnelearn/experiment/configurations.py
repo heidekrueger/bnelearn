@@ -65,6 +65,7 @@ class SettingConfig:
 
     # Contests
     impact_factor: float = None
+    impact_function: str = None
     valuations: List = None
 
 
