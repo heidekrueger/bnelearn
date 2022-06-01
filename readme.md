@@ -4,52 +4,53 @@
 
 [![pipeline status](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/pipeline.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master) | [![coverage report](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/coverage.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master)
 
-**Maintainers**: Stefan Heidekrüger ([@heidekrueger](https://github.com/heidekrueger)), Nils Kohring ([@kohring](https://github.com/kohring)), Markus Ewert ([@Markus-Ewert](https://github.com/Markus-Ewert))
+bnelearn is a framework for equilibrium learning in sealed-bid auctions and other markets that can be modeled as Bayesian Games.
 
-**Original Authors**: Stefan Heidekrüger, Paul Sutterer, Nils Kohring, Martin Bichler
-**Contributors**: Markus Ewert, Gleb Kilichenko ([@kilichenko](https://github.com/kilichenko)), Carina Fröhlich
+**Maintainers**: Stefan Heidekrüger ([@heidekrueger](https://github.com/heidekrueger)), Nils Kohring ([@kohring](https://github.com/kohring)), Markus Ewert ([@Markus-Ewert](https://github.com/Markus-Ewert)).
 
-Currently, this repository contains minimal code to reproduce the experiments in our paper: "Learning Equilibria in Symmetric Auction Games using Artificial Neural Networks", published in _Nature Machine Intelligence_ [Link](https://www.nature.com/articles/s42256-021-00365-4).
+**Original Authors**: Stefan Heidekrüger, Paul Sutterer, Nils Kohring, Martin Bichler.
 
-TODO: Update this
+**Further Contributors**: Gleb Kilichenko ([@kilichenko](https://github.com/kilichenko)), Carina Fröhlich.
 
-#### Overview of What's Implemented
 
-Running experiments for $n$-player Matrix and sealed-bid auction games with either
+## What's Implemented?
 
-* Fictitious Play, Stochastic Fictitious Play, Mixed Fictitious Play in matrix games
-* "Neural Pseudogradient Ascent" in a wide array of Auction games:
-  * single-item auctions with first-, second- and third-price rules, with known-bne support for a wide range of settings.
-  * Local-Global combinatorial auctions, in particular LLG and LLLLGG
-    * for LLG we support bne for independent and correlated local bidders for several core-selecting payment rules
-  * split-award and mineral-rights auctions
-  
-**TODO:** Update.
+Running experiments for $n$-player matrix and sealed-bid auction games with either
 
-#### Table of Contents
-1. [Installation](#Installation)
-2. [Background](#Background)
-3. [The bnelearn package](#package)
-4. [Contribute](#Contribute)
-5. [Citation](#Citation)
+### Auctions and Other Games
+* Single-item, multi-unit, LLG combinatorial auction, LLLLGG combinatorial auction.
+* Priors and correlations: Uniform and normal priors that are either independent or Bernoulli or constant weight dependent. (Independent private values (IPV) and non-PV, e.g., common values.)
+* Utility functions: Quasi-linear utility, either risk neutral, risk averse, or risk seeking.
+* For combinatorial auctions: custom batched, cuda-enabled QP solver for quadratic auction rules + gurobi/cvxpy integration for arbitrary auctions stated as a MIP.
+* Single-item auctions with first-, second-, and third-price rules, with known-BNE support for a wide range of settings.
+* Local-Global combinatorial auctions, in particular LLG and LLLLGG
+    * For LLG we support bne for independent and correlated local bidders for several core-selecting payment rules
+* Split-award and mineral-rights auctions
+* Tullock contest and crowd sourcing contest
 
-## 1. Installation and Running the Software <a name="Installation"></a>
-See [Installation](installation.md).
 
-**TODO:** With what's on Github.
-
-**TODO:** Add example of customization.
+### Algortihms
+* Fictitious play, stochastic fictitious play, mixed fictitious play in matrix games.
+* Neural self-play with directly computed policy gradients from [(Heinrich and Silver, 2016)](https://arxiv.org/abs/1603.01121), which is called ``PGLearner``.
+* Neural pseudogradient ascent (NPGA), called ``ESPGLearner``, from [(Bichler et al., 2021)](https://www.nature.com/articles/s42256-021-00365-4).
+* Particle swarm optimization (PSO), called ``PSOLearner``, from [(Kohring et al., 2022)](http://aaai-rlg.mlanctot.info/papers/AAAI22-RLG_paper_8.pdf).
 
 
 
-## 4. Contribute: Before Your First Commit <a name="Contribute"></a>
+## Where to Start?
+* You can find the installation instructions at [Installation](docs/usage/installation).
+* A quickstart guide is provided at [Quickstart](docs/usage/quickstart).
+* Background information can be found under [Background](docs/usage/background).
+
+
+
+## Contribute: Before Your First Commit
 Please read [Contributing](contributing.md) carefully and follow the set-up steps described there.
 
-#### Git LFS
-On a new machine, please make sure you have git-lfs installed and configured for this repository. (See [contributing.md](contributing.md) for details.)
+**Git LFS**: On a new machine, please make sure you have git-lfs installed and configured for this repository. (See [contributing.md](contributing.md) for details.)
 
 
-## 5. Suggested Citation <a name="Citation"></a>
+## Suggested Citation
 If you find `bnelearn` helpful and use it in your work, please consider using the following citation:
 
 ```
