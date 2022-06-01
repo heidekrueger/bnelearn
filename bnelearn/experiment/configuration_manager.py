@@ -574,7 +574,8 @@ class ConfigurationManager:
             n_items=1,
             n_players=2,
             payment_rule='first_price',
-            risk=1.0)
+            risk=1.0,
+            impact_function='tullock_contest')
         learning = LearningConfig(
             model_sharing=True,
             learner_type='ESPGLearner',
