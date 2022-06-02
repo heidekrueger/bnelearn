@@ -10,8 +10,6 @@ import torch
 # pylint: disable=wrong-import-position
 sys.path.append(os.path.realpath('.'))
 
-sys.path.remove('/home/kohring/bnelearn')
-
 from bnelearn.experiment.configuration_manager import ConfigurationManager  
 
 if __name__ == '__main__':
