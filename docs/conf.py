@@ -60,8 +60,11 @@ html_theme = 'sphinx_rtd_theme'
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
-html_logo = "bnelearn-logo.png"
+html_logo = "bnelearn-gray.png"
 
 
 #display private members 
 #autodoc_default_options = {     "members": True,     "undoc-members": True, "private-members": True  }
+
+def setup(app):
+    app.add_css_file('css/modify.css')
