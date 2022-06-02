@@ -61,6 +61,8 @@ ALIASES_LATEX = {
 
     'first_price':               'FPSB',
     'second_price':              'SPSB',
+    'vcg':                       'VCG',
+    'nearest_zero':              'NZ',
 }
 
 
