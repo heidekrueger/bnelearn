@@ -453,8 +453,8 @@ class ConfigurationManager:
                     correlation_coefficients: List[float] = 'None', n_items: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None', impact_factor: float = 'None', impact_function: str = 'None',
-                    valuations: List = None):
+                    core_solver: str = 'None', tullock_impact_factor: float = 'None', impact_function: str = 'None',
+                    crowdsourcing_values: List = None):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
@@ -504,7 +504,7 @@ class ConfigurationManager:
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
-                     use_valuation: bool = True):
+                     value_contest: bool = True):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.learning, arg):
@@ -576,7 +576,7 @@ class ConfigurationManager:
             payment_rule='first_price',
             risk=1.0,
             impact_function='tullock_contest',
-            valuations=[1.0])
+            crowdsourcing_values=[1.0])
         learning = LearningConfig(
             model_sharing=True,
             learner_type='ESPGLearner',

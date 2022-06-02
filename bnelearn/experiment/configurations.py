@@ -64,9 +64,9 @@ class SettingConfig:
     # parallel: int = 1 in hardware config now
 
     # Contests
-    impact_factor: float = None
+    tullock_impact_factor: float = None
     impact_function: str = None
-    valuations: List = None
+    crowdsourcing_values: List = None
 
 
 @dataclass
@@ -81,7 +81,7 @@ class LearningConfig:
     batch_size: int
     redraw_every_iteration: bool
     hidden_activations: List[nn.Module] = None
-    use_valuation: bool = True
+    value_contest: bool = True
 
 
 

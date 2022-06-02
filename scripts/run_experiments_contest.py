@@ -10,12 +10,14 @@ import torch
 # pylint: disable=wrong-import-position
 sys.path.append(os.path.realpath('.'))
 
+sys.path.remove('/home/kohring/bnelearn')
+
 from bnelearn.experiment.configuration_manager import ConfigurationManager  
 
 if __name__ == '__main__':
 
     # User parameters
-    n_epochs = 3500
+    n_epochs = 10
     n_runs = 1
     model_sharing = True
     pretrain_iters = 500
@@ -36,29 +38,29 @@ if __name__ == '__main__':
         'tullock': {
             'type': 'tullock_contest',
             'settings': {
-                'impact_factor': 0.5,
+                'tullock_impact_factor': 0.5,
             },
             'learning': {
-                'use_valuation': True
+                'value_contest': False
             }
         },
-        'all_pay': {
-            'type': 'all_pay_uniform_symmetric',
-            'settings': {
-                'payment_rule': 'all_pay'
-            },
-            'learning': {}
-        },
-        'crowdsourcing': {
-            'type': 'crowdsourcing',
-            'settings': {
-                'n_players': 3,
-                'valuations': [0.8, 0.2, 0.0]
-            },
-            'learning': {
-                'use_valuation': True
-            }
-        }
+        # 'all_pay': {
+        #     'type': 'all_pay_uniform_symmetric',
+        #     'settings': {
+        #         'payment_rule': 'all_pay'
+        #     },
+        #     'learning': {}
+        # },
+        # 'crowdsourcing': {
+        #     'type': 'crowdsourcing',
+        #     'settings': {
+        #         'n_players': 3,
+        #         'crowdsourcing_values': [0.8, 0.2, 0.0]
+        #     },
+        #     'learning': {
+        #         'value_contest': True
+        #     }
+        # }
     }
 
     

@@ -8,7 +8,6 @@ This module implements players / bidders / agents in games.
 from abc import ABC, abstractmethod
 import warnings
 import torch
-import torch.nn.functional as F
 from bnelearn.strategy import (Strategy, MatrixGameStrategy,
                                FictitiousPlayStrategy, FictitiousNeuralPlayStrategy)
 
@@ -324,13 +323,13 @@ class CrowdsourcingContestant(Bidder):
                        player_position: int, 
                        batch_size: int, 
                        enable_action_caching: bool = False, 
-                       valuations: bool = True, 
-                       use_valuations: bool = True):
+                       crowdsourcing_values: bool = True, 
+                       value_contest: bool = True):
         super().__init__(strategy, player_position, batch_size, enable_action_caching=enable_action_caching)
 
-        self.valuations = valuations
-        self.num_classes = self.valuations.shape[0]
-        self.use_valuations = use_valuations
+        self.crowdsourcing_values = crowdsourcing_values
+        self.num_classes = self.crowdsourcing_values.shape[0]
+        self.value_contest = value_contest
 
 
     def get_utility(self, allocations, payments, ability=None):
@@ -348,10 +347,10 @@ class CrowdsourcingContestant(Bidder):
 
         # retrieve valuations
         ## one hot encoding
-        allocations = F.one_hot(allocations.long(), self.num_classes)
-        allocations = (allocations * self.valuations).sum(-1)
+        allocations = torch.nn.functional.one_hot(allocations.long(), self.num_classes)
+        allocations = (allocations * self.crowdsourcing_values).sum(-1)
 
-        if self.use_valuations:
+        if self.value_contest:
             allocations = allocations * ability
             disutil = payments.unsqueeze(-1)
         else:

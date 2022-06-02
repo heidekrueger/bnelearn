@@ -677,7 +677,7 @@ class ContestExperiment(SymmetricPriorSingleItemExperiment):
 
         self.n_players = config.setting.n_players
 
-        self.use_valuation = config.learning.use_valuation
+        self.value_contest = config.learning.value_contest
         self.n_items = 1
         self.u_hi = config.setting.u_hi
 
@@ -694,14 +694,14 @@ class ContestExperiment(SymmetricPriorSingleItemExperiment):
 
         # Define contest specific information
         if config.setting.impact_function == "tullock_contest":
-            self.impact_fun = lambda x: x ** config.setting.impact_factor
+            self.impact_fun = lambda x: x ** config.setting.tullock_impact_factor
         elif config.setting.payment_rule == "crowdsourcing":
-            self.valuations = torch.tensor(config.setting.valuations).cuda()
-            self.k_prize = (self.valuations > 0).sum()
+            self.crowdsourcing_values = torch.tensor(config.setting.crowdsourcing_values).cuda()
+            self.k_prize = (self.crowdsourcing_values > 0).sum()
         super().__init__(config)
 
     def pretrain_transform(self, player_pos: int= None) -> callable:
-        if self.use_valuation:
+        if self.value_contest:
             return lambda x: x
         else:
             return lambda x: self.u_hi[player_pos] - x 
@@ -709,8 +709,7 @@ class ContestExperiment(SymmetricPriorSingleItemExperiment):
     def _setup_mechanism(self):
         if self.payment_rule == 'first_price':
             self.mechanism = TullockContest(impact_function = self.impact_fun, 
-                                            cuda=self.hardware.cuda, 
-                                            use_valuation=self.use_valuation)
+                                            cuda=self.hardware.cuda)
         elif self.payment_rule == 'crowdsourcing':
             self.mechanism = CrowdsourcingContest(cuda=self.hardware.cuda)
         else:
@@ -754,27 +753,27 @@ class ContestExperiment(SymmetricPriorSingleItemExperiment):
         self.bne_utility = self.bne_utilities.mean()
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False, **kwargs):
-        if self.use_valuation and self.payment_rule != "crowdsourcing":
+        if self.value_contest and self.payment_rule != "crowdsourcing":
             return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching)
         elif self.payment_rule == "crowdsourcing":
-            return CrowdsourcingContestant(strategy, player_position, batch_size, enable_action_caching=enable_action_caching, valuations=self.valuations, 
-                                            use_valuations=self.use_valuation, **kwargs)
+            return CrowdsourcingContestant(strategy, player_position, batch_size, enable_action_caching=enable_action_caching, crowdsourcing_values=self.crowdsourcing_values, 
+                                            value_contest=self.value_contest, **kwargs)
         else:
             return Contestant(strategy, player_position, batch_size, enable_action_caching=enable_action_caching, **kwargs)
 
     def _get_logdir_hierarchy(self):
         if self.payment_rule == "crowdsourcing":
-            name = [f'{self.payment_rule}', f'{self.n_players}', f'{self.valuations[0]}']
+            name = [f'{self.payment_rule}', f'{self.n_players}', f'{self.crowdsourcing_values[0]}']
         else:
-            name = [f'{self.payment_rule}', f'{self.n_players}', f'{self.config.setting.impact_factor}']
+            name = [f'{self.payment_rule}', f'{self.n_players}', f'{self.config.setting.tullock_impact_factor}']
         return os.path.join(*name)
     
     def _check_and_set_known_bne(self):
-        if self.payment_rule == 'crowdsourcing' and not self.use_valuation and self.k_prize == 2:
-            self._optimal_bid = partial(bne_crowdsourcing_symmetric_uniform_cost, v1=self.valuations[0])
+        if self.payment_rule == 'crowdsourcing' and not self.value_contest and self.k_prize == 2:
+            self._optimal_bid = partial(bne_crowdsourcing_symmetric_uniform_cost, v1=self.crowdsourcing_values[0])
             return True
-        elif self.payment_rule == 'crowdsourcing' and self.use_valuation and self.k_prize == 2:
-            self._optimal_bid = partial(bne_crowdsourcing_symmetric_uniform_value, v1=self.valuations[0], v2=self.valuations[1], N=self.n_players)
+        elif self.payment_rule == 'crowdsourcing' and self.value_contest and self.k_prize == 2:
+            self._optimal_bid = partial(bne_crowdsourcing_symmetric_uniform_value, v1=self.crowdsourcing_values[0], v2=self.crowdsourcing_values[1], N=self.n_players)
             return True
         else:
             return False

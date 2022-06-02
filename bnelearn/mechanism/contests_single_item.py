@@ -8,11 +8,10 @@ from .mechanism import Mechanism
 class TullockContest(Mechanism):
     """Tullock Contest"""
 
-    def __init__(self, impact_function, cuda: bool = True, use_valuation: bool = True):
+    def __init__(self, impact_function, cuda: bool = True):
         super().__init__(cuda)
 
         self.impact_fun = impact_function
-        self.use_valuation = use_valuation
 
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -31,10 +30,9 @@ class TullockContest(Mechanism):
 
         Returns
         -------
-        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
-            allocation: tensor of dimension (*batch_sizes x n_players x n_items),
-                        1 indicating item is allocated to corresponding player
-                        in that batch, 0 otherwise
+        (winning_probs, payments): Tuple[torch.Tensor, torch.Tensor]
+            winning_probs: tensor of dimension (*batch_sizes x n_players x n_items),
+                        Winning probabilities defined by the impact function and the contest success function
             payments:   tensor of dimension (*batch_sizes x n_players)
                         Total payment from player to auctioneer for her
                         allocation in that batch.
@@ -58,9 +56,6 @@ class TullockContest(Mechanism):
         # Calculate winning probabilities
         winning_probs = bids/bids.sum(dim=-2, keepdim=True)
         winning_probs[winning_probs.isnan()] = 1/n_players # equal chances if all contestants exert zero effotr
-
-        if not self.use_valuation:
-            winning_probs = winning_probs.reshape(*batch_sizes, n_players, n_items)
 
         return (winning_probs, payments)  # payments: batches x players, allocation: batch x players x items
 
@@ -87,8 +82,7 @@ class CrowdsourcingContest(Mechanism):
         -------
         (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
             allocation: tensor of dimension (*batch_sizes x n_players x n_items),
-                        1 indicating item is allocated to corresponding player
-                        in that batch, 0 otherwise
+                        Entry indicates which prize the corresponding contestant would have won
             payments:   tensor of dimension (*batch_sizes x n_players)
                         Total payment from player to auctioneer for her
                         allocation in that batch.
