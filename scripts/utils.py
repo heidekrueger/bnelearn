@@ -1,18 +1,12 @@
-"""utilities for run scripts"""
+"""Some helper functions for collecting and summarizing logging data.
+"""
 import os, sys
 import torch
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import json
 
-sys.path.append(os.path.realpath('.'))
-sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
-
 from bnelearn.strategy import NeuralNetStrategy
-from bnelearn.experiment.configuration_manager import ConfigurationManager
-from bnelearn.util import logging
-
 from bnelearn.util.metrics import ALIASES_LATEX
 
 
@@ -22,7 +16,6 @@ def multiple_exps_logs_to_df(
                          'eval/estimated_relative_ex_ante_util_loss',
                          'eval/efficiency', 'eval/revenue', 'eval/utilities'],
         precision: int = 4,
-        with_stddev: bool = False,
         with_setting_parameters: bool = True,
         save: bool = False,
     ) -> pd.DataFrame:
@@ -57,8 +50,6 @@ def multiple_exps_logs_to_df(
         print("Path empty.")
         return pd.DataFrame()
 
-    form = '{:.' + str(precision) + 'f}'
-
     columns = ['Auction game'] + metrics
     aggregate_df = pd.DataFrame(columns=columns)
     for exp_name, exp_path in experiments.items():
@@ -71,13 +62,10 @@ def multiple_exps_logs_to_df(
         single_df.columns = ['metric', 'mean','std']
         single_df = single_df.loc[single_df['metric'].isin(metrics)]
 
-        def map_mean_std(row):
-            result = str(form.format(round(row['mean'], precision)))
-            if with_stddev:
-                result += ' (' + str(form.format(round(row['std'], precision))) \
-                    + ')'
-            return result
-        single_df[exp_name] = single_df.apply(map_mean_std, axis=1)
+        single_df[exp_name] = single_df.apply(
+            lambda row: _map_mean_std(row, precision),
+            axis=1
+            )
 
         single_df.index = single_df['metric']
         del single_df['mean'], single_df['std'], single_df['metric']
@@ -89,86 +77,7 @@ def multiple_exps_logs_to_df(
     )
 
     if with_setting_parameters:
-        def map_smoothing(row):
-            with open(row['Auction game'][:-17] + 'experiment_configurations.json') as json_file:
-                experiment_config_as_dict = json.load(json_file)
-                return experiment_config_as_dict["learning"]["smoothing_temperature"]
-        smoothing_temperature = aggregate_df.apply(map_smoothing, axis=1)
-        if smoothing_temperature.shape[0] > 0:
-            aggregate_df['Smoothing'] = smoothing_temperature
-
-        def map_corrtype(row):
-            for t in ['Bernoulli', 'constant', 'independent']:
-                if t in row['Auction game']:
-                    return t
-            return None
-        cor = aggregate_df.apply(map_corrtype, axis=1)
-        if cor.shape[0] > 0:
-            aggregate_df['Corr Type'] = cor
-
-        def map_strength(row):
-            if row['Corr Type'] == 'independent':
-                return 0.0
-            elif 'gamma_' in row['Auction game']:
-                start = row['Auction game'].find('gamma_') + 6
-                end = row['Auction game'].find('/', start)
-                return row['Auction game'][start:end]
-            return 0.0
-        stre = aggregate_df.apply(map_strength, axis=1)
-        if stre.shape[0] > 0:
-            aggregate_df['Corr Strength'] = pd.to_numeric(stre)
-
-        def map_risk(row):
-            if 'risk' in row['Auction game']:
-                end = row['Auction game'].find('risk')
-                start = end - 1
-                while row['Auction game'][start] != '/':
-                    start -= 1
-                start += 1
-                return row['Auction game'][start:end]
-            return 1.0
-        ris = aggregate_df.apply(map_risk, axis=1)
-        if ris.shape[0] > 0:
-            aggregate_df['Risk'] = pd.to_numeric(ris)
-
-        # multi-unit mapppings
-        def map_pricing(row):
-            with open(row['Auction game'][:-17] + 'experiment_configurations.json') as json_file:
-                experiment_config_as_dict = json.load(json_file)
-                payment_rule = experiment_config_as_dict["setting"]["payment_rule"]
-                return ALIASES_LATEX[payment_rule]
-        pri = aggregate_df.apply(map_pricing, axis=1)
-        if pri.shape[0] > 0:
-            aggregate_df['Pricing'] = pri
-
-        def map_units(row):
-            with open(row['Auction game'][:-17] + 'experiment_configurations.json') as json_file:
-                experiment_config_as_dict = json.load(json_file)
-                return experiment_config_as_dict["setting"]["n_items"]
-        uni = aggregate_df.apply(map_units, axis=1)
-        if uni.shape[0] > 0:
-            aggregate_df['Units'] = pd.to_numeric(uni)
-
-        def map_players(row):
-            if 'players' in row['Auction game']:
-                end = row['Auction game'].find('players')
-                start = end - 1
-                while row['Auction game'][start] != '/':
-                    start -= 1
-                start += 1
-                return row['Auction game'][start:end]
-            return None
-        pla = aggregate_df.apply(map_players, axis=1)
-        if pla.shape[0] > 0:
-            aggregate_df['Players'] = pd.to_numeric(pla)
-        
-        def map_batch(row):
-            with open(row['Auction game'][:-17] + 'experiment_configurations.json') as json_file:
-                experiment_config_as_dict = json.load(json_file)
-                return experiment_config_as_dict["learning"]["batch_size"]
-        bat = aggregate_df.apply(map_batch, axis=1)
-        if bat.shape[0] > 0:
-            aggregate_df['Batch'] = pd.to_numeric(bat)
+        add_config(aggregate_df)
 
     # write to file
     if save:
@@ -177,8 +86,90 @@ def multiple_exps_logs_to_df(
     return aggregate_df
 
 
+def _map_mean_std(row, precision: int=4):
+    """Combine mean and std into one string column."""
+    form = '{:.' + str(precision) + 'f}'
+
+    mean = str(form.format(round(row['mean'], precision)))
+    std = ' (' + str(form.format(round(row['std'], precision))) + ')'
+    result = mean + std
+    return result if result != 'nan (nan)' else '--'
+
+
+def _get_config(row, path_cut_off: str):
+    """Read JSON configuration file."""
+    with open(row['Auction game'][:-path_cut_off] + 'experiment_configurations.json') as json_file:
+        experiment_config_as_dict = json.load(json_file)
+    return experiment_config_as_dict
+
+
+def add_config(aggregate_df, aggregate: bool = True):
+    """Load config and add to dataframe."""
+    
+    path_cut_off = 17 if aggregate else 16
+
+    def map_smoothing(row):
+        experiment_config_as_dict = _get_config(row, path_cut_off)
+        return experiment_config_as_dict["learning"]["smoothing_temperature"]
+    smoothing_temperature = aggregate_df.apply(map_smoothing, axis=1)
+    if smoothing_temperature.shape[0] > 0:
+        aggregate_df['Smoothing'] = smoothing_temperature
+
+    # multi-unit mappings
+    def map_pricing(row):
+        experiment_config_as_dict = _get_config(row, path_cut_off)
+        payment_rule = experiment_config_as_dict["setting"]["payment_rule"]
+        return ALIASES_LATEX[payment_rule]
+    pri = aggregate_df.apply(map_pricing, axis=1)
+    if pri.shape[0] > 0:
+        aggregate_df['Pricing'] = pri
+
+    def map_units(row):
+        experiment_config_as_dict = _get_config(row, path_cut_off)
+        return experiment_config_as_dict["setting"]["n_items"]
+    uni = aggregate_df.apply(map_units, axis=1)
+    if uni.shape[0] > 0:
+        aggregate_df['Items'] = pd.to_numeric(uni)
+
+    def map_players(row):
+        experiment_config_as_dict = _get_config(row, path_cut_off)
+        return experiment_config_as_dict["setting"]["n_players"]
+    pla = aggregate_df.apply(map_players, axis=1)
+    if pla.shape[0] > 0:
+        aggregate_df['Players'] = pd.to_numeric(pla)
+
+    def map_batch(row):
+        experiment_config_as_dict = _get_config(row, path_cut_off)
+        return experiment_config_as_dict["learning"]["batch_size"]
+    bat = aggregate_df.apply(map_batch, axis=1)
+    if bat.shape[0] > 0:
+        aggregate_df['Batch'] = pd.to_numeric(bat)
+
+    def map_corrtype(row):
+        experiment_config_as_dict = _get_config(row, path_cut_off)
+        return experiment_config_as_dict["setting"]["correlation_types"]
+    cor = aggregate_df.apply(map_corrtype, axis=1)
+    if cor.shape[0] > 0:
+        aggregate_df['Corr Type'] = cor
+
+    def map_strength(row):
+        experiment_config_as_dict = _get_config(row, path_cut_off)
+        gamma = experiment_config_as_dict["setting"]["gamma"]
+        return 0.0 if row['Corr Type'] == 'independent' else gamma
+    stre = aggregate_df.apply(map_strength, axis=1)
+    if stre.shape[0] > 0:
+        aggregate_df['Corr Strength'] = pd.to_numeric(stre)
+
+    def map_risk(row):
+        experiment_config_as_dict = _get_config(row, path_cut_off)
+        return experiment_config_as_dict["setting"]["risk"]
+    ris = aggregate_df.apply(map_risk, axis=1)
+    if ris.shape[0] > 0:
+        aggregate_df['Risk'] = pd.to_numeric(ris)
+
+
 def single_asym_exp_logs_to_df(
-        exp_path: str or dict,
+        exp_path: str,
         metrics: list = ['eval/L_2', 'eval/epsilon_relative',
                          'eval/estimated_relative_ex_ante_util_loss'],
         precision: int = 4,
@@ -188,7 +179,7 @@ def single_asym_exp_logs_to_df(
     """Creates and returns a Pandas DataFrame from the logs in `path` for an
     individual experiment with different bidders.
 
-    This function is universially usable.
+    This function is universally usable.
 
     Arguments:
         exp_path: str to `full_results.csv`.
@@ -201,8 +192,6 @@ def single_asym_exp_logs_to_df(
             columns correspond to the logged metrics (from the last iter).
 
     """
-    form = '{:.' + str(precision) + 'f}'
-
     df = pd.read_csv(exp_path)
     end_epoch = df.epoch.max()
     df = df[df.epoch == end_epoch]
@@ -215,15 +204,11 @@ def single_asym_exp_logs_to_df(
 
     df = df.loc[df['metric'].isin(metrics)]
 
-    def map_mean_std(row):
-        result = str(form.format(round(row['mean'], precision)))
-        if with_stddev:
-            result += ' (' + str(form.format(round(row['std'], precision))) \
-                + ')'
-        if result == 'nan (nan)':
-            result = '--'
-        return result
-    df['value'] = df.apply(map_mean_std, axis=1)
+    df['value'] = df.apply(
+        lambda row: _map_mean_std(row, precision),
+        axis=1
+        )
+
     del df['mean'], df['std']
     df.set_index(['bidder', 'metric'], inplace=True)
     df = df.unstack(level='metric')
@@ -243,6 +228,10 @@ def single_asym_exp_logs_to_df(
         lambda m: aliasies[m] if m in aliasies.keys() else m
     )
 
+    df["Auction game"] = exp_path
+    add_config(df, aggregate=False)
+    del df["Auction game"]
+
     return df
 
 
@@ -260,82 +249,13 @@ def df_to_tex(
     if save_path is None:
         save_path = os.path.dirname(os.path.realpath(__file__))
 
-    df.to_latex(save_path + "/" + name, na_rep='--', escape=False,
-                index=False, index_names=False, caption=caption, column_format='l'+'r'*(len(df.columns)-1),
-                label=label, formatters={'bidder': bold})
-
-
-def csv_to_boxplot(
-        experiments: dict,
-        name: str = 'boxplot.png',
-        caption: str = 'caption',
-        metric: str = 'eval/epsilon_relative',
-        precision: int = 4
-    ):
-    """Creates a boxplot."""
-
-    form = '{:.' + str(precision) + 'f}'
-
-    aggregate_df = pd.DataFrame(columns=['gamma', 'locals', 'global'])
-    for exp_name, exp_path in experiments.items():
-        df = pd.read_csv(exp_path)
-        end_epoch = df.epoch.max()
-        df = df[df.epoch == end_epoch]
-        df = df[df['tag'] == metric]
-
-        single_df = pd.DataFrame(columns=['locals', 'global'])
-        locals_ = df[df['subrun'] == 'locals'].value
-        global_ = df[df['subrun'] == 'global'].value
-        single_df['locals'] = locals_.to_numpy()
-        single_df['global'] = global_.to_numpy()
-        single_df['gamma'] = exp_name[-4:-1]
-        aggregate_df = pd.concat([aggregate_df, single_df])
-
-    # write to file
-    c1 = '#1f77b4'
-    c2 = '#ff7f0e'
-
-    def setBoxColors(bp):
-        plt.setp(bp['boxes'][0], color=c1)
-        plt.setp(bp['caps'][0], color=c1)
-        plt.setp(bp['caps'][1], color=c1)
-        plt.setp(bp['whiskers'][0], color=c1)
-        plt.setp(bp['whiskers'][1], color=c1)
-        plt.setp(bp['fliers'][0], marker='.', markeredgecolor=c1)
-        plt.setp(bp['medians'][0], color=c1)
-
-        plt.setp(bp['boxes'][1], color=c2)
-        plt.setp(bp['caps'][2], color=c2)
-        plt.setp(bp['caps'][3], color=c2)
-        plt.setp(bp['whiskers'][2], color=c2)
-        plt.setp(bp['whiskers'][3], color=c2)
-        plt.setp(bp['fliers'][1], marker='.', markeredgecolor=c2)
-        plt.setp(bp['medians'][1], color=c2)
-
-    fig = plt.figure(figsize=(4, 3))
-    ax = plt.axes()
-    pos = [1, 2]
-    for gamma, _ in experiments.items():
-        bp = plt.boxplot(aggregate_df[aggregate_df['gamma'] == gamma[-4:-1]] \
-                         [['locals', 'global']].to_numpy(),
-                         positions=pos, widths=1.5)
-        setBoxColors(bp)
-        pos = [p + 3 for p in pos]
-    hB, = plt.plot([1, 1], color=c1)
-    hR, = plt.plot([1, 1], color=c2)
-    plt.legend((hB, hR), ('locals', 'global'), loc='lower right')
-    ax.set_xticks(
-        [1 + 31*float(gamma[-4:-1]) for gamma, _ in experiments.items()])
-    ax.set_xticklabels(
-        [float(gamma[-4:-1]) for gamma, _ in experiments.items()])
-    # plt.xlim([0, 30])
-    plt.ylim([-0.0015, 0.0015])
-    plt.ticklabel_format(axis="y", style="sci", scilimits=(0,0))
-    plt.xlabel('correlation $\gamma$')
-    plt.ylabel('loss ' + ALIASES_LATEX[metric])
-    # plt.grid()
-    plt.tight_layout()
-    plt.savefig('experiments/' + name)
+    df.to_latex(
+        save_path + "/" + name, na_rep='--', escape=False,
+        index=False, index_names=False, caption=caption,
+        column_format='l'+'r'*(len(df.columns)-1),
+        label=label,
+        formatters={'bidder': bold}
+        )
 
 
 def bids_to_csv(

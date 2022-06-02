@@ -111,7 +111,7 @@ class MultiUnitDiscriminatoryAuction(MultiUnitAuction):
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Runs a (batch of) multi item discriminatory auction(s). Invalid bids
         (i.e. in increasing order) will be ignored (-> no allocation to that
-        bidder), s.t. the bidder might be able to ``learn`` the right behavior.
+        bidder), s.t. the bidder might be able to "learn" the right behavior.
 
         Args:
             bids: torch.Tensor
@@ -160,7 +160,7 @@ class MultiUnitUniformPriceAuction(MultiUnitAuction):
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Runs a (batch of) Multi Unit Uniform-Price Auction(s). Invalid bids
         (i.e. in increasing order) will be ignored (-> no allocation to that
-        bidder), s.t. the bidder might be able to ``learn`` the right behavior.
+        bidder), s.t. the bidder might be able to "learn" the right behavior.
 
         Args:
             bids: torch.Tensor
@@ -221,7 +221,7 @@ class MultiUnitVickreyAuction(MultiUnitAuction):
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Runs a (batch of) Multi Unit Vickrey Auction(s). Invalid bids (i.e.
         in increasing order) will be ignored (-> no allocation to that bidder),
-        s.t. the bidder might be able to ``learn`` the right behavior.
+        s.t. the bidder might be able to "learn" the right behavior.
 
         Args:
             bids: torch.Tensor

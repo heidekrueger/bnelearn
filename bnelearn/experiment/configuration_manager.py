@@ -116,12 +116,12 @@ class ConfigurationManager:
     #. Init class object with the experiment type string, n_runs and n_epochs.
        For possible experiment types see ``ConfigurationManager.experiment_types``
         #. ``__init__`` calls get_default_config_members method to get default configuration members.
-        #. Based on the experiment type, ``__init__`` calls the appropriate ancillary _init_experiment_type.
+        #. Based on the experiment type, ``__init__`` calls the appropriate ancillary ``_init_experiment_type``.
            It sets the default parameters specific for the given experiment type.
     #. (Optional step) Call set_config_member methods (e.g. ``set_setting``) in a chain style,
        each methods allows to selectively set any parameter of a corresponding config member to a new arbitrary value,
        while leaving all the parameters not specified by the user intact - with their default values.
-    #. Call the get_config method to get a ready configuration object and an experiment class corresponding
+    #. Call the ``get_config`` method to get a ready configuration object and an experiment class corresponding
        to the experiment type (the latter needed for an easy instantiation of the Experiment)
         #. ``get_config`` calls ``_post_init``, which inits the parameters which shouldn't be set manually, checks for consistency
            between the related parameters and validates whether each parameter is in an appropriate value range.
@@ -755,18 +755,5 @@ class ConfigurationManager:
                 return torch.optim.SGD
             try:
                 return eval('torch.optim.' + optimizer)
-            except AttributeError as e:
-                raise AttributeError(f'Optimizer type `{optimizer}` could not be inferred!') \
-                    from e
-
-    @staticmethod
-    def _set_scheduler(scheduler: str) -> object:
-        """Set learning rate scheduler."""
-        if scheduler is None:
-            return None
-        if isinstance(scheduler, str):
-            try:
-                return eval('torch.optim.lr_scheduler.' + scheduler)
-            except AttributeError as e:
-                raise AttributeError(f'Learning rate scheduler type `{scheduler}` could not be inferred!') \
-                    from e
+            except Exception as e:
+                raise ValueError(f'Optimizer type `{optimizer}` could not be inferred!') from e

@@ -88,11 +88,12 @@ class GradientBasedLearner(Learner):
 
 
 class ESPGLearner(GradientBasedLearner):
-    """Neural Self-Play with Evolutionary Strategy Pseudo-PG
+    """Neural Self-Play with Evolutionary Strategy Pseudo-PG as proposed in
+    Bichler et. al (2021).
 
     Uses pseudo-policy gradients calculated as
 
-        ```(rewards - baseline).mean() * epsilons / sigma**2```
+        ``(rewards - baseline).mean() * epsilons / sigma**2``
 
     over a population of models perturbed by parameter noise epsilon yielding
     perturbed rewards.

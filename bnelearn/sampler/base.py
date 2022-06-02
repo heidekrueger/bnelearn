@@ -400,12 +400,3 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
                 if kwargs['player_position'] == pos:
                     kwargs['player_position'] =  pos - sum(self.group_sizes[:g])  # i's relative position in subgroup
                     return self.group_samplers[g].generate_action_grid(**kwargs)
-
-    def generate_cell_partition(self, **kwargs) -> torch.Tensor:
-        """Possibly need to call specific sampling"""
-        for g in range(self.n_groups):  # iterate over groups
-            player_positions = self.group_indices[g]  # player_positions within group
-            for pos in player_positions:
-                if kwargs['player_position'] == pos:
-                    kwargs['player_position'] =  pos - sum(self.group_sizes[:g])  # i's relative position in subgroup
-                    return self.group_samplers[g].generate_cell_partition(**kwargs)

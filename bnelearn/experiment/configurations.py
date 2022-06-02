@@ -92,10 +92,14 @@ class LoggingConfig:
 
     If logging is enabled, the experiment runs will be logged to the following
     directories:
+
+    .. code-block:: bash
+
         log_root_dir /
             [setting-specific dir hierarchy determined by Experiment subclasses] /
                 experiment_timestamp + experiment_name /
                     run_timestamp + run_seed
+
     """
 
     enable_logging: bool  # If false, disables ALL logging

@@ -95,7 +95,7 @@ Experiment logging
 * In another terminal window, activate the ``bnelearn`` conda env as well: ``activate bnelearn``.
 * Start a tensorboard instance, pointing at the relevant subdirectory for your experiment (tensorboard can simultaneously display multiple runs of the same experiment.) I.e. if you're interested in fpsb experiments and your directory structure is
 
-    .. code-block:: txt
+    .. code-block:: bash
 
         ./
         |

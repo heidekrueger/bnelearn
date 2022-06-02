@@ -86,8 +86,9 @@ class SymmetricIPVSampler(IPVSampler):
         # repeat support bounds across all players and valuation dimensions
         support_bounds = torch.stack([lower_bound, upper_bound]).repeat([n_players, valuation_size, 1])
 
-        super().__init__(n_players, valuation_size, support_bounds, default_batch_size, #pylint: disable=arguments-out-of-order
-                         default_device)
+        super().__init__(n_players=n_players, valuation_size=valuation_size,
+                         support_bounds=support_bounds, default_batch_size=default_batch_size,
+                         default_device=default_device)
 
     def _sample(self, batch_sizes: int or List[int], device: Device) -> torch.Tensor:
         """Draws a batch of observation/valuation profiles (equivalent in PV)"""
@@ -163,10 +164,11 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
     Krishna, Chapter 13.
 
     These are symmetric private value settings, where
-    (a) valuations are descending along the valuation_size dimension and
-        represent the marginal utility of winning an additional item.
-    (b) bidders may be limited to be interested in at most a certain number of
-        items.
+
+    * valuations are descending along the valuation_size dimension and
+      represent the marginal utility of winning an additional item.
+    * bidders may be limited to be interested in at most a certain number of
+      items.
 
     """
 
@@ -226,10 +228,7 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
                                 dtype=torch.float, device = None,
-                                support_bounds: torch.Tensor = None, return_mesh: bool=False) -> torch.Tensor:
-        if return_mesh:
-            raise NotImplementedError('Cell partition not implemented for multi-unit auctions (b/c not rectangular).')
-        
+                                support_bounds: torch.Tensor = None) -> torch.Tensor:
         rectangular_grid = super().generate_valuation_grid(
             player_position, minimum_number_of_points, dtype, device, support_bounds)
 
@@ -259,8 +258,8 @@ class SplitAwardValuationObservationSampler(UniformSymmetricIPVSampler):
         return sample
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
-                                dtype=torch.float, device=None, support_bounds: torch.Tensor = None,
-                                return_mesh: bool=False) -> torch.Tensor:
+                                dtype=torch.float, device=None,
+                                support_bounds: torch.Tensor = None) -> torch.Tensor:
         device = device or self.default_device
 
         if support_bounds is None:
@@ -279,9 +278,6 @@ class SplitAwardValuationObservationSampler(UniformSymmetricIPVSampler):
         grid = torch.stack((self.efficiency_parameter * line, line), dim=-1) \
             .view(-1, dims)
 
-        if return_mesh:
-            grid = [self.efficiency_parameter * line, line]
-
         return grid
 
     def generate_action_grid(self, player_position: int, minimum_number_of_points: int,
@@ -299,5 +295,3 @@ class SplitAwardValuationObservationSampler(UniformSymmetricIPVSampler):
             self, player_position=player_position,
             minimum_number_of_points=minimum_number_of_points,
             dtype=dtype, device=device, support_bounds=support_bounds)
-
-        return grid

@@ -1,5 +1,4 @@
-"""
-Script for reproducing the reported experiments in Figure 3
+"""Script for reproducing the reported experiments from Bichler et. al (2021).
 """
 import os
 import sys

@@ -57,7 +57,7 @@ def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> float:
     r"""Calculates the approximate "mean" Lp-norm between two action vectors.
 
     .. math::
-        \sum_i=1^n(1/n * |b1 - b2|^p)^{1/p}
+        \sum_{i=1}^n(1/n \cdot |b_1 - b_2|^p)^{1/p}
 
     If p = Infty, this evaluates to the supremum.
     """
@@ -73,22 +73,22 @@ def norm_actions(b1: torch.Tensor, b2: torch.Tensor, p: float = 2) -> float:
     return (torch.dist(b1, b2, p=p)*(1./n)**(1/p)).detach()
 
 def norm_strategies(strategy1: Strategy, strategy2: Strategy, valuations: torch.Tensor, p: float=2) -> float:
-    r"""Calculates the approximate "mean" Lp-norm between two strategies
+    r"""Calculates the approximate "mean" :math:`L_p`-norm between two strategies
     approximated via Monte-Carlo integration on a sample of valuations that
     have been drawn according to the prior.
 
-    The function Lp norm is given by
+    The function :math:`L_p` norm is given by
 
     .. math::
-        (\int_V |s1(v) - s2(v)|^p dv)^{1/p}.
+        \left( \int_V |s_1(v) - s_2(v)|^p dv \right)^{1/p}.
 
-    With Monte-Carlo Integration this is approximated by
+    With Monte-Carlo integration this is approximated by
 
     .. math::
-        (|V|/n * \sum_i^n(|s1(v) - s2(v)|^p) )^{1/p}
+        \left( |V|/n \cdot \sum_i^n(|s1(v) - s2(v)|^p) \right)^{1/p}
 
-    where |V| is the volume of the set V. Here, we ignore the volume. This
-    gives us the RMSE for L2, supremum for Linfty, etc.
+    where :math:`|V|` is the volume of the set :math:`V`. Here, we ignore the volume. This
+    gives us the RMSE for :math:`L_2`, supremum for :math:`L`-infty, etc.
     """
     b1 = strategy1.play(valuations)
     b2 = strategy2.play(valuations)
@@ -151,26 +151,20 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.Tensor, bid_prof
 
 def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid_profile: torch.Tensor, bidder: Bidder,
                       grid: torch.Tensor, half_precision = False):
-    r"""
-    # TODO: do we really need this or can we delete it in general?
-    # If we decide to keep it, check implementation in detail! (Removing many many todos in the body)
-
-    Estimates a bidder's ex post util_loss in the current bid_profile vs a potential grid,
-        i.e. the potential benefit of having deviated from the current strategy, as:
+    r"""Estimates a bidder's ex post util_loss in the current bid_profile vs a potential grid,
+    i.e. the potential benefit of having deviated from the current strategy, as:
 
     .. math::
-        util\_loss = max(0, BR(v_i, b_-i) - u_i(b_i, b_-i))
+        \texttt{util_loss} = max(0, BR(v_i, b_-i) - u_i(b_i, b_-i))
 
     Args:
         mechanism
         player_valuations: the valuations of the player that is to be evaluated
         bid_profile: (batch_size x n_player x n_items)
         bidder: a Bidder (used to retrieve valuations and utilities)
-        grid:
-            option 1: 1d tensor with length grid_size
-                todo for :math:`n\_items > 1`, all :math:`grid\_size^{n\_items}` combination will be used. Should be
-                replaced by e.g. torch.meshgrid
-            option 2: tensor with shape (grid_size, n_items)
+        grid: Option 1: 1d tensor with length grid_size todo for ``n_items > 1``,
+            all ``grid_size**n_items`` combination will be used. Should be replaced
+            by e.g. ``torch.meshgrid``. Option 2: tensor with shape (grid_size, n_items)
         player_position (optional): specific position in which the player will be evaluated
             (defaults to player_position of bidder)
         half_precision: (optional, bool) Whether to use half precision tensors. default: false
@@ -178,7 +172,8 @@ def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid
     Returns:
         util_loss (batch_size)
 
-    Useful: To get the memory used by a tensor (in MB): :math:`(tensor.element\_size() * tensor.nelement())/(1024*1024)`
+    Useful: To get the memory used by a tensor (in MB): ``(tensor.element_size() *
+    tensor.nelement())/(1024*1024)``
     """
 
     player_position = bidder.player_position
@@ -236,7 +231,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     calculate
 
     .. math::
-        \max_{v_i \in V_i} \max_{b_i^* \in A_i} + E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i})) - u(v_i, b_i, b_{-i}(v_{-i}))]
+        \max_{v_i \in V_i} \max_{b_i^* \in A_i} E_{v_{-i}|v_i} [u(v_i, b_i^*, b_{-i}(v_{-i})) - u(v_i, b_i, b_{-i}(v_{-i}))]
 
     We're conditioning on the agent's observation at `player_position`. That
     means, types and observations of other players as well as its own type have

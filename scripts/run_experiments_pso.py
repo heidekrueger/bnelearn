@@ -1,5 +1,4 @@
-"""
-Script for reproducing the reported experiments in Figure 3
+"""Script for reproducing the reported experiments in Kohring et. al (2022).
 """
 import os
 import sys
