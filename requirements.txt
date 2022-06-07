@@ -6,7 +6,11 @@
 
 cvxpy
 future
-gurobipy # alternative via conda: gurobi -c gurobi
+#Gurobi is used as an optional solver for some combinatorial implementations.
+# Please note that gurobi is not open source and requires a license.
+# We recommend installing gurobi manually via `conda install gurobi -c gurobi` because this version includes the grbgetkey command to register your license.
+# With the pip package installation, you will have to do so manually.
+gurobipy # alternative via conda: gurobi -c gurobi 
 jupyterlab
 matplotlib
 numpy
@@ -17,7 +21,7 @@ pynvml #for accessing GPU statistics
 pytest
 pytest-cov
 pytest-xdist #parallel tests
-qpth # currently using local install, see https://github.com/locuslab/qpth/pull/33
+qpth # currently we're using a local install due to upstream bug, see https://github.com/locuslab/qpth/pull/33
 scipy # for numeric integration
 Sphinx
 sphinx-rtd-theme

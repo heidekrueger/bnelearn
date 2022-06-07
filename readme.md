@@ -4,7 +4,7 @@
 
 [![pipeline status](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/pipeline.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master) | [![coverage report](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/coverage.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master)
 
-bnelearn is a framework for equilibrium learning in sealed-bid auctions and other markets that can be modeled as Bayesian Games. The documentation can be found at [Documentation](https://bnelearn.readthedocs.io/en/latest/#).
+bnelearn is a framework for equilibrium learning in sealed-bid auctions and other markets that can be modeled as Bayesian Games. The documentation can be found at [Documentation](https://bnelearn.readthedocs.io/en/latest/#). Please bear in mind that the documentation is still a work in progress and may not be complete or up-to-date in all respects. We're working on improving it.
 
 **Maintainers**: Stefan Heidekrüger ([@heidekrueger](https://github.com/heidekrueger)), Nils Kohring ([@kohring](https://github.com/kohring)), Markus Ewert ([@Markus-Ewert](https://github.com/Markus-Ewert)).
 
@@ -14,7 +14,6 @@ bnelearn is a framework for equilibrium learning in sealed-bid auctions and othe
 
 
 ## What's Implemented?
-
 Running experiments for $n$-player matrix and sealed-bid auction games with either
 
 ### Auctions and Other Games
@@ -45,8 +44,10 @@ Running experiments for $n$-player matrix and sealed-bid auction games with eith
 
 
 ## Contribute: Before Your First Commit
-Please read [Contributing](contributing.md) carefully and follow the set-up steps described there.
 
+(If you see this on GitHub and want to contribute, please get in touch with one of the maintainers. The development version of this repository is hosted on a private GitLab server at TUM, we'll be happy to grant access on an individual basis.)
+
+Please read [Contributing](contributing.md) carefully and follow the set-up steps described there.
 **Git LFS**: On a new machine, please make sure you have git-lfs installed and configured for this repository. (See [contributing.md](contributing.md) for details.)
 
 
