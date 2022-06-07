@@ -72,19 +72,23 @@ class SymmetricIPVSampler(IPVSampler):
         self.distribution = self.base_distribution.expand([n_players, valuation_size])
 
         # bounds: use real support, unless unbounded:
-        lower_bound = self.base_distribution.icdf(torch.tensor(0.)).relu()
-        upper_bound = self.base_distribution.icdf(torch.tensor(1.))
-        if upper_bound.isinf().item():
+        support = self.base_distribution.support
+        if isinstance(support, torch.distributions.constraints._Real):
             upper_bound = self.base_distribution.icdf(
                 torch.tensor(self.UPPER_BOUND_QUARTILE_IF_UNBOUNDED))
+            lower_bound = torch.tensor(0, device=upper_bound.device)
+        else:
+            lower_bound = torch.tensor(support.lower_bound).relu()
+            upper_bound = torch.tensor(support.upper_bound)
 
         assert upper_bound >= lower_bound
 
         # repeat support bounds across all players and valuation dimensions
         support_bounds = torch.stack([lower_bound, upper_bound]).repeat([n_players, valuation_size, 1])
 
-        super().__init__(n_players, valuation_size, support_bounds, default_batch_size, #pylint: disable=arguments-out-of-order
-                         default_device)
+        super().__init__(n_players=n_players, valuation_size=valuation_size,
+                         support_bounds=support_bounds, default_batch_size=default_batch_size,
+                         default_device=default_device)
 
     def _sample(self, batch_sizes: int or List[int], device: Device) -> torch.Tensor:
         """Draws a batch of observation/valuation profiles (equivalent in PV)"""
@@ -160,10 +164,11 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
     Krishna, Chapter 13.
 
     These are symmetric private value settings, where
-    (a) valuations are descending along the valuation_size dimension and
-        represent the marginal utility of winning an additional item.
-    (b) bidders may be limited to be interested in at most a certain number of
-        items.
+
+    * valuations are descending along the valuation_size dimension and
+      represent the marginal utility of winning an additional item.
+    * bidders may be limited to be interested in at most a certain number of
+      items.
 
     """
 
@@ -179,7 +184,7 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
             constant_marginal_values: whether or not all values should be
                 constant (i.e. to enforce additive valuations on homogenous goods.)
             u_lo: lower bound for uniform distribution
-            u_hi: upper bound for uniform distribtuion
+            u_hi: upper bound for uniform distribution
             default_batch_size
             default_device
         """
@@ -231,7 +236,7 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
         return rectangular_grid.sort(dim=1, descending=True)[0].unique(dim=0)
 
 
-class SplitAwardtValuationObservationSampler(UniformSymmetricIPVSampler):
+class SplitAwardValuationObservationSampler(UniformSymmetricIPVSampler):
     """Sampler for Split-Award, private value settings. Here bidders have two
     valuations of which one is a linear combination of the other.
     """
@@ -274,3 +279,19 @@ class SplitAwardtValuationObservationSampler(UniformSymmetricIPVSampler):
             .view(-1, dims)
 
         return grid
+
+    def generate_action_grid(self, player_position: int, minimum_number_of_points: int,
+                             dtype=torch.float, device = None) -> torch.Tensor:
+        """From zero to some maximal value. Here, unlike in the other methods,
+        the two outputs must not be linearly dependent.
+        """
+        support_bounds = self.support_bounds.clone()
+
+        # Grid bids should always start at zero if not specified otherwise
+        support_bounds[:, :, 0] = 0
+        support_bounds[:, :, 1] *= 2
+
+        return UniformSymmetricIPVSampler.generate_valuation_grid(
+            self, player_position=player_position,
+            minimum_number_of_points=minimum_number_of_points,
+            dtype=dtype, device=device, support_bounds=support_bounds)

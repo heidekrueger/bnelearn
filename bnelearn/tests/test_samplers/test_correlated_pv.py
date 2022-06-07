@@ -1,5 +1,6 @@
 """ This pytest test file checks whether valuation and observation samplers have the
-expected behaviour"""
+expected behavior.
+"""
 
 from math import sqrt
 
@@ -134,21 +135,22 @@ ids, test_cases = zip(*[
                          test_cases, ids=ids)
 def test_correlated_constant_weight_pv(n_players, valuation_size,
                                        gamma, u_lo, u_hi):
-    """Functionality and correcness test of the Constant Weights sampler.
+    """Functionality and correctness test of the Constant Weights sampler.
     We test
-    - correctness of sample on standard device with standard batch_size
-      - dimensions and output devices
-      - ipv, i.e. valuations == observations
-      - correctness of mean, std (where known) of marginals
-      - correlation matrix
-    - conditioned sampling on one player's observation
-      - has correct shapes and devices
-      - has correct entries for the given player
-      - otherwise looks like a valid sample
-    - additionally, we test dimensions and output devices for manually specified
+    
+    * correctness of sample on standard device with standard batch_size
+      * dimensions and output devices
+      * ipv, i.e. valuations == observations
+      * correctness of mean, std (where known) of marginals
+      * correlation matrix
+    * conditioned sampling on one player's observation
+      * has correct shapes and devices
+      * has correct entries for the given player
+      * otherwise looks like a valid sample
+    * additionally, we test dimensions and output devices for manually specified
       devises or batch_sizes.
-    """
 
+    """
 
     marginal_mean = torch.tensor((u_hi - u_lo)/2 + u_lo) \
         .repeat([n_players, valuation_size])
@@ -208,22 +210,26 @@ def test_correlated_constant_weight_pv(n_players, valuation_size,
                          test_cases, ids=ids)
 def test_correlated_Bernoulli_weight_pv(n_players, valuation_size,
                                         gamma, u_lo, u_hi):
-    """Functionality and correcness test of the Bernoulli Weights sampler.
+    """Functionality and correctness test of the Bernoulli Weights sampler.
     We test
-    - correctness of sample on standard device with standard batch_size
-      - dimensions and output devices
-      - ipv, i.e. valuations == observations
-      - correctness of mean, std (where known) of marginals
-      - correlation matrix
-    - conditioned sampling on one player's observation
-      - has correct shapes and devices
-      - has correct entries for the given player
-      - otherwise looks like a valid sample
-    - additionally, we test dimensions and output devices for manually specified
+
+    * correctness of sample on standard device with standard ``batch_size``
+
+      * dimensions and output devices
+      * ipv, i.e. ``valuations == observations``
+      * correctness of mean, std (where known) of marginals
+      * correlation matrix
+
+    * conditioned sampling on one player's observation
+
+      * has correct shapes and devices
+      * has correct entries for the given player
+      * otherwise looks like a valid sample
+
+    * additionally, we test dimensions and output devices for manually specified
       devises or batch_sizes.
+
     """
-
-
     marginal_mean = torch.tensor((u_hi - u_lo)/2 + u_lo) \
         .repeat([n_players, valuation_size])
 

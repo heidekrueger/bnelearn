@@ -26,7 +26,8 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
-                                                        AffiliatedObservationsExperiment
+                                                        AffiliatedObservationsExperiment,
+                                                        ContestExperiment
                                                         )
 
 # TODO: server-specific constant hardcoded. We need a more dynamic way to do this.
@@ -103,39 +104,47 @@ ACTIVATIONS = {'SELU': lambda: nn.SELU,
 # This module explicitly takes care of unifying lots of variables, it's okay to use many locals here.
 # pylint: disable=too-many-instance-attributes
 class ConfigurationManager:
-    """
+    r"""
     The class provides a 'front-end' for the whole package. It allows for creation of a full and
-    consistent ExperimentConfiguration, as defined by the ExperimentConfig dataclass.
+    consistent ``ExperimentConfiguration``, as defined by the ExperimentConfig dataclass.
     It manages all the defaults, including those specific for each experiment type, auto-inits the parameters that
     are not supposed to be initialized manually, and allows to selectively change any part of the configuration,
     while also performing a parameter and consistency check before creating the final configuration object.
 
     The workflow with the class API is as follows:
-    1. Init class object with the experiment type string, n_runs and n_epochs.
-    For possible experiment types see ConfigurationManager.experiment_types
-    1.1. __init__ calls get_default_config_members method to get default configuration members.
-    1.2 Based on the experiment type, __init__ calls the appropriate ancillary _init_experiment_type.
-    It sets the default parameters specific for the given experiment type.
-    2. (Optional step) Call set_config_member methods (e.g. set_setting) in a chain style,
-    each methods allows to selectively set any parameter of a corresponding config member to a new arbitrary value,
-    while leaving all the parameters not specified by the user intact - with their default values.
-    3. Call the get_config method to get a ready configuration object and an experiment class corresponding
-    to the experiment type (the latter needed for an easy instantiation of the Experiment)
-    3.1 get_config calls _post_init, which inits the parameters which shouldn't be set manually, checks for consistency
-    between the related parameters and validates whether each parameter is in an appropriate value range.
-    Then, it calls the type specific _post_init_experiment_type method which performs all the same things, but specific
-    for the experiment type.
-    3.2 get_config creates and returns the final and valid configuration object alongside the experiment class.
+
+    #. Init class object with the experiment type string, n_runs and n_epochs.
+       For possible experiment types see ``ConfigurationManager.experiment_types``
+        #. ``__init__`` calls get_default_config_members method to get default configuration members.
+        #. Based on the experiment type, ``__init__`` calls the appropriate ancillary ``_init_experiment_type``.
+           It sets the default parameters specific for the given experiment type.
+    #. (Optional step) Call set_config_member methods (e.g. ``set_setting``) in a chain style,
+       each methods allows to selectively set any parameter of a corresponding config member to a new arbitrary value,
+       while leaving all the parameters not specified by the user intact - with their default values.
+    #. Call the ``get_config`` method to get a ready configuration object and an experiment class corresponding
+       to the experiment type (the latter needed for an easy instantiation of the Experiment)
+        #. ``get_config`` calls ``_post_init``, which inits the parameters which shouldn't be set manually, checks for consistency
+           between the related parameters and validates whether each parameter is in an appropriate value range.
+           Then, it calls the type specific ``_post_init_experiment_type`` method which performs all the same things, but specific
+           for the experiment type.
+        #. ``get_config`` creates and returns the final and valid configuration object alongside the experiment class.
 
     Example of class usage:
-    experiment_config, experiment_class = ConfigurationManager(experiment_type='multiunit', n_runs=1, n_epochs=20) \
-        .set_logging(log_root_dir=log_root_dir) \
-        .set_setting(payment_rule='discriminatory') \
-        .set_learning(model_sharing=False) \
-        .set_hardware() \
-        .get_config()
+    
+    .. code-block:: python
 
-    experiment_class(experiment_config).run()
+        experiment_config, experiment_class = \
+            ConfigurationManager(
+                experiment_type='multiunit', n_runs=1, n_epochs=20
+            ) \
+            .set_logging(log_root_dir=log_root_dir) \
+            .set_setting(payment_rule='discriminatory') \
+            .set_learning(model_sharing=False) \
+            .set_hardware() \
+            .get_config()
+
+        experiment_class(experiment_config).run()
+
     """
 
     def _init_single_item_uniform_symmetric(self):
@@ -150,13 +159,13 @@ class ConfigurationManager:
 
     def _init_single_item_asymmetric_uniform_overlapping(self):
         self.learning.model_sharing = False
-        self.setting.u_lo = [5, 5]
-        self.setting.u_hi = [15, 25]
+        self.setting.u_lo = [0.0, 0.0]
+        self.setting.u_hi = [0.5, 1.0]
 
     def _init_single_item_asymmetric_uniform_disjunct(self):
         self.learning.model_sharing = False
-        self.setting.u_lo = [0, 6]
-        self.setting.u_hi = [5, 7]
+        self.setting.u_lo = [0, .6]
+        self.setting.u_hi = [.5, .7]
 
     def _init_mineral_rights(self):
         self.setting.n_players = 3
@@ -198,21 +207,6 @@ class ConfigurationManager:
                                     'revenue': True,
                                     'util_loss': True}
 
-    #     self.setting.correlation_types = 'independent'
-    #
-    # def with_correlation(self, gamma, correlation_type='Bernoulli_weights'):
-    #     self.setting.gamma = gamma
-    #     self.setting.correlation_types = correlation_type if gamma > 0.0 else 'independent'
-    #
-    #     if correlation_type == 'constant_weights' and gamma > 0:
-    #         if 'opt' in self.logging.log_metrics.keys():
-    #             del self.logging.log_metrics['opt']
-    #         if 'l2' in self.logging.log_metrics.keys():
-    #             del self.logging.log_metrics['l2']
-    #         print('BNE in constant weights correlation model not approximated.')
-    #
-    #     return self
-
     def _init_llg_full(self):
         self.learning.model_sharing = False
         self.setting.u_lo = [0, 0, 0]
@@ -252,7 +246,7 @@ class ConfigurationManager:
 
     def _init_multiunit(self):
         self.setting.payment_rule = 'vcg'
-        self.setting.n_units = 2
+        self.setting.n_items = 2
         self.learning.model_sharing = True
         self.setting.u_lo = [0]
         self.setting.u_hi = [1]
@@ -267,13 +261,28 @@ class ConfigurationManager:
                                     'revenue': True}
 
     def _init_splitaward(self):
-        self.setting.n_units = 2
+        self.setting.n_items = 2
         self.learning.model_sharing = True
         self.setting.u_lo = [1]
         self.setting.u_hi = [1.4]
         self.setting.constant_marginal_values = False
         self.setting.efficiency_parameter = 0.3
         self.logging.log_componentwise_norm = True
+
+    def _init_tullock(self):
+        self.setting.u_lo = [0.0]
+        self.setting.u_hi = [1.0]
+        self.setting.common_prior = DISTRIBUTIONS['Uniform'](self.setting.u_lo[0], self.setting.u_hi[0])
+        self.setting.impact_function = "tullock_contest"
+        self.learning.model_sharing = True
+
+    def _init_crowdsourcing(self):
+        self.setting.u_lo = [0]
+        self.setting.u_hi = [1.0]
+        self.setting.common_prior = DISTRIBUTIONS['Uniform'](self.setting.u_lo[0], self.setting.u_hi[0])
+        self.learning.model_sharing = True
+        self.setting.payment_rule = "crowdsourcing"
+        self.setting.impact_function = "deterministic"
 
     def _post_init(self):
         """Any assignments and checks common to all experiment types"""
@@ -283,7 +292,7 @@ class ConfigurationManager:
 
         # Logging
         # Rationale behind timestamp format: should be ordered chronologically but include weekday.
-        # Using . instead of : for compatability with Windows
+        # Using . instead of : for compatibility with Windows
         # Why do we even need the timestamp field?
         # self.logging.experiment_timestamp = time.strftime('%Y-%m-%d %a %H.%M')
         self.logging.experiment_dir = time.strftime('%Y-%m-%d %a %H.%M')
@@ -340,7 +349,7 @@ class ConfigurationManager:
         pass
 
     def _post_init_llg(self):
-        # How many of those types are there and how do they correspond to gammavalues?
+        # How many of those types are there and how do they correspond to gamma values?
         # I might wrongly understand the relationship here
         if self.setting.gamma == 0.0:
             self.setting.correlation_types = 'independent'
@@ -348,7 +357,7 @@ class ConfigurationManager:
             if self.setting.correlation_types is None:
                 self.setting.correlation_types = 'Bernoulli_weights'
             if self.setting.correlation_types not in ['Bernoulli_weights', 'constant_weights']:
-                raise NotImplementedError(f'`{self.setting.correlation_types}` corrrelation model unknown.')
+                raise NotImplementedError(f'`{self.setting.correlation_types}` correlation model unknown.')
         elif self.setting.gamma > 1.0:
             raise ValueError('Invalid gamma')
 
@@ -375,6 +384,12 @@ class ConfigurationManager:
         pass
 
     def _post_init_splitaward(self):
+        pass
+
+    def _post_init_tullock(self):
+        pass
+
+    def _post_init_crowdsourcing(self):
         pass
 
     experiment_types = {
@@ -405,7 +420,14 @@ class ConfigurationManager:
         'multiunit':
            (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
-           (SplitAwardExperiment, _init_splitaward, _post_init_splitaward)
+           (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
+        'tullock_contest':
+            (ContestExperiment, _init_tullock, _post_init_tullock),
+        'all_pay_uniform_symmetric':
+            (UniformSymmetricPriorSingleItemExperiment, _init_single_item_uniform_symmetric, 
+            _post_init_single_item_uniform_symmetric),
+        'crowdsourcing':
+            (ContestExperiment, _init_crowdsourcing, _post_init_crowdsourcing)
         }
 
     def __init__(self, experiment_type: str, n_runs: int, n_epochs: int, seeds: Iterable[int] = None):
@@ -428,10 +450,11 @@ class ConfigurationManager:
                     common_prior: torch.distributions.Distribution = 'None', valuation_mean: float = 'None',
                     valuation_std: float = 'None', u_lo: list = 'None', u_hi: list = 'None', gamma: float = 'None',
                     correlation_types: str = 'None', correlation_groups: List[List[int]] = 'None',
-                    correlation_coefficients: List[float] = 'None', n_units: int = 'None',
+                    correlation_coefficients: List[float] = 'None', n_items: int = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
-                    core_solver: str = 'None', regret: float = 'None',):
+                    core_solver: str = 'None', tullock_impact_factor: float = 'None', impact_function: str = 'None',
+                    crowdsourcing_values: List = None):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
         as a string allows to explicitly st parameters to None.
@@ -455,12 +478,14 @@ class ConfigurationManager:
                 should be part of exactly one sublist. (Relevant settings: LLG)
             correlation_coefficients: List of correlation coefficients for each
                 group specified with ``correlation_groups``.
-            n_units: TODO: @Nils?
+            n_items: Number of items to sell.
             pretrain_transform: A function used to explicitly give the desired behavior in pretraining for
                 given neural net inputs. Defaults to identity, i.e. truthful bidding.
-            constant_marginal_values: TODO @Nils
-            item_interest_limit: TODO @Nils
-            efficiency_parameters: TODO @Nils
+            constant_marginal_values: Whether or not the bidders have constant marginal values in
+                multi-unit auctions.
+            item_interest_limit: Whether or not the bidders have a lower demand in units than available in
+                multi-unit auctions.
+            efficiency_parameters: Efficiency parameter in split-award auction.
             core_solver: Specifies which solver should be used to calculate core prices.
                 Should be one of 'NoCore', 'mpc', 'gurobi', 'cvxpy' (Relevant settings: LLLLGG)
 
@@ -478,7 +503,8 @@ class ConfigurationManager:
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
-                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None'):
+                     batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
+                     value_contest: bool = True):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.learning, arg):
@@ -545,9 +571,12 @@ class ConfigurationManager:
          of the ExperimentConfig"""
         running = RunningConfig(n_runs=0, n_epochs=0)
         setting = SettingConfig(
+            n_items=1,
             n_players=2,
             payment_rule='first_price',
-            risk=1.0)
+            risk=1.0,
+            impact_function='tullock_contest',
+            crowdsourcing_values=[1.0])
         learning = LearningConfig(
             model_sharing=True,
             learner_type='ESPGLearner',
@@ -559,7 +588,8 @@ class ConfigurationManager:
             hidden_nodes=[10, 10],
             pretrain_iters=500,
             batch_size=2 ** 18,
-            hidden_activations=[nn.SELU(), nn.SELU()])
+            hidden_activations=[nn.SELU(), nn.SELU()],
+            redraw_every_iteration=False)
         logging = LoggingConfig(
             enable_logging=True,
             log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),
@@ -586,7 +616,6 @@ class ConfigurationManager:
             specific_gpu=0,
             cuda=True,
             fallback=False,
-            # TODO, see gitlab issue #218
             max_cpu_threads=MAX_CPU_THREADS)
 
         return running, setting, learning, logging, hardware
@@ -679,7 +708,7 @@ class ConfigurationManager:
         # Attribute assignment pattern: experiment_config.config_group_name.config_group_object_attr = attr_val
         # e.g. experiment_config.run_config.n_runs = experiment_config_as_dict['run_config']['n_runs']
         # config_group_object assignment pattern: experiment_config.config_group_name = config_group_object
-        # e.g. experiment_config.run_config = earlier initialised and filled instance of RunningConfiguration class
+        # e.g. experiment_config.run_config = earlier initialized and filled instance of RunningConfiguration class
         experiment_config_as_dict = {k: v for (k, v) in experiment_config_as_dict.items() if
                                      k != 'experiment_class'}.items()
         for config_set_name, config_group_dict in experiment_config_as_dict:
@@ -724,5 +753,7 @@ class ConfigurationManager:
                 return torch.optim.Adam
             if optimizer in ('SGD', 'sgd', 'Sgd'):
                 return torch.optim.SGD
-            # add more optimizers as needed
-        raise ValueError('Optimizer type could not be inferred!')
+            try:
+                return eval('torch.optim.' + optimizer)
+            except Exception as e:
+                raise ValueError(f'Optimizer type `{optimizer}` could not be inferred!') from e

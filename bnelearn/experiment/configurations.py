@@ -30,6 +30,7 @@ class RunningConfig:
 @dataclass
 class SettingConfig:
     n_players: int
+    n_items: int
     payment_rule: str
     risk: float
 
@@ -51,7 +52,6 @@ class SettingConfig:
     correlation_coefficients: List[float] = None  # coefficients in each group
 
     # Multi-Unit
-    n_units: int = None
     pretrain_transform: callable = None
     constant_marginal_values: bool = False
     item_interest_limit: int = None
@@ -62,6 +62,11 @@ class SettingConfig:
     # LLLLGG
     core_solver: str = None
     # parallel: int = 1 in hardware config now
+
+    # Contests
+    tullock_impact_factor: float = None
+    impact_function: str = None
+    crowdsourcing_values: List = None
 
 
 @dataclass
@@ -74,7 +79,11 @@ class LearningConfig:
     hidden_nodes: List[int]
     pretrain_iters: int
     batch_size: int
+    redraw_every_iteration: bool
     hidden_activations: List[nn.Module] = None
+    value_contest: bool = True
+
+
 
 
 @dataclass
@@ -83,10 +92,14 @@ class LoggingConfig:
 
     If logging is enabled, the experiment runs will be logged to the following
     directories:
+
+    .. code-block:: bash
+
         log_root_dir /
             [setting-specific dir hierarchy determined by Experiment subclasses] /
                 experiment_timestamp + experiment_name /
                     run_timestamp + run_seed
+
     """
 
     enable_logging: bool  # If false, disables ALL logging

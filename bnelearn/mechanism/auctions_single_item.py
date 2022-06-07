@@ -196,3 +196,57 @@ class ThirdPriceSealedBidAuction(Mechanism):
         allocations.masked_fill_(mask=payments_per_item == 0, value=0)
 
         return (allocations, payments)  # payments: batches x players, allocation: batch x players x items
+
+
+class AllPayAuction(Mechanism):
+
+    def __init__(self, cuda: bool):
+        super().__init__(cuda=cuda)
+
+    def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs a (batch of) All-Pay Auctions.
+
+        This function is meant for single-item auctions.
+        If a bid tensor for multiple items is submitted, each item is auctioned
+        independently of one another.
+
+        Parameters
+        ----------
+        bids: torch.Tensor
+            of bids with dimensions (*batch_sizes, n_players, n_items)
+
+        Returns
+        -------
+        (allocation, payments): Tuple[torch.Tensor, torch.Tensor]
+            allocation: tensor of dimension (*batch_sizes x n_players x n_items),
+                        1 indicating item is allocated to corresponding player
+                        in that batch, 0 otherwise
+            payments:   tensor of dimension (*batch_sizes x n_players)
+                        Total payment from player to auctioneer for her
+                        allocation in that batch.
+        """
+
+        assert bids.dim() >= 3, "Bid tensor must be 3d (batch x players x items)"
+        assert (bids >= 0).all().item(), "All bids must be nonnegative."
+
+        # move bids to gpu/cpu if necessary
+        bids = bids.to(self.device)
+
+        # name dimensions for readibility
+        *batch_dims, player_dim, item_dim = range(bids.dim()) 
+        *batch_sizes, n_players, n_items = bids.shape
+ 
+        # allocate return variables
+        allocations = torch.zeros(*batch_sizes, n_players, n_items, device=self.device)
+
+        # Assign item to the bidder with the highest bid, in case of a tie assign it to the first one
+        _, winning_bidders = bids.max(dim=player_dim, keepdim=True) 
+
+        allocations.scatter_(player_dim, winning_bidders, 1)
+        allocations.masked_fill_(mask=bids == 0, value=0)
+
+        payments = bids.reshape(*batch_sizes, n_players) # pay as bid
+
+        return allocations, payments # payments: batches x players, allocation: batch x players x items
+

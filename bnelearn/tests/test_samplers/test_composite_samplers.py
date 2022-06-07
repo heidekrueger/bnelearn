@@ -79,7 +79,7 @@ def test_local_global_samplers(setting, method, gamma):
     ## quick checks for conditional sampling, let's fix the valuation of the
     # second local player
     # this is more about testing for runtime errors, rather than correctness
-    # of the ocnditional sampling, which has been tested in the sub-group samplers
+    # of the conditional sampling, which has been tested in the sub-group samplers
     conditioned_player = 1
     conditioned_observation = torch.tensor([[0.5]*valuation_size], device=device)
 
@@ -109,7 +109,8 @@ def test_local_global_samplers(setting, method, gamma):
     ASSERTION_ERROR_UNEXPECTED_GRID = "unexpected grid for local bidder."
 
     n_points = 2**valuation_size
-    grid_local = s.generate_valuation_grid(local_indices[0], n_points)
+    grid_local = s.generate_valuation_grid(player_position=local_indices[0],
+                                           minimum_number_of_points=n_points)
 
     assert torch.equal(grid_local.min(dim=0).values,
                        torch.tensor([local_min]*valuation_size, device=device)), \
@@ -118,7 +119,8 @@ def test_local_global_samplers(setting, method, gamma):
                        torch.tensor([local_max]*valuation_size, device=device)), \
                            ASSERTION_ERROR_UNEXPECTED_GRID
 
-    grid_global = s.generate_valuation_grid(global_indices[0], n_points)
+    grid_global = s.generate_valuation_grid(player_position=global_indices[0],
+                                            minimum_number_of_points=n_points)
 
     assert torch.equal(grid_global.min(dim=0).values,
                        torch.tensor([global_min]*valuation_size, device=device)), \

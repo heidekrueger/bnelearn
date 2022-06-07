@@ -4,7 +4,6 @@
 * Have a very simple interface to create _all_ possible experiment settings from json, command line interface, dict, etc.
 * Should allow presets (possibly with individual values changed), as well as fully specified experiments.
 
-
 ## The `Experiment` class
 
 Immutable members

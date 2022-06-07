@@ -60,6 +60,7 @@ pylint.txt
 # Sphinx autodoc
 # ignore everything except templates, static content and basic config files
 /docs/*
+!/docs/usage
 !/docs/_static
 !/docs/_templates
 !/docs/readme.md
@@ -68,3 +69,4 @@ pylint.txt
 !/docs/Makefile
 !/docs/conf.py
 !/docs/run_docs_server.sh
+!/docs/bnelearn-logo.png

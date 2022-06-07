@@ -302,11 +302,10 @@ class LLGFullAuction(Mechanism):
     """Implements auctions in the LLG setting with 3 bidders and 2 goods.
 
     Here, bidders do submit full bundle (XOR) bids. For this specific LLG
-    domain see Beck & Ott 2013.
+    domain see `(Beck and Ott 2013) <https://www.econstor.eu/handle/10419/79946>`_.
 
     Item dim 0 corresponds to item A, dim 1 to item B and dim 2 to the bundle
     of both.
-
     """
     def __init__(self, rule='first_price', cuda: bool=True):
         super().__init__(cuda)
@@ -325,7 +324,7 @@ class LLGFullAuction(Mechanism):
     def run(self, bids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Runs a batch of LLG Combinatorial auctions.
 
-        We assume n_players == 3 with 0, 1 being local bidders and 3 being the
+        We assume ``n_players == 3`` with 0, 1 being local bidders and 3 being the
         global bidder.
 
         Args:

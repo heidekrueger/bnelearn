@@ -4,10 +4,8 @@ considered by Bosshard et al. (2018).
 
 Limitations and comments:
     - Currently implemented for only uniform valuations
-    - Strictly speaking Split Award might belong here (however, implmentation closer to multi-unit)
-
-TODO:
-    - Check if truthful bidding is BNE in LLLLGG with VCG
+    - Strictly speaking Split Award might belong here (however, implementation closer to multi-unit)
+    
 """
 import os
 from abc import ABC

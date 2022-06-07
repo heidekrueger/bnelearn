@@ -1,5 +1,4 @@
-"""
-This module defines an experiment. It includes logging and plotting since they
+"""This module defines an experiment. It includes logging and plotting since they
 can often be shared by specific experiments.
 """
 
@@ -19,11 +18,11 @@ import traceback
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from torch.utils.tensorboard import SummaryWriter
+
 from matplotlib.ticker import FormatStrFormatter, LinearLocator
 
 from mpl_toolkits.mplot3d import Axes3D  # pylint: disable=unused-import
-
-from torch.utils.tensorboard import SummaryWriter
 
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
@@ -246,7 +245,7 @@ class Experiment(ABC):
 
     def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding
-           `_optimal_bid` function.
+        ``_optimal_bid`` function.
         """
         print("No BNE was found for this experiment.")
         return False
@@ -262,7 +261,8 @@ class Experiment(ABC):
                                       valuation_observation_sampler=self.sampler,
                                       batch_size=self.learning.batch_size,
                                       n_players=self.n_players,
-                                      strategy_to_player_closure=self._strat_to_bidder)
+                                      strategy_to_player_closure=self._strat_to_bidder,
+                                      redraw_every_iteration=self.learning.redraw_every_iteration)
 
     def _init_new_run(self):
         """Setup everything that is specific to an individual run, including everything nondeterministic"""
@@ -315,14 +315,19 @@ class Experiment(ABC):
         grid_size_differs = False
 
         # Draw valuations and corresponding equilibrium bids in all the
-        # availabe BNE
+        # available BNE
         for bne_id, bne_env in enumerate(self.bne_env):
             # dim: [points, models, valuation_size]
             # get one representative player for each model
             model_players = [m[0] for m in self._model2bidder]
 
             self.v_opt[bne_id] = torch.stack(
-                [self.sampler.generate_reduced_grid(i, self.plot_points) for i in model_players],
+                [
+                    self.sampler.generate_reduced_grid(
+                        player_position=i,
+                        minimum_number_of_points=self.plot_points)
+                    for i in model_players
+                ],
                 dim=1)
 
             self.b_opt[bne_id] = torch.stack(
@@ -335,7 +340,7 @@ class Experiment(ABC):
                 grid_size_differs = True
 
         if grid_size_differs:
-            print('´plot_points´ changed due to get_valuation_grid')
+            print('`plot_points` changed due to get_valuation_grid')
             self.plot_points = self.v_opt[0].shape[0]
 
     def _initialize_logging(self):
@@ -370,10 +375,12 @@ class Experiment(ABC):
 
     def _training_loop(self, epoch):
         """Actual training in each iteration."""
-        tic = timer()
         # save current params to calculate update norm
         prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
                        for model in self.models]
+
+        # time iteration
+        tic = timer()
 
         # update model
         utilities = torch.tensor([
@@ -381,18 +388,22 @@ class Experiment(ABC):
             for learner in self.learners
         ])
 
+        time_per_step = timer() - tic
+
         if self.logging.enable_logging:
             # pylint: disable=attribute-defined-outside-init
             self._cur_epoch_log_params = {
                 'utilities': utilities.detach(),
-                'prev_params': prev_params
+                'prev_params': prev_params,
+                'time_per_step': time_per_step
             }
-            elapsed_overhead = self._evaluate_and_log_epoch(epoch=epoch)
-            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, timer() - tic, elapsed_overhead),
+            elapsed_overhead = self._evaluate_and_log_epoch(epoch)
+            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, time_per_step, elapsed_overhead),
                   end="\r")
         else:
-            print('epoch {}:\telapsed {:.2f}s'.format(epoch, timer() - tic),
+            print('epoch {}:\telapsed {:.2f}s'.format(epoch, time_per_step),
                   end="\r")
+
         return utilities
 
     def run(self) -> bool:
@@ -433,7 +444,7 @@ class Experiment(ABC):
                 self._init_new_run()
 
                 for epoch in range(self.running.n_epochs + 1):
-                    utilities = self._training_loop(epoch=epoch)
+                    utilities = self._training_loop(epoch)
 
                 if self.logging.enable_logging and (
                         self.logging.export_step_wise_linear_bid_function_size is not None):
@@ -451,7 +462,7 @@ class Experiment(ABC):
                 self._exit_run(global_step=epoch)
 
         # Once all runs are done, convert tb event files to csv
-        if self.logging.enable_logging and (
+        if self.logging.enable_logging and self.config.running.n_runs > 0 and (
                 self.logging.save_tb_events_to_csv_detailed or
                 self.logging.save_tb_events_to_csv_aggregate or
                 self.logging.save_tb_events_to_binary_detailed):
@@ -477,20 +488,19 @@ class Experiment(ABC):
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts: list = None,
               figure_name: str = 'bid_function', plot_points=100):
-        """
-        This implements plotting simple 2D data.
+        """This implements plotting simple 2D data.
 
         Args
-            plot_data: tuple of two pytorch tensors first beeing for x axis, second for y.
+            plot_data: tuple of two pytorch tensors first being for x axis, second for y.
                 Both of dimensions (batch_size, n_models, n_bundles)
             writer: could be replaced by self.writer
             epoch: int, epoch or iteration number
             xlim: list of floats, x axis limits for all n_bundles dimensions
             ylim: list of floats, y axis limits for all n_bundles dimensions
-            labels: list of str lables for legend
+            labels: list of str labels for legend
             fmts: list of str for matplotlib markers and lines
-            figure_name: str, for seperate plot saving of e.g. bids and util_loss,
-            plot_point: int of number of ploting points for each strategy in each subplot
+            figure_name: str, for separate plot saving of e.g. bids and util_loss,
+            plot_point: int of number of plotting points for each strategy in each subplot
         """
 
         if fmts is None:
@@ -621,12 +631,10 @@ class Experiment(ABC):
         return fig
 
     def _evaluate_and_log_epoch(self, epoch: int) -> float:
-        """
-        Checks which metrics have to be logged and performs logging and plotting.
+        """Checks which metrics have to be logged and performs logging and plotting.
+
         Returns:
-            - elapsed time in seconds
-            - Stefan todos / understanding quesitons
-            - TODO: takes log_params. can it be
+            elapsed time in seconds
         """
         start_time = timer()
 
@@ -706,13 +714,12 @@ class Experiment(ABC):
         return timer() - start_time
 
     def _calculate_metrics_known_bne(self):
-        """
-        Compare performance to BNE and return:
+        """Compare performance to BNE and return:
             utility_vs_bne: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
             epsilon_relative: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
             epsilon_absolute: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
 
-        These are all lists of lists. The outer list corrsponds to which BNE is comapred
+        These are all lists of lists. The outer list corresponds to which BNE is compared
         (usually there's only one BNE). Each inner list is of length `self.n_models`.
         """
         # shorthand for model to bidder index conversion
@@ -747,9 +754,8 @@ class Experiment(ABC):
         return utility_vs_bne, epsilon_relative, epsilon_absolute
 
     def _calculate_metrics_action_space_norms(self):
-        """
-        Calculate "action space distance" of model and bne-strategy. If
-        `self.logging.log_componentwise_norm` is set to true, will only
+        """Calculate "action space distance" of model and bne-strategy. If
+        ``self.logging.log_componentwise_norm`` is set to true, will only
         return norm of the best action dimension.
 
         Returns:
@@ -770,7 +776,7 @@ class Experiment(ABC):
             L_2[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
                     strategy=model,
-                    actions=m2a(i).get_action(),
+                    actions=m2a(i).get_action(m2o(i)),
                     valuations=m2o(i),
                     p=2,
                     componentwise=self.logging.log_componentwise_norm
@@ -780,7 +786,7 @@ class Experiment(ABC):
             L_inf[bne_idx] = torch.tensor([
                 metrics.norm_strategy_and_actions(
                     strategy=model,
-                    actions=m2a(i).get_action(),
+                    actions=m2a(i).get_action(m2o(i)),
                     valuations=m2o(i),
                     p=float('inf'),
                     componentwise=self.logging.log_componentwise_norm
@@ -790,7 +796,7 @@ class Experiment(ABC):
         return L_2, L_inf
 
     def _calculate_metrics_util_loss(self, create_plot_output: bool, epoch: int = None,
-                                     batch_size=None, grid_size=None):
+                                     batch_size=None, grid_size=None, opponent_batch_size=None):
         """
         Compute mean util_loss of current policy and return ex interim util
         loss (ex ante util_loss is the average of that tensor).
@@ -802,23 +808,20 @@ class Experiment(ABC):
 
         env = self.env
         if batch_size is None:
-            # take min of both in case the requested batch size is too large for the env
-            batch_size = min(self.logging.util_loss_batch_size, self.learning.batch_size)
+            batch_size = self.logging.util_loss_batch_size
         if grid_size is None:
             grid_size = self.logging.util_loss_grid_size
 
-        assert batch_size <= env.batch_size, \
-            "Util_loss for larger than actual batch size not implemented."
-
         with torch.no_grad():  # don't need any gradient information here
-            # TODO: currently we don't know where exactly a mmory leak is
-            observations = self.env._observations[:batch_size, :, :]
+            # TODO: currently we don't know where exactly a memory leak is            
+            _, observations = env.sampler.draw_profiles(batch_sizes=[batch_size])
             util_losses, best_responses = zip(*[
                 metrics.ex_interim_util_loss(
                     env=env,
                     player_position=player_positions[0],
                     agent_observations=observations[:, player_positions[0], :],
-                    grid_size=grid_size
+                    grid_size=grid_size,
+                    opponent_batch_size=opponent_batch_size
                 )
                 for player_positions in self._model2bidder
             ])
@@ -828,10 +831,14 @@ class Experiment(ABC):
                          torch.stack(best_responses, 1))
             labels = [f'{self._get_model_names()[i]}' for i in range(len(self.models))]
             fmts = ['o'] * len(self.models)
+            if isinstance(self.plot_ymax, Iterable):
+                ymax = max(self.plot_ymax)
+            else:
+                ymax = self.plot_ymax
             self._plot(plot_data=plot_data, writer=self.writer,
-                       ylim=[0, self.sampler.support_bounds.max().item()],
+                       ylim=[0, ymax],
                        figure_name='best_responses', y_label='best response',
-                       epoch=epoch, labels=labels, fmts=fmts,
+                       labels=labels, fmts=fmts,
                        plot_points=self.plot_points)
 
         # calculate different losses
@@ -854,7 +861,6 @@ class Experiment(ABC):
 
             # Transform to output with dim(batch_size, n_models, n_bundle), for util_losses n_bundle=1
             util_losses = torch.stack(list(util_losses), dim=1).unsqueeze_(-1)
-            observations = self.env._observations[:batch_size, :, :]
             plot_data = (observations[:, [b[0] for b in self._model2bidder], :], util_losses)
             labels = [f'{self._get_model_names()[i]}' for i in range(len(self.models))]
             fmts = ['o'] * len(self.models)
@@ -866,7 +872,7 @@ class Experiment(ABC):
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 
     def _log_experiment_params(self, global_step=None):
-        """Logging of paramters after learning finished.
+        """Logging of parameters after learning finished.
 
         Arguments:
             global_step, int: number of completed iterations/epochs. Will usually
@@ -907,7 +913,7 @@ class Experiment(ABC):
                                 global_step=global_step)
 
     def _save_models(self, directory):
-        # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to
+        # TODO: maybe we should also log out all point wise util_losses in the ending-epoch to disk to
         # use it to make nicer plots for a publication? --> will be done elsewhere. Logging. Assigned to @Hlib/@Stefan
         for model, player_position in zip(self.models, self._model2bidder):
             name = 'model_' + str(player_position[0]) + '.pt'
