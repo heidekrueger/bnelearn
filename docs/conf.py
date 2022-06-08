@@ -68,6 +68,8 @@ html_static_path = ['_static']
 html_logo = "bnelearn-gray.png"
 
 
+import subprocess
+
 def run_apidoc(_):
     modules = [os.path.abspath('../bnelearn/')]
     for module in modules:
@@ -79,8 +81,8 @@ def run_apidoc(_):
             cmd_path = os.path.abspath(os.path.join(sys.prefix, 'bin', 'sphinx-apidoc'))
         subprocess.check_call([cmd_path, '-e', '-o', output_path, module, '--force'])
 
-def setup(app):
-    app.connect('builder-inited', run_apidoc)
+# def setup(app):
+#     app.connect('builder-inited', run_apidoc)
 
 #display private members 
 #autodoc_default_options = {     "members": True,     "undoc-members": True, "private-members": True  }
