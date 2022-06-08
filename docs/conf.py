@@ -14,7 +14,8 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../bnelearn/'))
 
-print(f"abs.path = {os.path.abspath('.')}")
+doc_path = os.path.abspath('.')
+print(f"docpath = {doc_path}")
 
 print(sys.path)
 
@@ -74,7 +75,7 @@ def run_apidoc(_):
     modules = [os.path.abspath('../bnelearn/')]
     for module in modules:
         cur_dir = os.path.abspath(os.path.dirname(__file__))
-        output_path = os.path.join(cur_dir, module) #os.path.join(cur_dir, module, 'doc')
+        output_path = os.path.join(doc_path, module) #os.path.join(cur_dir, module, 'doc')
         print(f"output-path:{output_path}")
         print(f"module:{module}")
         cmd_path = 'sphinx-apidoc'
