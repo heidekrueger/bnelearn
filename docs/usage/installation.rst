@@ -21,10 +21,7 @@ The package should be cross-platform compatible, but we can make no guarantees. 
 
 Installation instructions for Ubuntu using conda:
 
-1. Install Python (tested on 3.9) and pip, we recommend using a separate environment using conda or virtualenv. Assuming you have a running installation of conda, make a new environment:
-```conda create -n bnelearn-test python=3.9 pip```
-   Then activate your environment 
-   ```conda activate bnelearn```
+1. Install Python (tested on 3.9) and pip, we recommend using a separate environment using conda or virtualenv. Assuming you have a running installation of conda, make a new environment: ```conda create -n bnelearn-test python=3.9 pip``` Then activate your environment ```conda activate bnelearn```
 2. (Optional -- you can skip directly to step 3, but this will install the package with a reduced feature set (e.g. no GPU support, no commercial solvers, no development extras.) 
 Make sure you are using the correct version of pip ()`which pip` should point to your new conda environment!) and install the remaining requirements via ``pip install -r requirements.txt``. This will install `all` requirements, including GPU-enabled pytorch, external solvers required for some combinatorial auctions and development tools.
 
