@@ -185,10 +185,11 @@ class ESPGLearner(GradientBasedLearner):
             self.regularize = 0.0
             self.regularize_decay = 1.0
 
-        if 'symmetric_sampling' in hyperparams: 
-            self.symmetric_sampling = symmetric_sampling
+        if 'symmetric_sampling' in hyperparams:
+            self.symmetric_sampling = hyperparams['symmetric_sampling']
         else:
             self.symmetric_sampling = False
+
     def _set_gradients(self):
         """Calculates ES-pseudogradients and applies them to the model parameter
            gradient data.

@@ -1,3 +1,6 @@
+(Note: these contribution guidelines refer to the private development repository hosted at TUM's GitLab at gitlab.lrz.de. If you see this file on GitHub and want to contribute,
+please get in touch with one of the maintainters.)
+
 # Contribution Process
 All contributions of source code should fit the following pattern.
 

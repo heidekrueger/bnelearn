@@ -6,6 +6,10 @@ Home
 
 Welcome to `bnelearn`'s documentation! bnelearn is a framework for equilibrium learning in sealed-bid auctions and other markets that can be modeled as Bayesian Games.
 
+This is a work in progress, so the documentation is still incomplete, and may even be outdated or specific to our local deployments in some places. We'll be working to bring the documentation up to paar in the near future.
+If you need additional help in the meantime, please get in touch with one of the maintainers.
+
+
 The public version of the `bnelearn` repository is hosted at `<https://github.com/heidekrueger/bnelearn>`_. Development is ongoing via a private GitLab repository on our university server. If you have questions, find an error, or want to contribute, please get in touch via the Issues on the GitHub repository above, or email one of the maintainers.
 
 * You can find the installation instructions at :doc:`/usage/installation`.
@@ -47,7 +51,7 @@ Structure
     * Learning rules: Policy Gradients, NPGA, PSO.
     * Auctions: Single-item, multi-unit, LLG combinatorial auction, LLLLGG combinatorial auction.
     * Priors/correlations: Uniform and normal priors that are either independent or Bernoulli or constant weight dependent.
-    * Utility functions: Quasi-linear utility, either risk neutral, risk averse, or risk seeking.
+    * Utility functions: Quasi-linear utility (risk-neutral) , risk averse, or risk seeking.
 
 * Fully vectorized, CUDA enabled, massive parallelism
 * For combinatorial auctions: Custom batched, CUDA-enabled QP solver for quadratic auction rules and Gurobi/Cvxpy integration for arbitrary auctions stated as a MIP.
@@ -72,10 +76,7 @@ Algorithms for trying to iteratively learn equilibria implement the base class `
 Limitations and Alternatives
 ============================
 
-Same dimensionality for all players. Current implementations and learners use deterministic/pure continuous actions.
-
-Variance reduction or quasi-random sampling is not yet implemented but should be easy.
-
+All players in a game must have the same dimensionality (i.e. same-dimensional type-spaces and action-spaces). Current implementations and learners use deterministic/pure continuous actions.
 
 **Other existing multi-agent Learning Packages:** Other multi-agent learning frameworks, such as `OpenSpiel <https://github.com/deepmind/open_spiel>`_ that is a collection of games and algorithms for reinforcement learning and planning or `PettingZoo <https://github.com/Farama-Foundation/PettingZoo>`_ that is a multi-agent extension of the famous `OpenAI Gym <https://github.com/openai/gym>`_ framework, mainly focus on zero-sum games and on games with discrete action spaces. Crucially, they neither allow an efficient evaluation of running a large batch of games in parallel.
 

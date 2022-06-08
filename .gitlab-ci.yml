@@ -1,3 +1,9 @@
+# Note: this is a GitLab CI/CD pipeline that is being used for the development repository hosted 
+# on TUM's gitlab servers. 
+# The pipeline itself is also custom to our local server which we use as a staging environment.
+
+# If you saw this file on the public GitHub mirror of bnelearn, your mileage may vary.
+
 stages:
   - install_env
   - test
