@@ -68,9 +68,23 @@ html_static_path = ['_static']
 html_logo = "bnelearn-gray.png"
 
 
+def run_apidoc(_):
+    modules = [os.path.abspath('../bnelearn/')]
+    for module in modules:
+        cur_dir = os.path.abspath(os.path.dirname(__file__))
+        output_path = os.path.join(cur_dir, module, 'doc')
+        cmd_path = 'sphinx-apidoc'
+        if hasattr(sys, 'real_prefix'):  # Check to see if we are in a virtualenv
+            # If we are, assemble the path manually
+            cmd_path = os.path.abspath(os.path.join(sys.prefix, 'bin', 'sphinx-apidoc'))
+        subprocess.check_call([cmd_path, '-e', '-o', output_path, module, '--force'])
+
+def setup(app):
+    app.connect('builder-inited', run_apidoc)
+
 #display private members 
 #autodoc_default_options = {     "members": True,     "undoc-members": True, "private-members": True  }
 
 def setup(app):
-    #app.connect('builder-inited', run_apidoc)
+    app.connect('builder-inited', run_apidoc)
     app.add_css_file('css/modify.css')
