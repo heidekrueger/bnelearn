@@ -6,9 +6,9 @@ bnelearn is a framework for equilibrium learning in sealed-bid auctions and othe
 
 **Maintainers**: Stefan Heidekrüger ([@heidekrueger](https://github.com/heidekrueger)), Nils Kohring ([@kohring](https://github.com/kohring)), Markus Ewert ([@Markus-Ewert](https://github.com/Markus-Ewert)).
 
-**Original Authors**: Stefan Heidekrüger, Paul Sutterer, Nils Kohring, Martin Bichler.
+**Original Authors**: Stefan Heidekrüger, Paul Sutterer ([@PaulR-S](https://github.com/PaulR-S)), Nils Kohring, Martin Bichler.
 
-**Further Contributors**: Gleb Kilichenko ([@kilichenko](https://github.com/kilichenko)), Carina Fröhlich, Anne Christopher, Iheb Belgacem.
+**Further Contributors**: Gleb Kilichenko ([@kilichenko](https://github.com/kilichenko)), Carina Fröhlich, Anne Christopher ([@annechris13](https://github.com/annechris13)), Iheb Belgacem ([@belgacemi](https://github.com/belgacemi)).
 
 
 ## Suggested Citation
