@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(name='bnelearn',
       version = '1.0.0',
       description='A Framework for learning Equilibria in Bayesian Games',
-      url='https://gitlab.lrz.de/heidekrueger/bnelearn',
+      url='https://github.com/heidekrueger/bnelearn',
       author='Stefan Heidekrüger',
       author_email='stefan.heidekrueger@in.tum.de',
       license='GNU-GPLv3',
