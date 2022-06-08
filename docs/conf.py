@@ -12,9 +12,8 @@
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../bnelearn/'))
-sys.path.insert(0, os.path.abspath('./bnelearn/'))
-
+sys.path.insert(0, os.path.abspath('../bnelearn'))
+sys.path.insert(0, os.path.abspath('./bnelearn'))
 
 
 # -- Project information -----------------------------------------------------
@@ -25,16 +24,6 @@ author = 'Chair for Decision Sciences and Systems, TUM'
 
 # The full version, including alpha/beta/rc tags
 release = '1.0.0'
-
-
-# def run_apidoc(_):
-# 	from sphinx.apidoc import main
-# 	import os
-# 	import sys
-# 	sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-# 	cur_dir = os.path.abspath(os.path.dirname(__file__))
-# 	module = os.path.join(cur_dir,"..",".")
-# 	main(['-e', '-o', cur_dir, module, '--force'])
 
 # -- General configuration ---------------------------------------------------
 
@@ -48,7 +37,8 @@ extensions = [
         "sphinx.ext.viewcode", 
         "sphinx.ext.napoleon", 
         "sphinx.ext.todo",
-        "sphinx.ext.intersphinx"]
+        "sphinx.ext.intersphinx",
+        "sphinx.ext.autosummary"]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
