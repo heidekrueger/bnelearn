@@ -2,15 +2,28 @@
 
 # A Framework for Equilibrium Learning in Sealed-Bid Auctions
 
-[![pipeline status](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/pipeline.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master) | [![coverage report](https://gitlab.lrz.de/heidekrueger/bnelearn/badges/master/coverage.svg)](https://gitlab.lrz.de/heidekrueger/bnelearn/commits/master)
-
 bnelearn is a framework for equilibrium learning in sealed-bid auctions and other markets that can be modeled as Bayesian Games. The documentation can be found at [Documentation](https://bnelearn.readthedocs.io/en/latest/#). Please bear in mind that the documentation is still a work in progress and may not be complete or up-to-date in all respects. We're working on improving it.
 
 **Maintainers**: Stefan Heidekrüger ([@heidekrueger](https://github.com/heidekrueger)), Nils Kohring ([@kohring](https://github.com/kohring)), Markus Ewert ([@Markus-Ewert](https://github.com/Markus-Ewert)).
 
 **Original Authors**: Stefan Heidekrüger, Paul Sutterer, Nils Kohring, Martin Bichler.
 
-**Further Contributors**: Gleb Kilichenko ([@kilichenko](https://github.com/kilichenko)), Carina Fröhlich.
+**Further Contributors**: Gleb Kilichenko ([@kilichenko](https://github.com/kilichenko)), Carina Fröhlich, Anne Christopher, Iheb Belgacem.
+
+
+## Suggested Citation
+If you find `bnelearn` helpful and use it in your work, please consider using the following citation:
+
+```
+@misc{Heidekrueger2021,
+  author = {Heidekr\"uger, Stefan and Kohring, Nils and Sutterer, Paul and Bichler, Martin},
+  title = {{bnelearn}: A Framework for Equilibrium Learning in Sealed-Bid Auctions},
+  year = {2021},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/heidekrueger/bnelearn}}
+}
+```
 
 
 ## What's Implemented?
@@ -28,7 +41,7 @@ Running experiments for $n$-player matrix and sealed-bid auction games with eith
 * Tullock contest and crowd sourcing contest
 
 
-### Algortihms
+### Algorithms
 * Fictitious play, stochastic fictitious play, mixed fictitious play in matrix games.
 * Neural self-play with directly computed policy gradients from [(Heinrich and Silver, 2016)](https://arxiv.org/abs/1603.01121), which is called ``PGLearner``.
 * Neural pseudogradient ascent (NPGA), called ``ESPGLearner``, from [(Bichler et al., 2021)](https://www.nature.com/articles/s42256-021-00365-4).
@@ -49,18 +62,3 @@ Running experiments for $n$-player matrix and sealed-bid auction games with eith
 
 Please read [Contributing](contributing.md) carefully and follow the set-up steps described there.
 **Git LFS**: On a new machine, please make sure you have git-lfs installed and configured for this repository. (See [contributing.md](contributing.md) for details.)
-
-
-## Suggested Citation
-If you find `bnelearn` helpful and use it in your work, please consider using the following citation:
-
-```
-@misc{Heidekrueger2021,
-  author = {Heidekr\"uger, Stefan and Kohring, Nils and Sutterer, Paul and Bichler, Martin},
-  title = {{bnelearn}: A Framework for Equilibrium Learning in Sealed-Bid Auctions},
-  year = {2021},
-  publisher = {GitHub},
-  journal = {GitHub repository},
-  howpublished = {\url{https://github.com/heidekrueger/bnelearn}}
-}
-```
