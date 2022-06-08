@@ -74,7 +74,9 @@ def run_apidoc(_):
     modules = [os.path.abspath('../bnelearn/')]
     for module in modules:
         cur_dir = os.path.abspath(os.path.dirname(__file__))
-        output_path = os.path.join(cur_dir, module, 'doc')
+        output_path = os.path.join(cur_dir, module) #os.path.join(cur_dir, module, 'doc')
+        print(f"output-path:{output_path}")
+        print(f"module:{module}")
         cmd_path = 'sphinx-apidoc'
         if hasattr(sys, 'real_prefix'):  # Check to see if we are in a virtualenv
             # If we are, assemble the path manually
