@@ -32,15 +32,6 @@ The public version of the `bnelearn` repository is hosted at `<https://github.co
    :caption: Package
    :maxdepth: 2
 
-.. automodule:: bnelearn
-   :imported-members:
-   :members:
-
-.. toctree::
-   :glob:
-   :caption: Package
-   :maxdepth: 2
-
    modules
    bnelearn
 
