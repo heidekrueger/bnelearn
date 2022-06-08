@@ -19,9 +19,16 @@ build:
 sphinx:
    configuration: docs/conf.py
 
-# Include submodules
-submodules:
-  include: all
+python:
+  install:
+  - requirements: requirements.txt
+  - method: pip
+    path: .
+
+
+# # Include submodules
+# submodules:
+#   include: all
 
 # If using Sphinx, optionally build your docs in additional formats such as PDF
 formats:
