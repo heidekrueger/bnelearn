@@ -15,9 +15,6 @@ import sys
 sys.path.insert(0, os.path.abspath('../bnelearn/'))
 
 doc_path = os.path.abspath('.')
-print(f"docpath = {doc_path}")
-
-print(sys.path)
 
 # -- Project information -----------------------------------------------------
 
@@ -28,23 +25,23 @@ author = 'Chair for Decision Sciences and Systems, TUM'
 # The full version, including alpha/beta/rc tags
 release = '1.0.0'
 
+## modules need to be importable --> if this import fails,
+## the environment used by Sphinx is not set up correctly.
+import bnelearn
+
+
 # -- General configuration ---------------------------------------------------
 
-import bnelearn
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 
 extensions = [
-        "sphinx.ext.autodoc"
+        "sphinx.ext.autodoc",
+        "sphinx.ext.viewcode",
+        "sphinx.ext.todo"
         ]
-
-#source_suffix = {
-#    '.rst': 'restructuredtext',
-#    '.txt': 'restructuredtext',
-#    '.py': 'restructuredtext'
-#}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -65,7 +62,6 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-
 html_logo = "bnelearn-gray.png"
 
 
@@ -74,10 +70,6 @@ import subprocess
 def run_apidoc(_):
     modules = [os.path.abspath('../bnelearn/')]
     for module in modules:
-        cur_dir = os.path.abspath(os.path.dirname(__file__))
-        #output_path = '/home/docs/checkouts/readthedocs.org/user_builds/bnelearn/checkouts/latest/docs/' #os.path.join(cur_dir, module, 'doc')
-        print(f"output-path:{doc_path}")
-        #print(f"module:{module}")
         cmd_path = 'sphinx-apidoc'
         if hasattr(sys, 'real_prefix'):  # Check to see if we are in a virtualenv
             # If we are, assemble the path manually
@@ -85,11 +77,6 @@ def run_apidoc(_):
             cmd_path = os.path.abspath(os.path.join(sys.prefix, 'bin', 'sphinx-apidoc'))
         subprocess.check_call([cmd_path, '-e', '-o', doc_path, module, '--force'])
 
-# def setup(app):
-#     app.connect('builder-inited', run_apidoc)
-
-#display private members 
-#autodoc_default_options = {     "members": True,     "undoc-members": True, "private-members": True  }
 
 def setup(app):
     app.connect('builder-inited', run_apidoc)

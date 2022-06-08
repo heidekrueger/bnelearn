@@ -33,7 +33,6 @@ The public version of the `bnelearn` repository is hosted at `<https://github.co
    :maxdepth: 2
 
    modules
-   bnelearn
 
 
 Features
