@@ -13,9 +13,12 @@
 import os
 import sys
 sys.path.insert(0, os.path.abspath('../../'))
-sys.path.insert(0, os.path.abspath('../bnelearn'))
-sys.path.insert(0, os.path.abspath('./bnelearn'))
+sys.path.insert(0, os.path.abspath('../bnelearn/'))
+sys.path.insert(0, os.path.abspath('./bnelearn/'))
 
+print(f"abs.path = {os.path.abspath('.')}")
+
+print(sys.path)
 
 # -- Project information -----------------------------------------------------
 
@@ -40,6 +43,13 @@ extensions = [
         "sphinx.ext.todo",
         "sphinx.ext.intersphinx",
         "sphinx.ext.autosummary"]
+
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.txt': 'restructuredtext',
+    '.md': 'markdown',
+    '.py': 'restructuredtext'
+}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
