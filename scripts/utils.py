@@ -452,7 +452,7 @@ def create_full_results_from_tb(path: str):
 
 if __name__ == '__main__':
 
-    experiments_dir = '/home/kohring/bnelearn/experiments/asymmetric-20220114'
+    experiments_dir = '/home/kohring/bnelearn/experiments/asymmetric-final-submission2'
 
     # # Preprocess for single item uniform
     # single_item_postfix = '/single_item/first_price/uniform/asymmetric/risk_neutral/2p/'
@@ -489,9 +489,9 @@ if __name__ == '__main__':
 
     # # Single-item beta setting
     # # Note: Table not reported in paper
-    # path = f'{experiments_dir}/single_item/first_price/non-common/1.0risk/2players/2021-11-24 Wed 04.57/aggregate_log.csv'
+    # path = f'{experiments_dir}/single_item/first_price/non-common/1.0risk/2players/2022-01-14 Fri 14.10/aggregate_log.csv'
     # df = single_asym_exp_logs_to_df(
-    #     path, metrics=['eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim'])
+    #     path, metrics=['eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim', 'time_per_step'])
     # print(f"Average time per iteration in `{path}` is {df['time_per_step'][0]} seconds.")
     # df.drop(labels=['.'], axis='index', inplace=True)
     # df.drop(labels=['time_per_step'], axis='columns', inplace=True)
@@ -511,6 +511,15 @@ if __name__ == '__main__':
     # df_to_tex(df, name=f'{experiments_dir}/table_llgfull.tex',
     #           caption='Results in the asymmetric LLG setting after 2{,}000 iterations and averaged over ten repetitions. Shown are the mean and standard deviation.',
     # 	      label='table:asym_nonover_results')
+
+    # # Split award setting
+    # path = f'{experiments_dir}/SplitAward/first_price/2players_2units/2022-01-15 Sat 06.45/aggregate_log.csv'
+    # df = single_asym_exp_logs_to_df(
+    #     path, metrics=['eval_vs_bne/L_2_bne2', 'eval_vs_bne/epsilon_relative_bne2',
+    #     'eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim', 'time_per_step'])
+    # print(f"Average time per iteration in `{overlapping_path}` is {df['time_per_step'][0]} seconds.")
+    # df.drop(labels=['.'], axis='index', inplace=True)
+    # df.drop(labels=['time_per_step'], axis='columns', inplace=True)
 
     # # LLLLGG setting
     # path_fpsb = f'{experiments_dir}/LLLLGG/first_price/6p/2022-01-14 Fri 09.24/aggregate_log.csv'
