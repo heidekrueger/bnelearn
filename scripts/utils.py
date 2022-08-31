@@ -344,10 +344,10 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
                 configs.append(root + '/' + file)           
 
     # sort
-    # aggregate_logs = natural_sort(aggregate_logs)  # for llllgg_util(loss) plot change to: `[natural_sort(aggregate_logs)[0]]`
-    # configs = natural_sort(configs)  # for llllgg_util(loss) plot change to: `[natural_sort(configs)[0]]`
-    aggregate_logs = [natural_sort(aggregate_logs)[0]]  # for llllgg_util(loss) plot change to: `[natural_sort(aggregate_logs)[0]]`
-    configs = [natural_sort(configs)[0]]  # for llllgg_util(loss) plot change to: `[natural_sort(configs)[0]]`
+    aggregate_logs = natural_sort(aggregate_logs)  # for llllgg_util(loss) plot change to: `[natural_sort(aggregate_logs)[0]]`
+    configs = natural_sort(configs)  # for llllgg_util(loss) plot change to: `[natural_sort(configs)[0]]`
+    # aggregate_logs = [natural_sort(aggregate_logs)[0]]  # for llllgg_util(loss) plot change to: `[natural_sort(aggregate_logs)[0]]`
+    # configs = [natural_sort(configs)[0]]  # for llllgg_util(loss) plot change to: `[natural_sort(configs)[0]]`
 
     fig, axs = plt.subplots(nrows=1, ncols=len(metrics), figsize=(10, 4))
     for aggregate_log_path, config_path, c, m in zip(aggregate_logs, configs, colors, markers):
@@ -357,8 +357,11 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
                 config = json.load(json_file)
             label = eval(f'config{varied_param}')
 
+            t_mean = df[df['tag'] == 'time_per_step'].value.mean()
+            t_std = df[df['tag'] == 'time_per_step'].value.std()
+            print(f"Average runtime for {varied_param} = {label} is {round(t_mean, 4)} ({round(t_std, 4)}).")
+
             df = df.loc[df['tag'].isin(metrics)]
-            
             if max_iter is not None:
                 df = df[df.epoch <= max_iter]
 
@@ -368,7 +371,9 @@ def multi_run_plot(path: str, metrics: list = ['market/utilities',
 
             for i, (metric, ax) in enumerate(zip(metrics, axs)):
                 for j, agent in enumerate(reversed(df['subrun'].unique())):
-                    temp_df = df[df['tag'] == metric][df['subrun'] == agent].dropna()
+                    temp_df = df[df['tag'] == metric]
+                    temp_df = temp_df[temp_df['subrun'] == agent]
+                    temp_df = temp_df.dropna()
                     epoch = temp_df.epoch.to_numpy()
                     mean = temp_df['mean'].to_numpy()
                     if labels == 'agent_names':
@@ -574,11 +579,12 @@ if __name__ == '__main__':
     # 	      label='table:table_llllrrg_results')
 
     # # Scalability experiments
-    # path = '/home/kohring/bnelearn/experiments/asymmetric-performance-analysis/varied-population_size/LLLLGG/first_price/6p'
+    # base_path = f"{experiments_dir}/asymmetric-performance-analysis/"
+    # path = f"{base_path}varied-population-size/LLLLGG/first_price/6p"
     # multi_run_plot(path, varied_param="['learning']['learner_hyperparams']['population_size']",
     #                title='bidder and corresponding\npopulation size', labels='agent_names',
     #                name=f'{experiments_dir}/llllgg_analysis_popsize')
-    # path = '/home/kohring/bnelearn/experiments/asymmetric-performance-analysis/varied-batch_size/LLLLGG/first_price/6p'
+    # path = f"{base_path}varied-batch-size/LLLLGG/first_price/6p"
     # multi_run_plot(path, varied_param="['learning']['batch_size']",
     #                title='bidder and corre-\nsponding batch size', labels='agent_names',
     #                name=f'{experiments_dir}/llllgg_analysis_batchsize')

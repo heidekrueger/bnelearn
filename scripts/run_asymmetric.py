@@ -251,7 +251,7 @@ if __name__ == '__main__':
 
 
     # 1.3.2 FPSB only: for plot
-    if True:
+    if False:
         log_root_dir = os.path.join(log_root_dir, 'llllgg_plot')
         experiment_config, experiment_class = \
             ConfigurationManager(
@@ -326,14 +326,19 @@ if __name__ == '__main__':
 
     # 2. Scalability experiment
     if False:
+        log_root_dir += "/asymmetric-performance-analysis/"
         n_epochs = 500
-        sigma = .1
-        # population_sizes = [16, 32, 64]
-        # batch_size = 2**18
-        # for population_size in population_sizes:
-        batch_sizes = [2**6, 2**10, 2**18]
-        population_size = 64
-        for batch_size in batch_sizes:
+
+        log_root_dir += "varied-population-size/"
+        population_sizes = [16, 32, 64]
+        batch_size = 2**18
+        for population_size in population_sizes:
+
+        # log_root_dir += "varied-batch-size/"
+        # batch_sizes = [2**6, 2**10, 2**18]
+        # population_size = 64
+        # for batch_size in batch_sizes:
+
             experiment_config, experiment_class = \
                 ConfigurationManager(
                     experiment_type='llllgg',
@@ -365,7 +370,7 @@ if __name__ == '__main__':
                     save_models=True,
                     ) \
                 .set_hardware(
-                    specific_gpu=7
+                    specific_gpu=specific_gpu
                     ) \
                 .get_config()
             experiment = experiment_class(experiment_config)
