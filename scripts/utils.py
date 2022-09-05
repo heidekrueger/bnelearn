@@ -504,6 +504,7 @@ if __name__ == '__main__':
     #           caption='Average NPGA utilities achieved in single item setting with beta distributed prior. Aggregated over ten runs of 2{,}000 iterations each.',
     # 	        label='table:asym_beta')
 
+
     # # Asymmetric LLG setting
     # path = f'{experiments_dir}/LLGFull/mrcs_favored/independent/'
     # path += next(os.walk(path))[1][0] + '/aggregate_log.csv'
@@ -517,6 +518,7 @@ if __name__ == '__main__':
     #           caption='Results in the asymmetric LLG setting after 2{,}000 iterations and averaged over ten repetitions. Shown are the mean and standard deviation.',
     # 	      label='table:asym_nonover_results')
 
+
     # # Split award setting
     # path = f'{experiments_dir}/SplitAward/first_price/2players_2units/2022-01-15 Sat 06.45/aggregate_log.csv'
     # df = single_asym_exp_logs_to_df(
@@ -525,6 +527,7 @@ if __name__ == '__main__':
     # print(f"Average time per iteration in `{overlapping_path}` is {df['time_per_step'][0]} seconds.")
     # df.drop(labels=['.'], axis='index', inplace=True)
     # df.drop(labels=['time_per_step'], axis='columns', inplace=True)
+
 
     # # LLLLGG setting
     # path_fpsb = f'{experiments_dir}/LLLLGG/first_price/6p/2022-01-14 Fri 09.24/aggregate_log.csv'
@@ -561,7 +564,7 @@ if __name__ == '__main__':
 
 
     # # Asymmetric multi-unit experiments
-    # path = '/home/kohring/bnelearn/experiments/asymmetric-multiunit-accept-all-bids'
+    # path = f'{experiments_dir}/MultiUnitAsymmetric'
     # multi_run_plot(path, varied_param="['setting']['n_items']",
     #                metrics=['market/revenue', 'market/efficiency'], max_iter=200,
     #                markevery=[2, 2], title='number of units', labels='n_items', name=f'{path}/multiunit_asym')
