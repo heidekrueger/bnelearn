@@ -493,16 +493,24 @@ if __name__ == '__main__':
     # 	      label='table:asym_nonover_results')
 
     # # Single-item beta setting
-    # # Note: Table not reported in paper
-    # path = f'{experiments_dir}/single_item/first_price/non-common/1.0risk/2players/2022-01-14 Fri 14.10/aggregate_log.csv'
+    # Note: Table not reported in paper
+
+    # 5k
+    # path = f'{experiments_dir}/new-beta-run-5k/single_item/first_price/non-common/1.0risk/2players/2022-09-05 Mon 13.28/aggregate_log.csv'
+    # 2k
+    # path = f'{experiments_dir}/new-beta-run-2k/single_item/first_price/non-common/1.0risk/2players/2022-09-12 Mon 09.40/aggregate_log.csv'
+    # old
+    # path = '/home/kohring/bnelearn/experiments/asymmetric-final-submission2/single_item/first_price/non-common/1.0risk/2players/2022-01-14 Fri 14.10/aggregate_log.csv'
+    # 10k
+    # path = 'experiments/asymmetric-final-submission2/new-beta-run-10k/single_item/first_price/non-common/1.0risk/2players/2022-09-12 Mon 11.50/aggregate_log.csv'
     # df = single_asym_exp_logs_to_df(
     #     path, metrics=['eval/estimated_relative_ex_ante_util_loss', 'eval/util_loss_ex_interim', 'time_per_step'])
     # print(f"Average time per iteration in `{path}` is {df['time_per_step'][0]} seconds.")
     # df.drop(labels=['.'], axis='index', inplace=True)
     # df.drop(labels=['time_per_step'], axis='columns', inplace=True)
-    # df_to_tex(df, name='table_asym_nonoverlapping.tex',
+    # df_to_tex(df, name='table_asym.tex',
     #           caption='Average NPGA utilities achieved in single item setting with beta distributed prior. Aggregated over ten runs of 2{,}000 iterations each.',
-    # 	        label='table:asym_beta')
+    # 	      label='table:asym_beta')
 
 
     # # Asymmetric LLG setting
