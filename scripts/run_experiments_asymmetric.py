@@ -4,12 +4,10 @@ import os
 import sys
 
 import torch
-from itertools import product
 
 sys.path.append(os.path.realpath('.'))
 
 from bnelearn.experiment.configuration_manager import ConfigurationManager  # pylint: disable=import-error
-from bnelearn.strategy import NeuralNetStrategy
 
 
 if __name__ == '__main__':
