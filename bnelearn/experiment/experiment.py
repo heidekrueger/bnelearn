@@ -1,5 +1,4 @@
-"""
-This module defines an experiment. It includes logging and plotting since they
+"""This module defines an experiment. It includes logging and plotting since they
 can often be shared by specific experiments.
 """
 
@@ -19,11 +18,11 @@ import traceback
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from torch.utils.tensorboard import SummaryWriter
+
 from matplotlib.ticker import FormatStrFormatter, LinearLocator
 
 from mpl_toolkits.mplot3d import Axes3D  # pylint: disable=unused-import
-
-from torch.utils.tensorboard import SummaryWriter
 
 import bnelearn.util.logging as logging_utils
 import bnelearn.util.metrics as metrics
@@ -251,7 +250,7 @@ class Experiment(ABC):
 
     def _check_and_set_known_bne(self):
         """Checks whether a bne is known for this experiment and sets the corresponding
-           `_optimal_bid` function.
+        ``_optimal_bid`` function.
         """
         print("No BNE was found for this experiment.")
         return False
@@ -322,7 +321,7 @@ class Experiment(ABC):
         grid_size_differs = False
 
         # Draw valuations and corresponding equilibrium bids in all the
-        # availabe BNE
+        # available BNE
         for bne_id, bne_env in enumerate(self.bne_env):
             # dim: [points, models, valuation_size]
             # get one representative player for each model
@@ -405,11 +404,13 @@ class Experiment(ABC):
                 'time_per_step': time_per_step
             }
             elapsed_overhead = self._evaluate_and_log_epoch()
-            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(self.epoch, time_per_step, elapsed_overhead),
-                  end="\r")
+            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s' \
+                    .format(self.epoch, time_per_step, elapsed_overhead),
+                end="\r")
         else:
             print('epoch {}:\telapsed {:.2f}s'.format(self.epoch, time_per_step),
-                  end="\r")
+                end="\r")
+
         return utilities
 
     def run(self) -> bool:
@@ -503,15 +504,15 @@ class Experiment(ABC):
         This implements plotting simple 2D data.
 
         Args
-            plot_data: tuple of two pytorch tensors first beeing for x axis, second for y.
+            plot_data: tuple of two pytorch tensors first being for x axis, second for y.
                 Both of dimensions (batch_size, n_models, n_bundles)
             writer: could be replaced by self.writer
             xlim: list of floats, x axis limits for all n_bundles dimensions
             ylim: list of floats, y axis limits for all n_bundles dimensions
-            labels: list of str lables for legend
+            labels: list of str labels for legend
             fmts: list of str for matplotlib markers and lines
             figure_name: str, for separate plot saving of e.g. bids and util_loss,
-            plot_point: int of number of ploting points for each strategy in each subplot
+            plot_point: int of number of plotting points for each strategy in each subplot
             subplot_order: [nrows, ncols], list of two int, for ordering of subplots.
         """
 
@@ -689,12 +690,10 @@ class Experiment(ABC):
         return fig
 
     def _evaluate_and_log_epoch(self) -> float:
-        """
-        Checks which metrics have to be logged and performs logging and plotting.
+        """Checks which metrics have to be logged and performs logging and plotting.
+
         Returns:
-            - elapsed time in seconds
-            - Stefan todos / understanding quesitons
-            - TODO: takes log_params. can it be
+            elapsed time in seconds
         """
         start_time = timer()
 
@@ -757,13 +756,12 @@ class Experiment(ABC):
         return timer() - start_time
 
     def _calculate_metrics_known_bne(self):
-        """
-        Compare performance to BNE and return:
+        """Compare performance to BNE and return:
             utility_vs_bne: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
             epsilon_relative: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
             epsilon_absolute: List[Tensor] of length `len(self.bne_env)`, length of Tensor `n_models`.
 
-        These are all lists of lists. The outer list corresponds to which BNE is comapred
+        These are all lists of lists. The outer list corresponds to which BNE is compared
         (usually there's only one BNE). Each inner list is of length `self.n_models`.
         """
         # shorthand for model to bidder index conversion
@@ -798,9 +796,8 @@ class Experiment(ABC):
         return utility_vs_bne, epsilon_relative, epsilon_absolute
 
     def _calculate_metrics_action_space_norms(self):
-        """
-        Calculate "action space distance" of model and bne-strategy. If
-        `self.logging.log_componentwise_norm` is set to true, will only
+        """Calculate "action space distance" of model and bne-strategy. If
+        ``self.logging.log_componentwise_norm`` is set to true, will only
         return norm of the best action dimension.
 
         Returns:
@@ -932,7 +929,7 @@ class Experiment(ABC):
         return self.env.get_PoA(allocations)
 
     def _log_experiment_params(self, global_step=None):
-        """Logging of paramters after learning finished.
+        """Logging of parameters after learning finished.
 
         Arguments:
             global_step, int: number of completed iterations/epochs. Will usually
@@ -973,7 +970,7 @@ class Experiment(ABC):
                                 global_step=global_step)
 
     def _save_models(self, directory):
-        # TODO: maybe we should also log out all pointwise util_losses in the ending-epoch to disk to
+        # TODO: maybe we should also log out all point wise util_losses in the ending-epoch to disk to
         # use it to make nicer plots for a publication? --> will be done elsewhere. Logging. Assigned to @Hlib/@Stefan
         for model, player_position in zip(self.models, self._model2bidder):
             name = 'model_' + str(player_position[0]) + '.pt'

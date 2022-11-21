@@ -223,8 +223,7 @@ class Bidder(Player):
 
 
 class ReverseBidder(Bidder):
-    """
-    Bidder that has reversed utility (*(-1)) as valuations correspond to
+    """Bidder that has reversed utility :math:`\cdot (-1)` as valuations correspond to
     their costs and payments to what they get payed.
     """
     def __init__(self, efficiency_parameter=None, **kwargs):
@@ -280,69 +279,90 @@ class CombinatorialBidder(Bidder):
         return welfare
 
 
-class CombinatorialItemBidder(Bidder):
-    """Bidder that has complex preferences but participates in simultaneous
-    auctions.
+class Contestant(Bidder):
 
-    valuations have shape (batch_size, n_items), where it's meant as `n_bundles`
-    bids have shape (batch_size, n_bids)
-
-    """
-    def __init__(self, valuation_type: str, valuation_dict: dict, **kwargs):
-        self.n_items = n_items = int(log(kwargs['valuation_size'] + 1, 2))
-        self.n_bundles =  (2 ** self.n_items) - 1
-
-        self.valuation_type = valuation_type
-        self.transformation = item2bundle(n_items)
-
-        if valuation_type == 'XOS':
-            self.n_collections = valuation_dict['n_collections']
-            if 'one_player_with_unit_demand' in valuation_dict.keys():
-                unit_demand = valuation_dict['one_player_with_unit_demand']
-            else:
-                unit_demand = False
-            self.unit_demand = unit_demand and kwargs['player_position'] == 0
-        elif valuation_type == 'submodular':
-            self.submodular_factor = valuation_dict['submodular_factor']
-
-        super().__init__(bid_size=n_items, **kwargs)
-
-    def get_welfare(self, allocations, valuations: torch.Tensor=None) -> torch.Tensor:
+    def get_utility(self, winning_probabilities, payments, valuations=None):
         """
-        For a batch of allocations and payments return the player's welfare.
-        If valuations are not specified, welfare is calculated for `self.valuations`.
+        For a batch of valuations, allocations, and payments of the contestant,
+        return their utility.
+
+        Can handle multiple batch dimensions, e.g. for allocations a shape of
+        ( outer_batch_size, inner_batch_size, n_items). These batch dimensions are kept in returned
+        payoff.
+        """
+
+        if valuations is None:
+            valuations = self._cached_valuations
+        
+
+        welfare = self.get_welfare(payments, valuations)
+        try:
+            payoff = winning_probabilities - welfare.unsqueeze(-1)
+        except:
+            print(2)
+
+        return payoff.squeeze()
+
+    def get_welfare(self, payments, valuations=None):
+        """For a batch of allocations return the player's welfare.
+
+        If valuations are not specified, welfare is calculated for
+        `self.valuations`.
 
         Can handle multiple batch dimensions, e.g. for valuations a shape of
         (..., batch_size, n_items). These batch dimensions are kept in returned
         welfare.
         """
-
-        # assert allocations.dim() == 2 # batch_size x items
+        #assert payments.dim() >= 2 # [batch_sizes] x items
         if valuations is None:
             valuations = self._cached_valuations
 
-        # Check if allocation is only based on single-item subset of all bundles
-        if allocations.shape[-1] < valuations.shape[-1]:
-            """Here we transform the allocation of (perhaps multiple) items to
-            a bundle allocation that has a larger dimension and contains
-            at most one `1` per batch.
-            """
-
-            # Reduce allocated items to their index
-            bundle_index = torch.arange(self.n_items, dtype=torch.float,
-                                        device=allocations.device)
-            i = torch.einsum('...i,i->...i', allocations.to(dtype=torch.float),
-                             torch.pow(2, bundle_index)) \
-                .to(dtype=torch.int).sum(dim=-1, keepdim=True)
-
-            shape = list(allocations.shape)
-            shape[-1] = self.n_bundles + 1
-
-            # Map items to bundles
-            allocations = torch.zeros(shape, device=allocations.device)
-            allocations.scatter_(-1, i, 1)
-            allocations = allocations[..., 1:]  # cut off when allocated empty bundle
-
         item_dimension = valuations.dim() - 1
-        welfare = (valuations * allocations).sum(dim=item_dimension)
+        welfare = (valuations * payments.unsqueeze(-1)).sum(dim=item_dimension)
+
         return welfare
+
+
+class CrowdsourcingContestant(Bidder):
+  
+
+    def __init__(self, strategy: Strategy, 
+                       player_position: int, 
+                       batch_size: int, 
+                       enable_action_caching: bool = False, 
+                       crowdsourcing_values: bool = True, 
+                       value_contest: bool = True):
+        super().__init__(strategy, player_position, batch_size, enable_action_caching=enable_action_caching)
+
+        self.crowdsourcing_values = crowdsourcing_values
+        self.num_classes = self.crowdsourcing_values.shape[0]
+        self.value_contest = value_contest
+
+
+    def get_utility(self, allocations, payments, ability=None):
+        """
+        For a batch of valuations, allocations, and payments of the contestant,
+        return their utility.
+
+        Can handle multiple batch dimensions, e.g. for allocations a shape of
+        ( outer_batch_size, inner_batch_size, n_items). These batch dimensions are kept in returned
+        payoff.
+        """
+
+        if ability is None:
+            ability = self._cached_valuations
+
+        # retrieve valuations
+        ## one hot encoding
+        allocations = torch.nn.functional.one_hot(allocations.long(), self.num_classes)
+        allocations = (allocations * self.crowdsourcing_values).sum(-1)
+
+        if self.value_contest:
+            allocations = allocations * ability
+            disutil = payments.unsqueeze(-1)
+        else:
+            # disutlity
+            disutil = ability * payments.unsqueeze(-1)
+
+        payoff = allocations - disutil
+        return payoff.squeeze(-1)

@@ -1,3 +1,4 @@
+"""Matrix Games"""
 from typing import List
 
 # pylint: disable=E1102
@@ -230,10 +231,10 @@ class MatrixGame(Game):
     def calculate_expected_action_payoffs(self, strategy_profile, player_position):
         """
         Calculates the expected utility for a player under a mixed opponent strategy
-        ----------
+
         Args:
-            strategy_profile: List of action-probability-vectors for each player. player i's strategy must be supplied
-                          but is ignored.
+            strategy_profile: List of action-probability-vectors for each player.
+                Player i's strategy must be supplied but is ignored.
             player_position: player of interest
 
         Returns:
@@ -249,13 +250,13 @@ class MatrixGame(Game):
 
         Parameters
         ----------
-        strategy_profile: List[torch.Tensor]
-            A list of strategies for each player. Each element i should be a 1-dimensional
-            torch tensor of length n_actions_pi with entries j = P(player i plays action j)
+        strategy_profile: List[torch.Tensor]. A list of strategies for each player.
+            Each element i should be a 1-dimensional torch tensor of length
+            n_actions_pi with entries j = P(player i plays action j)
 
-        validate: bool
-            Whether to validate inputs. Defaults to setting in game class.
-            (Validation overhead is ~100%, so you might want to turn this off in settings with many many iterations)
+        validate: bool. Whether to validate inputs. Defaults to setting in game class.
+            (Validation overhead is ~100%, so you might want to turn this off in
+            settings with many many iterations)
 
         Returns
         -------

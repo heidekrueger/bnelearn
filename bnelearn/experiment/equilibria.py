@@ -89,7 +89,7 @@ def bne_fpsb_ipv_asymmetric_uniform_overlapping_priors_risk_neutral(
 def bne1_kaplan_zhamir(u_lo: List, u_hi: List):
     """
     BNE in asymmetric 2-player IPV first-price auctions, when both players have quasilinear-utilities
-    and uniform priors, that do NOT share the same lower bound and are nonoverlapping.
+    and uniform priors, that do NOT share the same lower bound and are non overlapping.
 
     This setting was analyzed by Kaplan and Zhamir (2014) and was found to have multiple
     pure BNE. (At least 3).
@@ -204,6 +204,17 @@ def bne3_kaplan_zhamir(
 
     return bids
 
+def bne_symmetric_all_pay_uniform_prior(valuation: torch.Tensor, n_player: int, **kwargs) -> torch.Tensor:
+    return (n_player-1) * (valuation ** n_player)/n_player
+
+def bne_crowdsourcing_symmetric_uniform_value(valuation: torch.Tensor, v1: float = 1, v2 = 0, N: int = 0, player_position=0, **kwargs):
+    a = lambda v, N: (N-1)/N * v ** N
+    b = lambda v, N: (N-1) * (((N-2) * v ** (N-1))/(N-1) + (v**N)/N - v**N)
+    return torch.relu(v1 * a(valuation, N) + v2 * b(valuation, N))
+
+def bne_crowdsourcing_symmetric_uniform_cost(valuation: torch.Tensor, v1: float = 1/2, **kwargs):
+    return torch.relu(8*valuation*(3*v1 -2) + 4*valuation.log()*(3-5*v1) + 8*(2-3*v1))
+
 ###############################################################################
 ######  Single-Item Non-IPV
 ###############################################################################
@@ -304,8 +315,8 @@ def _bne_multiunit_discriminatory_2x2_cmv(prior: torch.distributions.Distributio
     raise NotImplementedError("BNE not implemented for this prior.")
 
 def _bne_multiunit_uniform_2x2():
-    """ Returns two BNE strategies List[callable] in the multi-unit uniform price auction
-        with 2 players and 2 units.
+    """Returns two BNE strategies List[callable] in the multi-unit uniform price auction
+    with 2 players and 2 units.
     """
 
     def opt_bid_1(valuation, player_position=None):
@@ -321,8 +332,8 @@ def _bne_multiunit_uniform_2x2():
     return [opt_bid_1, opt_bid_2]
 
 def _bne_multiunit_uniform_3x2_limit2(valuation, player_position=None):
-    """ BNE strategy in the multi-unit uniform price auction with 3 units and
-        2 palyers that are both only interested in winning 2 units
+    """BNE strategy in the multi-unit uniform price auction with 3 units and
+    2 palyers that are both only interested in winning 2 units
     """
     opt_bid = torch.clone(valuation)
     opt_bid[:, 1] = opt_bid[:, 1] ** 2
@@ -334,7 +345,7 @@ def bne_splitaward_2x2_1_factory(experiment_config, payoff_dominant: bool=True):
     auction with 2 players and 2 lots (as in Anton and Yao, 1992).
     
     Actually, this is a continuum of BNEs of which this function returns the
-    upper bound (payoff dominat BNE) and the one at the lower bound.
+    upper bound (payoff dominant BNE) and the one at the lower bound.
 
     Returns:
         optimal_bid (callable): The equilibrium bid function.

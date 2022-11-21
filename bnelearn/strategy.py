@@ -320,7 +320,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.layers = nn.ModuleDict()
 
         if len(hidden_nodes) > 0:
-            ## create hdiden layers
+            # create hidden layers
             # first hidden layer (from input)
             self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
             self.layers[str(self.activations[0]) + '_0'] = self.activations[0]
@@ -354,36 +354,12 @@ class NeuralNetStrategy(Strategy, nn.Module):
     @classmethod
     def load(cls, path: str, device='cpu'):
         """
-        Initializes a saved NeuralNetStrategy from ´path´.
+        Initializes a saved NeuralNetStrategy from ``path``.
         """
+
         model_dict = torch.load(path, map_location=device)
 
-        # standard initialization
-        strategy = cls(
-            input_length=model_dict["input_length"],
-            hidden_nodes=model_dict["hidden_nodes"],
-            hidden_activations=model_dict["hidden_activations"],
-            output_length=model_dict["output_length"],
-            dropout=model_dict["dropout"]
-        )
-
-        # delete custom params that can't be handled by super
-        del (model_dict["input_length"], model_dict["hidden_nodes"], model_dict["hidden_activations"],
-             model_dict["output_length"], model_dict["dropout"])
-
-        # override model weights with saved ones
-        strategy.load_state_dict(model_dict)
-
-        return strategy
-
-    @classmethod
-    def load_old(cls, path: str, device='cpu'):
-        """
-        Initializes a saved NeuralNetStrategy from ´path´.
-        """
-        model_dict = torch.load(path, map_location=device)
-
-        # TODO: Dangerous hack for reloading a strategy
+        # TODO: Dangerous hack for reloading a startegy from disk/pickle
         params = {}
         params["hidden_nodes"] = []
         params["hidden_activations"] = []
@@ -408,29 +384,21 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         # standard initialization
         strategy = cls(
-            input_length=params["input_length"],
-            hidden_nodes=params["hidden_nodes"],
-            hidden_activations=params["hidden_activations"],
-            output_length=params["output_length"]
+            input_length=model_dict["input_length"],
+            hidden_nodes=model_dict["hidden_nodes"],
+            hidden_activations=model_dict["hidden_activations"],
+            output_length=model_dict["output_length"],
+            dropout=model_dict["dropout"]
         )
+
+        # delete custom params that can't be handled by super
+        del (model_dict["input_length"], model_dict["hidden_nodes"], model_dict["hidden_activations"],
+             model_dict["output_length"], model_dict["dropout"])
 
         # override model weights with saved ones
         strategy.load_state_dict(model_dict)
 
         return strategy
-
-    def state_dict(self):
-        """Overwrite the nn.Module state_dict, s.t. it additionally contains this classes'
-           attributes so we're able to save and load.
-        """
-        state_dict = super().state_dict()
-        state_dict['input_length'] = self.input_length
-        state_dict['output_length'] = self.output_length
-        state_dict['hidden_nodes'] = self.hidden_nodes
-        state_dict['hidden_activations'] = self.activations[:-1] # cut off last ReLU
-        state_dict['dropout'] = self.dropout
-
-        return state_dict
 
     def pretrain(self, input_tensor: torch.Tensor, iters: int, transformation: Callable = None):
         """Performs `iters` steps of supervised learning on `input` tensor,

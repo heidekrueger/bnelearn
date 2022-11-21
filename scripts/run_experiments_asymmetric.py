@@ -1,13 +1,4 @@
-"""
-Runs predefined experiments with individual parameters
-fire.Fire() asks you to decide for one of the experiments defined above
-by writing its name and define the required (and optional) parameters
-e.g.:
-    experiment.py single_item_uniform_symmetric 1 20 [2,3] 'first_price'
-
-alternatively instead of fire.Fire() use, e.g.:
-    single_item_uniform_symmetric(1,20,[2,3],'first_price')
-
+"""Script for reproducing the reported experiments from Bichler et. al (2022).
 """
 import os
 import sys
@@ -15,9 +6,7 @@ import sys
 import torch
 from itertools import product
 
-# put bnelearn imports after this.
 sys.path.append(os.path.realpath('.'))
-sys.path.append(os.path.join(os.path.expanduser('~'), 'bnelearn'))
 
 from bnelearn.experiment.configuration_manager import ConfigurationManager  # pylint: disable=import-error
 from bnelearn.strategy import NeuralNetStrategy
@@ -25,14 +14,12 @@ from bnelearn.strategy import NeuralNetStrategy
 
 if __name__ == '__main__':
 
-    # Path is user-specific
-    log_root_dir = os.path.join(
-        os.path.expanduser('~'), 'bnelearn', 'experiments', 'asymmetric',
-        )
-
+    # User parameters
     sigma = .1
     specific_gpu = 2
-
+    log_root_dir = os.path.join(
+        os.path.expanduser('~'), 'bnelearn', 'experiments', 'asymmetric',
+    )
 
     # 1. Individual experiments
     # 1.1 Single item

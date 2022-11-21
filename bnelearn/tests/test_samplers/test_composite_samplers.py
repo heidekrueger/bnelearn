@@ -79,7 +79,7 @@ def test_local_global_samplers(setting, method, gamma):
     ## quick checks for conditional sampling, let's fix the valuation of the
     # second local player
     # this is more about testing for runtime errors, rather than correctness
-    # of the ocnditional sampling, which has been tested in the sub-group samplers
+    # of the conditional sampling, which has been tested in the sub-group samplers
     conditioned_player = 1
     conditioned_observation = torch.tensor([[0.5]*valuation_size], device=device)
 

@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-This module contains environments - a collection of players and
+"""This module contains environments - a collection of players and
 possibly state histories that is used to control game playing and
 implements reward allocation to agents.
 """
@@ -9,7 +8,6 @@ from abc import ABC, abstractmethod
 from typing import Callable, Set, Iterable, Tuple
 
 import torch
-from torch.cuda import _device_t as Device
 from itertools import product
 import math
 
@@ -60,8 +58,7 @@ class Environment(ABC):
                             redraw_valuations=False, aggregate_batch=True,
                             regularize: float=0,
                             **strat_to_player_kwargs) -> torch.Tensor:
-        """
-        Returns reward of a given strategy in given environment agent position.
+        """Returns reward of a given strategy in given environment agent position.
 
         Args:
             strategy: the strategy to be evaluated
@@ -71,7 +68,7 @@ class Environment(ABC):
                 or return batch_size many rewards (one for each sample). Default True
             strat_to_player_kwargs: further arguments needed for agent creation
             regularize: paramter that penalizes high action values (e.g. if we
-                get the same utility with different actions, we prefer the loweer
+                get the same utility with different actions, we prefer the lower
                 one). Default value of zero corresponds to no regularization.
 
         """
@@ -86,8 +83,7 @@ class Environment(ABC):
 
     def get_strategy_action_and_reward(self, strategy: Strategy, player_position: int,
                                        redraw_valuations=False, **strat_to_player_kwargs) -> torch.Tensor:
-        """
-        Returns reward of a given strategy in given environment agent position.
+        """Returns reward of a given strategy in given environment agent position.
         """
 
         if not self._strategy_to_player:
@@ -110,9 +106,8 @@ class Environment(ABC):
         that is not excluded.
 
         args:
-            exclude:
-                A set of player positions to exclude.
-                Used e.g. to generate action profile of all but currently learning player.
+            exclude: A set of player positions to exclude. Used e.g. to generate
+            action profile of all but currently learning player.
 
         yields:
             tuple(player_position, action) for each relevant bidder
@@ -125,8 +120,8 @@ class Environment(ABC):
             yield (agent.player_position, agent.get_action())
 
     def prepare_iteration(self):
-        """Prepares the interim-stage of a Bayesian game,
-            (e.g. in an Auction, draw bidders' valuations)
+        """Prepares the interim-stage of a Bayesian game, (e.g. in an Auction,
+        draw bidders' valuations)
         """
         pass #pylint: disable=unnecessary-pass
 
@@ -136,12 +131,13 @@ class Environment(ABC):
 
 
 class MatrixGameEnvironment(Environment):
-    """ An environment for matrix games.
+    """An environment for matrix games.
 
-        Important features of matrix games for implementation:
-        - not necessarily symmetric, i.e. each player has a fixed position
-        - agents strategies do not take any input, the actions only depend
-           on the game itself (no Bayesian Game)
+    Important features of matrix games for implementation:
+
+    * not necessarily symmetric, i.e. each player has a fixed position
+    * agents strategies do not take any input, the actions only depend
+      on the game itself (no Bayesian Game)
     """
 
     def __init__(self,
@@ -234,9 +230,8 @@ class AuctionEnvironment(Environment):
         access to observations
 
         args:
-            exclude:
-                A set of player positions to exclude.
-                Used e.g. to generate action profile of all but currently learning player.
+            exclude: A set of player positions to exclude. Used e.g. to generate
+            action profile of all but currently learning player.
 
         yields:
             tuple(player_position, action) for each relevant bidder
@@ -435,7 +430,7 @@ class AuctionEnvironment(Environment):
             conditioned_player: int,
             conditioned_observation: torch.Tensor,
             inner_batch_size: int = None,
-            device: Device = None
+            device: str = None,
         ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Draws a conditional valuation / observation profile based on a (vector of)
         fixed observations for one player.

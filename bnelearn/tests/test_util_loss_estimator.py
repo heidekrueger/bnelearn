@@ -1,19 +1,26 @@
 r"""Testing correctness of util_loss estimator for a number of settings.
-        Estimates the potential benefit of deviating from the current energy, as:
-        
-        .. math:: 
-            util\_loss(v_i) = Max_(b_i)[ E_(b_(-i))[u(v_i,b_i,b_(-i))] ] \\
-            util\_loss_max = Max_(v_i)[ util\_loss(v_i) ] \\
-            util\_loss_expected = E_(v_i)[ util\_loss(v_i) ]
+Estimates the potential benefit of deviating from the current energy, as:
 
-        Input:
-            agent: 1
-            bid_profile: :math:`(batch\_size * n\_player * n\_items)`
-            bid_i: :math:`(bid\_size * n\_items)`
-        Output:
-            util_loss_max
-            util_loss_expected
-    bid_i always used as val_i and only using truthful bidding
+.. math:: 
+
+    util\_loss(v_i) = Max_{b_i}[ E_{b_{-i}}[u(v_i,b_i,b_{-i})] ]
+        
+.. math:: 
+
+    util\_loss\_max = Max_{v_i}[ util\_loss(v_i) ]
+
+.. math:: 
+    
+    util\_loss\_expected = E_{v_i}[ util\_loss(v_i) ]
+
+:param agent: 1
+:param bid_profile: :math:`(batch\_size * n\_player * n\_items)`
+:param bid_i: :math:`(bid\_size * n\_items)`
+
+:return: util_loss_max
+:return: util_loss_expected
+
+bid_i always used as val_i and only using truthful bidding
 """
 
 import pytest

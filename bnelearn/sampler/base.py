@@ -233,7 +233,7 @@ class FlushedWrappedSampler(ValuationObservationSampler):
             flush_obs_dims (int): the number of observation dims to be flushed (from the right)
         """
 
-        # pylint: diable = super-init-not-called (This is by design.)
+        # pylint: disable = super-init-not-called (This is by design.)
 
         self._base_sampler = base_sampler
         self._flush_val_dims = flush_val_dims

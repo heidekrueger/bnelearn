@@ -12,8 +12,7 @@ ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even a batch_size of 1 leads to OOM
 
 def batched_index_select(input: torch.Tensor, dim: int,
                          index: torch.Tensor) -> torch.Tensor:
-    """
-    Extends the torch ´index_select´ function to be used for multiple batches
+    """Extends the torch ``index_select`` function to be used for multiple batches
     at once.
 
     This code is borrowed from https://discuss.pytorch.org/t/batched-index-select/9115/11.
@@ -22,12 +21,12 @@ def batched_index_select(input: torch.Tensor, dim: int,
         dashesy
 
     args:
-        input: Tensor which is to be indexed
-        dim: Dimension
-        index: Index tensor which proviedes the seleting and ordering.
+        input :torch.Tensor: Tensor which is to be indexed
+        dim :int: Dimension
+        index: :torch.Tensor: Index tensor which provides the selecting and ordering.
 
     returns:
-        Indexed tensor
+        Indexed tensor :torch.Tensor:
     """
     for ii in range(1, len(input.shape)):
         if ii != dim:
@@ -39,15 +38,16 @@ def batched_index_select(input: torch.Tensor, dim: int,
 
     return torch.gather(input, dim, index)
 
+
 def apply_with_dynamic_mini_batching(
         function: callable,
         args: torch.Tensor,
-        mute: bool=False
+        mute: bool=False,
     ) -> List[torch.Tensor]:
     """Apply the function `function` batch wise to the tensor argument `args`
     with error handling for CUDA Out-Of-Memory problems. Starting with the full
     batch, this method will cut the batch size in half until the operation
-    suceeds (or a non-CUDA-OOM error occurs).
+    succeeds (or a non-CUDA-OOM error occurs).
 
     NOTE: The automatic error handling applies to CUDA memory limits only. This
     function does not provide any benefits when processing on CPU with regular
@@ -56,7 +56,7 @@ def apply_with_dynamic_mini_batching(
     Args:
         function :callable: function to be evaluated.
         args :torch.Tensor: pytorch.tensor arguments passed to function.
-        mute: bool, mute stdout.
+        mute :bool: Suppress console output.
 
     Returns:
         function evaluated at args.

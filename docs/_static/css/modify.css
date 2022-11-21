@@ -1,0 +1,144 @@
+/* CSS based on https://github.com/openai/spinningup/blob/master/docs/_static/css/modify.css */
+:root {
+    /* TUM Colors */
+    --color--orange: #E37222;
+    --color--lightgreen: #A2AD00;
+    --color--lightblue: #98C6EA;
+    --color--darkblue: #0065BD;
+    --color--navyblue: #003359;
+    --color--white: #fff;
+    --color--graylightlight: #efeff6;
+    --color--graylight: #c5c5d2;
+    --color--graydark: #5d5d67;
+    --color--gray1: #cbcbd6;
+    --color--gray2: #8b8d9e;
+    --color--gray3: #6a6a7b;
+    --color--gray4: #3f3c4e;
+}
+
+body {
+  color: var(--color--darkgray) !important;
+  fill: var(--color--darkgray) !important;
+}
+
+h1, h2, .rst-content .toctree-wrapper p.caption, h3, h4, h5, h6, legend {
+  font-family: "Lato","proxima-nova","Helvetica Neue",Arial,sans-serif !important;
+}
+
+.wy-nav-top {
+  background-color: var(--color--gray4) !important;
+}
+
+.rst-content .toc-backref {
+    color: #404040 !important;
+}
+
+.footnote {
+  padding-left: 0.75rem;
+  background-color: var(--color--graylight) !important;
+}
+
+.wy-nav-top a, .wy-nav-top a:visited {
+ color: var(--color--white) !important;
+}
+
+.wy-menu-vertical header, .wy-menu-vertical p.caption {
+  font-weight: 500 !important;
+  letter-spacing: 1px;
+  margin-top: 1.25rem;
+}
+
+.wy-side-nav-search {
+  background-color: var(--color--gray1) !important;
+}
+
+.wy-body-for-nav {
+  background-color: var(--color--gray1) !important;
+}
+
+.wy-menu-vertical li span.toctree-expand {
+  color:  var(--color--gray2) !important;
+}
+
+.wy-nav-side {
+  color: var(--color--gray1) !important;
+  background-color: var(--color--gray4) !important;
+}
+
+.wy-side-nav-search input[type=text] {
+  border-color: var(--color--graydark) !important;
+}
+
+a {
+  color: var(--color--darkblue) !important;
+}
+
+a:visited {
+  color: #9b68b0 !important;
+}
+
+.wy-menu-vertical a {
+  color: var(--color--gray2) !important;
+}
+
+.wy-menu-vertical li.current a {
+  border-right: none !important;
+  color: var(--color--gray4) !important;
+}
+
+.wy-menu-vertical li.current {
+  background-color: var(--color--gray1) !important;
+}
+
+.wy-menu-vertical li.toctree-l2.current>a {
+  background-color: var(--color--gray1) !important;
+}
+
+.wy-menu-vertical a:hover, .wy-menu-vertical li.current a:hover, .wy-menu-vertical li.toctree-l2.current>a:hover {
+  color: var(--color--gray1) !important;
+  background-color: var(--color--gray3) !important;
+}
+
+.wy-alert-title, .rst-content .admonition-title {
+  background-color: var(--color--navyblue) !important;
+}
+
+.wy-alert, .rst-content .note, .rst-content .attention, .rst-content .caution, .rst-content .danger, .rst-content .error, .rst-content .hint, .rst-content .important, .rst-content .tip, .rst-content .warning, .rst-content .seealso, .rst-content .admonition-todo, .rst-content .admonition {
+  background-color: var(--color--graylight) !important;
+}
+
+.rst-content dl:not(.docutils) dt {
+  border-color: var(--color--navyblue) !important;
+  background-color: var(--color--graylightlight) !important;
+}
+
+.wy-table-odd td, .wy-table-striped tr:nth-child(2n-1) td, .rst-content table.docutils:not(.field-list) tr:nth-child(2n-1) td {
+  background-color: var(--color--graylight) !important;
+}
+
+@media screen and (min-width: 1100px) {
+  .wy-nav-content-wrap {
+      background-color: var(--color--graylight) !important;
+  }
+}
+
+.wy-side-nav-search img {
+  height: auto !important;
+  width: 100% !important;
+  padding: 0 !important;
+  background-color: inherit !important;
+  border-radius: 0 !important;
+  margin: 0 !important
+}
+
+.wy-side-nav-search>a, .wy-side-nav-search .wy-dropdown>a {
+  margin-bottom: 0 !important;
+}
+
+.wy-menu-vertical li.toctree-l1.current>a {
+  border: none !important;
+}
+
+.wy-side-nav-search>div.version {
+ color: var(--color--gray2) !important;
+}

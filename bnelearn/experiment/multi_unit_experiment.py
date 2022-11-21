@@ -1,5 +1,5 @@
-"""In this file multi-unit experiments ´MultiUnitExperiment´ are defined and
-their analytical BNEs (if known) are assigned. Also, the ´SplitAwardExperiment´
+"""In this file multi-unit experiments ``MultiUnitExperiment`` are defined and
+their analytical BNEs (if known) are assigned. Also, the ``SplitAwardExperiment``
 is implemented as well, as it shares most its properties.
 """
 
@@ -86,7 +86,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
         self.u_lo = self.config.setting.u_lo
         self.u_hi = self.config.setting.u_hi
 
-        # Transfrom bounds to list in case of symmetry
+        # Transform bounds to list in case of symmetry
         if len(self.config.setting.u_lo) == 1:
             self.u_lo *= self.n_players
         if len(self.config.setting.u_hi) == 1:

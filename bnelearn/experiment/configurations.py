@@ -63,9 +63,10 @@ class SettingConfig:
     core_solver: str = None
     # parallel: int = 1 in hardware config now
 
-    # CA with Item-Bidding
-    exp_type: str = None
-    exp_params: dict = None
+    # Contests
+    tullock_impact_factor: float = None
+    impact_function: str = None
+    crowdsourcing_values: List = None
 
 
 @dataclass
@@ -82,6 +83,9 @@ class LearningConfig:
     batch_size: int
     redraw_every_iteration: bool
     hidden_activations: List[nn.Module] = None
+    value_contest: bool = True
+
+
 
 @dataclass
 class LoggingConfig:
@@ -89,10 +93,14 @@ class LoggingConfig:
 
     If logging is enabled, the experiment runs will be logged to the following
     directories:
+
+    .. code-block:: bash
+
         log_root_dir /
             [setting-specific dir hierarchy determined by Experiment subclasses] /
                 experiment_timestamp + experiment_name /
                     run_timestamp + run_seed
+
     """
 
     enable_logging: bool  # If false, disables ALL logging
