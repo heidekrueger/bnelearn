@@ -7,14 +7,14 @@ from bnelearn.util.metrics import norm_strategies
 
 def get_distance_of_learned_strategies(experiment: Experiment, this_run_only=False, plot=True):
     """
-    Calulate and return sitances between all saved models in experiment path
+    Calculate and return distances between all saved models in experiment path
 
     TODO Nils: only supports symmetric bidders
 
     Args
     ----
         experiment: Experiment, for which we want to compare the saved models.
-        this_run_only: bool, wheather to campare all models or just the ones from this run.
+        this_run_only: bool, whether to compare all models or just the ones from this run.
         plot: bool, save heatmap to disk.
     Returns
     -------

@@ -9,6 +9,9 @@ from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.learner import ESPGLearner, PGLearner, PSOLearner, AESPGLearner
 from bnelearn.sampler import UniformSymmetricIPVSampler
+from bnelearn.util.seeding import set_global_seeds
+
+set_global_seeds()
 
 # Shared objects
 cuda = torch.cuda.is_available()
@@ -23,6 +26,7 @@ u_hi = 10.0
 def strat_to_bidder(strategy, batch_size, player_position=0):
     """creates a bidder from a strategy"""
     return Bidder(strategy, player_position, batch_size)
+
 mechanism_auction = StaticMechanism(cuda=cuda)
 mechanism_function = StaticFunctionMechanism(cuda=cuda)
 
@@ -212,8 +216,11 @@ def test_AESPG_learner_SGD():
         ).to(device)
 
     bidder = strat_to_bidder(model, BATCH_SIZE, 0)
+    sampler = UniformSymmetricIPVSampler(u_lo, u_hi, 1, 1, BATCH_SIZE, device)
+
     env = AuctionEnvironment(
         mechanism_auction, agents=[bidder],
+        valuation_observation_sampler=sampler,
         strategy_to_player_closure=strat_to_bidder,
         batch_size=BATCH_SIZE, n_players=1)
 
