@@ -9,9 +9,7 @@ from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.learner import ESPGLearner, PGLearner, PSOLearner, AESPGLearner
 from bnelearn.sampler import UniformSymmetricIPVSampler
-from bnelearn.util.seeding import set_seeds
 
-set_seeds()
 
 # Shared objects
 cuda = torch.cuda.is_available()

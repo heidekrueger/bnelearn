@@ -8,8 +8,6 @@ from abc import ABC, abstractmethod
 from typing import Callable, Set, Iterable, Tuple
 
 import torch
-from itertools import product
-import math
 
 from bnelearn.bidder import Bidder, MatrixGamePlayer, Player
 from bnelearn.mechanism import MatrixGame, Mechanism
@@ -443,85 +441,3 @@ class AuctionEnvironment(Environment):
             inner_batch_size, device
         )
         return cv, co
-
-    def get_welfare_max(self) -> torch.Tensor:
-        """Returns welfare-maximising allocation."""
-        n_players = self.n_players
-        n_bundles = self.agents[0].n_bundles
-        n_items = int(math.log(n_bundles + 1, 2))
-
-        if not hasattr(self, 'possible_allocations'):
-
-            # TODO Nils: alternative:
-            #   1) use itertools product to asign each item to a bidder
-            #   2) for each bidder, transform allocation to bundle allocation via transform
-
-            # collect all bundles
-            bundles = []
-            for r in range(n_items):
-                for c in torch.combinations(torch.arange(n_items), r+1).tolist():
-                    bundles.append(c)
-            item_prod = torch.tensor(list(product(list(range(n_players)), repeat=n_items)))
-
-            # allocate to highest valuation
-            def get_bundle_idx(player_allo):
-                """Based on a boolean tensor of length n_items returns the idx
-                of correspunding bundle.
-                """
-                won_items = torch.arange(n_items)[player_allo].tolist()
-                bundle_idx = bundles.index(won_items)
-                return bundle_idx
-
-            def get_allo(item_allo):
-                """Based on an item allocations returns the correspunding
-                bundle allocations.
-                """
-                a = torch.zeros((n_players, 2**n_items - 1), dtype=int)
-                for player_position in range(n_players):
-                    player_allo = item_allo == player_position
-                    if player_allo.any():
-                        bundle_idx = get_bundle_idx(player_allo)
-                        a[player_position, bundle_idx] = 1
-                return a
-
-            self.possible_allocations = torch.zeros(
-                (n_players**n_items, n_players, n_bundles),
-                dtype=int, device=self.mechanism.device
-            )
-            for i, p in enumerate(item_prod):
-                self.possible_allocations[i, :, :] = get_allo(p)
-
-        # brute force: all combinations for each batch
-        allocations = self.possible_allocations \
-            .repeat(self.batch_size, 1, 1, 1) \
-            .view(self.batch_size, n_players**n_items, n_players, n_bundles)
-            # shape (batch_size, possible_combinations, n_players, n_bundles)
-
-        # calculate welfare
-        welfares = torch.zeros_like(allocations[:, :, :, 0], dtype=torch.float32)
-        for i, agent in enumerate(self.agents):
-            agent_valuations = self._valuations[:, i, :] \
-                .repeat(1, 1, n_players**n_items) \
-                .view(self.batch_size, n_players**n_items, n_bundles)
-            welfares[:, :, i] = agent.get_welfare(
-                allocations[:, :, i, :],
-                agent_valuations
-            )
-        max_welfares, _ = welfares.sum(axis=2).max(axis=1)
-
-        return max_welfares
-
-    def get_PoA(self, allocations):
-        """Returns (Bayesian) Price of Anarchy."""
-        max_welfares = self.get_welfare_max().mean()
-
-        actual_welfares = torch.zeros(
-            self.batch_size, self.n_players,
-            device=allocations.device
-        )
-        for i, a in enumerate(self.agents):
-            actual_welfares[:, i] = \
-                a.get_welfare(allocations[:, i, :], self._valuations[:, i, :])
-        actual_welfares = actual_welfares.sum(axis=1).mean()
-
-        return torch.div(max_welfares, actual_welfares)

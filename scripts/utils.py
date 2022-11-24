@@ -1,4 +1,5 @@
-"""utilities for run scripts"""
+"""Some helper functions for collecting and summarizing logging data.
+"""
 import os, sys
 import re
 import torch
@@ -19,24 +20,6 @@ from bnelearn.strategy import NeuralNetStrategy
 from bnelearn.experiment.configuration_manager import ConfigurationManager
 from bnelearn.util import logging
 from bnelearn.util.metrics import ALIASES_LATEX
-
-#pylint: disable=anomalous-backslash-in-string
-# TODO replace by: from bnelearn.util.metrics import ALIASES_LATEX as ALIASES
-ALIASES = {
-    'eval_vs_bne/L_2':           '$L_2$',
-    'eval_vs_bne/L_inf':         '$L_\infty$',
-    'eval/epsilon_absolute':     '$\epsilon_\text{abs}$',
-    'eval_vs_bne/epsilon_relative':     '$\mathcal{L}$',
-    'eval/overhead_hours':       '$T$',
-    'eval/update_norm':          '$|\Delta \theta|$',
-    'market/utilities':          '$\tilde u$',
-    'eval/utility_vs_bne':       '$\hat u(\beta_i, \beta^*_{-i})$',
-    'eval/util_loss_ex_ante':    '$\hat \ell$',
-    'eval/util_loss_ex_interim': '$\hat \epsilon$',
-    'eval/estimated_relative_ex_ante_util_loss': '$\hat{\mathcal{L}}$',
-    'eval/efficiency':           '$efficiency \mathcal{E}$',
-    'eval/revenue':              '$revenue \mathcal{R}$'
-}
 
 SETTING_ALIASES = {
     'correlation_types':         'Corr type',
@@ -127,8 +110,8 @@ def multiple_exps_logs_to_df(
         aggregate_df['Auction game'][-1] = exp_name
 
     aggregate_df.columns = aggregate_df.columns.map(
-        lambda m: (ALIASES | SETTING_ALIASES)[m]
-            if m in (ALIASES | SETTING_ALIASES).keys() else m)
+        lambda m: (ALIASES_LATEX | SETTING_ALIASES)[m]
+            if m in (ALIASES_LATEX | SETTING_ALIASES).keys() else m)
 
     # write to file
     if save:
@@ -197,7 +180,7 @@ def single_asym_exp_logs_to_df(
         bidder_names = df.index
     df.insert(0, 'bidder', bidder_names)
 
-    aliases = ALIASES.copy()
+    aliases = ALIASES_LATEX.copy()
     for m in metrics:
         if m[-5:-1] == '_bne':
             aliases[m] = aliases[m[:-5]][:-1] + '^\text{BNE{'+str(m[-1])+'}}$'
@@ -292,7 +275,7 @@ def csv_to_boxplot(
     plt.ylim([-0.0015, 0.0015])
     plt.ticklabel_format(axis="y", style="sci", scilimits=(0,0))
     plt.xlabel('correlation $\gamma$')
-    plt.ylabel('loss ' + ALIASES[metric])
+    plt.ylabel('loss ' + ALIASES_LATEX[metric])
     # plt.grid()
     plt.tight_layout()
     plt.savefig('experiments/' + name)
@@ -457,7 +440,7 @@ def create_full_results_from_tb(path: str):
 
 if __name__ == '__main__':
 
-    experiments_dir = '/home/kohring/bnelearn/experiments/asymmetric-final-submission2'
+    experiments_dir = '~/bnelearn/experiments/asymmetric'
 
     # # Preprocess for single item uniform
     # single_item_postfix = '/single_item/first_price/uniform/asymmetric/risk_neutral/2p/'
@@ -500,7 +483,7 @@ if __name__ == '__main__':
     # 2k
     # path = f'{experiments_dir}/new-beta-run-2k/single_item/first_price/non-common/1.0risk/2players/2022-09-12 Mon 09.40/aggregate_log.csv'
     # old
-    # path = '/home/kohring/bnelearn/experiments/asymmetric-final-submission2/single_item/first_price/non-common/1.0risk/2players/2022-01-14 Fri 14.10/aggregate_log.csv'
+    # path = '~/bnelearn/experiments/asymmetric-final-submission2/single_item/first_price/non-common/1.0risk/2players/2022-01-14 Fri 14.10/aggregate_log.csv'
     # 10k
     # path = 'experiments/asymmetric-final-submission2/new-beta-run-10k/single_item/first_price/non-common/1.0risk/2players/2022-09-12 Mon 11.50/aggregate_log.csv'
     # df = single_asym_exp_logs_to_df(
@@ -563,9 +546,9 @@ if __name__ == '__main__':
     #           caption='Results of NPGA after 5{,}000 (1{,}000) iterations in the LLLLGG first-price (nearest-vcg) auction. Results are averages over 10 (2) replications and the standard deviation displayed in brackets.',)
 
     # Default params plot for main paper
-    # # path = '/home/kohring/bnelearn/experiments/asymmetric/llllgg_plot/LLLLGG/first_price/6p/2022-01-19 Wed 14.14/'
+    # # path = '~/bnelearn/experiments/asymmetric/llllgg_plot/LLLLGG/first_price/6p/2022-01-19 Wed 14.14/'
     # # df = create_full_results_from_tb(path)
-    # path = '/home/kohring/bnelearn/experiments/asymmetric/llllgg_plot/LLLLGG/first_price/6p'
+    # path = '~/bnelearn/experiments/asymmetric/llllgg_plot/LLLLGG/first_price/6p'
     # multi_run_plot(path, varied_param="['learning']['learner_hyperparams']['population_size']",
     #                title='bidder type', labels='agent_names_only',
     #                name=f'{experiments_dir}/llllgg_util(loss)', std_or_minmax=False)

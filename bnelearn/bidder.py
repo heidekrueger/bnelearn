@@ -8,10 +8,8 @@ This module implements players / bidders / agents in games.
 from abc import ABC, abstractmethod
 import warnings
 import torch
-from math import log
 from bnelearn.strategy import (Strategy, MatrixGameStrategy,
                                FictitiousPlayStrategy, FictitiousNeuralPlayStrategy)
-from bnelearn.util.tensor_util import item2bundle
 
 class Player(ABC):
     """

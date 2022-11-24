@@ -142,8 +142,6 @@ class Experiment(ABC):
         else:
             self.logging.log_metrics['opt'] = False
 
-        self.using_bid_language = False
-
     @abstractmethod
     def _setup_mechanism(self):
         pass
@@ -731,9 +729,6 @@ class Experiment(ABC):
             print("\tcurrent est. ex-interim loss:" + str(
                 [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
 
-        if self.logging.log_metrics['PoA']:
-            self._cur_epoch_log_params['PoA'] = self._calculate_metrics_PoA()
-
         if self.logging.log_metrics['efficiency'] and (self.epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['efficiency'] = \
                 self.env.get_efficiency(self.env)
@@ -912,21 +907,6 @@ class Experiment(ABC):
                        labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
-
-    def _calculate_metrics_PoA(self):
-        """Calculate ratio of achieved welfare to maximal welfare by brute
-        force. Can be seen as a bound for the (Bayesian) Price of Anarchy.
-        """
-        # calculate actual allocations
-        env = self.env
-        bid_profile = torch.zeros(env.batch_size, env.n_players, env.agents[0].bid_size,
-                                  device=self.env.mechanism.device)
-        for pos, bid in self.env._generate_agent_actions():
-            bid_profile[:, pos, :] = bid
-        allocations, _ = self.env.mechanism.play(bid_profile)
-
-        # compare to welfare maximum
-        return self.env.get_PoA(allocations)
 
     def _log_experiment_params(self, global_step=None):
         """Logging of parameters after learning finished.

@@ -134,7 +134,7 @@ class MultiUnitDiscriminatoryAuction(MultiUnitAuction):
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
 
-        # only accept decreasing bids
+        # Note: We may only accept decreasing bids
         bids = self._remove_invalid_bids(bids)
 
         # Alternative w/o loops
@@ -185,7 +185,7 @@ class MultiUnitUniformPriceAuction(MultiUnitAuction):
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
 
-        # only accept decreasing bids
+        # Note: We may only accept decreasing bids
         # bids = self._remove_invalid_bids(bids)
 
         # allocate return variables (flat at this stage)
@@ -244,7 +244,7 @@ class MultiUnitVickreyAuction(MultiUnitAuction):
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
 
-        # only accept decreasing bids
+        # Note: We may only accept decreasing bids
         bids = self._remove_invalid_bids(bids)
 
         # allocate return variables

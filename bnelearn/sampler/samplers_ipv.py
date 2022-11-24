@@ -8,13 +8,12 @@ e.g. when drawing samples from conditional distributions.
 
 from typing import List, Tuple
 from math import ceil, log
-from functools import reduce
 
 import torch
 from torch.cuda import _device_t as Device
 from torch.distributions import Distribution
-from .base import PVSampler, IPVSampler
-from bnelearn.util.tensor_util import item2bundle
+from .base import IPVSampler
+
 
 class FixedManualIPVSampler(IPVSampler):
     """For testing purposes:
@@ -249,7 +248,7 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
                                 dtype=torch.float, device = None,
                                 support_bounds: torch.Tensor = None, return_mesh: bool=False) -> torch.Tensor:
         if return_mesh:
-            raise NotImplementedError('Cell partition not implmented for multi-unit auctions (b/c not rectangular).')
+            raise NotImplementedError('Cell partition not implemented for multi-unit auctions (b/c not rectangular).')
         
         rectangular_grid = super().generate_valuation_grid(
             player_position, minimum_number_of_points, dtype, device, support_bounds)
@@ -259,7 +258,7 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
 
     def generate_cell_partition(self, player_position: int, grid_size: int,
                                 dtype=torch.float, device=None):
-        raise NotImplementedError('Cell partition not implmented for multi-unit auctions (b/c not rectangular).')
+        raise NotImplementedError('Cell partition not implemented for multi-unit auctions (b/c not rectangular).')
 
 class SplitAwardValuationObservationSampler(UniformSymmetricIPVSampler):
     """Sampler for Split-Award, private value settings. Here bidders have two

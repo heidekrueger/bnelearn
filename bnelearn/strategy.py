@@ -425,7 +425,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iters, eta_min=1e-5)
         for _ in tqdm(range(iters)):
             self.zero_grad()
-            diff = (self.pretrain_forward(input_tensor) - desired_output)
+            diff = (self.forward(input_tensor) - desired_output)
             loss = (diff * diff).mean()
             loss.backward()
             optimizer.step()
@@ -439,15 +439,6 @@ class NeuralNetStrategy(Strategy, nn.Module):
     def forward(self, x):
         for layer in self.layers.values():
             x = layer(x)
-
-        return x  # .clip_(torch.zeros_like(x), x)
-
-    def pretrain_forward(self, x):
-        """This is the forward without the final layer (which is the relu activation).
-        This is used to avoid the dead-relu problem during pretraining."""
-        for k, layer in enumerate(self.layers.values()):
-            if k + 1 < len(self.layers.values()):
-                x = layer(x)
 
         return x
 

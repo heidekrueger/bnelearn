@@ -3,8 +3,7 @@
 import pytest
 import torch
 
-from bnelearn.mechanism import (VickreyAuction,
-                                MultiUnitDiscriminatoryAuction,
+from bnelearn.mechanism import (MultiUnitDiscriminatoryAuction,
                                 MultiUnitUniformPriceAuction,
                                 MultiUnitVickreyAuction)
 

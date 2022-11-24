@@ -102,8 +102,8 @@ def apply_with_dynamic_mini_batching(
                 print("\t ... success!")
 
         except RuntimeError as e:
-            # if not str(e).startswith(_CUDA_OOM_ERR_MSG_START):
-            #     raise e
+            if not str(e).startswith(_CUDA_OOM_ERR_MSG_START):
+                raise e
             if mini_batch_size <= 1:
                 traceback.print_exc()
                 # pylint: disable = raise-missing-from
@@ -114,23 +114,3 @@ def apply_with_dynamic_mini_batching(
             mini_batch_size = int(mini_batch_size / 2)
 
     return output
-
-def item2bundle(n_items: int) -> torch.Tensor:
-    """
-    Returns a tensor of shape (n_bundles, n_bundles) that can be used to
-    multiply a tensor that only contains values for the n_items into a format that
-    translates it to the bundles of items.
-    """
-    n_bundles = (2**n_items) - 1
-    transformation = torch.zeros((n_bundles, n_bundles))
-    for idx, b in enumerate(range(1, n_bundles + 1)):
-        i = [0] * n_items
-        j = 0
-        while b > 0:
-            i[j] = b % 2
-            b = int(b / 2)
-            j += 1
-        transformation[torch.arange(n_items), idx] = torch.tensor(
-            i, dtype=transformation.dtype
-        )
-    return transformation
