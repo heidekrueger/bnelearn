@@ -417,7 +417,7 @@ class TwoPlayerAsymmetricUniformPriorSingleItemExperiment(SingleItemExperiment):
             )
 
             bne_utilities_sampled[i] = torch.tensor(
-                [self.bne_env[i].get_reward(a) for a in self.bne_env[i].agents])
+                [self.bne_env[i].get_reward(a, redraw_valuations=True) for a in self.bne_env[i].agents])
 
             print(('Utilities in BNE{} (sampled):' + '\t{:.5f}' * self.n_players + '.') \
                 .format(i + 1,*bne_utilities_sampled[i]))

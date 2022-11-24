@@ -249,11 +249,6 @@ class CombinatorialBidder(Bidder):
             self.input_length = self.valuation_size
             self.output_length = self.bid_size
 
-    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
-        """For reverse bidders, returns are inverted.
-        """
-        return - super().get_counterfactual_utility(allocations, payments, counterfactual_valuations)
-
     def get_welfare(self, allocations, valuations: torch.Tensor=None) -> torch.Tensor:
         assert allocations.dim() >= 2  # *batch_sizes x items
         if valuations is None:

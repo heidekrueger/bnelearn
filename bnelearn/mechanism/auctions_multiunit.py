@@ -49,7 +49,7 @@ class MultiUnitAuction(Mechanism):
     def _solve_allocation_problem(
             bids: torch.Tensor,
             random_tie_break: bool = False,
-            accept_zero_bids: bool = True,
+            accept_zero_bids: bool = True,  # For the experiments in the Nature MI paper this was set to `False`
         ) -> torch.Tensor:
         """For bids (batch x player x item) in descending order for each batch/
         player, returns efficient allocation (0/1, batch x player x item).

@@ -359,7 +359,8 @@ class NeuralNetStrategy(Strategy, nn.Module):
 
         model_dict = torch.load(path, map_location=device)
 
-        # TODO: Dangerous hack for reloading a startegy from disk/pickle
+        # TODO: Dangerous hack for reloading a strategy from disk/pickle
+        # Parameters are hard-coded - might break by future changes
         params = {}
         params["hidden_nodes"] = []
         params["hidden_activations"] = []
