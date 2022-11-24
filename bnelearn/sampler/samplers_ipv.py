@@ -7,12 +7,13 @@ e.g. when drawing samples from conditional distributions.
 """
 
 from typing import List, Tuple
-from math import ceil
+from math import ceil, log
 
 import torch
 from torch.cuda import _device_t as Device
 from torch.distributions import Distribution
 from .base import IPVSampler
+
 
 class FixedManualIPVSampler(IPVSampler):
     """For testing purposes:
@@ -157,6 +158,23 @@ class GaussianSymmetricIPVSampler(SymmetricIPVSampler):
             .normal_(self.base_distribution.loc, self.base_distribution.scale) \
             .relu_()
 
+class BetaSymmetricIPVSampler(SymmetricIPVSampler):
+    """An IPV sampler with symmetric Beta priors."""
+    def __init__(self, alpha: float, beta: float,
+                 n_players: int, valuation_size: int,
+                 default_batch_size: int, default_device: Device = None):
+        distribution = torch.distributions.Beta(concentration1=alpha,
+                                                concentration0=beta)
+        super().__init__(distribution,
+                         n_players, valuation_size,
+                         default_batch_size, default_device)
+
+    def _sample(self, batch_sizes, device) -> torch.Tensor:
+        batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
+        # create empty tensor, sample in-place, clip
+        size = [self.n_players, self.valuation_size]
+        return self.base_distribution.expand(size) \
+            .rsample([*batch_sizes]).to(device)
 
 class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
     """Sampler for Multi-Unit, private value settings.
@@ -228,13 +246,19 @@ class MultiUnitValuationObservationSampler(UniformSymmetricIPVSampler):
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
                                 dtype=torch.float, device = None,
-                                support_bounds: torch.Tensor = None) -> torch.Tensor:
+                                support_bounds: torch.Tensor = None, return_mesh: bool=False) -> torch.Tensor:
+        if return_mesh:
+            raise NotImplementedError('Cell partition not implemented for multi-unit auctions (b/c not rectangular).')
+        
         rectangular_grid = super().generate_valuation_grid(
             player_position, minimum_number_of_points, dtype, device, support_bounds)
 
         # transform to triangular grid (valuations are marginally descending)
         return rectangular_grid.sort(dim=1, descending=True)[0].unique(dim=0)
 
+    def generate_cell_partition(self, player_position: int, grid_size: int,
+                                dtype=torch.float, device=None):
+        raise NotImplementedError('Cell partition not implemented for multi-unit auctions (b/c not rectangular).')
 
 class SplitAwardValuationObservationSampler(UniformSymmetricIPVSampler):
     """Sampler for Split-Award, private value settings. Here bidders have two
@@ -258,8 +282,8 @@ class SplitAwardValuationObservationSampler(UniformSymmetricIPVSampler):
         return sample
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
-                                dtype=torch.float, device=None,
-                                support_bounds: torch.Tensor = None) -> torch.Tensor:
+                                dtype=torch.float, device=None, support_bounds: torch.Tensor = None,
+                                return_mesh: bool=False) -> torch.Tensor:
         device = device or self.default_device
 
         if support_bounds is None:
@@ -277,6 +301,9 @@ class SplitAwardValuationObservationSampler(UniformSymmetricIPVSampler):
 
         grid = torch.stack((self.efficiency_parameter * line, line), dim=-1) \
             .view(-1, dims)
+
+        if return_mesh:
+            grid = [self.efficiency_parameter * line, line]
 
         return grid
 

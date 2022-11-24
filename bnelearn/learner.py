@@ -38,7 +38,8 @@ class GradientBasedLearner(Learner):
     def __init__(self,
                  model: torch.nn.Module, environment: Environment,
                  optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 strat_to_player_kwargs: dict = None):
+                 scheduler_type: Type[torch.optim.lr_scheduler._LRScheduler] = None,
+                 scheduler_hyperparams: dict = None, strat_to_player_kwargs: dict = None):
         self.model = model
         self.params = model.parameters
         self.n_parameters = sum([p.numel() for p in self.params()])
@@ -55,6 +56,13 @@ class GradientBasedLearner(Learner):
             raise ValueError('Optimizer hyperparams must be a dict (even if empty).')
         self.optimizer_hyperparams = optimizer_hyperparams
         self.optimizer: torch.optim.Optimizer = optimizer_type(self.params(), **self.optimizer_hyperparams)
+        
+        if scheduler_type is None:
+            self.scheduler = None
+        else:
+            self.scheduler_hyperparams = scheduler_hyperparams
+            self.scheduler: torch.optim.lr_scheduler._LRScheduler = \
+                scheduler_type(self.optimizer, **self.scheduler_hyperparams)
 
     @abstractmethod
     def _set_gradients(self):
@@ -75,7 +83,11 @@ class GradientBasedLearner(Learner):
         """
         self.optimizer.zero_grad()
         self._set_gradients()
-        return self.optimizer.step(closure=closure)
+        step = self.optimizer.step(closure=closure)
+        if self.scheduler is not None:
+            reward = self.environment.get_strategy_reward(self.model, **self.strat_to_player_kwargs).detach()
+            self.scheduler.step(reward)
+        return step
 
     def update_strategy_and_evaluate_utility(self, closure = None):
         """updates model and returns utility after the update."""
@@ -127,7 +139,7 @@ class ESPGLearner(GradientBasedLearner):
                     Defaults to 'current_reward' if normalize_gradients is False, or
                     to 'mean_reward' if normalize_gradients is True.
                 regularization: dict of
-                    inital_strength: float, initial penalization factor of bid value
+                    initial_strength: float, initial penalization factor of bid value
                     regularize_decay: float, decay rate by which the regularization factor
                         is multiplied each iteration.
                 symmetric_sampling: bool
@@ -142,10 +154,12 @@ class ESPGLearner(GradientBasedLearner):
     def __init__(self,
                  model: torch.nn.Module, environment: Environment, hyperparams: dict,
                  optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 strat_to_player_kwargs: dict = None):
+                 scheduler_type: Type[torch.optim.lr_scheduler._LRScheduler] = None,
+                 scheduler_hyperparams: dict = None, strat_to_player_kwargs: dict = None):
         # Create and validate optimizer
         super().__init__(model, environment,
                          optimizer_type, optimizer_hyperparams,
+                         scheduler_type, scheduler_hyperparams,
                          strat_to_player_kwargs)
 
         # Validate ES hyperparams
@@ -179,7 +193,7 @@ class ESPGLearner(GradientBasedLearner):
                     + 'one of "mean_reward", "current_reward"')
 
         if 'regularization' in hyperparams:
-            self.regularize = hyperparams['regularization']['inital_strength']
+            self.regularize = hyperparams['regularization']['initial_strength']
             self.regularize_decay = hyperparams['regularization']['regularize_decay']
         else:
             self.regularize = 0.0

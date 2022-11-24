@@ -76,13 +76,14 @@ class LearningConfig:
     learner_hyperparams: dict
     optimizer_type: str
     optimizer_hyperparams: dict
+    scheduler_type: str
+    scheduler_hyperparams: dict
     hidden_nodes: List[int]
     pretrain_iters: int
     batch_size: int
     redraw_every_iteration: bool
     hidden_activations: List[nn.Module] = None
     value_contest: bool = True
-
 
 
 

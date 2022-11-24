@@ -440,5 +440,4 @@ class AuctionEnvironment(Environment):
             conditioned_player, conditioned_observation,
             inner_batch_size, device
         )
-
         return cv, co

@@ -1,8 +1,8 @@
 """This module implements metrics that may be interesting."""
 
 from typing import Tuple
-
 import torch
+import matplotlib.pyplot as plt
 
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
@@ -16,6 +16,7 @@ MAPPING_METRICS_TAGS = {
     'efficiency':           'market/efficiency',
     'revenue':              'market/revenue',
     'update_norm':          'learner_info/update_norm',
+    'gradient_norm':        'learner_info/gradient_norm',
     'util_loss_ex_ante':    'eval/util_loss_ex_ante',
     'util_loss_ex_interim': 'eval/util_loss_ex_interim',
     'estimated_relative_ex_ante_util_loss': 'eval/estimated_relative_ex_ante_util_loss',
@@ -33,13 +34,13 @@ MAPPING_METRICS_TAGS = {
 # aliases of tf tags for plotting/publications
 #pylint: disable=anomalous-backslash-in-string
 ALIASES_LATEX = {
-    'market/efficiency':           '$\mathcal{E}$',
-    'market/revenue':              '$\mathcal{R}$',
-    'market/utilities':            '$u$',
+    'market/efficiency':           'efficiency $\mathcal{E}$',
+    'market/revenue':              'revenue $\mathcal{R}$',
+    'market/utilities':            'ex-ante utility $\\tilde{u}$',
 
     'eval/util_loss_ex_ante':    '$\hat \ell$',
     'eval/util_loss_ex_interim': '$\hat \epsilon$',
-    'eval/estimated_relative_ex_ante_util_loss': '$\hat{\mathcal{L}}$',
+    'eval/estimated_relative_ex_ante_util_loss': 'approximate relative utility loss $\hat{\mathcal{L}}$',
 
     'eval_vs_bne/L_2':                  '$L_2$',
     'eval_vs_bne/L_inf':                '$L_\infty$',
@@ -148,7 +149,6 @@ def _create_grid_bid_profiles(bidder_position: int, grid: torch.Tensor, bid_prof
 
     return bid_profile #bid_eval_size*batch, 1,n_items
 
-
 def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid_profile: torch.Tensor, bidder: Bidder,
                       grid: torch.Tensor, half_precision = False):
     r"""Estimates a bidder's ex post util_loss in the current bid_profile vs a potential grid,
@@ -218,7 +218,6 @@ def ex_post_util_loss(mechanism: Mechanism, bidder_valuations: torch.Tensor, bid
 
     return (best_response_utility - actual_utility).relu() # set 0 if actual bid is best (no difference in limit, but might be valuated if grid too sparse)
 
-
 def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                          agent_observations: torch.Tensor,
                          grid_size: int,
@@ -263,7 +262,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     """
 
     mechanism = env.mechanism
-    device = mechanism.device
+    device = agent_observations.device
     agent: Bidder = env.agents[player_position]
     # ensure we are not propagating any gradients (may cause memory leaks)
     agent_observations = agent_observations.detach().clone()

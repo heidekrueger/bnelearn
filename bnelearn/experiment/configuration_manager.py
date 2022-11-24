@@ -27,8 +27,8 @@ from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSi
                                                         UniformSymmetricPriorSingleItemExperiment,
                                                         MineralRightsExperiment,
                                                         AffiliatedObservationsExperiment,
-                                                        ContestExperiment
-                                                        )
+                                                        TwoPlayerAsymmetricBetaPriorSingleItemExperiment,
+                                                        ContestExperiment)
 
 # TODO: server-specific constant hardcoded. We need a more dynamic way to do this.
 # See gitlab issue #218
@@ -167,6 +167,11 @@ class ConfigurationManager:
         self.setting.u_lo = [0, .6]
         self.setting.u_hi = [.5, .7]
 
+    def _init_single_item_asymmetric_beta(self):
+        self.learning.model_sharing = False
+        self.setting.u_lo = [0.8, 1.2]
+        self.setting.u_hi = [1.2, 0.8]
+
     def _init_mineral_rights(self):
         self.setting.n_players = 3
         self.setting.correlation_groups = [[0, 1, 2]]
@@ -289,6 +294,7 @@ class ConfigurationManager:
         # Learning
         assert len(self.learning.hidden_activations) == len(self.learning.hidden_nodes)
         self.learning.optimizer = ConfigurationManager._set_optimizer(self.learning.optimizer_type)
+        self.learning.scheduler = ConfigurationManager._set_scheduler(self.learning.scheduler_type)
 
         # Logging
         # Rationale behind timestamp format: should be ordered chronologically but include weekday.
@@ -340,6 +346,9 @@ class ConfigurationManager:
         pass
 
     def _post_init_single_item_asymmetric_uniform_disjunct(self):
+        pass
+
+    def _post_init_single_item_asymmetric_beta(self):
         pass
 
     def _post_init_mineral_rights(self):
@@ -405,6 +414,9 @@ class ConfigurationManager:
         'single_item_asymmetric_uniform_disjunct':
             (TwoPlayerAsymmetricUniformPriorSingleItemExperiment, _init_single_item_asymmetric_uniform_disjunct,
              _post_init_single_item_asymmetric_uniform_disjunct),
+        'single_item_asymmetric_beta':
+            (TwoPlayerAsymmetricBetaPriorSingleItemExperiment, _init_single_item_asymmetric_beta,
+             _post_init_single_item_asymmetric_beta),
         'mineral_rights':
            (MineralRightsExperiment, _init_mineral_rights, _post_init_mineral_rights),
         'affiliated_observations':
@@ -420,7 +432,7 @@ class ConfigurationManager:
         'multiunit':
            (MultiUnitExperiment, _init_multiunit, _post_init_multiunit),
         'splitaward':
-           (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
+            (SplitAwardExperiment, _init_splitaward, _post_init_splitaward),
         'tullock_contest':
             (ContestExperiment, _init_tullock, _post_init_tullock),
         'all_pay_uniform_symmetric':
@@ -447,10 +459,11 @@ class ConfigurationManager:
 
     # pylint: disable=too-many-arguments, unused-argument
     def set_setting(self, n_players: int = 'None', payment_rule: str = 'None', risk: float = 'None',
-                    common_prior: torch.distributions.Distribution = 'None', valuation_mean: float = 'None',
-                    valuation_std: float = 'None', u_lo: list = 'None', u_hi: list = 'None', gamma: float = 'None',
+                    n_items: int = 'None', common_prior: torch.distributions.Distribution = 'None',
+                    valuation_mean: float = 'None', valuation_std: float = 'None', u_lo: list = 'None',
+                    u_hi: list = 'None', gamma: float = 'None',
                     correlation_types: str = 'None', correlation_groups: List[List[int]] = 'None',
-                    correlation_coefficients: List[float] = 'None', n_items: int = 'None',
+                    correlation_coefficients: List[float] = 'None',
                     pretrain_transform: callable = 'None', constant_marginal_values: bool = 'None',
                     item_interest_limit: int = 'None', efficiency_parameter: float = 'None',
                     core_solver: str = 'None', tullock_impact_factor: float = 'None', impact_function: str = 'None',
@@ -501,10 +514,11 @@ class ConfigurationManager:
     # pylint: disable=too-many-arguments, unused-argument
     def set_learning(self, model_sharing: bool = 'None', learner_type: str = 'None',
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
-                     optimizer_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
+                     optimizer_hyperparams: dict = 'None', scheduler_type: str = 'None',
+                     scheduler_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
                      pretrain_iters: int = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
-                     value_contest: bool = True):
+                     redraw_every_iteration: bool = 'None', value_contest: bool = True):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.learning, arg):
@@ -585,6 +599,8 @@ class ConfigurationManager:
                                  'scale_sigma_by_model_size': True},
             optimizer_type='adam',
             optimizer_hyperparams={'lr': 1e-3},
+            scheduler_type=None,
+            scheduler_hyperparams={},
             hidden_nodes=[10, 10],
             pretrain_iters=500,
             batch_size=2 ** 18,
@@ -755,5 +771,18 @@ class ConfigurationManager:
                 return torch.optim.SGD
             try:
                 return eval('torch.optim.' + optimizer)
-            except Exception as e:
-                raise ValueError(f'Optimizer type `{optimizer}` could not be inferred!') from e
+            except AttributeError as e:
+                raise AttributeError(f'Optimizer type `{optimizer}` could not be inferred!') \
+                    from e
+
+    @staticmethod
+    def _set_scheduler(scheduler: str) -> object:
+        """Set learning rate scheduler."""
+        if scheduler is None:
+            return None
+        if isinstance(scheduler, str):
+            try:
+                return eval('torch.optim.lr_scheduler.' + scheduler)
+            except AttributeError as e:
+                raise AttributeError(f'Learning rate scheduler type `{scheduler}` could not be inferred!') \
+                    from e

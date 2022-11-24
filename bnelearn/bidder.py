@@ -11,7 +11,6 @@ import torch
 from bnelearn.strategy import (Strategy, MatrixGameStrategy,
                                FictitiousPlayStrategy, FictitiousNeuralPlayStrategy)
 
-
 class Player(ABC):
     """
         A player in a game, determined by her
@@ -34,6 +33,7 @@ class Player(ABC):
     def get_utility(self, *args, **kwargs):
         """Calculates player's utility based on outcome of a game."""
 
+
 class MatrixGamePlayer(Player):
     """ A player playing a matrix game"""
     def __init__(self, strategy, player_position=None, batch_size=1, cuda=True):
@@ -54,6 +54,7 @@ class MatrixGamePlayer(Player):
             return self.strategy.play(self.player_position)
 
         raise ValueError("Invalid Strategy Type for Matrix game: {}".format(type(self.strategy)))
+
 
 class Bidder(Player):
     """A player in an auction game. Has a distribution over valuations/types
@@ -227,7 +228,6 @@ class ReverseBidder(Bidder):
         self.efficiency_parameter = efficiency_parameter
         super().__init__(**kwargs)
 
-
     def get_utility(self, allocations, payments, valuations = None):
         """For reverse bidders, returns are inverted.
         """
@@ -248,6 +248,11 @@ class CombinatorialBidder(Bidder):
         else:
             self.input_length = self.valuation_size
             self.output_length = self.bid_size
+
+    def get_counterfactual_utility(self, allocations, payments, counterfactual_valuations):
+        """For reverse bidders, returns are inverted.
+        """
+        return - super().get_counterfactual_utility(allocations, payments, counterfactual_valuations)
 
     def get_welfare(self, allocations, valuations: torch.Tensor=None) -> torch.Tensor:
         assert allocations.dim() >= 2  # *batch_sizes x items

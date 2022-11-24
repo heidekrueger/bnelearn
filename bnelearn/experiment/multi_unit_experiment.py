@@ -74,7 +74,6 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
     """
     Experiment class for the standard multi-unit auctions.
     """
-
     def __init__(self, config: ExperimentConfig):
         self.config = config
 
@@ -205,7 +204,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
         #     name += [self.config.setting.correlation_types, f"gamma_{self.gamma:.3}"]
         return os.path.join(*name)
 
-    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
+    def _plot(self, plot_data, writer: SummaryWriter or None,
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts=['o'],
               colors: list = None, figure_name: str = 'bid_function',
@@ -213,7 +212,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
         """Plotting of multi-unit experiment with possible 3D plot for two unit
         case.
         """
-        super()._plot(plot_data=plot_data, writer=writer, epoch=epoch,
+        super()._plot(plot_data=plot_data, writer=writer,
                       xlim=xlim, ylim=ylim, labels=labels, x_label=x_label,
                       y_label=y_label, fmts=fmts, figure_name=figure_name,
                       plot_points=plot_points)
@@ -223,7 +222,7 @@ class MultiUnitExperiment(_MultiUnitSetupEvalMixin, Experiment):
             # Discard BNEs as they're making 3d plots more complicated
             if self.known_bne and plot_data[0].shape[1] > len(self.models):
                 plot_data = [d[:, :len(self.models), :] for d in plot_data]
-            super()._plot_3d(plot_data=plot_data, writer=writer, epoch=epoch,
+            super()._plot_3d(plot_data=plot_data, writer=writer,
                              figure_name=figure_name, labels=labels)
 
     def _get_model_names(self):

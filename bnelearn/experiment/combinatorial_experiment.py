@@ -19,16 +19,19 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
 
-from bnelearn.mechanism import (
-    LLGAuction, LLGFullAuction, LLLLGGAuction, LLLLRRGAuction
-)
+from bnelearn.mechanism import (LLGAuction, LLGFullAuction, LLLLGGAuction,
+                                FirstPriceSealedBidAuction, VickreyAuction,
+                                LLLLRRGAuction)
 from bnelearn.bidder import Bidder, CombinatorialBidder
+
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.experiment.configurations import ExperimentConfig
+from bnelearn.experiment.equilibria import truthful_bid
 from bnelearn.experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
 
 import bnelearn.util.logging as logging_utils
+from bnelearn.sampler import LLGSampler, LLGFullSampler, LLLLGGSampler
 from bnelearn.sampler import LLGSampler, LLGFullSampler, LLLLGGSampler, LLLLRRGSampler
 
 # maps config correlation_types to LocalGlobalSampler correlation_method arguments
@@ -108,11 +111,11 @@ class LocalGlobalExperiment(Experiment, ABC):
         else:
             return super()._get_model_names()
 
-    def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
+    def _strat_to_bidder(self, strategy, batch_size, player_position=0,
+                         enable_action_caching=False):
         return Bidder(strategy, player_position=player_position, batch_size=batch_size,
                       valuation_size=self.valuation_size, observation_size=self.observation_size,
-                      bid_size=self.action_size,
-                      risk=self.risk, enable_action_caching=enable_action_caching)
+                      bid_size=self.action_size, risk=self.risk, enable_action_caching=False)
 
 
 class LLGExperiment(LocalGlobalExperiment):
@@ -233,8 +236,8 @@ class LLGExperiment(LocalGlobalExperiment):
         bne_env = AuctionEnvironment(
             mechanism=self.mechanism,
             agents=[self._strat_to_bidder(bne_strategies[i], player_position=i,
-                                         batch_size=self.config.logging.eval_batch_size,
-                                         enable_action_caching=self.config.logging.cache_eval_actions)
+                                          batch_size=self.config.logging.eval_batch_size,
+                                          enable_action_caching=self.config.logging.cache_eval_actions)
                     for i in range(self.n_players)],
             valuation_observation_sampler=self.sampler,
             n_players=self.n_players,
@@ -275,9 +278,9 @@ class LLGFullExperiment(LocalGlobalExperiment):
 
     Essentially, this is a general CA with 3 bidders and 2 items.
 
-    Each bidders bids on all bundles. Local bidder 1 has only a value for the
+    Each bidder bids on all bundles. Local bidder 1 has only a value for the
     first item, the second only for the second and global only on both. This
-    experiment is therfore more general than the `LLGExperiment` and includes
+    experiment is therefore more general than the `LLGExperiment` and includes
     the specifc payment rule from Beck & Ott, where the 2nd local bidder is
     favored (pays VCG prices).
     """
@@ -287,7 +290,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
             "Incorrect number of players specified."
 
         self.gamma = self.correlation = float(config.setting.gamma)
-        if config.setting.correlation_types != 'independent' or \
+        if config.setting.correlation_types not in ['independent', None] or \
             self.gamma > 0.0:
             # Should be similar to reduced LLG setting, but we have to consider
             # asymmetry of local bidders.
@@ -462,6 +465,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
             batch_size=batch_size,
             valuation_size=self.valuation_size,
             observation_size=self.observation_size,
+            bid_size=3,
             risk=self.risk,
             enable_action_caching=enable_action_caching
         )
@@ -535,17 +539,14 @@ class LLLLGGExperiment(LocalGlobalExperiment):
         name = ['LLLLGG', self.payment_rule, str(self.n_players) + 'p']
         return os.path.join(*name)
 
-    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
-              fmts=['o'], **kwargs):
-        super()._plot(plot_data=plot_data, writer=writer, epoch=epoch,
-                      fmts=fmts, **kwargs)
-        super()._plot_3d(plot_data=plot_data, writer=writer, epoch=epoch,
+    def _plot(self, plot_data, writer: SummaryWriter or None, fmts=['o'], **kwargs):
+        super()._plot(plot_data=plot_data, writer=writer, fmts=fmts, **kwargs)
+        super()._plot_3d(plot_data=plot_data, writer=writer,
                          figure_name=kwargs['figure_name'])
 
 
 class LLLLRRGExperiment(Experiment):
     """Experiment in an extension of the Local-Global Model with three groups of bidders."""
-
 
     def __init__(self, config: ExperimentConfig):
         self.config = config
@@ -610,11 +611,10 @@ class LLLLRRGExperiment(Experiment):
         return os.path.join(*name)
 
     def _plot(self, plot_data, writer: SummaryWriter or None, epoch = None, fmts=['o'], **kwargs):
-        super()._plot(plot_data=plot_data, writer = writer, epoch=epoch, fmts=fmts, **kwargs)
+        super()._plot(plot_data=plot_data, writer = writer, fmts=fmts, **kwargs)
         # TODO: 3d plot for LLLLRRG broken because 2nd dim of global player is singular (always 0.0).
         #super()._plot_3d(plot_data = plot_data, writer = writer, epoch=epoch,
         #                 figure_name=kwargs['figure_name'])
-
 
     def _set_valuation_bounds(self):
         """Validates input for uniform valuation bounds and converts

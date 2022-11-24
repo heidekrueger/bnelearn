@@ -59,6 +59,7 @@ class Experiment(ABC):
     mechanism: Mechanism
     positive_output_point: torch.Tensor  # shape must be valid model input
     input_length: int
+    epoch: int
 
     ## Fields required for plotting
     plot_xmin: float
@@ -187,6 +188,8 @@ class Experiment(ABC):
                 hyperparams=self.learning.learner_hyperparams,
                 optimizer_type=self.learning.optimizer,
                 optimizer_hyperparams=self.learning.optimizer_hyperparams,
+                scheduler_type=self.learning.scheduler,
+                scheduler_hyperparams=self.learning.scheduler_hyperparams,
                 strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
             )
             for m_id, model in enumerate(self.models)]
@@ -220,7 +223,7 @@ class Experiment(ABC):
                 hidden_nodes=self.learning.hidden_nodes,
                 hidden_activations=self.learning.hidden_activations,
                 ensure_positive_output=self.positive_output_point,
-                output_length=self.action_size
+                output_length=self.action_size,
             ).to(self.hardware.device)
 
         self.bidders = [
@@ -269,6 +272,7 @@ class Experiment(ABC):
         self._setup_bidders()
         self._setup_learning_environment()
         self._setup_learners()
+        self.epoch = 0
 
         if self.logging.log_metrics['opt'] and hasattr(self, 'bne_env'):
 
@@ -373,7 +377,7 @@ class Experiment(ABC):
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
 
-    def _training_loop(self, epoch):
+    def _training_loop(self):
         """Actual training in each iteration."""
         # save current params to calculate update norm
         prev_params = [torch.nn.utils.parameters_to_vector(model.parameters())
@@ -397,12 +401,13 @@ class Experiment(ABC):
                 'prev_params': prev_params,
                 'time_per_step': time_per_step
             }
-            elapsed_overhead = self._evaluate_and_log_epoch(epoch)
-            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s'.format(epoch, time_per_step, elapsed_overhead),
-                  end="\r")
+            elapsed_overhead = self._evaluate_and_log_epoch()
+            print('epoch {}:\telapsed {:.2f}s, overhead {:.3f}s' \
+                    .format(self.epoch, time_per_step, elapsed_overhead),
+                end="\r")
         else:
-            print('epoch {}:\telapsed {:.2f}s'.format(epoch, time_per_step),
-                  end="\r")
+            print('epoch {}:\telapsed {:.2f}s'.format(self.epoch, time_per_step),
+                end="\r")
 
         return utilities
 
@@ -425,8 +430,7 @@ class Experiment(ABC):
             "Number of seeds doesn't match number of runs."
 
         for run_id, seed in enumerate(self.running.seeds):
-            print(f'\nRunning experiment {run_id} (using seed {seed})')
-            epoch = None
+            print(f'\n\nRunning experiment {run_id} (using seed {seed})')
             try:
                 t = time.strftime('%T ')
                 if platform == 'win32':
@@ -443,8 +447,12 @@ class Experiment(ABC):
 
                 self._init_new_run()
 
-                for epoch in range(self.running.n_epochs + 1):
-                    utilities = self._training_loop(epoch)
+                if self.logging.enable_logging:
+                    self._plot_current_strategies()
+
+                for _ in range(self.running.n_epochs + 1):
+                    utilities = self._training_loop()
+                    self.epoch += 1
 
                 if self.logging.enable_logging and (
                         self.logging.export_step_wise_linear_bid_function_size is not None):
@@ -459,7 +467,7 @@ class Experiment(ABC):
                 warnings.warn(f"WARNING: Run {run_id} failed with {type(e)}! Traceback:\n{tb}")
 
             finally:
-                self._exit_run(global_step=epoch)
+                self._exit_run()
 
         # Once all runs are done, convert tb event files to csv
         if self.logging.enable_logging and self.config.running.n_runs > 0 and (
@@ -479,28 +487,31 @@ class Experiment(ABC):
         return not encountered_errors
 
 
+
     ########################################################################################################
     ####################################### Moved logging to here ##########################################
     ########################################################################################################
 
     # TODO Stefan: method only uses self in eval and for output point
-    def _plot(self, plot_data, writer: SummaryWriter or None, epoch=None,
+    def _plot(self, plot_data, writer: SummaryWriter or None,
               xlim: list = None, ylim: list = None, labels: list = None,
               x_label="valuation", y_label="bid", fmts: list = None,
-              figure_name: str = 'bid_function', plot_points=100):
-        """This implements plotting simple 2D data.
+              figure_name: str = 'bid_function', plot_points=100,
+              subplot_order: list = None):
+        """
+        This implements plotting simple 2D data.
 
         Args
             plot_data: tuple of two pytorch tensors first being for x axis, second for y.
                 Both of dimensions (batch_size, n_models, n_bundles)
             writer: could be replaced by self.writer
-            epoch: int, epoch or iteration number
             xlim: list of floats, x axis limits for all n_bundles dimensions
             ylim: list of floats, y axis limits for all n_bundles dimensions
             labels: list of str labels for legend
             fmts: list of str for matplotlib markers and lines
             figure_name: str, for separate plot saving of e.g. bids and util_loss,
             plot_point: int of number of plotting points for each strategy in each subplot
+            subplot_order: [nrows, ncols], list of two int, for ordering of subplots.
         """
 
         if fmts is None:
@@ -514,11 +525,21 @@ class Experiment(ABC):
         x = x[:n_batch, :, :]
         y = y[:n_batch, :, :]
 
+        if subplot_order in (None, [1, 1]):  # not provided or only single plot
+            subplot_order = [1, n_bundles]
+            ax_idx = list(range(n_bundles))  # list index for plots
+        else:
+            ax_idx = list(zip(
+                sorted(list(range(subplot_order[0])) * subplot_order[1]),
+                list(range(subplot_order[1])) * subplot_order[0]
+            ))  # tuple index for cols x rows of plots
+
         # create the plot
-        fig, axs = plt.subplots(nrows=1, ncols=n_bundles, sharey=True)
+        fig, axs = plt.subplots(nrows=subplot_order[0], ncols=subplot_order[1],
+                                sharex=subplot_order[0] > 1, sharey=True)
         plt.cla()
         if not isinstance(axs, np.ndarray):
-            axs = [axs]  # one plot only
+            axs = [axs] # one plot only
 
         # Set the colors s.t. the models' actions and the (possibly multiple)
         # BNEs can be differentated
@@ -531,7 +552,7 @@ class Experiment(ABC):
         # actual plotting
         for plot_idx in range(n_bundles):
             for agent_idx in range(n_players):
-                axs[plot_idx].plot(
+                axs[ax_idx[plot_idx]].plot(
                     x[:, agent_idx, plot_idx], y[:, agent_idx, plot_idx],
                     fmts[agent_idx % len(fmts)],
                     label=None if labels is None else labels[agent_idx % len(labels)],
@@ -539,21 +560,28 @@ class Experiment(ABC):
                 )
 
             # formating
-            axs[plot_idx].set_xlabel(
-                x_label if not isinstance(x_label, list) else x_label[plot_idx]
-            )
-            if plot_idx == 0:
-                axs[plot_idx].set_ylabel(y_label)
+            if subplot_order[0] == 1 or ax_idx[plot_idx][0] == subplot_order[0] - 1:
+                add = ' {' + format(ax_idx[plot_idx][1] + 1, '0{}b'.format(subplot_order[0])) + '}' \
+                    if subplot_order[0] > 1 else ''
+                if subplot_order[0] > 1:
+                    axs[ax_idx[plot_idx]].tick_params(axis='x', labelrotation=90)
+                axs[ax_idx[plot_idx]].set_xlabel(
+                    x_label + add if not isinstance(x_label, list) else x_label[plot_idx])
+                # axs[plot_idx].set_xlabel(
+                #     x_label + add if not isinstance(x_label, list) else x_label[plot_idx])
+            if plot_idx == 0 or (subplot_order[0] > 1 and ax_idx[plot_idx][1] == 0):
+                add = ' ' + str(ax_idx[plot_idx][0]) if subplot_order[0] > 1 else ''
+                axs[ax_idx[plot_idx]].set_ylabel(y_label + add)
                 if n_players < 10 and labels is not None:
-                    axs[plot_idx].legend(loc='upper left')
+                    axs[ax_idx[plot_idx]].legend(loc='upper left')
 
             # Set axis limits based on function parameters ´xlim´, ´ylim´ if provided otherwise
             # based on ´self.plot_xmin´ etc. object attributes. In either case, these variables
             # can also be lists for sperate limits of individual plots.
             lims = (xlim, ylim)
-            set_lims = (axs[plot_idx].set_xlim, axs[plot_idx].set_ylim)
+            set_lims = (axs[ax_idx[plot_idx]].set_xlim, axs[ax_idx[plot_idx]].set_ylim)
             str_lims = (['plot_xmin', 'plot_xmax'], ['plot_ymin', 'plot_ymax'])
-
+            # pylint: disable=eval-used
             for lim, set_lim, str_lim in zip(lims, set_lims, str_lims):
                 a, b = None, None
                 if lim is not None:  # use parameters ´xlim´ etc.
@@ -571,19 +599,44 @@ class Experiment(ABC):
                 if a is not None:
                     set_lim(a, b)  # call matplotlib function
 
-            axs[plot_idx].locator_params(axis='x', nbins=5)
+            axs[ax_idx[plot_idx]].locator_params(axis='x', nbins=5)
         title = plt.title if n_bundles == 1 else plt.suptitle
-        title('iteration {}'.format(epoch))
+        title('iteration {}'.format(self.epoch))
 
-        logging_utils.process_figure(fig, epoch=epoch, figure_name=figure_name, tb_group='eval',
+        logging_utils.process_figure(fig, epoch=self.epoch, figure_name=figure_name, tb_group='eval',
                                      tb_writer=writer, display=self.logging.plot_show_inline,
                                      output_dir=self.run_log_dir,
                                      save_png=self.logging.save_figure_to_disk_png,
                                      save_svg=self.logging.save_figure_to_disk_svg)
         return fig
 
+    def _plot_current_strategies(self):
+        unique_bidders = [i[0] for i in self._model2bidder]
+        # TODO: possibly want to use old valuations, but currently it uses
+        #       those from the util_loss, not those that were used during self-play
+        o = torch.stack(
+            [self.env._observations[:self.plot_points, b, ...] for b in unique_bidders],
+            dim=1
+        )
+        b = torch.stack([self.env.agents[b[0]].get_action(o[:, i, ...])
+                            for i, b in enumerate(self._model2bidder)], dim=1)
+
+        labels = [f'NPGA {self._get_model_names()[i]}' for i in range(len(self.models))]
+        fmts = ['o'] * len(self.models)
+        if self.known_bne and self.logging.log_metrics['opt']:
+            for env_idx, _ in enumerate(self.bne_env):
+                o = torch.cat([o, self.v_opt[env_idx]], dim=1)
+                b = torch.cat([b, self.b_opt[env_idx]], dim=1)
+                labels += [
+                    f"BNE{str(env_idx + 1) if len(self.bne_env) > 1 else ''} {self._get_model_names()[j]}"
+                    for j in range(len(self.models))]
+                fmts += ['--'] * len(self.models)
+
+        self._plot(plot_data=(o, b), writer=self.writer, figure_name='bid_function',
+                   labels=labels, fmts=fmts, plot_points=self.plot_points)
+
     # TODO: stefan only uses self in output_dir, nowhere else --> can we move this to utils.plotting? etc?
-    def _plot_3d(self, plot_data, writer, epoch, labels: list = None,
+    def _plot_3d(self, plot_data, writer, labels: list = None, zlim: list = None,
                  figure_name: str = 'bid_function'):
         """
         Creating 3d plots. Provide grid if no plot_data is provided
@@ -615,14 +668,18 @@ class Experiment(ABC):
                     linewidth=0.2,
                     antialiased=True
                 )
+                ax.set_xlabel('valuation 1')
+                ax.set_ylabel('valuation 2')
+                if zlim is not None:
+                    ax.set_zlim(zlim)
                 ax.zaxis.set_major_locator(LinearLocator(10))
                 ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
                 ax.set_title(f'{label}, bundle {plot}')
                 ax.view_init(20, -135)
-        fig.suptitle(f'iteration {epoch}', size=16)
+        fig.suptitle(f'iteration {self.epoch}', size=16)
         fig.tight_layout()
 
-        logging_utils.process_figure(fig, epoch=epoch, figure_name=figure_name + '_3d',
+        logging_utils.process_figure(fig, epoch=self.epoch, figure_name=figure_name + '_3d',
                                      tb_group='eval', tb_writer=writer,
                                      display=self.logging.plot_show_inline,
                                      output_dir=self.run_log_dir,
@@ -630,7 +687,7 @@ class Experiment(ABC):
                                      save_svg=self.logging.save_figure_to_disk_svg)
         return fig
 
-    def _evaluate_and_log_epoch(self, epoch: int) -> float:
+    def _evaluate_and_log_epoch(self) -> float:
         """Checks which metrics have to be logged and performs logging and plotting.
 
         Returns:
@@ -644,6 +701,8 @@ class Experiment(ABC):
         self._cur_epoch_log_params['update_norm'] = [
             (new_params[i] - self._cur_epoch_log_params['prev_params'][i]).norm(float('inf'))
             for i in range(self.n_models)]
+        self._cur_epoch_log_params['gradient_norm'] = [
+            model.get_gradient_norm() for model in self.models]
         del self._cur_epoch_log_params['prev_params']
 
         # logging metrics
@@ -660,56 +719,34 @@ class Experiment(ABC):
                 self._cur_epoch_log_params['L_2' + n] = L_2[i]
                 self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
 
-        if self.logging.log_metrics['util_loss'] and (epoch % self.logging.util_loss_frequency) == 0:
-            create_plot_output = epoch % self.logging.plot_frequency == 0
+        if self.logging.log_metrics['util_loss'] and (self.epoch % self.logging.util_loss_frequency) == 0:
+            create_plot_output = self.epoch % self.logging.plot_frequency == 0
             self._cur_epoch_log_params['util_loss_ex_ante'], \
             self._cur_epoch_log_params['util_loss_ex_interim'], \
             self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'] = \
-                self._calculate_metrics_util_loss(create_plot_output, epoch)
+                self._calculate_metrics_util_loss(create_plot_output)
+
             print("\tcurrent est. ex-interim loss:" + str(
                 [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
 
-        if self.logging.log_metrics['efficiency'] and (epoch % self.logging.util_loss_frequency) == 0:
+        if self.logging.log_metrics['efficiency'] and (self.epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['efficiency'] = \
                 self.env.get_efficiency(self.env)
 
-        if self.logging.log_metrics['revenue'] and (epoch % self.logging.util_loss_frequency) == 0:
+        if self.logging.log_metrics['revenue'] and (self.epoch % self.logging.util_loss_frequency) == 0:
             self._cur_epoch_log_params['revenue'] = \
                 self.env.get_revenue(self.env)
 
         # plotting
-        if epoch % self.logging.plot_frequency == 0:
+        if self.epoch % self.logging.plot_frequency == 0 and self.epoch > 0:
             print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
-
-            unique_bidders = [i[0] for i in self._model2bidder]
-            # TODO: possibly want to use old valuations, but currently it uses
-            #       those from the util_loss, not those that were used during self-play
-            o = torch.stack(
-                [self.env._observations[:self.plot_points, b, ...] for b in unique_bidders],
-                dim=1
-            )
-            b = torch.stack([self.env.agents[b[0]].get_action(o[:, i, ...])
-                             for i, b in enumerate(self._model2bidder)], dim=1)
-
-            labels = [f'NPGA {self._get_model_names()[i]}' for i in range(len(self.models))]
-            fmts = ['o'] * len(self.models)
-            if self.known_bne and self.logging.log_metrics['opt']:
-                for env_idx, _ in enumerate(self.bne_env):
-                    o = torch.cat([o, self.v_opt[env_idx]], dim=1)
-                    b = torch.cat([b, self.b_opt[env_idx]], dim=1)
-                    labels += [
-                        f"BNE{str(env_idx + 1) if len(self.bne_env) > 1 else ''} {self._get_model_names()[j]}"
-                        for j in range(len(self.models))]
-                    fmts += ['--'] * len(self.models)
-
-            self._plot(plot_data=(o, b), writer=self.writer, figure_name='bid_function',
-                       epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
+            self._plot_current_strategies()
 
         self.overhead = self.overhead + timer() - start_time
         self._cur_epoch_log_params['overhead_hours'] = self.overhead / 3600
         if self.writer:
             self.writer.add_metrics_dict(
-                self._cur_epoch_log_params, self._model_names, epoch,
+                self._cur_epoch_log_params, self._model_names, self.epoch,
                 group_prefix=None, metric_tag_mapping = metrics.MAPPING_METRICS_TAGS)
         return timer() - start_time
 
@@ -867,7 +904,7 @@ class Experiment(ABC):
             self._plot(plot_data=plot_data, writer=self.writer,
                        ylim=[0, max(self._max_util_loss).detach().item()],
                        figure_name='util_loss_landscape', y_label='ex-interim loss',
-                       epoch=epoch, labels=labels, fmts=fmts, plot_points=self.plot_points)
+                       labels=labels, fmts=fmts, plot_points=self.plot_points)
 
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 

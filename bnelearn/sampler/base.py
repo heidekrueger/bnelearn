@@ -4,6 +4,8 @@
 from abc import ABC, abstractmethod
 from math import ceil
 from typing import List, Tuple, Union
+from itertools import product
+from operator import add
 import torch
 from torch.cuda import _device_t as Device
 
@@ -85,7 +87,7 @@ class ValuationObservationSampler(ABC):
 
     def generate_valuation_grid(self, player_position: int, minimum_number_of_points: int,
                                 dtype=torch.float, device = None,
-                                support_bounds: torch.Tensor = None) -> torch.Tensor:
+                                support_bounds: torch.Tensor = None, return_mesh: bool=False) -> torch.Tensor:
         """Generates an evenly spaced grid of (approximately and at least)
         minimum_number_of_points valuations covering the support of the
         valuation space for the given player. These are meant as rational actions
@@ -99,7 +101,6 @@ class ValuationObservationSampler(ABC):
 
         if support_bounds is None:
             support_bounds = self.support_bounds
-
         bounds = support_bounds[player_position]
 
         # dimensionality
@@ -113,7 +114,13 @@ class ValuationObservationSampler(ABC):
         lines = [torch.linspace(bounds[d][0], bounds[d][1], n_points_per_dim,
                                 device=device, dtype=dtype)
                  for d in range(dims)]
-        grid = torch.stack(torch.meshgrid(lines), dim=-1).view(-1, dims)
+
+        mesh = torch.meshgrid(lines)
+
+        if return_mesh:
+            grid = mesh
+        else:
+            grid = torch.stack(mesh, dim=-1).view(-1, dims)
 
         return grid
 
@@ -131,7 +138,7 @@ class ValuationObservationSampler(ABC):
         need extensive grids that sample a broader area. (E.g. when a bidder
         with high valuations massively shads her bids.)
         """
-        support_bounds = self.support_bounds
+        support_bounds = self.support_bounds.clone()
 
         # Grid bids should always start at zero if not specified otherwise
         support_bounds[:, :, 0] = 0
@@ -139,6 +146,38 @@ class ValuationObservationSampler(ABC):
         return self.generate_valuation_grid(
             player_position=player_position, minimum_number_of_points=minimum_number_of_points,
             dtype=dtype, device=device, support_bounds=support_bounds)
+
+    def generate_cell_partition(self, player_position: int, grid_size: int,
+                                dtype=torch.float, device=None):
+        """Generate a rectangular grid partition of the valuation/observation
+        prior and return cells with their vertices.
+        """
+        grid = self.generate_valuation_grid(
+            player_position=player_position, minimum_number_of_points=grid_size,
+            dtype=dtype, device=device, return_mesh=True,
+            )
+        grid_shape = grid[0].shape
+        valuation_size = len(grid)  # Note: sometimes this mismatches when we can reduce the prior's dim
+
+        def index2vertex(vertex_index):
+            """Get the grid point to the corresponding index."""
+            return torch.stack(
+                [g[tuple(vertex_index)] for g in grid]
+                ).view(1, valuation_size)
+
+        # loop over all lower vertices of all cells
+        for lower_vertex_index in product(*[list(range(j - 1)) for j in grid_shape]):
+            # these are the indices: one for each of the grid dimensions
+
+            # collecting all `upper' vertices adjacent to `lower_vertex`
+            vertices_indices = list()
+            for k in list(product(*([0, 1] for _ in range(valuation_size)))):
+                vertex_index = list(map(add, lower_vertex_index, k))
+                # if all(i < j for i, j in zip(vertex_index, list(grid_shape))):
+                vertices_indices.append(vertex_index)
+
+            yield [index2vertex(vertex_index) for vertex_index in vertices_indices]
+
 
 class PVSampler(ValuationObservationSampler, ABC):
     """A sampler for Private Value settings, i.e. when observations and
@@ -194,7 +233,7 @@ class FlushedWrappedSampler(ValuationObservationSampler):
             flush_obs_dims (int): the number of observation dims to be flushed (from the right)
         """
 
-        # pylint: diable = super-init-not-called (This is by design.)
+        # pylint: disable = super-init-not-called (This is by design.)
 
         self._base_sampler = base_sampler
         self._flush_val_dims = flush_val_dims
@@ -400,3 +439,12 @@ class CompositeValuationObservationSampler(ValuationObservationSampler):
                 if kwargs['player_position'] == pos:
                     kwargs['player_position'] =  pos - sum(self.group_sizes[:g])  # i's relative position in subgroup
                     return self.group_samplers[g].generate_action_grid(**kwargs)
+
+    def generate_cell_partition(self, **kwargs) -> torch.Tensor:
+        """Possibly need to call specific sampling"""
+        for g in range(self.n_groups):  # iterate over groups
+            player_positions = self.group_indices[g]  # player_positions within group
+            for pos in player_positions:
+                if kwargs['player_position'] == pos:
+                    kwargs['player_position'] =  pos - sum(self.group_sizes[:g])  # i's relative position in subgroup
+                    return self.group_samplers[g].generate_cell_partition(**kwargs)

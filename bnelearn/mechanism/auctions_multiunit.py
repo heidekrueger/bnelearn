@@ -21,9 +21,10 @@ class MultiUnitAuction(Mechanism):
     def _remove_invalid_bids(bids: torch.Tensor) -> torch.Tensor:
         """Helper function for cleaning bids in multi-unit auctions.
 
-        For multi-unit actions bids per must be in decreasing for each bidder.
-        If agents' bids fail to fulfill this property, this function sets their bid
-        to zero, which will result in no items allocated and thus zero payoff.
+        For multi-unit actions bids must be in decreasing order for each
+        bidder. If agents' bids fail to fulfill this property, this function
+        sets their bid to zero, which will result in no items allocated and
+        thus zero payoff.
 
         Args:
             bids: torch.Tensor
@@ -32,7 +33,7 @@ class MultiUnitAuction(Mechanism):
                 unit, etc.
 
         Returns:
-            cleaned_bids: torch.Tensor (*batch_sizes, n_players, n_items)
+            cleaned_bids: torch.Tensor (*batch_sizes, n_players, n_items),
                 same dimension as bids, with zero entries whenever a bidder bid
                 non-decreasing in a batch.
         """
@@ -48,7 +49,7 @@ class MultiUnitAuction(Mechanism):
     def _solve_allocation_problem(
             bids: torch.Tensor,
             random_tie_break: bool = False,
-            accept_zero_bids: bool = False,
+            accept_zero_bids: bool = True,
         ) -> torch.Tensor:
         """For bids (batch x player x item) in descending order for each batch/
         player, returns efficient allocation (0/1, batch x player x item).
@@ -72,7 +73,6 @@ class MultiUnitAuction(Mechanism):
         """
         *batch_sizes, n_players, n_items = bids.shape
         total_batch_size = reduce(mul, batch_sizes, 1)
-
 
         if random_tie_break: # randomly change order of bidders
             idx = torch.randn((*batch_sizes, n_players*n_items), device=bids.device) \
@@ -134,9 +134,7 @@ class MultiUnitDiscriminatoryAuction(MultiUnitAuction):
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
 
-        # only accept decreasing bids
-        # assert torch.equal(bids.sort(dim=item_dim, descending=True)[0], bids), \
-        #     "Bids must be in decreasing order"
+        # Note: We may only accept decreasing bids
         bids = self._remove_invalid_bids(bids)
 
         # Alternative w/o loops
@@ -148,7 +146,7 @@ class MultiUnitDiscriminatoryAuction(MultiUnitAuction):
 
 
 class MultiUnitUniformPriceAuction(MultiUnitAuction):
-    """ In a uniform-price auction, all units are sold at a "market-clearing"
+    """In a uniform-price auction, all units are sold at a "market-clearing"
     price such that the total amount demanded is equal to the total amount
     supplied. We adopt the rule that the market-clearing price is the same as
     the highest losing bid.
@@ -187,10 +185,8 @@ class MultiUnitUniformPriceAuction(MultiUnitAuction):
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
 
-        # only accept decreasing bids
-        # assert torch.equal(bids.sort(dim=-1, descending=True)[0], bids), \
-        #     "Bids must be in decreasing order"
-        bids = self._remove_invalid_bids(bids)
+        # Note: We may only accept decreasing bids
+        # bids = self._remove_invalid_bids(bids)
 
         # allocate return variables (flat at this stage)
         allocations = self._solve_allocation_problem(bids)
@@ -248,9 +244,7 @@ class MultiUnitVickreyAuction(MultiUnitAuction):
         # move bids to gpu/cpu if necessary
         bids = bids.to(self.device)
 
-        # only accept decreasing bids
-        # assert torch.equal(bids.sort(dim=-1, descending=True)[0], bids), \
-        #     "Bids must be in decreasing order"
+        # Note: We may only accept decreasing bids
         bids = self._remove_invalid_bids(bids)
 
         # allocate return variables

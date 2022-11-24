@@ -5,7 +5,7 @@ Implementations of strategies for playing in Auctions and Matrix Games.
 import math
 from abc import ABC, abstractmethod
 from copy import copy
-from typing import Callable, Iterable
+from typing import Callable, Iterable, List
 import os
 import sys
 import warnings
@@ -297,7 +297,6 @@ class NeuralNetStrategy(Strategy, nn.Module):
         dropout (optional): float
             If not 0, applies AlphaDropout (https://pytorch.org/docs/stable/nn.html#torch.nn.AlphaDropout)
             to `dropout` share of nodes in each hidden layer during training.
-
     """
     def __init__(self, input_length: int,
                  hidden_nodes: Iterable[int],
@@ -321,7 +320,7 @@ class NeuralNetStrategy(Strategy, nn.Module):
         self.layers = nn.ModuleDict()
 
         if len(hidden_nodes) > 0:
-            ## create hdiden layers
+            # create hidden layers
             # first hidden layer (from input)
             self.layers['fc_0'] = nn.Linear(input_length, hidden_nodes[0])
             self.layers[str(self.activations[0]) + '_0'] = self.activations[0]
@@ -357,7 +356,31 @@ class NeuralNetStrategy(Strategy, nn.Module):
         """
         Initializes a saved NeuralNetStrategy from ``path``.
         """
+
         model_dict = torch.load(path, map_location=device)
+
+        # TODO: Dangerous hack for reloading a startegy from disk/pickle
+        params = {}
+        params["hidden_nodes"] = []
+        params["hidden_activations"] = []
+        length = len(list(model_dict.values()))
+        layer_idx = 0
+        value_key_zip = zip(
+            list(model_dict.values()),
+            list(model_dict._metadata.keys())[2:] # pylint: disable=protected-access
+        )
+        for tensor, layer_activation in value_key_zip:
+            if layer_idx == 0:
+                params["input_length"] = tensor.shape[1]
+            elif layer_idx == length - 1:
+                params["output_length"] = tensor.shape[0]
+            elif layer_idx % 2 == 1:
+                params["hidden_nodes"].append(tensor.shape[0])
+                params["hidden_activations"].append(
+                    # TODO Nils: change once models are saved correctly
+                    # eval('nn.' + layer_activation[7:-2]))
+                    nn.SELU())
+            layer_idx += 1
 
         # standard initialization
         strategy = cls(
@@ -376,7 +399,6 @@ class NeuralNetStrategy(Strategy, nn.Module):
         strategy.load_state_dict(model_dict)
 
         return strategy
-
 
     def pretrain(self, input_tensor: torch.Tensor, iters: int, transformation: Callable = None):
         """Performs `iters` steps of supervised learning on `input` tensor,
@@ -399,13 +421,15 @@ class NeuralNetStrategy(Strategy, nn.Module):
         elif desired_output.shape[-1] > self.output_length:
             raise ValueError('Desired pretraining output does not match NN output dimension.')
 
-        optimizer = torch.optim.Adam(self.parameters())
-        for _ in range(iters):
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
+        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iters, eta_min=1e-5)
+        for _ in tqdm(range(iters)):
             self.zero_grad()
             diff = (self.forward(input_tensor) - desired_output)
-            loss = (diff * diff).sum()
+            loss = (diff * diff).mean()
             loss.backward()
             optimizer.step()
+            lr_scheduler.step()
 
     def reset(self, ensure_positive_output=None):
         """Re-initialize weights of the Neural Net, ensuring positive model output for a given input."""
@@ -415,10 +439,22 @@ class NeuralNetStrategy(Strategy, nn.Module):
     def forward(self, x):
         for layer in self.layers.values():
             x = layer(x)
+
         return x
 
     def play(self, inputs):
         return self.forward(inputs)
+
+    def get_gradient_norm(self):
+        """Get the norm of the gradient"""
+        
+        grad_norm = 0
+
+        for p in self.parameters():
+            if p is not None:
+                grad_norm += p.grad.pow(2).sum()
+
+        return grad_norm*(1./self.n_parameters)**(1/2)
 
 class TruthfulStrategy(Strategy, nn.Module):
     """A strategy that plays truthful valuations."""
