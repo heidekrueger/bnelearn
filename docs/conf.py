@@ -23,7 +23,7 @@ copyright = '2022, Institute for Decision Sciences and Systems, Technical Univer
 author = 'Chair for Decision Sciences and Systems, TUM'
 
 # The full version, including alpha/beta/rc tags
-release = '1.0.0'
+release = '1.1.0'
 
 ## modules need to be importable --> if this import fails,
 ## the environment used by Sphinx is not set up correctly.
