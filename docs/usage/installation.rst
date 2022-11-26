@@ -1,4 +1,3 @@
-
 ==========================================
 Installation and Reproduction Instructions
 ==========================================
@@ -21,12 +20,13 @@ The package should be cross-platform compatible, but we can make no guarantees. 
 
 Installation instructions for Ubuntu using conda:
 
-1. Install Python (tested on 3.9) and pip, we recommend using a separate environment using conda or virtualenv. Assuming you have a running installation of conda, make a new environment: ```conda create -n bnelearn-test python=3.9 pip``` Then activate your environment ```conda activate bnelearn```
-2. (Optional -- you can skip directly to step 3, but this will install the package with a reduced feature set (e.g. no GPU support, no commercial solvers, no development extras.) 
-Make sure you are using the correct version of pip ()`which pip` should point to your new conda environment!) and install the remaining requirements via ``pip install -r requirements.txt``. This will install `all` requirements, including GPU-enabled pytorch, external solvers required for some combinatorial auctions and development tools.
+1. Install Python (tested on 3.9) and pip, we recommend using a separate environment using conda or virtualenv. Assuming you have a running installation of conda, make a new environment: ```conda create -n bnelearn-test python=3.9 pip``` Then activate your environment via ```conda activate bnelearn``` 
 
-Note that ``requirements.txt`` will pull the latest stable torch version with cuda that is available at the time of writing (July 2021). You may want to manually install the latest version available for your system, see https://pytorch.org/get-started/locally/ for details. 
+
+2. Optional -- you can skip directly to step 3, but this will install the package with a reduced feature set (e.g. no GPU support, no commercial solvers, no development extras.)  Make sure you are using the correct version of pip ()`which pip` should point to your new conda environment!) and install the remaining requirements via ``pip install -r requirements.txt``. This will install `all` requirements, including GPU-enabled pytorch, external solvers required for some combinatorial auctions and development tools. Note that ``requirements.txt`` will pull the latest stable torch version with cuda that is available at the time of writing (July 2021). You may want to manually install the latest version available for your system, see https://pytorch.org/get-started/locally/ for details.
+
 3. Install the bnelearn package via ``pip install -e .``.
+
 4. Test your installation via ``pytest``. If all tests pass, everything was successfull. You may also see ``SKIP``s or ``XFAIL``s: In this case, the, installation seems to work, but the tests have determined that you are missing some optional requirements for advanced features, or that your system does not support cuda. In this case, not all features may be available to you.
 
 The framework conceptually consists of the following
