@@ -5,10 +5,12 @@ Quickstart
 Let us take a look at how to learn in one of the predefined auction games with one of the predefined algorithms.
 
 
-Running the Experiments
-=======================
+The commands below can be used to reproduce the results published in `(Bichler et al., 2021) <https://www.nature.com/articles/s42256-021-00365-4>`_. All references refer to the numbering in that paper.
 
-The commands here can be used to reproduce the results published in `(Bichler et al., 2021) <https://www.nature.com/articles/s42256-021-00365-4>`_. All references refer to the numbering in that paper.
+(**Note:** as of December 2022, another paper based on ``bnelearn`` is forthcoming in the INFORMS Journal of computing. Reproduction instruction for that paper will be hosted in `a separate repository published by INFORMS <https://github.com/heidekrueger/ijoc-publication-repository>`_.)
+
+Reproduction Instructions for Bichler et al. (2021)
+===================================================
 
 You can then run the experiments underlying the tables and figures in the main paper via ``python run_experiments_npga.py`` (see `run_experiments_npga.py <https://github.com/heidekrueger/bnelearn/blob/main/run_experiments_npga.py>`_). The standard configuration of the file reruns the experiments behind Figure 3, i.e., one run each for all combinations of the correlation strength and the risk parameter. To run the other experiments reported in the paper, make the following changes in lines 17 to 34:
 
