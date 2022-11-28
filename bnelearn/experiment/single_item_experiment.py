@@ -135,7 +135,10 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
             return super()._check_and_set_known_bne()
 
     def _get_analytical_bne_utility(self) -> torch.Tensor:
-        """Calculates utility in BNE from known closed-form solution (possibly using numerical integration)"""
+        """Calculates utility in BNE from known closed-form solution (possibly
+        using numerical integration).
+        """
+
         if self.payment_rule == 'first_price' and self.risk == 1:
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
@@ -147,14 +150,26 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
                     lambda v: 0, lambda v: v)  # inner boundaries
                 if error_estimate > 1e-6:
                     warnings.warn('Error in optimal utility might not be negligible')
+
         elif self.payment_rule == 'second_price':
-            F = lambda x: self.common_prior.cdf(torch.tensor(x))
-            f = lambda x: self.common_prior.log_prob(torch.tensor(x)).exp()
+
+            # Check valuation support
+            if self.valuation_prior == 'uniform':
+                upper_bound = self.common_prior.high
+            elif self.valuation_prior == 'normal':
+                upper_bound = float("inf")
+            else:
+                warnings.warn('Valuation distribution unknown.')
+                upper_bound = float("inf")
+
+            # Calculate exact utility
+            F = lambda x: self.common_prior.cdf(torch.tensor(x)).item()
+            f = lambda x: self.common_prior.log_prob(torch.tensor(x)).exp().item()
             f1n = lambda x, n: n * F(x) ** (n - 1) * f(x)
 
             bne_utility, error_estimate = integrate.dblquad(
                 lambda x, v: (v - x) * f1n(x, self.n_players - 1) * f(v),
-                0, float('inf'),  # outer boundaries
+                0, upper_bound,  # outer boundaries
                 lambda v: 0, lambda v: v)  # inner boundaries
 
             if error_estimate > 1e-6:
@@ -270,18 +285,8 @@ class UniformSymmetricPriorSingleItemExperiment(SymmetricPriorSingleItemExperime
                 device=self.hardware.device
             )
         elif self.payment_rule == 'second_price':
-            F = self.common_prior.cdf
-            f = lambda x: self.common_prior.log_prob(torch.tensor(x)).exp()
-            f1n = lambda x, n: n * F(x) ** (n - 1) * f(x)
-
-            bne_utility, error_estimate = integrate.dblquad(
-                lambda x, v: (v - x) * f1n(x, self.n_players - 1) * f(v),
-                0, float('inf'),  # outer boundaries
-                lambda v: 0, lambda v: v)  # inner boundaries
-
-            bne_utility = torch.tensor(bne_utility, device=self.hardware.device)
-            if error_estimate > 1e-6:
-                warnings.warn('Error bound on analytical bne utility is not negligible!')
+            bne_utility = super(UniformSymmetricPriorSingleItemExperiment, self) \
+                ._get_analytical_bne_utility()
         else:
             raise ValueError("Invalid auction mechanism.")
 
@@ -492,85 +497,17 @@ class TwoPlayerAsymmetricBetaPriorSingleItemExperiment(SingleItemExperiment):
             default_batch_size, device
             )
 
-    def _get_logdir_hierarchy(self):
-        name = ['single_item', self.payment_rule, self.valuation_prior,
-                'asymmetric', self.risk_profile, str(self.n_players) + 'p']
-        return os.path.join(*name)
-
     def _strat_to_bidder(self, strategy, batch_size, player_position=None,
                          **strat_to_player_kwargs):
         return Bidder(strategy, player_position=player_position,
                       batch_size=batch_size, **strat_to_player_kwargs)
 
     def _check_and_set_known_bne(self):
-        if self.u_lo == [1, 1] and self.u_hi == [1, 1]:  # both agents have uniform prior
-            if self.payment_rule == 'first_price':
-                self._optimal_bid = partial(_optimal_bid_FPSB_UniformSymmetricPriorSingleItem,
-                                            n=self.n_players, r=self.risk, u_lo=self.u_lo[0], u_hi=self.u_hi[0])
-                return True
-            elif self.payment_rule == 'second_price':
-                self._optimal_bid = _truthful_bid
-                return True
-            else:  # no bne found, defer to parent
-                return super()._check_and_set_known_bne()
-        else:
-            return False
+        if self.u_lo == [1, 1] and self.u_hi == [1, 1]:
+            # TODO: Here we're in the special case of uniform priors and a BNE exists
+            pass
 
-    def _setup_eval_environment(self):
-        """Determines whether a bne exists and sets up eval environment."""
-
-        assert self.known_bne
-        assert  hasattr(self, '_optimal_bid')
-
-        # TODO: parallelism should be taken from elsewhere. Should be moved to config. Assigned @Stefan
-        n_processes_optimal_strategy = 44 if self.valuation_prior != 'uniform' and \
-                                                self.payment_rule != 'second_price' else 0
-        bne_strategy = ClosureStrategy(self._optimal_bid, parallel=n_processes_optimal_strategy, mute=True)
-
-        # define bne agents once then use them in all runs
-        self.bne_env = AuctionEnvironment(
-            self.mechanism,
-            agents=[self._strat_to_bidder(bne_strategy,
-                                          player_position=i,
-                                          batch_size=self.logging.eval_batch_size,
-                                          cache_actions=self.logging.cache_eval_actions)
-                    for i in range(self.n_players)],
-            batch_size=self.logging.eval_batch_size,
-            n_players=self.n_players,
-            strategy_to_player_closure=self._strat_to_bidder
-        )
-
-        bne_utility_analytical = self._get_analytical_bne_utility()
-        print('Utility in BNE (analytic): \t{:.5f}'.format(bne_utility_analytical))
-
-        self.bne_utility = bne_utility_analytical
-        self.bne_utilities = [self.bne_utility] * self.n_models
-
-    def _get_analytical_bne_utility(self):
-        """Get bne utility from known closed-form solution for higher precision."""
-        if self.payment_rule == 'first_price':
-            bne_utility = torch.tensor(
-                (self.risk * (self.u_hi[0] - self.u_lo[0]) / (self.n_players - 1 + self.risk)) **
-                self.risk / (self.n_players + self.risk),
-                device=self.hardware.device
-            )
-        elif self.payment_rule == 'second_price':
-            F = self.common_prior.cdf
-            f = lambda x: self.common_prior.log_prob(torch.tensor(x)).exp()
-            f1n = lambda x, n: n * F(x) ** (n - 1) * f(x)
-
-            bne_utility, error_estimate = integrate.dblquad(
-                lambda x, v: (v - x) * f1n(x, self.n_players - 1) * f(v),
-                0, float('inf'),  # outer boundaries
-                lambda v: 0, lambda v: v)  # inner boundaries
-
-            bne_utility = torch.tensor(bne_utility, device=self.hardware.device)
-            if error_estimate > 1e-6:
-                warnings.warn('Error bound on analytical bne utility is not negligible!')
-        else:
-            raise ValueError("Invalid auction mechanism.")
-
-        return bne_utility
+        return False
 
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, 'non-common',

@@ -23,7 +23,6 @@ if __name__ == '__main__':
     util_loss_frequency = 1000
     util_loss_batch_size = 2**12
     util_loss_grid_size = 2**10
-    stopping_criterion_frequency = 100000  # don't use
 
     specific_gpu = 0
     log_root_dir = os.path.join(
@@ -78,7 +77,6 @@ if __name__ == '__main__':
                 util_loss_batch_size=util_loss_batch_size,
                 util_loss_grid_size=util_loss_grid_size,
                 eval_batch_size=eval_batch_size,
-                stopping_criterion_frequency=stopping_criterion_frequency,
                 log_metrics={
                     'opt': True,
                     'util_loss': True,

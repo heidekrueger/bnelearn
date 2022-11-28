@@ -59,7 +59,7 @@ def bne_fpsb_ipv_symmetric_uniform_prior(
 
 def truthful_bid(valuation: torch.Tensor, **kwargs) -> torch.Tensor:
     """Truthful bidding function: A BNE in any VCG auction."""
-    return valuation
+    return valuation.relu()  # cut-off negative bids (happens, e.g., for Gaussian valuations)
 
 
 def bne_fpsb_ipv_asymmetric_uniform_overlapping_priors_risk_neutral(
