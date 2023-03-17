@@ -46,7 +46,7 @@ Running experiments for $n$-player matrix and sealed-bid auction games with eith
 * Neural self-play with directly computed policy gradients from [(Heinrich and Silver, 2016)](https://arxiv.org/abs/1603.01121), which is called ``PGLearner``.
 * Neural pseudogradient ascent (NPGA), called ``ESPGLearner``, from [(Bichler et al., 2021)](https://www.nature.com/articles/s42256-021-00365-4).
 * Particle swarm optimization (PSO), called ``PSOLearner``, from [(Kohring et al., 2022)](http://aaai-rlg.mlanctot.info/papers/AAAI22-RLG_paper_8.pdf).
-* A smoothing technique that allows for the calculation of first-order gradient estimates (via ``PGLearner``) from (Kohring et al., 2023).
+* A smoothing technique that allows for the calculation of first-order gradient estimates (via ``PGLearner``) from [(Kohring et al., 2023)](https://arxiv.org/abs/2303.09500).
 
 
 
