@@ -60,16 +60,22 @@ class SingleItemExperiment(Experiment, ABC):
         if not hasattr(self, 'valuation_prior'):
             self.valuation_prior = 'unknown'
 
-        self.observation_size = self.valuation_size = self.action_size = 1
+        self.observation_size = self.valuation_size = self.action_size = self.config.setting.n_items
         if self.config.logging.eval_batch_size < 2 ** 20:
             print(f"Using small eval_batch_size of {self.config.logging.eval_batch_size}. Use at least 2**22 for proper experiment runs!")
         super().__init__(config=config)
 
     def _setup_mechanism(self):
         if self.payment_rule == 'first_price':
-            self.mechanism = FirstPriceSealedBidAuction(cuda=self.hardware.cuda)
+            self.mechanism = FirstPriceSealedBidAuction(
+                cuda=self.hardware.cuda,
+                smoothing_temperature=self.learning.smoothing_temperature
+            )
         elif self.payment_rule == 'second_price':
-            self.mechanism = VickreyAuction(cuda=self.hardware.cuda)
+            self.mechanism = VickreyAuction(
+                cuda=self.hardware.cuda,
+                smoothing_temperature=self.learning.smoothing_temperature
+            )
         elif self.payment_rule == "all_pay":
             self.mechanism = AllPayAuction(cuda=self.hardware.cuda)
         else:
@@ -96,10 +102,11 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.n_players = self.config.setting.n_players
 
         # instance property will be set in super().__init__ call.
-        action_size = 1
+        action_size = self.config.setting.n_items
 
-        # TODO: common_prior possibly on wrnog device now
+        # TODO: common_prior possibly on wrong device now
         self.common_prior = self.config.setting.common_prior
+        # self.positive_output_point = None
         self.positive_output_point = torch.stack([self.common_prior.mean] * action_size)
 
         self.risk = float(self.config.setting.risk)
@@ -226,8 +233,16 @@ class SymmetricPriorSingleItemExperiment(SingleItemExperiment):
         self.bne_utilities = [self.bne_utility] * self.n_models
 
     def _strat_to_bidder(self, strategy, batch_size, player_position=0, enable_action_caching=False):
-        return Bidder(strategy, player_position, batch_size, enable_action_caching=enable_action_caching,
-                      risk=self.risk)
+        return Bidder(
+            strategy=strategy,
+            player_position=player_position,
+            batch_size=batch_size,
+            valuation_size=self.valuation_size,
+            observation_size=self.observation_size,
+            bid_size=self.action_size,
+            enable_action_caching=enable_action_caching,
+            risk=self.risk
+        )
 
     def _get_logdir_hierarchy(self):
         name = ['single_item', self.payment_rule, self.valuation_prior,
@@ -576,7 +591,11 @@ class MineralRightsExperiment(SingleItemExperiment):
 
     def _setup_mechanism(self):
         if self.payment_rule == 'second_price':
-            self.mechanism = VickreyAuction(random_tie_break=False, cuda=self.hardware.cuda)
+            self.mechanism = VickreyAuction(
+                random_tie_break=False,
+                cuda=self.hardware.cuda,
+                smoothing_temperature=self.learning.smoothing_temperature
+            )
         else:
             raise ValueError('Invalid Mechanism type!')
 
@@ -699,7 +718,10 @@ class AffiliatedObservationsExperiment(SingleItemExperiment):
 
     def _setup_mechanism(self):
         if self.payment_rule == 'first_price':
-            self.mechanism = FirstPriceSealedBidAuction(cuda=self.hardware.cuda)
+            self.mechanism = FirstPriceSealedBidAuction(
+                cuda=self.hardware.cuda,
+                smoothing_temperature=self.learning.smoothing_temperature
+            )
         else:
             raise ValueError('Invalid Mechanism type!')
 

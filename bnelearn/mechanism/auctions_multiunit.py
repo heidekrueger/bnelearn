@@ -45,11 +45,11 @@ class MultiUnitAuction(Mechanism):
 
         return bids
 
-    @staticmethod
     def _solve_allocation_problem(
+            self,
             bids: torch.Tensor,
             random_tie_break: bool = False,
-            accept_zero_bids: bool = True,  # For the experiments in the Nature MI paper this was set to `False`
+            accept_zero_bids: bool = False,
         ) -> torch.Tensor:
         """For bids (batch x player x item) in descending order for each batch/
         player, returns efficient allocation (0/1, batch x player x item).
@@ -83,7 +83,7 @@ class MultiUnitAuction(Mechanism):
             bids_flat = bids.reshape(total_batch_size, n_players*n_items)
 
         allocations = torch.zeros_like(bids_flat)
-        _, sorted_idx = torch.sort(bids_flat, dim=-1, descending=True)
+        bids_sorted, sorted_idx = torch.sort(bids_flat, dim=-1, descending=True)
         allocations.scatter_(1, sorted_idx[:, :n_items], 1)
 
         if random_tie_break:  # restore bidder order
@@ -130,9 +130,6 @@ class MultiUnitDiscriminatoryAuction(MultiUnitAuction):
         """
         assert bids.dim() >= 3, "Bid tensor must be at least 3d (*batches x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
-
-        # move bids to gpu/cpu if necessary
-        bids = bids.to(self.device)
 
         # Note: We may only accept decreasing bids
         bids = self._remove_invalid_bids(bids)
@@ -182,8 +179,7 @@ class MultiUnitUniformPriceAuction(MultiUnitAuction):
         *batch_sizes, n_players, n_items = bids.shape
         total_batch_size = reduce(mul, batch_sizes, 1)
 
-        # move bids to gpu/cpu if necessary
-        bids = bids.to(self.device)
+        device = bids.device
 
         # Note: We may only accept decreasing bids
         # bids = self._remove_invalid_bids(bids)
@@ -192,7 +188,7 @@ class MultiUnitUniformPriceAuction(MultiUnitAuction):
         allocations = self._solve_allocation_problem(bids)
 
         # pricing
-        payments = torch.zeros(total_batch_size, n_players * n_items, device=self.device)
+        payments = torch.zeros(total_batch_size, n_players * n_items, device=device)
         bids_flat = bids.reshape(total_batch_size, n_players * n_items)
         _, sorted_idx = torch.sort(bids_flat, dim=-1, descending=True)
         payments.scatter_(1, sorted_idx[:, n_items:n_items + 1], 1)
@@ -241,8 +237,7 @@ class MultiUnitVickreyAuction(MultiUnitAuction):
         *batch_sizes, n_players, n_items = bids.shape
         total_batch_size = reduce(mul, batch_sizes, 1)
 
-        # move bids to gpu/cpu if necessary
-        bids = bids.to(self.device)
+        device = bids.device
 
         # Note: We may only accept decreasing bids
         bids = self._remove_invalid_bids(bids)
@@ -255,15 +250,15 @@ class MultiUnitVickreyAuction(MultiUnitAuction):
         sorted_bids, sorted_idx = torch.sort(bids_flat, dim=-1, descending=True)
 
         # priceing TODO: optimize this, possibly with torch.topk?
-        agent_ids = torch.arange(0, n_players, device=self.device) \
+        agent_ids = torch.arange(0, n_players, device=device) \
             .repeat(total_batch_size, n_items, 1).transpose_(1, 2)
         highest_loosing_player = agent_ids \
             .reshape(total_batch_size, n_players * n_items) \
             .gather(dim=1, index=sorted_idx)[:, n_items:2 * n_items] \
-            .repeat_interleave(n_players * torch.ones(total_batch_size, device=self.device).long(), dim=0) \
+            .repeat_interleave(n_players * torch.ones(total_batch_size, device=device).long(), dim=0) \
             .reshape(total_batch_size, n_players, n_items)
         highest_losing_prices = sorted_bids[:, n_items:2 * n_items] \
-            .repeat_interleave(n_players * torch.ones(total_batch_size, device=self.device).long(), dim=0) \
+            .repeat_interleave(n_players * torch.ones(total_batch_size, device=device).long(), dim=0) \
             .reshape_as(bids) \
             .masked_fill_((highest_loosing_player == agent_ids).reshape_as(bids), 0) \
             .sort(descending=True)[0]

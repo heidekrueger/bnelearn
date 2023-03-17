@@ -1,4 +1,6 @@
 """Some helper functions for collecting and summarizing logging data.
+
+WARNING: This file is not maintained.
 """
 import os, sys
 import re
@@ -9,6 +11,7 @@ import json
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
 import matplotlib.pyplot as plt
+import json
 markers = ['o', '^', 's', 'p', '.', '+']
 colors = [(0/255.,191/255.,196/255.), (248/255.,118/255.,109/255.),
           (150/255.,120/255.,170/255.), (255/255.,215/255.,130/255.)] 
@@ -20,15 +23,6 @@ from bnelearn.strategy import NeuralNetStrategy
 from bnelearn.experiment.configuration_manager import ConfigurationManager
 from bnelearn.util import logging
 from bnelearn.util.metrics import ALIASES_LATEX
-
-SETTING_ALIASES = {
-    'correlation_types':         'Corr type',
-    'correlation_coefficients':  'Corr strength',
-    'risk':                      'risk $\rho$',
-    'payment_rule':              'payment rule',
-    'n_items':                   'items $m$',
-    'n_players':                 'players $n$'
-}
 
 
 def multiple_exps_logs_to_df(
@@ -110,8 +104,8 @@ def multiple_exps_logs_to_df(
         aggregate_df['Auction game'][-1] = exp_name
 
     aggregate_df.columns = aggregate_df.columns.map(
-        lambda m: (ALIASES_LATEX | SETTING_ALIASES)[m]
-            if m in (ALIASES_LATEX | SETTING_ALIASES).keys() else m)
+        lambda m: ALIASES_LATEX[m] if m in ALIASES_LATEX.keys() else m
+    )
 
     # write to file
     if save:
@@ -436,3 +430,7 @@ def create_full_results_from_tb(path: str):
     )
 
     full_logs.to_csv(path + '/full_results.csv')
+
+
+if __name__ == '__main__':
+    pass

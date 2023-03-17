@@ -80,8 +80,12 @@ class LearningConfig:
     scheduler_hyperparams: dict
     hidden_nodes: List[int]
     pretrain_iters: int
+    pretrain_to_bne: None or int
     batch_size: int
+    smoothing_temperature: float
     redraw_every_iteration: bool
+    mixed_strategy: str
+    bias: bool
     hidden_activations: List[nn.Module] = None
     value_contest: bool = True
 
@@ -108,8 +112,9 @@ class LoggingConfig:
 
     # Utility Loss calculation
     util_loss_batch_size: int
+    util_loss_opponent_batch_size: int
     util_loss_grid_size: int
-    util_loss_frequency: int
+    eval_frequency: int
 
     # Eval vs known bne
     eval_batch_size: int

@@ -1,4 +1,4 @@
-"""Script for reproducing the reported experiments from Bichler et. al (2022).
+"""Script for reproducing the reported experiments from Bichler et. al (2023).
 """
 import os
 import sys
@@ -49,7 +49,7 @@ if __name__ == '__main__':
                 .set_logging(
                     util_loss_batch_size=2**12,
                     util_loss_grid_size=2**10,
-                    util_loss_frequency=n_epochs,
+                    eval_frequency=n_epochs,
                     best_response=True,
                     plot_frequency=500,
                     cache_eval_actions=True,
@@ -86,7 +86,7 @@ if __name__ == '__main__':
                 eval_batch_size=2**17,
                 util_loss_batch_size=2**11,
                 util_loss_grid_size=2**10,
-                util_loss_frequency=n_epochs,
+                eval_frequency=n_epochs,
                 best_response=True,
                 plot_frequency=500,
                 cache_eval_actions=True,
@@ -118,7 +118,7 @@ if __name__ == '__main__':
             .set_logging(
                 util_loss_batch_size=2**12,
                 util_loss_grid_size=2**10,
-                util_loss_frequency=n_epochs,
+                eval_frequency=n_epochs,
                 best_response=True,
                 plot_frequency=500,
                 cache_eval_actions=True,
@@ -167,7 +167,7 @@ if __name__ == '__main__':
                         },
                     util_loss_batch_size=2**10,
                     util_loss_grid_size=util_loss_grid_size,
-                    util_loss_frequency=150,
+                    eval_frequency=150,
                     plot_frequency=50,
                     cache_eval_actions=True,
                     log_root_dir=log_root_dir,
@@ -219,7 +219,7 @@ if __name__ == '__main__':
                 .set_logging(
                     util_loss_batch_size=util_loss_batch_size,
                     util_loss_grid_size=util_loss_grid_size,
-                    util_loss_frequency=n_epochs,
+                    eval_frequency=n_epochs,
                     best_response=True,
                     plot_frequency=500,
                     cache_eval_actions=True,
@@ -257,7 +257,7 @@ if __name__ == '__main__':
             .set_logging(
                 util_loss_batch_size=2**12,
                 util_loss_grid_size=2**10,
-                util_loss_frequency=50,
+                eval_frequency=50,
                 best_response=True,
                 plot_frequency=500,
                 cache_eval_actions=True,
@@ -293,7 +293,7 @@ if __name__ == '__main__':
             .set_logging(
                 util_loss_batch_size=2**12,
                 util_loss_grid_size=2**10,
-                util_loss_frequency=100,
+                eval_frequency=100,
                 best_response=True,
                 plot_frequency=500,
                 cache_eval_actions=True,
@@ -348,7 +348,7 @@ if __name__ == '__main__':
                     log_root_dir=log_root_dir,
                     util_loss_batch_size=2**12,
                     util_loss_grid_size=2**10,
-                    util_loss_frequency=50,
+                    eval_frequency=50,
                     plot_frequency=n_epochs,
                     cache_eval_actions=True,
                     save_tb_events_to_csv_detailed=True,

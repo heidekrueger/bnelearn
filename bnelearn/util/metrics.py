@@ -8,15 +8,21 @@ from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment
 from bnelearn.mechanism import Mechanism, TullockContest, CrowdsourcingContest
 from bnelearn.strategy import Strategy
-from bnelearn.util.tensor_util import apply_with_dynamic_mini_batching
+from bnelearn.util.tensor_util import (
+    apply_with_dynamic_mini_batching,
+    apply_average_dynamic_mini_batching
+)
 
 ## defines a mapping of internal metrics and their desired tensorboard output tags
 MAPPING_METRICS_TAGS = {
     'utilities':            'market/utilities',
     'efficiency':           'market/efficiency',
     'revenue':              'market/revenue',
+
     'update_norm':          'learner_info/update_norm',
     'gradient_norm':        'learner_info/gradient_norm',
+    'utility_variance':     'learner_info/utility_variance',
+
     'util_loss_ex_ante':    'eval/util_loss_ex_ante',
     'util_loss_ex_interim': 'eval/util_loss_ex_interim',
     'estimated_relative_ex_ante_util_loss': 'eval/estimated_relative_ex_ante_util_loss',
@@ -25,7 +31,9 @@ MAPPING_METRICS_TAGS = {
     'epsilon_absolute':     'eval_vs_bne/epsilon_absolute',
     'L_2':                  'eval_vs_bne/L_2',
     'L_inf':                'eval_vs_bne/L_inf',
+
     'overhead_hours':       'meta/overhead_hours',
+    'time_per_step':            'meta/time_per_step',
 
     # won't actually be logged
     'prev_params':          'learner_info/prev_params'
@@ -40,7 +48,7 @@ ALIASES_LATEX = {
 
     'eval/util_loss_ex_ante':    '$\hat \ell$',
     'eval/util_loss_ex_interim': '$\hat \epsilon$',
-    'eval/estimated_relative_ex_ante_util_loss': 'approximate relative utility loss $\hat{\mathcal{L}}$',
+    'eval/estimated_relative_ex_ante_util_loss': '$\hat{\mathcal{L}}$',
 
     'eval_vs_bne/L_2':                  '$L_2$',
     'eval_vs_bne/L_inf':                '$L_\infty$',
@@ -49,8 +57,13 @@ ALIASES_LATEX = {
     'eval_vs_bne/utility_vs_bne':       '$\hat u(\beta_i, \beta^*_{-i})$',
 
     'meta/overhead_hours':       '$T$',
+    'meta/time_per_step':            '$t/$iter',
+    'learning_info/update_norm': '$|\Delta \theta|$',
 
-    'learning_info/update_norm':          '$|\Delta \theta|$'
+    'first_price':               'FPSB',
+    'second_price':              'SPSB',
+    'vcg':                       'VCG',
+    'nearest_zero':              'NZ',
 }
 
 
@@ -112,7 +125,7 @@ def norm_strategy_and_actions(strategy, actions, valuations: torch.Tensor, p: fl
     Returns:
         norm: (scalar Tensor)
     """
-    s_actions = strategy.play(valuations)
+    s_actions = strategy.forward(valuations)
 
     if componentwise:
         component_norms = [norm_actions(s_actions[..., d], actions[..., d], p)
@@ -222,7 +235,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
                          agent_observations: torch.Tensor,
                          grid_size: int,
                          opponent_batch_size: int = None,
-                         grid_best_response: bool = False, mute: bool = False):
+                         grid_best_response: bool = False):
     #pylint: disable = anomalous-backslash-in-string
     """Estimates a bidder's utility loss in the current state of the
     environment, i.e. the potential benefit of deviating from the current
@@ -234,7 +247,7 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
 
     We're conditioning on the agent's observation at `player_position`. That
     means, types and observations of other players as well as its own type have
-    to be conditioned. As it's     conditioned on the observation, the agent's
+    to be conditioned. As it's conditioned on the observation, the agent's
     action stays the same.
 
     Args:
@@ -246,7 +259,6 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         grid_best_response: bool, whether or not the BRs live on the grid or
             possibly come from the actual actions (in case no better response
             was found on grid).
-        mute: bool, mute stdout.
 
     Returns:
         utility_loss (torch.Tensor, shape: [batch_size]):  the computed
@@ -261,34 +273,50 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
         `generate_valuation_grid` in the `env`'s ValuationObservationSampler.
     """
 
-    mechanism = env.mechanism
     device = agent_observations.device
-    agent: Bidder = env.agents[player_position]
-    # ensure we are not propagating any gradients (may cause memory leaks)
-    agent_observations = agent_observations.detach().clone()
+    mechanism = env.mechanism
 
     agent_batch_size, _ = agent_observations.shape
     opponent_batch_size = opponent_batch_size or agent_batch_size
 
+    agent: Bidder = env.agents[player_position]
+    # ensure we are not propagating any gradients (may cause memory leaks)
+    agent_observations = agent_observations.detach().clone().to(device)
+
     ####### get actual utility #############################
+    agent.strategy.to(device)
     agent_action_actual = agent.get_action(agent_observations)
     utility_actual = ex_interim_utility(
         env, player_position, agent_observations, agent_action_actual,
-        opponent_batch_size, device)
+        opponent_batch_size)
 
     ####### get best responses over grid of alternative actions #######
     action_alternatives = env.sampler.generate_action_grid(
         player_position=player_position,
         minimum_number_of_points=grid_size,
-        dtype=agent_action_actual.dtype, device=agent_action_actual.device
+        dtype=agent_action_actual.dtype, device=device
     )
     action_size = action_alternatives.shape[-1]
 
+    # # Simultaneous sale hack
+    # print("Warning: This only works for simultaneous sales!")
+    # br_utility = torch.zeros_like(agent_observations)
+    # br_indices = torch.zeros_like(agent_observations, dtype=torch.long)
+    # for dim in range(action_size):
+    #     action_alternatives = torch.zeros((grid_size, action_size), device=device)
+    #     action_alternatives[:, dim] = torch.linspace(0, 1, grid_size, device=device)
+    #     br_utility[:, dim], br_indices[:, dim] = get_best_responses_among_alternatives(
+    #         env, player_position, agent_observations, action_alternatives,
+    #         opponent_batch_size
+    #     )
+    #
+    # br_utility = br_utility.sum(axis=-1)
+    # action_alternatives = torch.linspace(0, 1, grid_size, device=device)
     get_br_utily_and_index = lambda obs: _get_best_responses_among_alternatives(
         env, player_position, obs, action_alternatives, opponent_batch_size)
     br_utility, br_indices = apply_with_dynamic_mini_batching(
         function=get_br_utily_and_index,
-        args=agent_observations, mute=mute)
+        args=agent_observations)
 
     ##### calculate the loss and return best responses ###########
     utility_loss = (br_utility - utility_actual).relu_()
@@ -299,14 +327,32 @@ def ex_interim_util_loss(env: AuctionEnvironment, player_position: int,
     else:
         actual_was_best = (utility_loss == 0).unsqueeze_(1).repeat(1, action_size)
         br_actions = actual_was_best * agent_action_actual + \
-                 actual_was_best.logical_not() * action_alternatives[br_indices]
+            actual_was_best.logical_not() * action_alternatives[br_indices]
 
     return (utility_loss, br_actions)
+
+def get_best_responses_among_alternatives(
+        env: AuctionEnvironment, player_position: int,
+        agent_observations: torch.Tensor, action_alternatives: torch.Tensor,
+        opponent_batch_size: int,
+    ) -> Tuple[torch.Tensor, torch.IntTensor]:
+    """Wrapper for `_get_best_responses_among_alternatives` that makes some
+    computations sequentially if `device` is OOM.
+    """
+    get_br_utily_and_index = lambda obs: _get_best_responses_among_alternatives(
+        env, player_position, obs, action_alternatives, opponent_batch_size
+    )
+
+    return apply_with_dynamic_mini_batching(
+        function=get_br_utily_and_index,
+        args=agent_observations
+    )
 
 def _get_best_responses_among_alternatives(
         env: AuctionEnvironment, player_position: int,
         agent_observations: torch.Tensor, action_alternatives: torch.Tensor,
-        opponent_batch_size: int) -> Tuple[torch.Tensor, torch.IntTensor]:
+        opponent_batch_size: int
+    ) -> Tuple[torch.Tensor, torch.IntTensor]:
     """For a batch of observations for the given player, calculates the
     ex-interim best response from a fixed set of alternatives.
 
@@ -330,18 +376,39 @@ def _get_best_responses_among_alternatives(
     # grid_size x agent_batch_size
     grid_utilities = ex_interim_utility(
         env, player_position, grid_observations,
-        grid_actions, opponent_batch_size, device
+        grid_actions, opponent_batch_size
         )
 
     # for each agent_observation, find the best response
     # each have shape: [agent_batch_size]
     br_utility, br_indices = grid_utilities.max(dim=0)
+
     return br_utility, br_indices
 
 def ex_interim_utility(
         env: AuctionEnvironment, player_position: int,
         agent_observations: torch.Tensor, agent_actions: torch.Tensor,
-        opponent_batch_size: int, device) -> torch.Tensor:
+        opponent_batch_size: int
+    ) -> torch.Tensor:
+    """Wrapper for `ex_interim_utility` that makes some computations
+    sequentially if `device` is OOM.
+    """
+
+    fct = lambda n: _ex_interim_utility(
+        env, player_position, agent_observations, agent_actions, n
+    )
+
+    return apply_average_dynamic_mini_batching(
+        fct, batch_size=opponent_batch_size,
+        shape=agent_observations.shape[:-1],
+        device=agent_observations.device
+    )
+
+def _ex_interim_utility(
+        env: AuctionEnvironment, player_position: int,
+        agent_observations: torch.Tensor, agent_actions: torch.Tensor,
+        opponent_batch_size: int
+    ) -> torch.Tensor:
     """
     Calculates the ex-interim utility of a given agent in the environment,
     given (batches of) their observations and actions.
@@ -358,13 +425,13 @@ def ex_interim_utility(
             observations to sample for each agent_batch entry. The expected
             ex-interim utility will then be approximated by the sample mean
             over the opponent_batch_size dimension.
-        device (device):    The output device.
 
     Returns:
         utility: (Tensor of dim (*agent_batch_sizes)): the resulting empirical
             ex-interim utilities.
     """
     mechanism = env.mechanism
+    device = agent_observations.device
     agent = env.agents[player_position]
 
     *batch_dims, _ = range(agent_actions.dim())
@@ -372,6 +439,7 @@ def ex_interim_utility(
     assert agent_observations.shape[:len(batch_dims)] == torch.Size(agent_batch_sizes), \
         """observations and actions must have the same batch sizes!"""
     action_dtype = agent_actions.dtype
+
     # draw conditional observations conditioned on `agent`'s observation:
     # co has dimension (*agent_batches , opponent_batch, n_players, observation_size)
     # each agent_observations is repeated opponent_batch_size times
@@ -392,23 +460,21 @@ def ex_interim_utility(
     for a in env.agents:
         if a.player_position != player_position:
             action_profile_actual[..., a.player_position, :] = \
-                a.strategy.play(co[..., a.player_position, :])
+                a.strategy.play(co[..., a.player_position, :]).to(device)
 
     # shapes: allocations: *agent_batches x opponent_batch x n_players x n_items
     #         payments:    *agent_batches x opponent_batch x n_players
     allocations, payments = mechanism.play(action_profile_actual)
 
-    if isinstance(mechanism, TullockContest) or isinstance(mechanism, CrowdsourcingContest):
-        agent_allocations = allocations[..., player_position, :]
-    else:
-        agent_allocations = allocations[..., player_position, :].type(torch.bool)
+    agent_allocations = allocations[..., player_position, :]
     agent_payments = payments[..., player_position]
     agent_valuations = cv[..., player_position, :]
+
     # shape of utility: *agent_batch_sizes x opponent_batch_size
     utility = agent.get_utility(
         agent_allocations, agent_payments, agent_valuations
         )
 
     # expectation over opponent batches
-    utility = torch.mean(utility, axis=-1) #dim: agent_batch_size
+    utility = torch.mean(utility, axis=-1)  # dim: agent_batch_size
     return utility

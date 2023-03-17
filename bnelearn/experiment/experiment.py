@@ -29,7 +29,7 @@ import bnelearn.util.metrics as metrics
 import bnelearn.learner as learners
 from bnelearn.bidder import Bidder
 from bnelearn.environment import AuctionEnvironment, Environment
-from bnelearn.experiment.configurations import (ExperimentConfig)
+from bnelearn.experiment.configurations import ExperimentConfig
 from bnelearn.mechanism import Mechanism
 from bnelearn.strategy import NeuralNetStrategy
 from bnelearn.sampler import ValuationObservationSampler
@@ -142,6 +142,9 @@ class Experiment(ABC):
         else:
             self.logging.log_metrics['opt'] = False
 
+        self.mixed_strategy = self.learning.mixed_strategy
+        self.bias = self.learning.bias
+
     @abstractmethod
     def _setup_mechanism(self):
         pass
@@ -190,7 +193,9 @@ class Experiment(ABC):
                 optimizer_hyperparams=self.learning.optimizer_hyperparams,
                 scheduler_type=self.learning.scheduler,
                 scheduler_hyperparams=self.learning.scheduler_hyperparams,
-                strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]}
+                smooth_market=self.learning.smoothing_temperature is not None,
+                strat_to_player_kwargs={"player_position": self._model2bidder[m_id][0]},
+                log_gradient_variance=self.logging.log_metrics['gradient_variance']
             )
             for m_id, model in enumerate(self.models)]
 
@@ -224,6 +229,8 @@ class Experiment(ABC):
                 hidden_activations=self.learning.hidden_activations,
                 ensure_positive_output=self.positive_output_point,
                 output_length=self.action_size,
+                mixed_strategy=self.mixed_strategy,
+                bias=self.bias,
             ).to(self.hardware.device)
 
         self.bidders = [
@@ -241,6 +248,10 @@ class Experiment(ABC):
             _, obs = self.sampler.draw_profiles()
 
             for i, model in enumerate(self.models):
+
+                # Set mode: we want to disregard `log_prob` from mixed-strategies here
+                model.train(False)
+
                 pos = self._model2bidder[i][0]
                 model.pretrain(obs[:, pos, :], self.learning.pretrain_iters,
                                # bidder specific pretraining (e.g. for LLGFull)
@@ -343,7 +354,9 @@ class Experiment(ABC):
             if self.v_opt[bne_id].shape[0] != self.plot_points:
                 grid_size_differs = True
 
-        if grid_size_differs:
+        # Import here due to circularity
+        from bnelearn.experiment.multi_unit_experiment import MultiUnitExperiment
+        if grid_size_differs and isinstance(self, MultiUnitExperiment):
             print('`plot_points` changed due to get_valuation_grid')
             self.plot_points = self.v_opt[0].shape[0]
 
@@ -621,12 +634,12 @@ class Experiment(ABC):
         b = torch.stack([self.env.agents[b[0]].get_action(o[:, i, ...])
                             for i, b in enumerate(self._model2bidder)], dim=1)
 
-        labels = [f'NPGA {self._get_model_names()[i]}' for i in range(len(self.models))]
+        labels = [f'{self.learners[i]} {self._get_model_names()[i]}' for i in range(len(self.models))]
         fmts = ['o'] * len(self.models)
         if self.known_bne and self.logging.log_metrics['opt']:
             for env_idx, _ in enumerate(self.bne_env):
-                o = torch.cat([o, self.v_opt[env_idx]], dim=1)
-                b = torch.cat([b, self.b_opt[env_idx]], dim=1)
+                o = torch.cat([o, self.v_opt[env_idx][:self.plot_points]], dim=1)
+                b = torch.cat([b, self.b_opt[env_idx][:self.plot_points]], dim=1)
                 labels += [
                     f"BNE{str(env_idx + 1) if len(self.bne_env) > 1 else ''} {self._get_model_names()[j]}"
                     for j in range(len(self.models))]
@@ -702,45 +715,67 @@ class Experiment(ABC):
             (new_params[i] - self._cur_epoch_log_params['prev_params'][i]).norm(float('inf'))
             for i in range(self.n_models)]
         self._cur_epoch_log_params['gradient_norm'] = [
-            model.get_gradient_norm() for model in self.models]
+            model.get_gradient_norm() if isinstance(learner, learners.GradientBasedLearner) else 0
+            for learner, model in zip(self.learners, self.models)
+        ]
         del self._cur_epoch_log_params['prev_params']
 
         # logging metrics
         # TODO: should just check if logging is enabled in general... if bne_exists and we log, we always want this
-        if self.known_bne and self.logging.log_metrics['opt']:
-            utility_vs_bne, epsilon_relative, epsilon_absolute = self._calculate_metrics_known_bne()
-            L_2, L_inf = self._calculate_metrics_action_space_norms()
-            for i in range(len(self.bne_env)):
-                n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
-                self._cur_epoch_log_params['utility_vs_bne' + (n if n == '' else n[4:])] \
-                    = utility_vs_bne[i]
-                self._cur_epoch_log_params['epsilon_relative' + n] = epsilon_relative[i]
-                self._cur_epoch_log_params['epsilon_absolute' + n] = epsilon_absolute[i]
-                self._cur_epoch_log_params['L_2' + n] = L_2[i]
-                self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
+        if (self.epoch % self.logging.eval_frequency) == 0:
+            if self.known_bne and self.logging.log_metrics['opt']:
+                utility_vs_bne, epsilon_relative, epsilon_absolute = self._calculate_metrics_known_bne()
+                L_2, L_inf = self._calculate_metrics_action_space_norms()
+                for i in range(len(self.bne_env)):
+                    n = '_bne' + str(i + 1) if len(self.bne_env) > 1 else ''
+                    self._cur_epoch_log_params['utility_vs_bne' + (n if n == '' else n[4:])] \
+                        = utility_vs_bne[i]
+                    self._cur_epoch_log_params['epsilon_relative' + n] = epsilon_relative[i]
+                    self._cur_epoch_log_params['epsilon_absolute' + n] = epsilon_absolute[i]
+                    self._cur_epoch_log_params['L_2' + n] = L_2[i]
+                    self._cur_epoch_log_params['L_inf' + n] = L_inf[i]
 
-        if self.logging.log_metrics['util_loss'] and (self.epoch % self.logging.util_loss_frequency) == 0:
-            create_plot_output = self.epoch % self.logging.plot_frequency == 0
-            self._cur_epoch_log_params['util_loss_ex_ante'], \
-            self._cur_epoch_log_params['util_loss_ex_interim'], \
-            self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'] = \
-                self._calculate_metrics_util_loss(create_plot_output)
+            if self.epoch > 0 and self.logging.log_metrics['util_loss']:
+                create_plot_output = self.epoch % self.logging.plot_frequency == 0
+                self._cur_epoch_log_params['util_loss_ex_ante'], \
+                self._cur_epoch_log_params['util_loss_ex_interim'], \
+                self._cur_epoch_log_params['estimated_relative_ex_ante_util_loss'] = \
+                    self._calculate_metrics_util_loss(create_plot_output)
 
-            print("\tcurrent est. ex-interim loss:" + str(
-                [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
+                print("\tcurrent est. ex-interim loss:" + str(
+                    [f"{l.item():.4f}" for l in self._cur_epoch_log_params['util_loss_ex_interim']]))
 
-        if self.logging.log_metrics['efficiency'] and (self.epoch % self.logging.util_loss_frequency) == 0:
-            self._cur_epoch_log_params['efficiency'] = \
-                self.env.get_efficiency(self.env)
+            if self.logging.log_metrics['efficiency']:
+                self._cur_epoch_log_params['efficiency'] = \
+                    self.env.get_efficiency(self.env)
 
-        if self.logging.log_metrics['revenue'] and (self.epoch % self.logging.util_loss_frequency) == 0:
-            self._cur_epoch_log_params['revenue'] = \
-                self.env.get_revenue(self.env)
+            if self.logging.log_metrics['revenue']:
+                self._cur_epoch_log_params['revenue'] = \
+                    self.env.get_revenue(self.env)
 
-        # plotting
-        if self.epoch % self.logging.plot_frequency == 0 and self.epoch > 0:
-            print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
-            self._plot_current_strategies()
+            self._cur_epoch_log_params['utility_variance'] = [
+                self.env.get_reward(
+                    self.env.agents[self._model2bidder[m][0]],
+                    aggregate=False
+                    ).var()
+                for m in range(len(self.models))]
+
+            if 'regularization' in self.learning.learner_hyperparams.keys():
+                self._cur_epoch_log_params['regularization'] = \
+                    torch.tensor([l.regularize for l in self.learners])
+
+            # plotting
+            if self.epoch % self.logging.plot_frequency == 0:
+                print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
+
+            if self.logging.log_metrics['gradient_variance']:
+                self._cur_epoch_log_params['learner_info/gradient_variance'] = \
+                    self._calculate_metrics_gradient_variance()
+
+            # plotting
+            if self.epoch % self.logging.plot_frequency == 0 and self.epoch > 0:
+                print("\tcurrent utilities: " + str(self._cur_epoch_log_params['utilities'].tolist()))
+                self._plot_current_strategies()
 
         self.overhead = self.overhead + timer() - start_time
         self._cur_epoch_log_params['overhead_hours'] = self.overhead / 3600
@@ -776,7 +811,7 @@ class Experiment(ABC):
                 bne_env.get_strategy_reward(
                     strategy=model,
                     player_position=m2b(m),
-                    redraw_valuations=redraw_bne_vals
+                    redraw_valuations=redraw_bne_vals,
                 ) for m, model in enumerate(self.models)
             ])
             epsilon_relative[bne_idx] = torch.tensor(
@@ -848,6 +883,11 @@ class Experiment(ABC):
             batch_size = self.logging.util_loss_batch_size
         if grid_size is None:
             grid_size = self.logging.util_loss_grid_size
+        if opponent_batch_size is None:
+            if self.logging.util_loss_opponent_batch_size is None:
+                opponent_batch_size = batch_size  # default to main batch size
+            else:
+                opponent_batch_size = self.logging.util_loss_opponent_batch_size
 
         with torch.no_grad():  # don't need any gradient information here
             # TODO: currently we don't know where exactly a memory leak is            
@@ -910,6 +950,9 @@ class Experiment(ABC):
 
         return ex_ante_util_loss, ex_interim_max_util_loss, estimated_relative_ex_ante_util_loss
 
+    def _calculate_metrics_gradient_variance(self):
+        return [l.gradient_variance for l in self.learners]
+    
     def _log_experiment_params(self, global_step=None):
         """Logging of parameters after learning finished.
 
@@ -925,7 +968,7 @@ class Experiment(ABC):
         # TODO: Stefan: this currently called _per run_. is this desired behavior?
         for i, model in enumerate(self.models):
             self.writer.add_text('hyperparameters/neural_net_spec', str(model))
-            self.writer.add_graph(model, self.env._observations[:, i, :])
+            # self.writer.add_graph(model, self.env._observations[:, i, :])
 
         h_params = {'hyperparameters/batch_size': self.learning.batch_size,
                     'hyperparameters/pretrain_iters': self.learning.pretrain_iters,

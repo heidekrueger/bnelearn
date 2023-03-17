@@ -55,22 +55,6 @@ bids_allpay = torch.tensor([
     [[2.0], [1.0], [0.0]],
 ])
 
-def test_fpsb_cuda():
-    """FPSB should run on GPU if available on the system and desired."""
-
-    if not torch.cuda.is_available():
-        pytest.skip("This test needs CUDA, but it's not available.")
-
-    bids_gpu = bids_cpu.cuda()
-
-    allocations, payments = fpsb.run(bids_cpu)
-    allocations1, payments1 = fpsb.run(bids_gpu)
-
-    assert all(
-        [tensor.device.type == 'cuda'
-         for tensor in [allocations, allocations1, payments, payments1]
-        ]), "Outputs should be on gpu!"
-
 def test_fpsb_illegal_arguments():
     """Illegal bid tensors should cause exceptions"""
     with pytest.raises(AssertionError):

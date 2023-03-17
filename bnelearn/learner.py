@@ -14,7 +14,7 @@ from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 from bnelearn.environment import Environment
 from bnelearn.strategy import Strategy, NeuralNetStrategy
-
+import bnelearn.util.autograd_hacks as autograd_hacks
 
 
 class Learner(ABC):
@@ -35,14 +35,16 @@ class GradientBasedLearner(Learner):
     """A learning rule that is based on computing some version of (pseudo-)
        gradient, then applying an SGD-like update via a ``torch.optim.Optimizer``
     """
-    def __init__(self,
-                 model: torch.nn.Module, environment: Environment,
+    def __init__(self,model: torch.nn.Module, environment: Environment,
                  optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
                  scheduler_type: Type[torch.optim.lr_scheduler._LRScheduler] = None,
-                 scheduler_hyperparams: dict = None, strat_to_player_kwargs: dict = None):
+                 scheduler_hyperparams: dict = None, strat_to_player_kwargs: dict = None,
+                 smooth_market: bool = False, log_gradient_variance: bool = False):
         self.model = model
         self.params = model.parameters
         self.n_parameters = sum([p.numel() for p in self.params()])
+        self.smooth_market = smooth_market
+        self.log_gradient_variance = log_gradient_variance
 
         self.environment = environment
 
@@ -63,6 +65,10 @@ class GradientBasedLearner(Learner):
             self.scheduler_hyperparams = scheduler_hyperparams
             self.scheduler: torch.optim.lr_scheduler._LRScheduler = \
                 scheduler_type(self.optimizer, **self.scheduler_hyperparams)
+
+        if self.log_gradient_variance:
+            self.gradient_variance = 0
+            autograd_hacks.add_hooks(self.model)
 
     @abstractmethod
     def _set_gradients(self):
@@ -94,10 +100,23 @@ class GradientBasedLearner(Learner):
 
         self.update_strategy(closure)
         return self.environment.get_strategy_reward(
-            self.model,
+            self.model, smooth_market=self.smooth_market,
             **self.strat_to_player_kwargs
         ).detach()
 
+    def _calculate_gradient_variance(self):
+        """Calculate gradient variances"""
+        autograd_hacks.compute_grad1(self.model)
+
+        single_sample_gradients = torch.concat(
+            [p.grad1.view(self.environment.batch_size, -1) for p in self.model.parameters()],
+            axis=1
+            )
+
+        # Calculate (empirical) variance (sum of component-wise variances)
+        self.gradient_variance = single_sample_gradients.var(dim=0, unbiased=True).sum()
+        
+        autograd_hacks.clear_backprops(self.model)
 
 class ESPGLearner(GradientBasedLearner):
     """Neural Self-Play with Evolutionary Strategy Pseudo-PG as proposed in
@@ -151,16 +170,9 @@ class ESPGLearner(GradientBasedLearner):
                 dict of arguments provided to environment used for evaluating
                 utility of current and candidate strategies.
     """
-    def __init__(self,
-                 model: torch.nn.Module, environment: Environment, hyperparams: dict,
-                 optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 scheduler_type: Type[torch.optim.lr_scheduler._LRScheduler] = None,
-                 scheduler_hyperparams: dict = None, strat_to_player_kwargs: dict = None):
+    def __init__(self,  hyperparams: dict, **kwargs):
         # Create and validate optimizer
-        super().__init__(model, environment,
-                         optimizer_type, optimizer_hyperparams,
-                         scheduler_type, scheduler_hyperparams,
-                         strat_to_player_kwargs)
+        super().__init__(**kwargs)
 
         # Validate ES hyperparams
         if not set(['population_size', 'sigma', 'scale_sigma_by_model_size']) <= set(hyperparams):
@@ -241,38 +253,77 @@ class ESPGLearner(GradientBasedLearner):
         # rewards: population_size x 1
         # epsilons: population_size x parameter_length
         self.regularize *= self.regularize_decay
-        rewards, epsilons = (
-            torch.cat(tensors).view(self.population_size, -1)
-            for tensors in zip(*(
-                (
-                    self.environment.get_strategy_reward(
-                        model, **self.strat_to_player_kwargs, regularize=self.regularize
-                    ).detach().view(1),
-                    epsilon
-                )
-                for (model, epsilon) in population
-                ))
+
+        if not self.log_gradient_variance:
+            rewards, epsilons = (
+                torch.cat(tensors).view(self.population_size, -1)
+                for tensors in zip(*(
+                    (
+                        self.environment.get_strategy_reward(
+                            model, **self.strat_to_player_kwargs, regularize=self.regularize
+                        ).detach().view(1),
+                        epsilon
+                    )
+                    for (model, epsilon) in population
+                    ))
             )
-        ### 4. calculate the ES-pseuogradients   ####
-        # See ES_Analysis notebook in repository for more information about where
-        # these choices come from.
-        if self.baseline == 'current_reward':
-            baseline = self.environment.get_strategy_reward(
-                self.model, regularize=self.regularize,
-                **self.strat_to_player_kwargs
-            ).detach().view(1)
-        elif self.baseline == 'mean_reward':
-            baseline = rewards.mean(dim=0)
-        else: # baseline is a float
-            baseline = self.baseline
+            ### 4. calculate the ES-pseuogradients   ####
+            # See ES_Analysis notebook in repository for more information about where
+            # these choices come from.
+            if self.baseline == 'current_reward':
+                baseline = self.environment.get_strategy_reward(
+                    self.model, regularize=self.regularize,
+                    **self.strat_to_player_kwargs
+                ).detach().view(1)
+            elif self.baseline == 'mean_reward':
+                baseline = rewards.mean(dim=0)
+            else: # baseline is a float
+                baseline = self.baseline
 
-        denominator = self.sigma * rewards.std() if self.normalize_gradients else self.sigma**2
+            denominator = self.sigma * rewards.std() if self.normalize_gradients else self.sigma**2
 
-        if denominator == 0:
-            # all candidates returned same reward and normalize is true --> stationary
-            gradient_vector = torch.zeros_like(parameters_to_vector(self.params()))
+            if denominator == 0:
+                # all candidates returned same reward and normalize is true --> stationary
+                gradient_vector = torch.zeros_like(parameters_to_vector(self.params()))
+            else:
+                gradient_vector = ((rewards - baseline)*epsilons).mean(dim=0) / denominator
+
         else:
-            gradient_vector = ((rewards - baseline)*epsilons).mean(dim=0) / denominator
+            rewards = torch.zeros((self.environment.batch_size, self.population_size, 1), device=next(self.model.parameters()).device)
+            epsilons = torch.zeros((1, self.population_size, parameters_to_vector(self.model.parameters()).shape[0]), device=next(self.model.parameters()).device)
+            for i, (model, epsilon) in enumerate(population):
+                rewards[:, i, 0] = self.environment.get_strategy_reward(
+                        model, **self.strat_to_player_kwargs,
+                        regularize=self.regularize,
+                        aggregate_batch=False
+                    ).detach()
+                epsilons[0, i, :] = epsilon
+
+            ### 4. calculate the ES-pseuogradients   ####
+            # See ES_Analysis notebook in repository for more information about where
+            # these choices come from.
+            if self.baseline == 'current_reward':
+                baseline = self.environment.get_strategy_reward(
+                    self.model, regularize=self.regularize,
+                    **self.strat_to_player_kwargs,
+                    aggregate_batch=False
+                ).detach().view(self.environment.batch_size, 1, 1)
+            elif self.baseline == 'mean_reward':
+                baseline = rewards.mean(dim=0)
+            else: # baseline is a float
+                baseline = self.baseline
+
+            denominator = self.sigma * rewards.std() if self.normalize_gradients else self.sigma**2
+
+            if denominator == 0:
+                # all candidates returned same reward and normalize is true --> stationary
+                gradient_vector = torch.zeros_like(parameters_to_vector(self.params()))
+            else:
+                single_sample_gradients = ((rewards - baseline)*epsilons).mean(dim=1) / denominator
+                gradient_vector = single_sample_gradients.mean(dim=0)
+
+                # Calculate (empirical) variance (sum of component-wise variances)
+                self.gradient_variance = single_sample_gradients.var(dim=0, unbiased=True).sum()
 
         # put gradient vector into same format as model parameters
         gradient_params = deepcopy(list(self.params()))
@@ -292,6 +343,9 @@ class ESPGLearner(GradientBasedLearner):
                 p.grad.add_(-d_p)
             else:
                 p.grad = -d_p
+                
+        # Decay of regularization
+        self.regularize *= self.regularize_decay
 
     def _perturb_model(self, model: torch.nn.Module, noise: torch.Tensor = None) -> Tuple[torch.nn.Module, torch.Tensor]:
         """
@@ -307,6 +361,9 @@ class ESPGLearner(GradientBasedLearner):
         vector_to_parameters(params_flat + noise, perturbed.parameters())
 
         return perturbed, noise
+
+    def __str__(self):
+        return "NPGA"
 
 
 class PGLearner(GradientBasedLearner):
@@ -345,16 +402,66 @@ class PGLearner(GradientBasedLearner):
 
         if self.baseline_method == 'current_reward':
             self.baseline = self.environment.get_strategy_reward(
-                self.model,**self.strat_to_player_kwargs
+                self.model, **self.strat_to_player_kwargs,
+                smooth_market=self.smooth_market,
                 ).detach().view(1)
         else:
             pass # is already constant float
 
         loss = -self.environment.get_strategy_reward(
-            self.model,**self.strat_to_player_kwargs
+            self.model, **self.strat_to_player_kwargs,
+            smooth_market=self.smooth_market
+        )
+        loss.backward()
+
+        if self.log_gradient_variance:
+            self._calculate_gradient_variance()
+
+    def __str__(self):
+        return "PG"
+
+
+class ReinforceLearner(GradientBasedLearner):
+    """REINFORCE Learner. Also known as Score function estimator.
+
+    See https://link.springer.com/article/10.1007/BF00992696 and
+    https://pytorch.org/docs/stable/distributions.html.
+    """
+
+    def __init__(self, hyperparams: dict = None, **kwargs):
+        super().__init__(**kwargs)
+        self.model.train(False)
+
+    def _set_gradients(self):
+        self.environment.prepare_iteration()
+
+        # set switch to set `log_prob`
+        self.model.train(True)
+
+        reward = -self.environment.get_strategy_reward(
+            self.model, **self.strat_to_player_kwargs,
+            aggregate_batch=False
         )
 
+        last_layer_key = list(self.model.layers)[-1]
+        last_layer = self.model.layers[last_layer_key]
+        if hasattr(last_layer, "mixed_strategy"):
+            log_prob = last_layer.log_prob.sum(axis=-1).view_as(reward)
+        else:
+            raise ValueError("REINFORCE requires mixed policies!")
+
+        loss = ((reward - reward.mean()) * log_prob).mean()
+        # NOTE: gradient "flows" through `log_prob` not `reward`
+
         loss.backward()
+
+        if self.log_gradient_variance:
+            self._calculate_gradient_variance()
+
+        self.model.train(False)
+
+    def __str__(self):
+        return "REINFORCE"
 
 
 class PSOLearner(Learner):
@@ -399,13 +506,13 @@ class PSOLearner(Learner):
                         Upper limit for the impact of the personal best solution on the velocity
                     social_ratio: float (default: 1.49445)
                         Upper limit for the impact of the swarm's best solution on the velocity
-                    reevaluation_frequency: int (default: None)
+                    reeval_frequency: int (default: None)
                         Number of epochs after which the personal and overall bests are reevaluated
                         to prevent false memory introduced by varying batch data
                     decrease_fitness: List or Tuple (default None)
                         The to evaporation constants are used to reduce the remembered fitness of the bests to prevent
                         false memory introduced by varying batch data.
-                        !!! Use either 'reevaluation_frequency'or 'decrease_fitness' !!!
+                        !!! Use either 'reeval_frequency'or 'decrease_fitness' !!!
                         with lenght == 2, will take the first value as evaporation constant for personal best
                         and second as evaporation constant for global (neighborhood) best
                     pretrain_deviation: float (default: 0)
@@ -429,13 +536,16 @@ class PSOLearner(Learner):
     def __init__(self,
                  model: torch.nn.Module, environment: Environment, hyperparams: dict,
                  optimizer_type: Type[torch.optim.Optimizer], optimizer_hyperparams: dict,
-                 strat_to_player_kwargs: dict = None):
+                 scheduler_type: Type[torch.optim.lr_scheduler._LRScheduler] = None,
+                 scheduler_hyperparams: dict = None, strat_to_player_kwargs: dict = None,
+                 smooth_market: bool = False, log_gradient_variance: bool = False):
         self.model = model
         self.particle_evaluation_model = deepcopy(model)
         # PSO does not need gradient computation
         for param in self.particle_evaluation_model.parameters():
             param.requires_grad = False
         self.environment = environment
+        self.smooth_market = smooth_market
         self.cur_epoch = 0
 
         # for logging
@@ -493,10 +603,10 @@ class PSOLearner(Learner):
             self.social = float(hyperparams['social_ratio'])
         else:
             self.social = 1.49445
-        if 'reevaluation_frequency' in hyperparams:
-            self.reevaluation_frequency = int(hyperparams['reevaluation_frequency'])
+        if 'reeval_frequency' in hyperparams:
+            self.reeval_frequency = int(hyperparams['reeval_frequency'])
         else:
-            self.reevaluation_frequency = False
+            self.reeval_frequency = False
         if 'decrease_fitness' in hyperparams:
             self.decrease_pbest = float(hyperparams['decrease_fitness'][0])
             self.decrease_best = float(hyperparams['decrease_fitness'][1])
@@ -626,8 +736,11 @@ class PSOLearner(Learner):
                     The fitness value (utility) of the current particle
         """
         vector_to_parameters(position, self.particle_evaluation_model.parameters())
-        reward = self.environment.get_strategy_reward(self.particle_evaluation_model,
-                                                      **self.strat_to_player_kwargs).detach()
+        reward = self.environment.get_strategy_reward(
+            self.particle_evaluation_model,
+            smooth_market=self.smooth_market,
+            **self.strat_to_player_kwargs,
+        ).detach()
         assert reward.numel() == 1
         self.utility_eval_counter += 1
         return -reward
@@ -643,7 +756,7 @@ class PSOLearner(Learner):
         fitness = torch.tensor([self._calculate_fitness(p) for p in self.position], device=self.position.device)
 
         # prevent stale memory: reevaluate the personal and overall best fitness
-        if self.reevaluation_frequency and self.cur_epoch > 0 and not self.cur_epoch % self.reevaluation_frequency:
+        if self.reeval_frequency and self.cur_epoch > 0 and not self.cur_epoch % self.reeval_frequency:
             old_best = self.best_fitness.detach().clone()
             self.best_fitness = torch.squeeze(
                 torch.tensor([self._calculate_fitness(p) for p in self.best_position], device=self.position.device), 0)
@@ -732,6 +845,9 @@ class PSOLearner(Learner):
         self.writer.add_scalar('learner/best_fitness', torch.neg(self.best_fitness.min()), self.cur_epoch)
         # self.writer.add_scalar('learner/time_per_step', time_per_step, self.cur_epoch)
 
+    def __str__(self):
+        return "PSO"
+
 
 class DPGLearner(GradientBasedLearner):
     """Implements Deterministic Policy Gradients
@@ -745,6 +861,9 @@ class DPGLearner(GradientBasedLearner):
     def __init__(self):
         raise NotImplementedError()
 
+    def __str__(self):
+        return "DPG"
+
 
 class _PerturbedActionModule(Strategy, torch.nn.Module):
     def __init__(self, module, epsilon):
@@ -755,7 +874,7 @@ class _PerturbedActionModule(Strategy, torch.nn.Module):
     def forward(self, x):
         return (self.module(x) + self.epsilon).relu()
 
-    def play(self, x):
+    def play(self, x, deterministic: bool=False):
         return self.forward(x)
 
 
@@ -900,6 +1019,9 @@ class DDPGLearner(GradientBasedLearner):
     """
     def __init__(self):
         raise NotImplementedError()
+
+    def __str__(self):
+        return "DDPG"
 
 
 class DummyNonLearner(GradientBasedLearner):

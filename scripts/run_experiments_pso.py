@@ -20,7 +20,7 @@ if __name__ == '__main__':
     batch_size = 2**17
 
     eval_batch_size = 2**17
-    util_loss_frequency = 1000
+    eval_frequency = 1000
     util_loss_batch_size = 2**12
     util_loss_grid_size = 2**10
 
@@ -46,7 +46,7 @@ if __name__ == '__main__':
             'learner_hyperparams': {
                 'swarm_size': population_size,
                 'topology': 'von_neumann',
-                'reevaluation_frequency': 10,
+                'reeval_frequency': 10,
                 'inertia_weight': .5,
                 'cognition': .8,
                 'social': .8,
@@ -73,7 +73,7 @@ if __name__ == '__main__':
             ) \
             .set_logging(
                 log_root_dir=log_root_dir,
-                util_loss_frequency=util_loss_frequency,
+                eval_frequency=eval_frequency,
                 util_loss_batch_size=util_loss_batch_size,
                 util_loss_grid_size=util_loss_grid_size,
                 eval_batch_size=eval_batch_size,
