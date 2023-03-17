@@ -182,7 +182,7 @@ def run_auction_test(config, exp_class, known_bne):
     # Log and plot frequent but few
     config.logging.enable_logging = False
     config.logging.plot_frequency = 1
-    config.logging.util_loss_frequency = 1
+    config.logging.eval_frequency = 1
     config.logging.plot_points = 10
     config.logging.util_loss_batch_size = 2 ** 2
     config.logging.util_loss_grid_size = 2 ** 2

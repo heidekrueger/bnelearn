@@ -20,7 +20,8 @@ from bnelearn.experiment.combinatorial_experiment import (LLGExperiment,
                                                           LLGFullExperiment,
                                                           LLLLGGExperiment,
                                                           LLLLRRGExperiment)
-from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment, SplitAwardExperiment)
+from bnelearn.experiment.multi_unit_experiment import (MultiUnitExperiment,
+                                                       SplitAwardExperiment)
 
 from bnelearn.experiment.single_item_experiment import (GaussianSymmetricPriorSingleItemExperiment,
                                                         TwoPlayerAsymmetricUniformPriorSingleItemExperiment,
@@ -233,7 +234,7 @@ class ConfigurationManager:
         self.setting.core_solver = 'NoCore'
         self.setting.parallel = 1
         self.setting.n_players = 6
-        self.logging.util_loss_frequency = 1000  # Or 100?
+        self.logging.eval_frequency = 1000  # Or 100?
         self.logging.log_metrics = {'opt': False,
                                     'util_loss': True}
 
@@ -245,7 +246,7 @@ class ConfigurationManager:
         self.setting.core_solver = 'NoCore'
         self.setting.parallel = 1
         self.setting.n_players = 7
-        self.logging.util_loss_frequency = 100  # Or 100?
+        self.logging.eval_frequency = 100  # Or 100?
         self.logging.log_metrics = {'opt': False,
                                     'util_loss': True}
 
@@ -301,11 +302,12 @@ class ConfigurationManager:
         # Using . instead of : for compatibility with Windows
         # Why do we even need the timestamp field?
         # self.logging.experiment_timestamp = time.strftime('%Y-%m-%d %a %H.%M')
-        self.logging.experiment_dir = time.strftime('%Y-%m-%d %a %H.%M')
+        self.logging.experiment_dir = time.strftime('%Y-%m-%d %a %H:%M:%S')
         if self.logging.experiment_name:
             self.logging.experiment_dir += ' ' + str(self.logging.experiment_name)
 
-        valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue']
+        valid_log_metrics = ['opt', 'util_loss', 'efficiency', 'revenue', 'gradient_variance']
+
         if self.logging.log_metrics is not None:
             for metric in self.logging.log_metrics:
                 assert metric in valid_log_metrics, "Metric not known."
@@ -470,8 +472,6 @@ class ConfigurationManager:
                     crowdsourcing_values: List = None):
         """
         Sets only the parameters of setting which were passed, returns self. Using None here and below
-        as a string allows to explicitly st parameters to None.
-
         Args:
             n_players: The number of players in the game.
             payment_rule: The payment rule to be used.
@@ -479,6 +479,7 @@ class ConfigurationManager:
                 values <1 indicate risk-aversion.
             common_prior: The common type distribution shared by all players, explicitly given as a
                 ``torch.distributions.Distribution`` object.
+                Gaussian distribution.
             valuation_mean: The expectation of the valuation distribution, when implicitly setting up a
                 Gaussian distribution.
             valuation_std: The standard deviation of the valuation distribution, when implicitly setting up a
@@ -516,9 +517,10 @@ class ConfigurationManager:
                      learner_hyperparams: dict = 'None', optimizer_type: str = 'None',
                      optimizer_hyperparams: dict = 'None', scheduler_type: str = 'None',
                      scheduler_hyperparams: dict = 'None', hidden_nodes: List[int] = 'None',
-                     pretrain_iters: int = 'None',
+                     pretrain_iters: int = 'None', smoothing_temperature: bool = 'None',
                      batch_size: int = 'None', hidden_activations: List[nn.Module] = 'None',
-                     redraw_every_iteration: bool = 'None', value_contest: bool = True):
+                     redraw_every_iteration: bool = 'None', mixed_strategy: str = 'None',
+                     pretrain_to_bne: None or int = 'None', value_contest: bool = True):
         """Sets only the parameters of learning which were passed, returns self"""
         for arg, v in {key: value for key, value in locals().items() if key != 'self' and value != 'None'}.items():
             if hasattr(self.learning, arg):
@@ -527,7 +529,8 @@ class ConfigurationManager:
 
     # pylint: disable=too-many-arguments, unused-argument
     def set_logging(self, enable_logging: bool = 'None', log_root_dir: str = 'None', util_loss_batch_size: int = 'None',
-                    util_loss_grid_size: int = 'None', util_loss_frequency: int = 'None', eval_batch_size: int = 'None',
+                    util_loss_opponent_batch_size: int = 'None', util_loss_grid_size: int = 'None',
+                    eval_frequency: int = 'None', eval_batch_size: int = 'None',
                     plot_frequency: int = 'None', plot_points: int = 'None',
                     plot_show_inline: bool = 'None', log_metrics: dict = 'None', best_response: bool = 'None',
                     save_tb_events_to_csv_aggregate: bool = 'None', save_tb_events_to_csv_detailed: bool = 'None',
@@ -602,10 +605,14 @@ class ConfigurationManager:
             scheduler_type=None,
             scheduler_hyperparams={},
             hidden_nodes=[10, 10],
-            pretrain_iters=500,
-            batch_size=2 ** 18,
             hidden_activations=[nn.SELU(), nn.SELU()],
-            redraw_every_iteration=False)
+            pretrain_iters=500,
+            pretrain_to_bne=None,
+            batch_size=2 ** 18,
+            smoothing_temperature=None,
+            redraw_every_iteration=False,
+            mixed_strategy=None,
+            bias=True)
         logging = LoggingConfig(
             enable_logging=True,
             log_root_dir=os.path.join(os.path.expanduser('~'), 'bnelearn', 'experiments'),
@@ -623,8 +630,9 @@ class ConfigurationManager:
             save_figure_to_disk_svg=True,
             save_figure_data_to_disk=True,
             util_loss_batch_size=2 ** 4,
+            util_loss_opponent_batch_size=None,
             util_loss_grid_size=2 ** 4,
-            util_loss_frequency=100,
+            eval_frequency=100,
             best_response=False,
             eval_batch_size=2 ** 22,
             cache_eval_actions=True)

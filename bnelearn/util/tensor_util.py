@@ -6,8 +6,86 @@ from typing import List
 from math import ceil
 import torch
 
+import torch.nn as nn
+
 _CUDA_OOM_ERR_MSG_START = "CUDA out of memory. Tried to allocate"
+_CPU_OOM_ERR_MSG_START = "[enforce fail at alloc_cpu.cpp:73] ."
 ERR_MSG_OOM_SINGLE_BATCH = "Failed for good. Even a batch_size of 1 leads to OOM!"
+
+
+class GaussLayer(nn.Module):
+    """
+    Custom layer for normally distributed predictions (non-negative).
+
+    Has no trainable parameters.
+    """
+    def __init__(self, **kwargs):
+        super(GaussLayer, self).__init__(**kwargs)
+        self.mixed_strategy = True
+        self.log_prob = None
+
+    # pylint: disable=fixme, missing-function-docstring
+    def forward(self, x, deterministic=False, pretrain=False):
+        if x.dim() == 1:
+            x = x.view(-1, 1)
+            
+        # Center index: First half are the Gaussian means, second half the variances
+        m = x.shape[-1] // 2
+
+        # return mean actions
+        if deterministic:
+            return x[..., :m]
+
+        mean = x[..., :m]
+        std = x[..., m:].exp()
+
+        normal = torch.distributions.normal.Normal(mean, std)
+
+        # Pretrain is supervised learning -> `rsample` is differentable,
+        # otherwise we differentiate though the log probabilites
+        if pretrain:
+            return normal.rsample()
+        else:
+            out = normal.sample()
+
+        if self.training:
+            self.log_prob = normal.log_prob(out)
+
+        return out
+
+
+class UniformLayer(nn.Module):
+    """
+    Custom layer for predictions following a uniform distribution.
+
+    Has no trainable parameters.
+    """
+    def __init__(self, **kwargs):
+        super(UniformLayer, self).__init__(**kwargs)
+        self.mixed_strategy = True
+        self.log_prob = None
+
+    # pylint: disable=fixme, missing-function-docstring
+    def forward(self, x, deterministic=False, pretrain=False):
+        if x.dim() == 1:
+            x = x.view(-1, 1)
+        m = x.shape[-1] // 2
+
+        # return mean actions
+        if deterministic:
+            return x[..., :m]
+
+        uniform = torch.distributions.uniform.Uniform(x[..., :m], x[..., :m] + x[..., m:].exp())
+
+        if pretrain:
+            return uniform.rsample()
+        else:
+            out = uniform.sample()
+
+        if self.training:
+            self.log_prob = uniform.log_prob(out)
+
+        return out
 
 
 def batched_index_select(input: torch.Tensor, dim: int,
@@ -76,7 +154,9 @@ def apply_with_dynamic_mini_batching(
     ]
 
     calculation_successful = False
-    mini_batch_size = batch_size
+
+    # Auto splitting doesn't work on CPU -> go full sequential
+    mini_batch_size = 1 if str(args.device) == "cpu" else batch_size
 
     while not calculation_successful:
         try:
@@ -102,7 +182,7 @@ def apply_with_dynamic_mini_batching(
                 print("\t ... success!")
 
         except RuntimeError as e:
-            if not str(e).startswith(_CUDA_OOM_ERR_MSG_START):
+            if not str(e).startswith(_CUDA_OOM_ERR_MSG_START) and not str(e).startswith(_CPU_OOM_ERR_MSG_START):
                 raise e
             if mini_batch_size <= 1:
                 traceback.print_exc()
@@ -114,3 +194,37 @@ def apply_with_dynamic_mini_batching(
             mini_batch_size = int(mini_batch_size / 2)
 
     return output
+
+
+def apply_average_dynamic_mini_batching(
+        function: callable,
+        batch_size: int,
+        shape,
+        device
+    ) -> List[torch.Tensor]:
+    """
+    """
+    output = torch.zeros(shape, device=device)
+
+    calculation_successful = False
+    splits = 1
+
+    while not calculation_successful:
+        try:
+            for i in range(splits):
+                output += function(int(batch_size/splits))
+            calculation_successful = True
+ 
+        except RuntimeError as e:
+            # TODO: Bound hard coded s.t. it works in conjunction with
+            # `apply_with_dynamic_mini_batching` and our server's GPU memory
+            if (
+                not str(e).startswith(_CUDA_OOM_ERR_MSG_START)
+                and not str(e).startswith(_CPU_OOM_ERR_MSG_START)
+                or splits > 2**6
+            ):
+                raise e
+
+            splits *= 2
+
+    return output / splits

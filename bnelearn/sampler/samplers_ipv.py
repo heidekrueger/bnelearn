@@ -14,6 +14,8 @@ from torch.cuda import _device_t as Device
 from torch.distributions import Distribution
 from .base import IPVSampler
 
+from bnelearn.util.distribution_util import copy_dist_to_device
+
 
 class FixedManualIPVSampler(IPVSampler):
     """For testing purposes:
@@ -79,8 +81,8 @@ class SymmetricIPVSampler(IPVSampler):
                 torch.tensor(self.UPPER_BOUND_QUARTILE_IF_UNBOUNDED))
             lower_bound = torch.tensor(0, device=upper_bound.device)
         else:
-            lower_bound = torch.tensor(support.lower_bound).relu()
-            upper_bound = torch.tensor(support.upper_bound)
+            lower_bound = torch.as_tensor(support.lower_bound).relu()
+            upper_bound = torch.as_tensor(support.upper_bound)
 
         assert upper_bound >= lower_bound
 
@@ -96,7 +98,7 @@ class SymmetricIPVSampler(IPVSampler):
         batch_sizes = self._parse_batch_sizes_arg(batch_sizes)
         device = device or self.default_device
 
-        return self.distribution.sample(batch_sizes).to(device)
+        return copy_dist_to_device(self.distribution, device).sample(batch_sizes)
 
     def draw_conditional_profiles(self,
                                   conditioned_player: int,

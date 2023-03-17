@@ -77,7 +77,7 @@ class Bidder(Player):
                  player_position: torch.Tensor = None,
                  batch_size: int = 1,
                  valuation_size: int = 1,
-                 observation_size: int =1,
+                 observation_size: int = 1,
                  bid_size: int = 1,
                  cuda: str = True,
                  enable_action_caching: bool = False,
@@ -149,7 +149,6 @@ class Bidder(Player):
         ( outer_batch_size, inner_batch_size, n_items). These batch dimensions are kept in returned
         payoff.
         """
-
         if valuations is None:
             valuations = self._cached_valuations
 
@@ -183,7 +182,7 @@ class Bidder(Player):
 
         return welfare
 
-    def get_action(self, observations = None):
+    def get_action(self, observations = None, deterministic: bool = False):
         """Calculate action from given observations, or retrieve from cache"""
 
         if self._enable_action_caching and not self._cached_observations_changed and \
@@ -208,7 +207,7 @@ class Bidder(Player):
             dim = self.strategy.input_length
             inputs = inputs[..., :dim]
 
-        actions = self.strategy.play(inputs)
+        actions = self.strategy.play(inputs, deterministic=deterministic)
 
         if self._enable_action_caching:
             self.cached_observations = observations
@@ -255,20 +254,14 @@ class CombinatorialBidder(Bidder):
             valuations = self._cached_valuations
 
         item_dimension = valuations.dim() - 1
-        # 0: item A | 1: item B | 2: bundle {A, B}
-        # `player_position` == index of valued item for this agent
-        if self.player_position != 2:  # locals also value bundle
-            allocations_reduced_dim = allocations[..., [self.player_position, 2]] \
-                .sum(axis=item_dimension, keepdim=True)
-        else:  # global only values bundle
-            allocations_reduced_dim = torch.logical_or(
-                # won bundle of both
-                allocations[..., [2]] == 1,
-                # won both separately
-                allocations[..., [0, 1]].sum(axis=item_dimension, keepdim=True) > 1
-            )
 
-        welfare = (valuations * allocations_reduced_dim).sum(dim=item_dimension)
+        valuations_extended = torch.zeros_like(allocations, dtype=torch.float)
+        if self.player_position == 2:
+            valuations_extended[..., [2]] = valuations
+        else:
+            valuations_extended[..., [self.player_position, 2]] = valuations
+        welfare = (valuations_extended * allocations).sum(dim=item_dimension)
+
         return welfare
 
 

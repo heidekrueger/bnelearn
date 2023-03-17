@@ -152,7 +152,7 @@ def test_PSO_learner_SGD():
     hyperparams = {
         'swarm_size': 32,
         'topology': 'von_neumann',
-        'reevaluation_frequency': 10,
+        'reeval_frequency': 10,
         'inertia_weight': .5,
         'cognition': .8,
         'social': .8,

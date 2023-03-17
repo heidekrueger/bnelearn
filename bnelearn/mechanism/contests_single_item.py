@@ -40,9 +40,6 @@ class TullockContest(Mechanism):
         assert bids.dim() >= 3, "Effort tensor must be at least 3d (*batch_dims x players x items)"
         assert (bids >= 0).all().item(), "All efforts must be nonnegative."
 
-        # move bids to gpu/cpu if necessary
-        bids = bids.to(self.device)
-
         # name dimensions
         *batch_dims, player_dim, item_dim = range(bids.dim())  # pylint: disable=unused-variable
         *batch_sizes, n_players, n_items = bids.shape
@@ -89,9 +86,6 @@ class CrowdsourcingContest(Mechanism):
         """
         assert bids.dim() >= 3, "Bid tensor must be at least 3d (*batch_dims x players x items)"
         assert (bids >= 0).all().item(), "All bids must be nonnegative."
-
-        # move bids to gpu/cpu if necessary
-        bids = bids.to(self.device)
 
         # name dimensions
         *batch_dims, player_dim, item_dim = range(bids.dim())  

@@ -19,9 +19,9 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
 
-from bnelearn.mechanism import (LLGAuction, LLGFullAuction, LLLLGGAuction,
-                                FirstPriceSealedBidAuction, VickreyAuction,
-                                LLLLRRGAuction)
+from bnelearn.mechanism import (
+    LLGAuction, LLGFullAuction, LLLLGGAuction, LLLLRRGAuction
+)
 from bnelearn.bidder import Bidder, CombinatorialBidder
 
 from bnelearn.environment import AuctionEnvironment
@@ -31,7 +31,6 @@ from bnelearn.experiment import Experiment
 from bnelearn.strategy import ClosureStrategy
 
 import bnelearn.util.logging as logging_utils
-from bnelearn.sampler import LLGSampler, LLGFullSampler, LLLLGGSampler
 from bnelearn.sampler import LLGSampler, LLGFullSampler, LLLLGGSampler, LLLLRRGSampler
 
 # maps config correlation_types to LocalGlobalSampler correlation_method arguments
@@ -159,7 +158,7 @@ class LLGExperiment(LocalGlobalExperiment):
         self.mechanism = LLGAuction(rule=self.payment_rule)
 
     def _optimal_bid(self, valuation, player_position): # pylint: disable=method-hidden
-        """Core selecting and vcg equilibria for the Bernoulli weigths model in Ausubel & Baranov (2019)
+        """Core selecting and vcg equilibria for the Bernoulli weights model in Ausubel & Baranov (2019)
 
            Note: for gamma=0 or gamma=1, these are identical to the constant weights model.
         """
@@ -214,7 +213,7 @@ class LLGExperiment(LocalGlobalExperiment):
             or (self.config.setting.payment_rule in ['nearest_bid', 'nearest_zero', 'proxy', 'nearest_vcg']
                 and (self.config.setting.correlation_types in ['Bernoulli_weights', 'independent']
                     or (self.config.setting.correlation_types == 'constant_weights'
-                        and self.gamma in [0, 1]))):
+                        and self.gamma in [0, 1])) and self.risk == 1.0):
             return True
 
         known_bne = super()._check_and_set_known_bne()
@@ -281,7 +280,7 @@ class LLGFullExperiment(LocalGlobalExperiment):
     Each bidder bids on all bundles. Local bidder 1 has only a value for the
     first item, the second only for the second and global only on both. This
     experiment is therefore more general than the `LLGExperiment` and includes
-    the specifc payment rule from Beck & Ott, where the 2nd local bidder is
+    the specific payment rule from Beck & Ott, where the 2nd local bidder is
     favored (pays VCG prices).
     """
     def __init__(self, config: ExperimentConfig):
@@ -300,8 +299,10 @@ class LLGFullExperiment(LocalGlobalExperiment):
                          valuation_size=1, observation_size=1, action_size=3)
 
     def _setup_mechanism(self):
-        self.mechanism = LLGFullAuction(rule=self.payment_rule,
-                                        cuda=self.hardware.device)
+        self.mechanism = LLGFullAuction(
+            rule=self.payment_rule,
+            cuda=self.hardware.device
+        )
 
     def _setup_sampler(self):
 

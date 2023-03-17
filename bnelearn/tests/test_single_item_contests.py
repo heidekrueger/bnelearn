@@ -35,36 +35,6 @@ bids_illegal_dimensions = torch.tensor([
     [1, 2, 3]
 ], device= device)
 
-def test_tullock_cuda():
-    """Tullock Contest should run on GPU if available on the system and desired."""
-    if not torch.cuda.is_available():
-        pytest.skip("This test requires CUDA, but it's not available.")
-
-    bids_gpu = bids_cpu.cuda()
-
-    allocations, payments = tullock.run(bids_cpu)
-    allocations1, payments1 = tullock.run(bids_gpu)
-
-    assert all(
-        [tensor.device.type == 'cuda'
-        for tensor in [allocations, allocations1, payments, payments1]
-        ]), 'Outputs should be on gpu!'
-
-def test_crowdsourcing_cuda():
-    """Tullock Contest should run on GPU if available on the system and desired."""
-    if not torch.cuda.is_available():
-        pytest.skip("This test requires CUDA, but it's not available.")
-
-    bids_gpu = bids_cpu.cuda()
-
-    allocations, payments = crowdsourcing.run(bids_cpu)
-    allocations1, payments1 = crowdsourcing.run(bids_gpu)
-
-    assert all(
-        [tensor.device.type == 'cuda'
-        for tensor in [allocations, allocations1, payments, payments1]
-        ]), 'Outputs should be on gpu!'
-
 def test_tullock_illegal_arguments():
     """Illegal effort tensors should cause exceptions."""
     with pytest.raises(AssertionError):

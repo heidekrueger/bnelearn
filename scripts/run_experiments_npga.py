@@ -27,7 +27,7 @@ if __name__ == '__main__':
         # Alternatives: 'independent'
 
     eval_batch_size = 2**17
-    util_loss_frequency = 1000
+    eval_frequency = 1000
     util_loss_batch_size = 2**12
     util_loss_grid_size = 2**10
 
@@ -59,7 +59,7 @@ if __name__ == '__main__':
             ) \
             .set_logging(
                 log_root_dir=log_root_dir,
-                util_loss_frequency=util_loss_frequency,
+                eval_frequency=eval_frequency,
                 util_loss_batch_size=util_loss_batch_size,
                 util_loss_grid_size=util_loss_grid_size,
                 eval_batch_size=eval_batch_size,

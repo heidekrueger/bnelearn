@@ -30,7 +30,7 @@ def copy_dist_to_device(dist, device):
     except Exception as e:
         raise NotImplementedError(f"Device conversion of {dist} failed. " + \
             "This method only works for the most basic distributions. " + \
-                "You may need to create the desired distribution ad-hoc.") \
+            "You may need to create the desired distribution ad-hoc.") \
             from e
 
     return result
